@@ -45,6 +45,8 @@ namespace Sentinel.App.Services
                 UploadMbps = networkSnapshot.UploadMbps,
 
                 ProcessCount = _processMonitor.GetProcessCount(),
+                HighestMemoryProcessName = _processMonitor.GetHighestMemoryProcess(),
+                HighestMemoryProcessGB = _processMonitor.GetHighestMemoryProcessGB(),
 
                 DefenderEnabled = _securityMonitor.IsWindowsDefenderInstalled(),
                 FirewallEnabled = _securityMonitor.IsFirewallInstalled()
