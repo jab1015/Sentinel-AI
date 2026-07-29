@@ -12,6 +12,7 @@ namespace Sentinel.App.Services
     public class MonitoringEngine
     {
         private static readonly TimeSpan ProcessRefreshInterval = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan ServiceRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan SecurityRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan EventLogRefreshInterval = TimeSpan.FromSeconds(30);
 
@@ -19,6 +20,7 @@ namespace Sentinel.App.Services
         private readonly DiskMonitor _diskMonitor = new();
         private readonly NetworkMonitor _networkMonitor = new();
         private readonly ProcessMonitor _processMonitor = new();
+        private readonly ServiceMonitor _serviceMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
@@ -26,12 +28,15 @@ namespace Sentinel.App.Services
 
         private ProcessMonitor.ProcessIntelligenceSnapshot _processSnapshot =
             new(0, "Loading...", 0, 0, "None", "Process analysis is loading.");
+        private ServiceMonitor.ServiceIntelligenceSnapshot _serviceSnapshot =
+            new(0, 0, 0, "None", "Service analysis is loading.");
         private SecurityMonitor.SecurityStatusSnapshot _securitySnapshot =
             new("Loading...", "Loading...");
         private EventLogMonitor.EventLogStatusSnapshot _eventLogSnapshot =
             new(0, 0, null, "None", "Event Log analysis is loading.");
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
+        private DateTime _lastServiceRefresh = DateTime.MinValue;
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
 
@@ -43,10 +48,11 @@ namespace Sentinel.App.Services
             DateTime now = DateTime.Now;
 
             Task processTask = RefreshProcessDataIfDueAsync(now);
+            Task serviceTask = RefreshServiceDataIfDueAsync(now);
             Task securityTask = RefreshSecurityDataIfDueAsync(now);
             Task eventLogTask = RefreshEventLogDataIfDueAsync(now);
 
-            await Task.WhenAll(processTask, securityTask, eventLogTask);
+            await Task.WhenAll(processTask, serviceTask, securityTask, eventLogTask);
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot =
                 _networkMonitor.GetThroughput();
@@ -69,6 +75,11 @@ namespace Sentinel.App.Services
                 FlaggedProcessCount = _processSnapshot.FlaggedProcessCount,
                 PrimaryFlaggedProcessName = _processSnapshot.PrimaryProcessName,
                 PrimaryFlaggedProcessReason = _processSnapshot.PrimaryReason,
+                InstalledServiceCount = _serviceSnapshot.InstalledServiceCount,
+                RunningServiceCount = _serviceSnapshot.RunningServiceCount,
+                FlaggedServiceCount = _serviceSnapshot.FlaggedServiceCount,
+                PrimaryFlaggedServiceName = _serviceSnapshot.PrimaryServiceName,
+                PrimaryFlaggedServiceReason = _serviceSnapshot.PrimaryReason,
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled",
                 FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled",
                 DefenderStatus = _securitySnapshot.DefenderStatus,
@@ -101,6 +112,17 @@ namespace Sentinel.App.Services
 
             _lastProcessRefresh = now;
             _processSnapshot = await Task.Run(_processMonitor.GetIntelligence);
+        }
+
+        private async Task RefreshServiceDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastServiceRefresh < ServiceRefreshInterval)
+            {
+                return;
+            }
+
+            _lastServiceRefresh = now;
+            _serviceSnapshot = await Task.Run(_serviceMonitor.GetIntelligence);
         }
 
         private async Task RefreshSecurityDataIfDueAsync(DateTime now)
