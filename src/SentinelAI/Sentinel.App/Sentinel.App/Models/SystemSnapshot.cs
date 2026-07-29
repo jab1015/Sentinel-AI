@@ -38,5 +38,9 @@ namespace Sentinel.App.Models
         public bool DefenderEnabled { get; set; }
 
         public bool FirewallEnabled { get; set; }
+
+        public string DefenderStatus { get; set; } = "Loading...";
+
+        public string FirewallStatus { get; set; } = "Loading...";
     }
 }
