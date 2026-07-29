@@ -61,6 +61,11 @@ namespace Sentinel.App
 
             LatestEventMessageText.Text = snapshot.LatestEventMessage;
 
+            RiskScoreText.Text = snapshot.RiskScore.ToString();
+            RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
+            RiskSummaryText.Text = snapshot.RiskSummary;
+            RecommendationText.Text = snapshot.Recommendation;
+
             LastUpdatedText.Text =
                 $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
         }
