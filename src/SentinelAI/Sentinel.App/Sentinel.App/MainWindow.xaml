@@ -18,114 +18,39 @@
             <StackPanel Margin="30" Spacing="18">
 
                 <StackPanel Spacing="8">
-                    <TextBlock
-                        Text="🛡 Sentinel AI"
-                        FontSize="32"
-                        FontWeight="Bold"
-                        Foreground="White"/>
-
-                    <TextBlock
-                        Text="AI-Powered Windows Security"
-                        FontSize="18"
-                        Foreground="#9CA3AF"/>
+                    <TextBlock Text="🛡 Sentinel AI" FontSize="32" FontWeight="Bold" Foreground="White"/>
+                    <TextBlock Text="AI-Powered Windows Security" FontSize="18" Foreground="#9CA3AF"/>
                 </StackPanel>
 
-                <Border
-                    Margin="0,12,0,0"
-                    Background="#1F2937"
-                    CornerRadius="10"
-                    Padding="20">
-
+                <Border Margin="0,12,0,0" Background="#1F2937" CornerRadius="10" Padding="20">
                     <StackPanel>
-                        <TextBlock
-                            Text="System Status"
-                            FontSize="22"
-                            FontWeight="SemiBold"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="CpuText"
-                            Margin="0,20,0,0"
-                            Text="CPU Usage: Loading..."
-                            FontSize="18"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="MemoryText"
-                            Margin="0,10,0,0"
-                            Text="Memory Usage: Loading..."
-                            FontSize="18"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="DiskText"
-                            Margin="0,10,0,0"
-                            Text="Disk Usage: Loading..."
-                            FontSize="18"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="NetworkText"
-                            Margin="0,10,0,0"
-                            Text="Network: Waiting..."
-                            FontSize="18"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="ProcessText"
-                            Margin="0,10,0,0"
-                            Text="Processes: Loading..."
-                            FontSize="18"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="SecurityText"
-                            Margin="0,10,0,0"
-                            Text="Security: Loading..."
-                            FontSize="18"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            x:Name="LastUpdatedText"
-                            Margin="0,20,0,0"
-                            Text="Last Updated: --"
-                            FontSize="14"
-                            Foreground="#9CA3AF"/>
+                        <TextBlock Text="System Status" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock x:Name="CpuText" Margin="0,20,0,0" Text="CPU Usage: Loading..." FontSize="18" Foreground="White"/>
+                        <TextBlock x:Name="MemoryText" Margin="0,10,0,0" Text="Memory Usage: Loading..." FontSize="18" Foreground="White"/>
+                        <TextBlock x:Name="DiskText" Margin="0,10,0,0" Text="Disk Usage: Loading..." FontSize="18" Foreground="White"/>
+                        <TextBlock x:Name="NetworkText" Margin="0,10,0,0" Text="Network: Waiting..." FontSize="18" Foreground="White"/>
+                        <TextBlock x:Name="ProcessText" Margin="0,10,0,0" Text="Processes: Loading..." FontSize="18" Foreground="White"/>
+                        <TextBlock x:Name="SecurityText" Margin="0,10,0,0" Text="Security: Loading..." FontSize="18" Foreground="White"/>
+                        <TextBlock x:Name="LastUpdatedText" Margin="0,20,0,0" Text="Last Updated: --" FontSize="14" Foreground="#9CA3AF"/>
                     </StackPanel>
                 </Border>
 
-                <Border
-                    Background="#1F2937"
-                    CornerRadius="10"
-                    Padding="20"
-                    Margin="0,0,0,30">
-
+                <Border Background="#1F2937" CornerRadius="10" Padding="20">
                     <StackPanel>
-                        <TextBlock
-                            Text="Security Intelligence"
-                            FontSize="22"
-                            FontWeight="SemiBold"
-                            Foreground="White"/>
-
-                        <TextBlock
-                            Text="Windows Event Logs — Last 24 Hours"
-                            Margin="0,6,0,0"
-                            FontSize="14"
-                            Foreground="#9CA3AF"/>
+                        <TextBlock Text="Security Intelligence" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Windows Event Logs — Last 24 Hours" Margin="0,6,0,0" FontSize="14" Foreground="#9CA3AF"/>
 
                         <Grid Margin="0,20,0,0" ColumnSpacing="16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-
                             <Border Grid.Column="0" Background="#111827" CornerRadius="8" Padding="16">
                                 <StackPanel>
                                     <TextBlock Text="Critical Events" FontSize="14" Foreground="#9CA3AF"/>
                                     <TextBlock x:Name="CriticalEventsText" Text="0" FontSize="28" FontWeight="Bold" Foreground="White"/>
                                 </StackPanel>
                             </Border>
-
                             <Border Grid.Column="1" Background="#111827" CornerRadius="8" Padding="16">
                                 <StackPanel>
                                     <TextBlock Text="Error Events" FontSize="14" Foreground="#9CA3AF"/>
@@ -134,30 +59,37 @@
                             </Border>
                         </Grid>
 
-                        <TextBlock
-                            Text="Latest Event"
-                            Margin="0,22,0,0"
-                            FontSize="18"
-                            FontWeight="SemiBold"
-                            Foreground="White"/>
+                        <TextBlock Text="Latest Event" Margin="0,22,0,0" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock x:Name="LatestEventSummaryText" Margin="0,10,0,0" Text="No recent critical or error events." FontSize="16" Foreground="White" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="LatestEventMessageText" Margin="0,8,0,0" Text="Waiting for Windows Event Log data..." FontSize="14" Foreground="#D1D5DB" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Border>
 
-                        <TextBlock
-                            x:Name="LatestEventSummaryText"
-                            Margin="0,10,0,0"
-                            Text="No recent critical or error events."
-                            FontSize="16"
-                            Foreground="White"
-                            TextWrapping="Wrap"/>
+                <Border Background="#1F2937" CornerRadius="10" Padding="20" Margin="0,0,0,30">
+                    <StackPanel>
+                        <TextBlock Text="Sentinel Assessment" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Local analysis of current protection and system conditions" Margin="0,6,0,0" FontSize="14" Foreground="#9CA3AF"/>
 
-                        <TextBlock
-                            x:Name="LatestEventMessageText"
-                            Margin="0,8,0,0"
-                            Text="Waiting for Windows Event Log data..."
-                            FontSize="14"
-                            Foreground="#D1D5DB"
-                            TextWrapping="Wrap"
-                            MaxLines="4"
-                            TextTrimming="CharacterEllipsis"/>
+                        <Grid Margin="0,20,0,0" ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="#111827" CornerRadius="8" Padding="18">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="Risk Score" FontSize="14" Foreground="#9CA3AF" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="RiskScoreText" Text="--" FontSize="42" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="RiskLevelText" Text="Calculating..." FontSize="16" FontWeight="SemiBold" Foreground="#D1D5DB" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock x:Name="RiskSummaryText" Text="Analyzing current conditions." FontSize="18" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                                <TextBlock Text="Recommended Action" Margin="0,18,0,0" FontSize="14" Foreground="#9CA3AF"/>
+                                <TextBlock x:Name="RecommendationText" Margin="0,6,0,0" Text="Waiting for monitoring data." FontSize="16" Foreground="#D1D5DB" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
