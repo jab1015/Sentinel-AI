@@ -34,7 +34,6 @@ namespace Sentinel.App
 
             CpuText.Text =
                 $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
-
             MemoryText.Text =
                 $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
 
@@ -52,6 +51,15 @@ namespace Sentinel.App
 
             SecurityText.Text =
                 $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
+
+            CriticalEventsText.Text = snapshot.CriticalEventCount.ToString();
+            ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
+
+            LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue
+                ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}"
+                : "No recent critical or error events.";
+
+            LatestEventMessageText.Text = snapshot.LatestEventMessage;
 
             LastUpdatedText.Text =
                 $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
