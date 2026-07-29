@@ -27,12 +27,14 @@ namespace Sentinel.App.Services
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot =
                 _networkMonitor.GetThroughput();
 
+            SecurityMonitor.SecurityStatusSnapshot securitySnapshot =
+                _securityMonitor.GetStatus();
+
             CurrentSnapshot = new SystemSnapshot
             {
                 Timestamp = DateTime.Now,
 
                 CpuUsagePercent = _systemMonitor.GetCpuUsage(),
-
                 MemoryUsedGB = _systemMonitor.GetMemoryUsedGB(),
                 MemoryTotalGB = _systemMonitor.GetMemoryTotalGB(),
                 MemoryUsagePercent = _systemMonitor.GetMemoryPercent(),
@@ -48,8 +50,10 @@ namespace Sentinel.App.Services
                 HighestMemoryProcessName = _processMonitor.GetHighestMemoryProcess(),
                 HighestMemoryProcessGB = _processMonitor.GetHighestMemoryProcessGB(),
 
-                DefenderEnabled = _securityMonitor.IsWindowsDefenderInstalled(),
-                FirewallEnabled = _securityMonitor.IsFirewallInstalled()
+                DefenderEnabled = securitySnapshot.DefenderStatus == "Enabled",
+                FirewallEnabled = securitySnapshot.FirewallStatus == "Enabled",
+                DefenderStatus = securitySnapshot.DefenderStatus,
+                FirewallStatus = securitySnapshot.FirewallStatus
             };
 
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
