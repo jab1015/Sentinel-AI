@@ -5,8 +5,8 @@
 
 using System;
 using Windows.Win32;
-using Windows.Win32.Foundation;
 using Windows.Win32.System.SystemInformation;
+using FILETIME = System.Runtime.InteropServices.ComTypes.FILETIME;
 
 namespace Sentinel.App.Services
 {
@@ -116,7 +116,8 @@ namespace Sentinel.App.Services
 
         private static ulong ToUInt64(FILETIME fileTime)
         {
-            return ((ulong)fileTime.dwHighDateTime << 32) | fileTime.dwLowDateTime;
+            return ((ulong)(uint)fileTime.dwHighDateTime << 32) |
+                   (uint)fileTime.dwLowDateTime;
         }
 
         private readonly record struct MemoryUsageSnapshot(
