@@ -43,6 +43,9 @@ namespace Sentinel.App
                 ? $"Disk: {diskUsedGB:0.00} GB / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)"
                 : "Disk: Unavailable";
 
+            NetworkText.Text =
+                $"Network: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
+
             LastUpdatedText.Text =
                 $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
         }
