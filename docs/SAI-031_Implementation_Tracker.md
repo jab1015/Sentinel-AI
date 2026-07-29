@@ -1,6 +1,6 @@
 # SAI-031 — Implementation Tracker
 
-Version: 1.0
+Version: 1.1
 
 Status: Active
 
@@ -12,20 +12,21 @@ Copyright (c) 2026 Modern Methods.
 
 # Purpose
 
-This document is the master implementation tracker for Sentinel AI.
+This document is the authoritative feature-level implementation tracker for Sentinel AI.
 
-Unlike the roadmap, which describes future direction, this document tracks engineering progress at the feature level and serves as the authoritative checklist for implementation.
+A checkbox is marked complete only when the repository implementation is present and the applicable build, runtime, and dashboard verification has been completed.
 
 ---
 
 # Overall Progress
 
 | Phase | Status | Completion |
-|---------|--------|------------|
+|---|---|---:|
 | Foundation | Complete | 100% |
-| Native Monitoring | In Progress | 35% |
+| Native Monitoring | In Progress | 50% |
 | Security Intelligence | Planned | 0% |
 | AI Engine | Planned | 0% |
+| Reporting and Notifications | Planned | 0% |
 | Enterprise Features | Planned | 0% |
 
 ---
@@ -34,177 +35,245 @@ Unlike the roadmap, which describes future direction, this document tracks engin
 
 ## Architecture
 
-- [x] System Architecture
-- [x] Component Architecture
-- [x] Coding Architecture
-- [x] AI Architecture
-
----
+- [x] System architecture
+- [x] Component architecture
+- [x] MonitoringEngine
+- [x] SystemSnapshot
+- [x] Monitor-service boundaries
+- [x] Dashboard integration
 
 ## Documentation
 
-- [x] Project Bible
-- [x] Roadmap
-- [x] Standards
-- [x] Testing Strategy
-- [x] Security Architecture
-- [x] Development Workflow
-
----
+- [x] Project status
+- [x] Sprint history
+- [x] Product roadmap
+- [x] Coding standards
+- [x] Testing strategy
+- [x] Security architecture
+- [x] Release checklist
+- [x] Implementation tracker
+- [x] README
+- [x] Changelog
 
 ## Core Application
 
-- [x] WinUI Project
-- [x] Monitoring Engine
-- [x] SystemSnapshot
-- [x] Dashboard Integration
+- [x] WinUI 3 project
+- [x] .NET 8 target
+- [x] GitHub repository
+- [x] `main` production branch
+- [x] One-second dashboard refresh
+- [x] Successful build
+- [x] Successful application launch
 
 ---
 
 # Native Monitoring
 
+## Native API Configuration
+
+- [x] Microsoft.Windows.CsWin32 package
+- [x] Unsafe code enabled where required
+- [x] `NativeMethods.txt`
+- [x] `GetSystemTimes` generated
+- [x] `GlobalMemoryStatusEx` generated
+
 ## CPU
 
-- [ ] Native CPU Usage
-- [ ] Logical Processor Count
-- [ ] Processor Frequency
-- [ ] Load History
-
----
+- [x] Native CPU usage
+- [x] Consecutive sample calculation
+- [x] First-sample handling
+- [x] Invalid/reversed sample handling
+- [x] 0–100 percent clamping
+- [x] MonitoringEngine integration
+- [x] Dashboard display
+- [x] Runtime verification
+- [ ] Logical processor count displayed
+- [ ] Processor frequency
+- [ ] Load history
 
 ## Memory
 
-- [ ] Physical Memory
-- [ ] Available Memory
-- [ ] Commit Usage
-- [ ] Memory Pressure
-
----
+- [x] Total physical memory
+- [x] Available physical memory obtained
+- [x] Used physical memory
+- [x] Physical-memory percentage
+- [x] MonitoringEngine integration
+- [x] Dashboard display
+- [x] Runtime verification
+- [ ] Commit usage
+- [ ] Memory pressure classification
+- [ ] Memory history
 
 ## Disk
 
-- [x] Capacity
-- [x] Free Space
-- [ ] Read Throughput
-- [ ] Write Throughput
-- [ ] SMART Health
-
----
+- [x] System-drive detection
+- [x] Capacity calculation
+- [x] Free-space calculation
+- [x] Used-space calculation
+- [x] Usage-percentage calculation
+- [x] MonitoringEngine integration
+- [ ] Dashboard display
+- [ ] Runtime verification
+- [ ] Read throughput
+- [ ] Write throughput
+- [ ] SMART health
 
 ## Network
 
-- [x] Adapter Detection
-- [ ] Upload Speed
-- [ ] Download Speed
-- [ ] Active Connections
-- [ ] Interface Statistics
+- [x] NetworkMonitor service structure
+- [ ] Active-adapter selection verified
+- [ ] Download speed
+- [ ] Upload speed
+- [ ] MonitoringEngine real-data integration
+- [ ] Dashboard display
+- [ ] Active connections
+- [ ] Interface statistics
 
----
+Current limitation: MonitoringEngine assigns zero to download and upload values.
 
 ## Processes
 
-- [x] Process Count
-- [x] Highest Memory Process
-- [ ] CPU Usage Per Process
-- [ ] Digital Signature Validation
-- [ ] Suspicious Process Detection
-
----
+- [x] ProcessMonitor service structure
+- [x] Process count collection
+- [x] MonitoringEngine integration
+- [ ] Process count dashboard display
+- [ ] Highest-memory process verified
+- [ ] CPU usage per process
+- [ ] Digital-signature validation
+- [ ] Suspicious-process detection
 
 ## Windows Security
 
-- [ ] Defender Status
-- [ ] Firewall Status
-- [ ] SmartScreen
-- [ ] Windows Update
-- [ ] Secure Boot
-- [ ] TPM
+- [x] SecurityMonitor service structure
+- [ ] Microsoft Defender operational status
+- [ ] Windows Firewall operational status
+- [ ] Security Center integration
+- [ ] SmartScreen status
+- [ ] Windows Update status
+- [ ] Secure Boot status
+- [ ] TPM status
 
----
+Current limitation: existing repository methods do not yet constitute complete production Defender and Firewall status checks.
 
 ## Event Monitoring
 
 - [ ] Windows Event Logs
-- [ ] Critical Events
-- [ ] Security Events
-- [ ] Application Events
+- [ ] Critical events
+- [ ] Security events
+- [ ] Application events
+
+## Testing
+
+- [x] Product Owner runtime verification for CPU and memory
+- [x] Dashboard refresh verified
+- [x] Timestamp refresh verified
+- [x] Successful build verified
+- [x] Successful launch verified
+- [ ] Automated SystemMonitor tests
+- [ ] MonitoringEngine integration tests
+- [ ] Disk runtime verification
+- [ ] Network runtime verification
+- [ ] Security-service failure-path tests
+- [ ] Unavailable-service tests
 
 ---
 
 # Security Intelligence
 
-- [ ] Threat Engine
-- [ ] Threat Scoring
-- [ ] Startup Analysis
-- [ ] Registry Monitoring
-- [ ] Service Analysis
-- [ ] Behavioral Detection
+- [ ] Threat engine
+- [ ] Threat scoring
+- [ ] Startup analysis
+- [ ] Registry monitoring
+- [ ] Service analysis
+- [ ] Behavioral detection
 
 ---
 
-# AI
+# AI Engine
 
-- [ ] Recommendation Engine
+- [ ] Recommendation engine
 - [ ] Explainable AI
-- [ ] Confidence Scores
-- [ ] Risk Classification
+- [ ] Confidence scores
+- [ ] Risk classification
 
 ---
 
 # Reporting
 
-- [ ] PDF Reports
-- [ ] CSV Export
-- [ ] JSON Export
-- [ ] Historical Reports
+- [ ] PDF reports
+- [ ] CSV export
+- [ ] JSON export
+- [ ] Historical reports
 
 ---
 
 # Notifications
 
-- [ ] Toast Notifications
-- [ ] Critical Alerts
-- [ ] Alert History
+- [ ] Toast notifications
+- [ ] Critical alerts
+- [ ] Alert history
 
 ---
 
 # Enterprise
 
-- [ ] Multi-device Support
-- [ ] Policy Management
-- [ ] Central Dashboard
-- [ ] Cloud Synchronization
+- [ ] Multi-device support
+- [ ] Policy management
+- [ ] Central dashboard
+- [ ] Cloud synchronization
+
+---
+
+# Completed Sprint
+
+## Sprint 3 — Native CPU and Physical Memory
+
+Status: Complete and Runtime Verified
+
+Completion evidence:
+
+- Native Windows API calls are present in SystemMonitor
+- CPU and memory values are supplied to MonitoringEngine
+- MainWindow displays CPU and memory values
+- The dashboard refreshes once per second
+- The application built and launched successfully
+- Runtime behavior was verified by the Product Owner
 
 ---
 
 # Current Sprint
 
-Sprint 3
+## Sprint 4 — Monitoring Expansion
 
-Primary Goal:
+Primary goal:
 
-Replace every placeholder monitor with production-quality native Windows implementations.
+Replace remaining dashboard placeholders and incomplete service checks with production, runtime-verified implementations.
 
-Current Priority Order:
+Priority order:
 
-1. SystemMonitor
-2. SecurityMonitor
-3. NetworkMonitor
-4. ProcessMonitor
-5. EventLogMonitor
+1. Disk dashboard binding and verification
+2. Network download and upload throughput
+3. Process display and intelligence
+4. Microsoft Defender status
+5. Windows Firewall status
+6. Integration and failure-path testing
 
 ---
 
 # Definition of Complete
 
-The project reaches Version 1.0 when:
+A feature is complete only when:
 
-- All P0 features complete
-- Documentation synchronized
-- Release build successful
-- Installer completed
-- Manual verification complete
-- Production release approved
+- Repository implementation is present
+- Placeholder values are removed
+- MonitoringEngine integration is complete
+- User-visible display is complete when applicable
+- Build succeeds
+- Application launches
+- Runtime result is verified
+- Existing monitoring remains functional
+- Documentation is synchronized
+- Changes are committed and pushed to `main`
 
 ---
 
