@@ -71,6 +71,13 @@
                         Foreground="White"/>
 
                     <TextBlock
+                        x:Name="ProcessText"
+                        Margin="0,10,0,0"
+                        Text="Processes: Loading..."
+                        FontSize="18"
+                        Foreground="White"/>
+
+                    <TextBlock
                         x:Name="LastUpdatedText"
                         Margin="0,20,0,0"
                         Text="Last Updated: --"
