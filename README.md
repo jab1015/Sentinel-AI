@@ -1,223 +1,352 @@
 # Sentinel AI
 
-> AI-Powered Windows Security & System Intelligence
+> **AI-Powered Windows Security & System Intelligence**
 
-Sentinel AI is a modern Windows desktop application built with **WinUI 3** and **.NET 8** that provides real-time system monitoring, security insights, and AI-assisted recommendations.
+Sentinel AI is a modern Windows desktop application built with **WinUI 3** and **.NET 8** that delivers real-time system monitoring, Windows security intelligence, and AI-assisted recommendations.
 
-The long-term vision is to create an intelligent desktop security assistant that helps users understand the health, performance, and security of their Windows computers through clear explanations instead of technical jargon.
+Rather than overwhelming users with technical metrics, Sentinel AI is designed to explain what is happening on a Windows system, why it matters, and what actions should be taken to improve security, reliability, and performance.
 
 ---
 
-## Project Status
+# Project Status
 
-**Version:** 0.2.0
+**Version:** 0.3.0
 
 **Status:** Active Development
 
-**Current Sprint:** Sprint 2.1 – Live Monitoring Dashboard
+**Current Sprint:** Sprint 3 – Native Windows Monitoring
 
-Current focus:
+Current development priorities:
 
-- Live CPU Monitoring
-- Live Memory Monitoring
-- Live Disk Monitoring
-- Live Network Monitoring
+- Production CPU Monitoring
+- Production Memory Monitoring
+- Native Windows API Integration
+- Windows Security Integration
+- Monitoring Engine Expansion
 
 ---
 
-## Vision
+# Vision
 
-Sentinel AI is designed to become more than a traditional system monitor.
+Sentinel AI is being built as an intelligent Windows security platform—not simply another system monitor.
 
-Future capabilities include:
+Its long-term mission is to combine:
 
-- AI-powered security analysis
-- Windows Defender integration
-- Firewall monitoring
-- Event Log analysis
-- Process monitoring
-- Threat detection
+- Native Windows monitoring
+- Artificial Intelligence
+- Threat analysis
+- Explainable recommendations
+- Security intelligence
 - Performance optimization
-- Intelligent recommendations
-- Natural language explanations
-- Historical reporting
-- Automated security guidance
+- Professional desktop experience
+
+The application should function as an intelligent security companion that continuously observes, analyzes, explains, and assists.
 
 ---
 
-## Technology Stack
+# Current Features
+
+Current implementation includes:
+
+- WinUI 3 Desktop Application
+- Modern Dashboard
+- Monitoring Engine
+- System Snapshot Architecture
+- CPU/Memory Monitoring Framework
+- Disk Monitoring
+- Network Monitoring
+- Process Monitoring
+- Windows Information Monitoring
+- Security Monitoring Framework
+- Modular Service Architecture
+- Comprehensive Engineering Documentation
+
+---
+
+# Planned Features
+
+Upcoming development includes:
+
+- Native CPU monitoring
+- Native memory monitoring
+- Microsoft Defender integration
+- Windows Firewall integration
+- Event Log analysis
+- Startup application monitoring
+- Registry monitoring
+- Threat detection
+- AI recommendation engine
+- Explainable AI
+- Historical reporting
+- Notification center
+- Enterprise capabilities
+
+---
+
+# Technology Stack
 
 | Component | Technology |
 |-----------|------------|
 | Language | C# |
 | Framework | .NET 8 |
-| UI | WinUI 3 |
+| UI Framework | WinUI 3 |
 | IDE | Visual Studio 2026 |
 | Platform | Windows 11 |
+| Architecture | x64 |
 | Version Control | Git |
-| Repository Hosting | GitHub |
+| Repository | GitHub |
+| Build System | MSBuild |
 
 ---
 
-## Repository Structure
+# Repository Structure
 
 ```
 Sentinel-AI/
 │
 ├── docs/
-│   ├── SAI-000_Project_Status.md
-│   ├── SAI-001_Project_Constitution.md
-│   ├── SAI-002_Development_Rules.md
-│   ├── SAI-003_Architecture.md
-│   ├── SAI-004_Sprint_History.md
-│   ├── SAI-005_Product_Roadmap.md
-│   ├── SAI-006_Coding_Standards.md
-│   └── SAI-007_Chat_Continuation_Guide.md
+│   ├── SAI-000 ... SAI-031
+│   ├── Architecture
+│   ├── Engineering
+│   ├── Product Planning
+│   ├── Security
+│   ├── Testing
+│   └── Implementation Tracker
 │
 ├── assets/
 ├── installer/
 ├── src/
+│
 ├── tests/
 │
+├── CHANGELOG.md
+├── PRODUCT_REQUIREMENTS.md
 └── README.md
 ```
 
 ---
 
-## Current Features
+# Documentation
 
-- WinUI 3 desktop application
-- Dark-themed dashboard
-- Live dashboard refresh engine
-- System status panel
-- Professional project architecture
-- GitHub integration
-- Comprehensive engineering documentation
+Sentinel AI includes a comprehensive engineering documentation library located in the **docs** directory.
+
+## Core Documents
+
+- Project Status
+- Project Constitution
+- Project Bible
+- Master Development Plan
+- Implementation Tracker
+
+## Architecture
+
+- System Architecture
+- Component Architecture
+- Coding Architecture
+- AI Architecture
+- Security Architecture
+- Architecture Decision Record
+
+## Engineering
+
+- Development Workflow
+- Engineering Playbook
+- Project Standards
+- Definition of Done
+- Testing Strategy
+- Release Management
+- Deployment Guide
+- Contribution Guide
+
+## Product
+
+- Product Vision
+- Product Roadmap
+- Product Backlog
+- Technology Stack
+
+## Reference
+
+- Project Glossary
+- Governance
+- Engineering Standards
+
+The **Project Bible (SAI-030)** serves as the primary engineering reference for Sentinel AI.
+
+The **Implementation Tracker (SAI-031)** tracks active engineering progress.
 
 ---
 
-## Planned Roadmap
+# Architecture
 
-### Version 0.2
+Sentinel AI follows a layered architecture.
 
-- Live CPU utilization
-- Memory monitoring
-- Disk monitoring
-- Network monitoring
+```
+User Interface
+        │
+Application Layer
+        │
+Monitoring Engine
+        │
+Monitor Services
+        │
+Windows APIs
+```
 
-### Version 0.3
+Core principles:
 
-- Windows Defender integration
-- Firewall status
-- Process monitoring
-- Event Log monitoring
-
-### Version 0.4
-
-- AI-generated security explanations
-- Threat summaries
-- Risk scoring
-- Personalized recommendations
-
-### Version 0.5
-
-- Threat detection
-- Notification center
-- Security alerts
-- Threat history
-
-### Version 1.0
-
-- Commercial release
-- Installer
-- Automatic updates
-- Complete documentation
+- Single Responsibility
+- Loose Coupling
+- High Cohesion
+- Snapshot-Based Communication
+- Native Windows Integration
+- Explainable AI
 
 ---
 
-## Development Philosophy
+# Development Workflow
 
-Sentinel AI follows a professional software engineering workflow.
-
-Every feature follows the same process:
+Every feature follows the same engineering workflow:
 
 1. Plan
-2. Implement
-3. Build
-4. Run
-5. Verify
-6. Update documentation
-7. Commit
-8. Push
+2. Review Architecture
+3. Implement
+4. Build
+5. Run
+6. Verify
+7. Update Documentation
+8. Commit
+9. Push
 
-The application should remain in a working, buildable state throughout development.
-
----
-
-## Documentation
-
-Project documentation is located in the **docs** folder.
-
-Recommended reading order:
-
-| Document | Purpose |
-|----------|---------|
-| SAI-000 | Current project status |
-| SAI-001 | Project constitution |
-| SAI-002 | Development rules |
-| SAI-003 | Software architecture |
-| SAI-004 | Sprint history |
-| SAI-005 | Product roadmap |
-| SAI-006 | Coding standards |
-| SAI-007 | Chat continuation guide |
+The application should always remain buildable and runnable throughout development.
 
 ---
 
-## Build Requirements
+# Current Sprint
+
+Sprint 3 focuses on replacing placeholder implementations with production-quality native Windows monitoring.
+
+Priority order:
+
+1. SystemMonitor
+2. SecurityMonitor
+3. NetworkMonitor
+4. ProcessMonitor
+5. EventLogMonitor
+
+---
+
+# Roadmap
+
+## Version 0.3
+
+- Native CPU Monitoring
+- Native Memory Monitoring
+- Windows API Integration
+- Improved Dashboard
+
+## Version 0.4
+
+- Windows Defender Integration
+- Firewall Monitoring
+- Event Log Monitoring
+- Process Intelligence
+
+## Version 0.5
+
+- Threat Analysis Engine
+- AI Recommendations
+- Confidence Scoring
+- Explainable AI
+
+## Version 0.6
+
+- Notification Center
+- Historical Reporting
+- Performance Analytics
+- Security Timeline
+
+## Version 1.0
+
+- Commercial Release
+- MSIX Installer
+- Automatic Updates
+- Complete Documentation
+- Enterprise-Ready Architecture
+
+---
+
+# Engineering Philosophy
+
+Sentinel AI is engineered using professional software engineering practices.
+
+Every completed feature should be:
+
+- Functional
+- Stable
+- Secure
+- Tested
+- Maintainable
+- Documented
+- Production Ready
+
+Architecture and long-term maintainability always take precedence over short-term implementation shortcuts.
+
+---
+
+# Build Requirements
 
 - Windows 11
 - Visual Studio 2026
 - .NET 8 SDK
-- WinUI 3 development workload
+- WinUI 3 Development Workload
 
 ---
 
-## Current Development Priority
+# Long-Term Vision
 
-The next milestone is implementing production-ready system monitoring services:
+Sentinel AI is intended to evolve into a professional Windows security platform capable of:
 
-- CPU utilization
-- Memory utilization
-- Disk utilization
-- Network throughput
+- Monitoring system health
+- Detecting suspicious behavior
+- Explaining security risks
+- Providing AI-powered recommendations
+- Assisting users with system maintenance
+- Supporting enterprise environments
 
-These services will form the foundation for future AI-powered analysis.
-
----
-
-## Long-Term Goal
-
-Sentinel AI aims to become an intelligent Windows companion that combines real-time monitoring, security analysis, and artificial intelligence into a single desktop experience.
-
-Rather than simply displaying technical metrics, Sentinel AI will help users understand what those metrics mean and recommend practical actions to improve system health, performance, and security.
+Rather than simply displaying technical information, Sentinel AI aims to help users understand their computers through intelligent analysis, transparent explanations, and actionable guidance.
 
 ---
 
-## License
+# License
 
 This project is currently under active development.
 
-License terms will be defined prior to public release.
+Licensing terms will be finalized prior to the first public release.
 
 ---
 
-## Author
+# Author
 
-**Aiden Gordon**
+**Modern Methods**
 
 Product Owner
 
 ---
 
-**Sentinel AI**  
+# Acknowledgements
+
+Sentinel AI is built on modern Microsoft technologies including:
+
+- .NET 8
+- WinUI 3
+- Windows SDK
+- Git
+- GitHub
+- Visual Studio
+
+---
+
+**Sentinel AI**
+
 *Building the next generation of AI-powered Windows security and system intelligence.*
