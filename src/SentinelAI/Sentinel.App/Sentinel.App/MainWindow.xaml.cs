@@ -69,6 +69,14 @@ namespace Sentinel.App
                     : "No process warning conditions were detected.";
                 PrimaryProcessReasonText.Text = snapshot.PrimaryFlaggedProcessReason;
 
+                InstalledServicesText.Text = snapshot.InstalledServiceCount.ToString();
+                RunningServicesText.Text = snapshot.RunningServiceCount.ToString();
+                FlaggedServicesText.Text = snapshot.FlaggedServiceCount.ToString();
+                PrimaryServiceText.Text = snapshot.FlaggedServiceCount > 0
+                    ? snapshot.PrimaryFlaggedServiceName
+                    : "No service warning conditions were detected.";
+                PrimaryServiceReasonText.Text = snapshot.PrimaryFlaggedServiceReason;
+
                 RiskScoreText.Text = snapshot.RiskScore.ToString();
                 RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
                 RiskSummaryText.Text = snapshot.RiskSummary;
