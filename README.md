@@ -2,84 +2,74 @@
 
 > **AI-Powered Windows Security & System Intelligence**
 
-Sentinel AI is a modern Windows desktop application built with **WinUI 3** and **.NET 8** that delivers real-time system monitoring, Windows security intelligence, and AI-assisted recommendations.
+Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It combines native Windows monitoring, security intelligence, and future AI-assisted recommendations in a clear, user-focused dashboard.
 
-Rather than overwhelming users with technical metrics, Sentinel AI is designed to explain what is happening on a Windows system, why it matters, and what actions should be taken to improve security, reliability, and performance.
+Sentinel AI is designed to explain what is happening on a Windows system, why it matters, and what actions may improve security, reliability, and performance.
 
 ---
 
 # Project Status
 
-**Version:** 0.3.0
+**Version:** 0.3.0  
+**Status:** Active Development  
+**Current Sprint:** Sprint 3 — Native Windows Monitoring
 
-**Status:** Active Development
+Sprint 3 has established the production system-monitoring foundation:
 
-**Current Sprint:** Sprint 3 – Native Windows Monitoring
-
-Current development priorities:
-
-- Production CPU Monitoring
-- Production Memory Monitoring
-- Native Windows API Integration
-- Windows Security Integration
-- Monitoring Engine Expansion
-
----
-
-# Vision
-
-Sentinel AI is being built as an intelligent Windows security platform—not simply another system monitor.
-
-Its long-term mission is to combine:
-
-- Native Windows monitoring
-- Artificial Intelligence
-- Threat analysis
-- Explainable recommendations
-- Security intelligence
-- Performance optimization
-- Professional desktop experience
-
-The application should function as an intelligent security companion that continuously observes, analyzes, explains, and assists.
+- Native Windows API integration through Microsoft.Windows.CsWin32
+- Production CPU monitoring using `GetSystemTimes`
+- Production physical-memory monitoring using `GlobalMemoryStatusEx`
+- Live one-second dashboard refresh
+- Snapshot-based monitoring architecture
+- Verified successful build and runtime operation
 
 ---
 
 # Current Features
 
-Current implementation includes:
+The current implementation includes:
 
-- WinUI 3 Desktop Application
-- Modern Dashboard
-- Monitoring Engine
-- System Snapshot Architecture
-- CPU/Memory Monitoring Framework
-- Disk Monitoring
-- Network Monitoring
-- Process Monitoring
-- Windows Information Monitoring
-- Security Monitoring Framework
-- Modular Service Architecture
-- Comprehensive Engineering Documentation
+- WinUI 3 desktop application
+- Modern Windows dashboard
+- Monitoring engine and system snapshot model
+- Real-time CPU usage monitoring
+- Real-time physical-memory used, total, and percentage reporting
+- CsWin32-generated native API bindings
+- Live dashboard timestamps
+- Disk monitoring framework
+- Network monitoring framework
+- Process monitoring framework
+- Windows information monitoring
+- Security monitoring framework
+- Modular service architecture
+- Engineering and release documentation
 
 ---
 
-# Planned Features
+# Verified Native Monitoring
 
-Upcoming development includes:
+## CPU Monitoring
 
-- Native CPU monitoring
-- Native memory monitoring
-- Microsoft Defender integration
-- Windows Firewall integration
-- Event Log analysis
-- Startup application monitoring
-- Registry monitoring
-- Threat detection
-- AI recommendation engine
-- Explainable AI
-- Historical reporting
-- Notification center
-- Enterprise capabilities
+CPU utilization is calculated from consecutive Windows system-time samples obtained through:
+
+- `PInvoke.GetSystemTimes`
+- Idle time
+- Kernel time
+- User time
+
+The first sample returns zero because a previous sample is required to calculate utilization. Later values are constrained to the valid range of 0–100 percent.
+
+## Physical Memory Monitoring
+
+Physical-memory statistics are obtained through:
+
+- `PInvoke.GlobalMemoryStatusEx`
+- Total physical memory
+- Available physical memory
+- Used physical memory
+- Percentage used
+
+Win32 failures are handled gracefully without crashing the dashboard.
 
 ---
 
@@ -90,35 +80,34 @@ Upcoming development includes:
 | Language | C# |
 | Framework | .NET 8 |
 | UI Framework | WinUI 3 |
-| IDE | Visual Studio 2026 |
-| Platform | Windows 11 |
-| Architecture | x64 |
+| Native API Generation | Microsoft.Windows.CsWin32 |
+| Windows APIs | GetSystemTimes, GlobalMemoryStatusEx |
+| IDE | Visual Studio |
+| Target Platform | Windows 10 and later |
 | Version Control | Git |
 | Repository | GitHub |
+| Production Branch | main |
 | Build System | MSBuild |
 
 ---
 
 # Repository Structure
 
-```
+```text
 Sentinel-AI/
-│
 ├── docs/
-│   ├── SAI-000 ... SAI-031
-│   ├── Architecture
-│   ├── Engineering
-│   ├── Product Planning
-│   ├── Security
-│   ├── Testing
-│   └── Implementation Tracker
-│
 ├── assets/
 ├── installer/
 ├── src/
-│
+│   └── SentinelAI/
+│       └── Sentinel.App/
+│           └── Sentinel.App/
+│               ├── Models/
+│               ├── Services/
+│               ├── NativeMethods.txt
+│               ├── MainWindow.xaml
+│               └── MainWindow.xaml.cs
 ├── tests/
-│
 ├── CHANGELOG.md
 ├── PRODUCT_REQUIREMENTS.md
 └── README.md
@@ -126,113 +115,65 @@ Sentinel-AI/
 
 ---
 
-# Documentation
-
-Sentinel AI includes a comprehensive engineering documentation library located in the **docs** directory.
-
-## Core Documents
-
-- Project Status
-- Project Constitution
-- Project Bible
-- Master Development Plan
-- Implementation Tracker
-
-## Architecture
-
-- System Architecture
-- Component Architecture
-- Coding Architecture
-- AI Architecture
-- Security Architecture
-- Architecture Decision Record
-
-## Engineering
-
-- Development Workflow
-- Engineering Playbook
-- Project Standards
-- Definition of Done
-- Testing Strategy
-- Release Management
-- Deployment Guide
-- Contribution Guide
-
-## Product
-
-- Product Vision
-- Product Roadmap
-- Product Backlog
-- Technology Stack
-
-## Reference
-
-- Project Glossary
-- Governance
-- Engineering Standards
-
-The **Project Bible (SAI-030)** serves as the primary engineering reference for Sentinel AI.
-
-The **Implementation Tracker (SAI-031)** tracks active engineering progress.
-
----
-
 # Architecture
 
-Sentinel AI follows a layered architecture.
+Sentinel AI uses a layered, snapshot-based monitoring architecture:
 
-```
+```text
 User Interface
-        │
-Application Layer
-        │
+      │
 Monitoring Engine
-        │
+      │
+System Snapshot
+      │
 Monitor Services
-        │
+      │
 Windows APIs
 ```
 
 Core principles:
 
-- Single Responsibility
-- Loose Coupling
-- High Cohesion
-- Snapshot-Based Communication
-- Native Windows Integration
-- Explainable AI
-
----
-
-# Development Workflow
-
-Every feature follows the same engineering workflow:
-
-1. Plan
-2. Review Architecture
-3. Implement
-4. Build
-5. Run
-6. Verify
-7. Update Documentation
-8. Commit
-9. Push
-
-The application should always remain buildable and runnable throughout development.
+- Single responsibility
+- Loose coupling
+- High cohesion
+- Snapshot-based communication
+- Native Windows integration
+- Graceful failure handling
+- Maintainable service boundaries
+- Explainable future AI behavior
 
 ---
 
 # Current Sprint
 
-Sprint 3 focuses on replacing placeholder implementations with production-quality native Windows monitoring.
+Sprint 3 replaces placeholder system metrics with production-quality Windows monitoring.
 
-Priority order:
+## Completed
 
-1. SystemMonitor
-2. SecurityMonitor
-3. NetworkMonitor
-4. ProcessMonitor
-5. EventLogMonitor
+- [x] Add Microsoft.Windows.CsWin32
+- [x] Add `NativeMethods.txt`
+- [x] Generate `GetSystemTimes`
+- [x] Generate `GlobalMemoryStatusEx`
+- [x] Replace random CPU values
+- [x] Implement consecutive CPU sampling
+- [x] Return zero on the first CPU sample
+- [x] Clamp CPU utilization to 0–100 percent
+- [x] Report physical memory used
+- [x] Report total physical memory
+- [x] Report physical-memory percentage
+- [x] Handle Win32 failures gracefully
+- [x] Preserve monitoring-engine compatibility
+- [x] Verify successful build
+- [x] Verify successful runtime behavior
+
+## Next
+
+- [ ] Production disk monitoring
+- [ ] Network throughput monitoring
+- [ ] Process statistics and intelligence
+- [ ] Microsoft Defender status
+- [ ] Windows Firewall status
+- [ ] Monitoring integration tests
 
 ---
 
@@ -240,45 +181,73 @@ Priority order:
 
 ## Version 0.3
 
-- Native CPU Monitoring
-- Native Memory Monitoring
-- Windows API Integration
-- Improved Dashboard
+- Native CPU monitoring
+- Native physical-memory monitoring
+- CsWin32 integration
+- Live dashboard updates
+- Production system-monitor foundation
 
 ## Version 0.4
 
-- Windows Defender Integration
-- Firewall Monitoring
-- Event Log Monitoring
-- Process Intelligence
+- Disk monitoring
+- Network throughput
+- Process intelligence
+- Microsoft Defender integration
+- Windows Firewall integration
+- Event Log monitoring
 
 ## Version 0.5
 
-- Threat Analysis Engine
-- AI Recommendations
-- Confidence Scoring
+- Threat analysis engine
+- Risk and confidence scoring
+- AI recommendations
 - Explainable AI
 
 ## Version 0.6
 
-- Notification Center
-- Historical Reporting
-- Performance Analytics
-- Security Timeline
+- Notification center
+- Historical reporting
+- Performance analytics
+- Security timeline
 
 ## Version 1.0
 
-- Commercial Release
-- MSIX Installer
-- Automatic Updates
-- Complete Documentation
-- Enterprise-Ready Architecture
+- Commercial release
+- MSIX installer
+- Automatic updates
+- Complete documentation
+- Enterprise-ready architecture
+
+---
+
+# Development Workflow
+
+Every feature follows the same workflow:
+
+1. Plan
+2. Review repository usage and architecture
+3. Implement
+4. Build
+5. Run
+6. Verify
+7. Update documentation
+8. Commit
+9. Push
+
+The application should remain buildable and runnable throughout development.
+
+---
+
+# Build Requirements
+
+- Windows 10 or Windows 11
+- Visual Studio with the WinUI application-development workload
+- .NET 8 SDK
+- Windows App SDK dependencies restored through NuGet
 
 ---
 
 # Engineering Philosophy
-
-Sentinel AI is engineered using professional software engineering practices.
 
 Every completed feature should be:
 
@@ -288,24 +257,30 @@ Every completed feature should be:
 - Tested
 - Maintainable
 - Documented
-- Production Ready
+- Production-ready
 
-Architecture and long-term maintainability always take precedence over short-term implementation shortcuts.
+Architecture and long-term maintainability take precedence over short-term implementation shortcuts.
 
 ---
 
-# Build Requirements
+# Documentation
 
-- Windows 11
-- Visual Studio 2026
-- .NET 8 SDK
-- WinUI 3 Development Workload
+The `docs` directory contains project planning, architecture, engineering, security, testing, and release documents.
+
+Important references include:
+
+- Project status
+- Product requirements
+- System architecture
+- Coding standards
+- Release checklist
+- Development and implementation trackers
 
 ---
 
 # Long-Term Vision
 
-Sentinel AI is intended to evolve into a professional Windows security platform capable of:
+Sentinel AI is intended to become a professional Windows security platform capable of:
 
 - Monitoring system health
 - Detecting suspicious behavior
@@ -320,33 +295,13 @@ Rather than simply displaying technical information, Sentinel AI aims to help us
 
 # License
 
-This project is currently under active development.
-
-Licensing terms will be finalized prior to the first public release.
+This project is currently under active development. Licensing terms will be finalized prior to the first public release.
 
 ---
 
 # Author
 
-**Modern Methods**
-
+**Modern Methods**  
 Product Owner
 
----
-
-# Acknowledgements
-
-Sentinel AI is built on modern Microsoft technologies including:
-
-- .NET 8
-- WinUI 3
-- Windows SDK
-- Git
-- GitHub
-- Visual Studio
-
----
-
-**Sentinel AI**
-
-*Building the next generation of AI-powered Windows security and system intelligence.*
+Copyright (c) 2026 Modern Methods.
