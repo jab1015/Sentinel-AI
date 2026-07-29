@@ -1,7 +1,12 @@
 # SAI-000 — Project Status
-Version: 1.0
+
+Version: 1.1
+
 Status: Active
-Last Updated: 2026-07-28
+
+Last Updated: 2026-07-29
+
+Copyright (c) 2026 Modern Methods.
 
 ---
 
@@ -9,74 +14,86 @@ Last Updated: 2026-07-28
 
 This document is the single source of truth for the current state of the Sentinel AI project.
 
-Every new development session should begin by reviewing this file.
-
-This document summarizes where the project stands today and points to the detailed documentation only when needed.
+Every development session should begin by reviewing this file.
 
 ---
 
 # Project Information
 
-Project Name
-
-Sentinel AI
-
-Description
-
-An AI-powered Windows desktop application that monitors system health, analyzes security posture, and provides clear, actionable recommendations to help users keep their computers secure and performing well.
-
-Platform
-
-Windows Desktop
-
-Framework
-
-WinUI 3
-
-Language
-
-C#
-
-Runtime
-
-.NET 8
-
-IDE
-
-Visual Studio 2026
-
-Repository
-
-GitHub
-
-Primary Branch
-
-main
+**Project Name:** Sentinel AI  
+**Description:** AI-powered Windows desktop security and system-intelligence application  
+**Platform:** Windows Desktop  
+**Framework:** WinUI 3  
+**Language:** C#  
+**Runtime:** .NET 8  
+**Native API Generation:** Microsoft.Windows.CsWin32  
+**Repository:** GitHub  
+**Production Branch:** main
 
 ---
 
 # Current Version
 
-0.2.0
+0.3.0
+
+---
+
+# Current Development State
+
+Sprint 3 — Native Windows Monitoring is complete.
+
+The application builds and launches successfully. The dashboard refreshes once per second and displays verified production CPU and physical-memory values.
+
+## Verified Production Capabilities
+
+- Native CPU monitoring through `GetSystemTimes`
+- Consecutive CPU sampling with first-sample handling
+- CPU result validation and 0–100 percent clamping
+- Native physical-memory monitoring through `GlobalMemoryStatusEx`
+- Used, total, and percentage physical-memory reporting
+- CsWin32-generated Windows API bindings
+- MonitoringEngine integration
+- One-second dashboard refresh
+- Live dashboard timestamp
+- Successful build and runtime verification by the Product Owner
+
+## Implemented but Not Yet Displayed as Production Dashboard Metrics
+
+- System-drive capacity
+- System-drive free space
+- System-drive usage percentage
+- Running process count
+
+## Remaining Placeholder or Incomplete Areas
+
+- Disk dashboard binding and runtime verification
+- Network download throughput
+- Network upload throughput
+- Process statistics and process intelligence
+- Microsoft Defender operational status
+- Windows Firewall operational status
+- Event Log monitoring
+- Monitoring integration tests
+- Error-path and unavailable-service tests
 
 ---
 
 # Current Sprint
 
-Sprint 2.1
+Sprint 4 — Monitoring Expansion
 
----
+## Primary Objective
 
-# Current Objective
+Complete and display the remaining production monitoring metrics without regressing the verified CPU and memory implementation.
 
-Implement the first production-ready live monitoring dashboard.
+## Priority Order
 
-Initial monitoring targets:
-
-- CPU utilization
-- Memory utilization
-- Disk usage
-- Network activity
+1. Bind and verify disk metrics in the dashboard
+2. Implement live network download and upload throughput
+3. Expand and display process statistics
+4. Implement Microsoft Defender status
+5. Implement Windows Firewall status
+6. Add monitoring integration and failure-path tests
 
 ---
 
@@ -84,106 +101,57 @@ Initial monitoring targets:
 
 ## Foundation
 
-✔ Solution created
+- [x] WinUI 3 application created
+- [x] .NET 8 project established
+- [x] Solution builds successfully
+- [x] Application launches successfully
+- [x] GitHub repository connected
+- [x] Production branch established as `main`
 
-✔ WinUI application created
+## Architecture
 
-✔ Project compiles successfully
+- [x] MonitoringEngine created
+- [x] SystemSnapshot model created
+- [x] Monitor-service architecture created
+- [x] DispatcherTimer refresh loop implemented
+- [x] CsWin32 integrated
+- [x] `NativeMethods.txt` added
 
-✔ Application launches successfully
+## Native System Monitoring
 
----
-
-## Dashboard
-
-✔ Initial dashboard created
-
-✔ System Status panel created
-
-✔ DispatcherTimer implemented
-
-✔ Live UI refresh mechanism established
-
-✔ CPU placeholder connected
-
----
-
-## Project Organization
-
-✔ Services folder created
-
-✔ SystemMonitor class created
-
-✔ Git initialized
-
-✔ GitHub repository connected
-
-✔ Main branch established
-
----
+- [x] Production CPU monitoring
+- [x] Production physical-memory monitoring
+- [x] CPU dashboard display
+- [x] Memory dashboard display
+- [x] Live timestamp display
+- [x] Disk capacity/free-space service logic
+- [x] Process-count service logic
 
 ## Documentation
 
-✔ SAI-000 – Project Status
-
-✔ SAI-001 – Project Constitution
-
-✔ SAI-002 – Development Rules
-
-✔ SAI-003 – Software Architecture
-
-✔ SAI-004 – Sprint History
-
-✔ SAI-005 – Product Roadmap
-
-✔ SAI-006 – Coding Standards
-
-✔ SAI-007 – Chat Continuation Guide
-
----
-
-# Current Folder Structure
-
-docs/
-
-assets/
-
-installer/
-
-src/
-
-tests/
+- [x] Project status
+- [x] Sprint history
+- [x] Product roadmap
+- [x] Release checklist
+- [x] Implementation tracker
+- [x] README
+- [x] Changelog
 
 ---
 
 # Immediate Next Task
 
-Replace the placeholder CPU display with actual CPU utilization using modern Windows APIs and .NET 8.
-
-After CPU monitoring is complete:
-
-1. Memory monitoring
-2. Disk monitoring
-3. Network monitoring
-4. Refactor monitoring logic into Services
-5. Introduce ViewModels as needed
+Connect the existing disk snapshot values to the dashboard, display used/total/percentage information, build, run, and verify the result before beginning network throughput monitoring.
 
 ---
 
-# Development Workflow
+# Known Limitations
 
-Every feature follows this workflow:
-
-1. Plan
-2. Replace files
-3. Build
-4. Run
-5. Verify functionality
-6. Update documentation
-7. Commit
-8. Push
-
-The project should remain in a working, buildable state throughout development.
+- `MainWindow.xaml.cs` currently updates only CPU, memory, and timestamp text.
+- MonitoringEngine currently sets download and upload values to zero.
+- Disk service values are collected but not displayed by the current dashboard code.
+- Process count is collected but not displayed by the current dashboard code.
+- Existing security methods do not yet provide complete production Defender and Firewall status intelligence.
 
 ---
 
@@ -191,40 +159,24 @@ The project should remain in a working, buildable state throughout development.
 
 A feature is complete only when:
 
-- It builds successfully.
-- It runs successfully.
-- It satisfies the acceptance criteria.
-- Documentation is updated.
-- Changes are committed.
-- Changes are pushed to GitHub.
+- Requirements are satisfied.
+- Code builds successfully.
+- The application launches successfully.
+- Runtime behavior is verified.
+- Existing functionality remains working.
+- Documentation is synchronized.
+- Changes are committed and pushed to `main`.
 
 ---
 
 # Supporting Documentation
 
-For additional details, refer to:
-
-- SAI-001 — Project Constitution
-- SAI-002 — Development Rules
-- SAI-003 — Software Architecture
 - SAI-004 — Sprint History
 - SAI-005 — Product Roadmap
-- SAI-006 — Coding Standards
-- SAI-007 — Chat Continuation Guide
-
----
-
-# Notes for Future Development Sessions
-
-Always begin by reviewing this document.
-
-Only consult the other SAI documents when additional architectural, historical, or process detail is required.
-
-Avoid redesigning completed work unless specifically requested by the Product Owner.
-
-Prefer incremental, production-quality improvements over large refactors.
-
-Keep the project compiling after every change.
+- SAI-008 — Release Checklist
+- SAI-031 — Implementation Tracker
+- CHANGELOG.md
+- README.md
 
 ---
 
