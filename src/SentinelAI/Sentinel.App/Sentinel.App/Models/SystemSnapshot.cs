@@ -42,5 +42,16 @@ namespace Sentinel.App.Models
         public string DefenderStatus { get; set; } = "Loading...";
 
         public string FirewallStatus { get; set; } = "Loading...";
+
+        public int CriticalEventCount { get; set; }
+
+        public int ErrorEventCount { get; set; }
+
+        public DateTime? LatestEventTime { get; set; }
+
+        public string LatestEventSource { get; set; } = "None";
+
+        public string LatestEventMessage { get; set; } =
+            "No critical or error events detected in the last 24 hours.";
     }
 }
