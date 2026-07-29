@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Sentinel AI
  * Copyright (c) 2026 Modern Methods.
  */
@@ -8,63 +8,86 @@ using System.IO;
 
 namespace Sentinel.App.Services
 {
-    public class DiskMonitor
+    public sealed class DiskMonitor
     {
+        private const double BytesPerGigabyte = 1024d * 1024d * 1024d;
+
         public double GetTotalSpaceGB()
         {
-            try
-            {
-                var drive = GetSystemDrive();
-
-                return Math.Round(
-                    drive.TotalSize / 1024d / 1024d / 1024d,
-                    2);
-            }
-            catch
-            {
-                return 0;
-            }
+            DiskUsageSnapshot snapshot = GetDiskUsageSnapshot();
+            return Math.Round(snapshot.TotalBytes / BytesPerGigabyte, 2);
         }
 
         public double GetFreeSpaceGB()
         {
-            try
-            {
-                var drive = GetSystemDrive();
-
-                return Math.Round(
-                    drive.TotalFreeSpace / 1024d / 1024d / 1024d,
-                    2);
-            }
-            catch
-            {
-                return 0;
-            }
+            DiskUsageSnapshot snapshot = GetDiskUsageSnapshot();
+            return Math.Round(snapshot.FreeBytes / BytesPerGigabyte, 2);
         }
 
         public double GetUsedSpaceGB()
         {
-            return Math.Round(
-                GetTotalSpaceGB() - GetFreeSpaceGB(),
-                2);
+            DiskUsageSnapshot snapshot = GetDiskUsageSnapshot();
+            return Math.Round(snapshot.UsedBytes / BytesPerGigabyte, 2);
         }
 
         public double GetUsagePercent()
         {
-            double total = GetTotalSpaceGB();
+            DiskUsageSnapshot snapshot = GetDiskUsageSnapshot();
+            return Math.Round(snapshot.UsagePercent, 1);
+        }
 
-            if (total <= 0)
-                return 0;
+        private static DiskUsageSnapshot GetDiskUsageSnapshot()
+        {
+            try
+            {
+                DriveInfo drive = GetSystemDrive();
+                if (!drive.IsReady)
+                {
+                    return default;
+                }
 
-            return Math.Round(
-                (GetUsedSpaceGB() / total) * 100,
-                1);
+                long totalBytes = Math.Max(drive.TotalSize, 0);
+                long freeBytes = Math.Clamp(drive.TotalFreeSpace, 0, totalBytes);
+                long usedBytes = totalBytes - freeBytes;
+                double usagePercent = totalBytes == 0
+                    ? 0
+                    : Math.Clamp(usedBytes * 100.0 / totalBytes, 0.0, 100.0);
+
+                return new DiskUsageSnapshot(
+                    (ulong)usedBytes,
+                    (ulong)freeBytes,
+                    (ulong)totalBytes,
+                    usagePercent);
+            }
+            catch (IOException)
+            {
+                return default;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return default;
+            }
+            catch (ArgumentException)
+            {
+                return default;
+            }
         }
 
         private static DriveInfo GetSystemDrive()
         {
-            string root = Path.GetPathRoot(Environment.SystemDirectory)!;
+            string? root = Path.GetPathRoot(Environment.SystemDirectory);
+            if (string.IsNullOrWhiteSpace(root))
+            {
+                throw new InvalidOperationException("The Windows system drive could not be determined.");
+            }
+
             return new DriveInfo(root);
         }
+
+        private readonly record struct DiskUsageSnapshot(
+            ulong UsedBytes,
+            ulong FreeBytes,
+            ulong TotalBytes,
+            double UsagePercent);
     }
 }
