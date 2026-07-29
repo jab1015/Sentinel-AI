@@ -7,11 +7,31 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Sentinel.App.Services
 {
     public class ProcessMonitor
     {
+        private static readonly string[] TrustedPublisherNames =
+        {
+            "Microsoft Corporation",
+            "Google LLC",
+            "Google Inc",
+            "GitHub, Inc.",
+            "JetBrains s.r.o.",
+            "Docker Inc",
+            "NVIDIA Corporation",
+            "Intel Corporation",
+            "Advanced Micro Devices, Inc.",
+            "Adobe Inc.",
+            "Oracle America, Inc.",
+            "Mozilla Corporation"
+        };
+
+        private readonly Dictionary<string, SignatureAssessment> _signatureCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public ProcessIntelligenceSnapshot GetIntelligence()
         {
             List<ProcessFinding> findings = new();
@@ -41,14 +61,36 @@ namespace Sentinel.App.Services
                                 $"High memory use ({workingSet / 1024d / 1024d / 1024d:0.00} GB)"));
                         }
 
-                        // File-path inspection is intentionally limited to processes that
-                        // can be queried safely. Protected and exited processes are skipped.
                         string path = GetProcessPath(process);
-                        if (IsUserWritableLocation(path))
+                        if (!IsUserWritableLocation(path))
+                        {
+                            continue;
+                        }
+
+                        SignatureAssessment signature = GetSignatureAssessment(path);
+                        bool temporaryLocation = IsTemporaryLocation(path);
+
+                        if (temporaryLocation)
+                        {
+                            string signer = signature.IsTrusted
+                                ? $" Signed by {signature.Publisher}."
+                                : string.Empty;
+
+                            findings.Add(new ProcessFinding(
+                                processName,
+                                $"Running from a temporary location: {ShortenPath(path)}.{signer}"));
+                        }
+                        else if (!signature.IsSigned)
                         {
                             findings.Add(new ProcessFinding(
                                 processName,
-                                $"Running from a user-writable location: {ShortenPath(path)}"));
+                                $"Unsigned executable in a user-writable location: {ShortenPath(path)}"));
+                        }
+                        else if (!signature.IsTrustedPublisher)
+                        {
+                            findings.Add(new ProcessFinding(
+                                processName,
+                                $"Signed by {signature.Publisher}, but running from a user-writable location: {ShortenPath(path)}"));
                         }
                     }
                     catch
@@ -73,6 +115,95 @@ namespace Sentinel.App.Services
                     process.Dispose();
                 }
             }
+        }
+
+        private SignatureAssessment GetSignatureAssessment(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                return SignatureAssessment.Unsigned;
+            }
+
+            DateTime lastWriteTimeUtc;
+            try
+            {
+                lastWriteTimeUtc = File.GetLastWriteTimeUtc(path);
+            }
+            catch
+            {
+                return SignatureAssessment.Unsigned;
+            }
+
+            string cacheKey = $"{path}|{lastWriteTimeUtc.Ticks}";
+            if (_signatureCache.TryGetValue(cacheKey, out SignatureAssessment? cached))
+            {
+                return cached;
+            }
+
+            SignatureAssessment assessment = InspectSignature(path);
+
+            if (_signatureCache.Count >= 500)
+            {
+                _signatureCache.Clear();
+            }
+
+            _signatureCache[cacheKey] = assessment;
+            return assessment;
+        }
+
+        private static SignatureAssessment InspectSignature(string path)
+        {
+            try
+            {
+                using X509Certificate certificate = X509Certificate.CreateFromSignedFile(path);
+                using X509Certificate2 certificate2 = new(certificate);
+                using X509Chain chain = new();
+
+                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+                chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
+
+                bool chainTrusted = chain.Build(certificate2);
+                string publisher = GetPublisherName(certificate2);
+                bool trustedPublisher = IsTrustedPublisher(publisher);
+
+                return new SignatureAssessment(
+                    IsSigned: true,
+                    IsTrusted: chainTrusted,
+                    IsTrustedPublisher: chainTrusted && trustedPublisher,
+                    Publisher: publisher);
+            }
+            catch (CryptographicException)
+            {
+                return SignatureAssessment.Unsigned;
+            }
+            catch
+            {
+                return SignatureAssessment.Unsigned;
+            }
+        }
+
+        private static string GetPublisherName(X509Certificate2 certificate)
+        {
+            string simpleName = certificate.GetNameInfo(
+                X509NameType.SimpleName,
+                forIssuer: false);
+
+            return string.IsNullOrWhiteSpace(simpleName)
+                ? "an unknown publisher"
+                : simpleName;
+        }
+
+        private static bool IsTrustedPublisher(string publisher)
+        {
+            foreach (string trustedPublisher in TrustedPublisherNames)
+            {
+                if (publisher.Contains(trustedPublisher, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string GetProcessPath(Process process)
@@ -108,10 +239,34 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static bool IsTemporaryLocation(string path)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                string temp = Path.GetFullPath(Path.GetTempPath());
+                return fullPath.StartsWith(temp, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static string ShortenPath(string path) =>
             path.Length <= 90 ? path : "..." + path[^87..];
 
         private sealed record ProcessFinding(string ProcessName, string Reason);
+
+        private sealed record SignatureAssessment(
+            bool IsSigned,
+            bool IsTrusted,
+            bool IsTrustedPublisher,
+            string Publisher)
+        {
+            public static SignatureAssessment Unsigned { get; } =
+                new(false, false, false, "Unsigned");
+        }
 
         public sealed record ProcessIntelligenceSnapshot(
             int TotalProcessCount,
