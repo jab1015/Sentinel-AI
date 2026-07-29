@@ -24,6 +24,9 @@ namespace Sentinel.App.Services
 
         public async Task RefreshAsync()
         {
+            NetworkMonitor.NetworkThroughputSnapshot networkSnapshot =
+                _networkMonitor.GetThroughput();
+
             CurrentSnapshot = new SystemSnapshot
             {
                 Timestamp = DateTime.Now,
@@ -38,8 +41,8 @@ namespace Sentinel.App.Services
                 DiskFreeGB = _diskMonitor.GetFreeSpaceGB(),
                 DiskTotalGB = _diskMonitor.GetTotalSpaceGB(),
 
-                DownloadMbps = 0,
-                UploadMbps = 0,
+                DownloadMbps = networkSnapshot.DownloadMbps,
+                UploadMbps = networkSnapshot.UploadMbps,
 
                 ProcessCount = _processMonitor.GetProcessCount(),
 
@@ -48,7 +51,6 @@ namespace Sentinel.App.Services
             };
 
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
-
             await Task.CompletedTask;
         }
 
