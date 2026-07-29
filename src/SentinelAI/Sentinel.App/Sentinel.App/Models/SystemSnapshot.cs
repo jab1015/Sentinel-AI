@@ -31,6 +31,10 @@ namespace Sentinel.App.Models
 
         public int ProcessCount { get; set; }
 
+        public string HighestMemoryProcessName { get; set; } = "Unknown";
+
+        public double HighestMemoryProcessGB { get; set; }
+
         public bool DefenderEnabled { get; set; }
 
         public bool FirewallEnabled { get; set; }
