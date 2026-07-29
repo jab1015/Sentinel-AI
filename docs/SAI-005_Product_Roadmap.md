@@ -1,15 +1,20 @@
 # SAI-005 — Product Roadmap
-Version: 1.0
+
+Version: 1.1
+
 Status: Active
-Last Updated: 2026-07-28
+
+Last Updated: 2026-07-29
+
+Copyright (c) 2026 Modern Methods.
 
 ---
 
 # Purpose
 
-This roadmap defines the planned evolution of Sentinel AI from its current prototype into a commercial Windows security application.
+This roadmap defines the planned evolution of Sentinel AI from its current development state into a commercial Windows security and system-intelligence application.
 
-The roadmap is a living document and should be updated as priorities evolve.
+The roadmap is a living document. Actual completion status is controlled by runtime verification and the SAI-031 Implementation Tracker.
 
 ---
 
@@ -23,200 +28,199 @@ Rather than overwhelming users with technical information, Sentinel AI will expl
 
 # Development Strategy
 
-Development follows incremental releases.
+Development proceeds through incremental, verified releases.
 
-Every release must produce visible improvements while maintaining a stable, working application.
+Every release must:
+
+- Preserve a buildable and runnable application
+- Replace placeholders with production data
+- Avoid regressions in completed monitoring
+- Produce visible user value
+- Update project tracking documentation
 
 ---
 
 # Version 0.1.0 — Foundation
 
-Status
+Status: Completed
 
-Completed
+Objectives completed:
 
-Objectives
-
-- WinUI application
-- Professional repository
+- WinUI 3 application
+- Initial dashboard
 - GitHub integration
-- Dashboard
-- Documentation
+- Core repository structure
 - Development workflow
 
 ---
 
-# Version 0.2.0 — Live Monitoring
+# Version 0.2.0 — Architecture and Documentation
 
-Status
+Status: Completed
 
-In Progress
+Objectives completed:
 
-Objectives
-
-- Live CPU usage
-- Live memory usage
-- Disk monitoring
-- Network monitoring
-- Process monitoring
-- Dashboard improvements
-- Refresh engine
-
-Success Criteria
-
-The dashboard displays accurate, real-time system information.
+- MonitoringEngine
+- SystemSnapshot
+- Monitor-service architecture
+- Live one-second refresh foundation
+- Project documentation library
+- Release and implementation tracking
 
 ---
 
-# Version 0.3.0 — Security Engine
+# Version 0.3.0 — Native System Monitoring Foundation
 
-Status
+Status: Completed and Runtime Verified
 
-Planned
+Objectives completed:
 
-Objectives
+- Microsoft.Windows.CsWin32 integration
+- Native CPU monitoring through `GetSystemTimes`
+- Native physical-memory monitoring through `GlobalMemoryStatusEx`
+- CPU and memory MonitoringEngine integration
+- Real CPU dashboard display
+- Real physical-memory dashboard display
+- Live timestamp refresh
+- Successful build and runtime verification
 
-- Windows Defender integration
-- Firewall status
-- Running process inspection
+Success criteria achieved:
+
+The dashboard displays accurate, live CPU and physical-memory information without placeholder or random values.
+
+---
+
+# Version 0.4.0 — Monitoring Expansion
+
+Status: In Progress
+
+Objectives:
+
+- Display existing disk capacity, free-space, used-space, and usage-percentage data
+- Implement live network download throughput
+- Implement live network upload throughput
+- Display process count
+- Add process CPU and memory intelligence
+- Implement Microsoft Defender operational status
+- Implement Windows Firewall operational status
+- Add monitoring integration tests
+- Add failure-path testing
+
+Current repository state:
+
+- Disk service calculations exist and are collected by MonitoringEngine, but are not displayed by the dashboard
+- Process count is collected by MonitoringEngine, but is not displayed by the dashboard
+- Network throughput remains hardcoded to zero
+- Defender and Firewall checks are not yet complete production status implementations
+
+Success criteria:
+
+The dashboard displays verified real-time disk, network, process, Defender, and Firewall information while preserving CPU and memory behavior.
+
+---
+
+# Version 0.5.0 — Security Intelligence and AI
+
+Status: Planned
+
+Objectives:
+
+- Windows Event Log monitoring
 - Startup application analysis
 - Scheduled task inspection
-- Security Center integration
-- Event Log monitoring
-
-Success Criteria
-
-Sentinel AI can identify and report potential security concerns.
-
----
-
-# Version 0.4.0 — AI Intelligence
-
-Status
-
-Planned
-
-Objectives
-
-- AI-generated explanations
-- Threat summaries
+- Threat analysis engine
 - Risk scoring
-- Root cause analysis
-- Personalized recommendations
-- Natural language interaction
+- Confidence scoring
+- AI-generated explanations
+- Personalized security recommendations
+- Explainable AI
 
-Success Criteria
+Success criteria:
 
-Users can ask Sentinel AI questions about their computer and receive understandable answers.
+Sentinel AI can identify notable security conditions, explain why they matter, and recommend clear next actions.
 
 ---
 
-# Version 0.5.0 — Protection
+# Version 0.6.0 — Protection, Reporting, and Notifications
 
-Status
+Status: Planned
 
-Planned
-
-Objectives
+Objectives:
 
 - Alert center
-- Notification engine
-- Suspicious activity detection
-- AI-assisted recommendations
+- Toast notifications
 - Threat history
-- Automatic remediation suggestions
-
-Success Criteria
-
-Sentinel AI actively assists users in responding to security issues.
+- Historical system reporting
+- Performance analytics
+- Security timeline
+- Exportable reports
 
 ---
 
-# Version 0.6.0 — Productivity
+# Version 0.7.0 — Performance and Productivity
 
-Status
+Status: Planned
 
-Planned
+Objectives:
 
-Objectives
-
-- Performance optimization
 - Startup optimization
 - Storage recommendations
 - Battery analysis
-- Resource usage history
-
----
-
-# Version 0.7.0 — Intelligence Platform
-
-Status
-
-Planned
-
-Objectives
-
-- Historical trends
-- Predictive analysis
+- Resource-usage history
 - Scheduled health reports
-- AI insights
 - Long-term system scoring
 
 ---
 
 # Version 0.8.0 — Enterprise Preparation
 
-Status
+Status: Planned
 
-Planned
+Objectives:
 
-Objectives
-
-- Multiple device support
+- Multi-device support
 - Policy management
-- Exportable reports
-- Logging improvements
-- Administration tools
+- Central administration
+- Cloud synchronization
+- Enterprise reporting
+- Logging and audit improvements
 
 ---
 
 # Version 0.9.0 — Release Candidate
 
-Status
+Status: Planned
 
-Planned
-
-Objectives
+Objectives:
 
 - UI polish
-- Accessibility
+- Accessibility review
 - Performance optimization
-- Installer
+- Installer completion
 - Upgrade process
 - Documentation review
 - Beta testing
+- Release-candidate acceptance testing
 
 ---
 
 # Version 1.0.0 — Commercial Release
 
-Status
+Status: Planned
 
-Planned
-
-Objectives
+Objectives:
 
 - Production release
-- Installer
-- Documentation
+- MSIX installer
+- Automatic updates
+- Complete documentation
 - User guide
-- Website
 - Licensing
-- Update service
+- Release approval
 
-Success Criteria
+Success criteria:
 
-Sentinel AI is ready for public distribution.
+Sentinel AI is stable, secure, documented, installable, and approved for public distribution.
 
 ---
 
@@ -224,31 +228,30 @@ Sentinel AI is ready for public distribution.
 
 Potential future capabilities include:
 
-- Cloud synchronization
-- Mobile companion app
+- Mobile companion application
 - Browser extension
 - AI malware analysis
 - Vulnerability scanning
-- Home network discovery
-- Smart home security integration
+- Home-network discovery
+- Smart-home security integration
 - Plugin architecture
 - Enterprise management console
 
-These ideas are exploratory and not currently scheduled.
+These ideas are exploratory and are not current commitments.
 
 ---
 
 # Product Principles
 
-Every new feature should satisfy one or more of the following:
+Every feature should improve at least one of the following:
 
-- Improve security
-- Improve understanding
-- Improve performance
-- Improve reliability
-- Improve usability
+- Security
+- Understanding
+- Performance
+- Reliability
+- Usability
 
-If a feature does not support these goals, it should be reconsidered.
+A feature that does not support these goals should be reconsidered.
 
 ---
 
