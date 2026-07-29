@@ -9,6 +9,7 @@ namespace Sentinel.App
     {
         private readonly DispatcherTimer _timer = new();
         private readonly MonitoringEngine _engine = new();
+        private bool _isRefreshing;
 
         public MainWindow()
         {
@@ -26,45 +27,58 @@ namespace Sentinel.App
 
         private async System.Threading.Tasks.Task UpdateDashboardAsync()
         {
-            await _engine.RefreshAsync();
-            var snapshot = _engine.CurrentSnapshot;
+            if (_isRefreshing)
+            {
+                return;
+            }
 
-            CpuText.Text = $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
-            MemoryText.Text =
-                $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
+            _isRefreshing = true;
+            try
+            {
+                await _engine.RefreshAsync();
+                var snapshot = _engine.CurrentSnapshot;
 
-            double diskUsedGB = Math.Max(snapshot.DiskTotalGB - snapshot.DiskFreeGB, 0);
-            DiskText.Text = snapshot.DiskTotalGB > 0
-                ? $"Disk: {diskUsedGB:0.00} GB / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)"
-                : "Disk: Unavailable";
+                CpuText.Text = $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
+                MemoryText.Text =
+                    $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
 
-            NetworkText.Text =
-                $"Network: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
-            ProcessText.Text = snapshot.HighestMemoryProcessGB > 0
-                ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)"
-                : $"Processes: {snapshot.ProcessCount} running";
-            SecurityText.Text =
-                $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
+                double diskUsedGB = Math.Max(snapshot.DiskTotalGB - snapshot.DiskFreeGB, 0);
+                DiskText.Text = snapshot.DiskTotalGB > 0
+                    ? $"Disk: {diskUsedGB:0.00} GB / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)"
+                    : "Disk: Unavailable";
 
-            CriticalEventsText.Text = snapshot.CriticalEventCount.ToString();
-            ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
-            LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue
-                ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}"
-                : "No recent critical or error events.";
-            LatestEventMessageText.Text = snapshot.LatestEventMessage;
+                NetworkText.Text =
+                    $"Network: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
+                ProcessText.Text = snapshot.HighestMemoryProcessGB > 0
+                    ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)"
+                    : $"Processes: {snapshot.ProcessCount} running";
+                SecurityText.Text =
+                    $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
 
-            RunningProcessesText.Text = snapshot.ProcessCount.ToString();
-            FlaggedProcessesText.Text = snapshot.FlaggedProcessCount.ToString();
-            PrimaryProcessText.Text = snapshot.FlaggedProcessCount > 0
-                ? snapshot.PrimaryFlaggedProcessName
-                : "No process warning conditions were detected.";
-            PrimaryProcessReasonText.Text = snapshot.PrimaryFlaggedProcessReason;
+                CriticalEventsText.Text = snapshot.CriticalEventCount.ToString();
+                ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
+                LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue
+                    ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}"
+                    : "No recent critical or error events.";
+                LatestEventMessageText.Text = snapshot.LatestEventMessage;
 
-            RiskScoreText.Text = snapshot.RiskScore.ToString();
-            RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
-            RiskSummaryText.Text = snapshot.RiskSummary;
-            RecommendationText.Text = snapshot.Recommendation;
-            LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
+                RunningProcessesText.Text = snapshot.ProcessCount.ToString();
+                FlaggedProcessesText.Text = snapshot.FlaggedProcessCount.ToString();
+                PrimaryProcessText.Text = snapshot.FlaggedProcessCount > 0
+                    ? snapshot.PrimaryFlaggedProcessName
+                    : "No process warning conditions were detected.";
+                PrimaryProcessReasonText.Text = snapshot.PrimaryFlaggedProcessReason;
+
+                RiskScoreText.Text = snapshot.RiskScore.ToString();
+                RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
+                RiskSummaryText.Text = snapshot.RiskSummary;
+                RecommendationText.Text = snapshot.Recommendation;
+                LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
+            }
+            finally
+            {
+                _isRefreshing = false;
+            }
         }
     }
 }
