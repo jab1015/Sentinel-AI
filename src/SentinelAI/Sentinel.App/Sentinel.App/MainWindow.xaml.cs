@@ -1,28 +1,14 @@
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Dispatching;
+using Sentinel.App.Services;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
 
 namespace Sentinel.App
 {
-    /// <summary>
-    /// Main application window.
-    /// </summary>
     public sealed partial class MainWindow : Window
     {
         private readonly DispatcherTimer _timer = new();
+        private readonly MonitoringEngine _engine = new();
 
         public MainWindow()
         {
@@ -31,11 +17,29 @@ namespace Sentinel.App
             _timer.Interval = TimeSpan.FromSeconds(1);
             _timer.Tick += Timer_Tick;
             _timer.Start();
+
+            _ = UpdateDashboardAsync();
         }
 
-        private void Timer_Tick(object sender, object e)
+        private async void Timer_Tick(object? sender, object e)
         {
-            CpuText.Text = $"CPU Cores: {Environment.ProcessorCount}";
+            await UpdateDashboardAsync();
+        }
+
+        private async System.Threading.Tasks.Task UpdateDashboardAsync()
+        {
+            await _engine.RefreshAsync();
+
+            var snapshot = _engine.CurrentSnapshot;
+
+            CpuText.Text =
+                $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
+
+            MemoryText.Text =
+                $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
+
+            LastUpdatedText.Text =
+                $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
         }
     }
 }

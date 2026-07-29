@@ -18,54 +18,64 @@
         <StackPanel Margin="30">
 
             <TextBlock
-            Text="🛡 Sentinel AI"
-            FontSize="32"
-            FontWeight="Bold"
-            Foreground="White"/>
+                Text="🛡 Sentinel AI"
+                FontSize="32"
+                FontWeight="Bold"
+                Foreground="White"/>
 
             <TextBlock
-            Margin="0,8,0,30"
-            Text="AI-Powered Windows Security"
-            FontSize="18"
-            Foreground="#9CA3AF"/>
+                Margin="0,8,0,30"
+                Text="AI-Powered Windows Security"
+                FontSize="18"
+                Foreground="#9CA3AF"/>
 
             <Border
-            Background="#1F2937"
-            CornerRadius="10"
-            Padding="20">
+                Background="#1F2937"
+                CornerRadius="10"
+                Padding="20">
 
                 <StackPanel>
 
                     <TextBlock
-                    Text="System Status"
-                    FontSize="22"
-                    FontWeight="SemiBold"
-                    Foreground="White"/>
+                        Text="System Status"
+                        FontSize="22"
+                        FontWeight="SemiBold"
+                        Foreground="White"/>
 
                     <TextBlock
-                    x:Name="CpuText"
-                    Margin="0,20,0,0"
-                    Text="CPU: -- %"
-                    FontSize="18"
-                    Foreground="White"/>
+                        x:Name="CpuText"
+                        Margin="0,20,0,0"
+                        Text="CPU Usage: Loading..."
+                        FontSize="18"
+                        Foreground="White"/>
 
                     <TextBlock
-                    Margin="0,10,0,0"
-                    Text="Memory: -- %"
-                    FontSize="18"
-                    Foreground="White"/>
+                        x:Name="MemoryText"
+                        Margin="0,10,0,0"
+                        Text="Memory Usage: Loading..."
+                        FontSize="18"
+                        Foreground="White"/>
 
                     <TextBlock
-                    Margin="0,10,0,0"
-                    Text="Disk: -- %"
-                    FontSize="18"
-                    Foreground="White"/>
+                        x:Name="DiskText"
+                        Margin="0,10,0,0"
+                        Text="Disk Usage: Loading..."
+                        FontSize="18"
+                        Foreground="White"/>
 
                     <TextBlock
-                    Margin="0,10,0,0"
-                    Text="Network: Waiting..."
-                    FontSize="18"
-                    Foreground="White"/>
+                        x:Name="NetworkText"
+                        Margin="0,10,0,0"
+                        Text="Network: Waiting..."
+                        FontSize="18"
+                        Foreground="White"/>
+
+                    <TextBlock
+                        x:Name="LastUpdatedText"
+                        Margin="0,20,0,0"
+                        Text="Last Updated: --"
+                        FontSize="14"
+                        Foreground="#9CA3AF"/>
 
                 </StackPanel>
 
