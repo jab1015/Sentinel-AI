@@ -17,6 +17,7 @@ namespace Sentinel.App.Services
         private readonly ProcessMonitor _processMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
+        private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
@@ -34,7 +35,7 @@ namespace Sentinel.App.Services
             EventLogMonitor.EventLogStatusSnapshot eventLogSnapshot =
                 _eventLogMonitor.GetStatus();
 
-            CurrentSnapshot = new SystemSnapshot
+            SystemSnapshot snapshot = new()
             {
                 Timestamp = DateTime.Now,
 
@@ -66,6 +67,15 @@ namespace Sentinel.App.Services
                 LatestEventMessage = eventLogSnapshot.LatestEventMessage
             };
 
+            RiskAssessmentEngine.RiskAssessment assessment =
+                _riskAssessmentEngine.Assess(snapshot);
+
+            snapshot.RiskScore = assessment.Score;
+            snapshot.RiskLevel = assessment.Level;
+            snapshot.RiskSummary = assessment.Summary;
+            snapshot.Recommendation = assessment.Recommendation;
+
+            CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
             await Task.CompletedTask;
         }
