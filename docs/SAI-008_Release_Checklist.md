@@ -1,6 +1,6 @@
 # SAI-008 — Release Checklist
 
-Version: 1.1
+Version: 1.2
 
 Status: Active
 
@@ -16,7 +16,7 @@ This checklist defines the minimum requirements for completing a development ses
 
 A task is **not considered complete** until all applicable checklist items have been completed.
 
-This checklist also serves as the mandatory quality gate before any code is committed or released.
+This checklist also serves as the mandatory quality gate before code is committed or released.
 
 ---
 
@@ -24,7 +24,7 @@ This checklist also serves as the mandatory quality gate before any code is comm
 
 ☐ Requirement understood
 
-☐ Architecture reviewed (if needed)
+☐ Architecture reviewed when needed
 
 ☐ Existing documentation reviewed
 
@@ -52,9 +52,9 @@ This checklist also serves as the mandatory quality gate before any code is comm
 
 ☐ Logging added where appropriate
 
-☐ Temporary/debug code removed
+☐ Temporary or debug code removed
 
-☐ Placeholder implementations documented (if intentionally retained)
+☐ Placeholder implementations documented when intentionally retained
 
 ---
 
@@ -66,9 +66,9 @@ This checklist also serves as the mandatory quality gate before any code is comm
 
 ☐ No unexpected warnings introduced
 
-☐ All projects build successfully
+☐ All affected projects build successfully
 
-☐ Build configuration verified (Debug/Release)
+☐ Build configuration verified when applicable
 
 ---
 
@@ -86,7 +86,7 @@ This checklist also serves as the mandatory quality gate before any code is comm
 
 ☐ Performance acceptable
 
-☐ UI verified (if applicable)
+☐ UI verified when applicable
 
 ☐ Error scenarios tested
 
@@ -94,7 +94,7 @@ This checklist also serves as the mandatory quality gate before any code is comm
 
 # Phase 5 — Documentation
 
-Update documentation only if affected.
+Update documentation only when affected.
 
 ☐ CHANGELOG.md
 
@@ -102,15 +102,15 @@ Update documentation only if affected.
 
 ☐ SAI-004_Sprint_History.md
 
-☐ PRODUCT_REQUIREMENTS.md (if requirements changed)
+☐ PRODUCT_REQUIREMENTS.md when requirements change
 
-☐ README.md (if user-visible capabilities changed)
+☐ README.md when user-visible capabilities change
 
 ☐ Architecture documentation updated
 
-☐ API documentation updated (if applicable)
+☐ API documentation updated when applicable
 
-☐ Other SAI documents updated (if architecture, standards, roadmap, or process changed)
+☐ Other SAI documents updated when architecture, standards, roadmap, or process changes
 
 ---
 
@@ -126,6 +126,8 @@ Update documentation only if affected.
 
 ☐ Changes pushed to GitHub
 
+☐ Correct production branch used
+
 ☐ Branch synchronized
 
 ☐ Repository builds from latest commit
@@ -140,9 +142,99 @@ Update documentation only if affected.
 
 ☐ Known issues documented
 
-☐ Ready for next sprint
+☐ Ready for next sprint or task
 
 ☐ Checklist completed
+
+---
+
+# Sprint 3 — Native Windows Monitoring Verification
+
+The following items record the verified Sprint 3 system-monitoring milestone.
+
+## Project Configuration
+
+☑ Microsoft.Windows.CsWin32 package present
+
+☑ Unsafe blocks enabled for generated pointer-based API signatures
+
+☑ `NativeMethods.txt` created in the WinUI application project
+
+☑ `GetSystemTimes` included in `NativeMethods.txt`
+
+☑ `GlobalMemoryStatusEx` included in `NativeMethods.txt`
+
+## SystemMonitor Production Implementation
+
+☑ Placeholder and random CPU values removed
+
+☑ CPU monitoring uses CsWin32-generated `PInvoke.GetSystemTimes`
+
+☑ CPU usage calculated from consecutive idle, kernel, and user samples
+
+☑ First CPU sample returns zero
+
+☑ Invalid or reversed samples handled gracefully
+
+☑ CPU result clamped to 0–100 percent
+
+☑ Physical-memory monitoring uses CsWin32-generated `PInvoke.GlobalMemoryStatusEx`
+
+☑ Used physical memory reported
+
+☑ Total physical memory reported
+
+☑ Physical-memory usage percentage reported
+
+☑ Win32 failures handled without application termination
+
+☑ Existing `SystemMonitor` public interface preserved for repository call sites
+
+☑ No placeholder or random values remain in production `SystemMonitor`
+
+## Integration and Runtime Verification
+
+☑ MonitoringEngine receives native CPU values
+
+☑ MonitoringEngine receives native physical-memory values
+
+☑ Dashboard displays real CPU utilization
+
+☑ Dashboard displays real used physical memory
+
+☑ Dashboard displays real total physical memory
+
+☑ Dashboard displays physical-memory percentage
+
+☑ Dashboard refreshes once per second
+
+☑ Dashboard timestamp updates correctly
+
+☑ Solution build completed successfully
+
+☑ Application launched successfully
+
+☑ Runtime behavior verified by the product owner
+
+☑ README updated for the verified Sprint 3 milestone
+
+## Remaining Monitoring Work
+
+☐ Production disk monitoring
+
+☐ Network download throughput
+
+☐ Network upload throughput
+
+☐ Process statistics and intelligence
+
+☐ Microsoft Defender status
+
+☐ Windows Firewall status
+
+☐ Monitoring integration tests
+
+☐ Error-path and unavailable-service testing
 
 ---
 
@@ -150,29 +242,29 @@ Update documentation only if affected.
 
 A feature is complete only when:
 
-✓ Requirements satisfied
+✓ Requirements are satisfied
 
-✓ Code complete
+✓ Code is complete
 
-✓ Architecture maintained
+✓ Architecture is maintained
 
 ✓ Project builds successfully
 
 ✓ Application runs successfully
 
-✓ Feature verified
+✓ Feature is verified
 
-✓ Existing functionality verified
+✓ Existing functionality is verified
 
-✓ Documentation updated
+✓ Documentation is updated
 
-✓ No critical warnings
+✓ No critical warnings remain
 
-✓ Commit created
+✓ Commit is created
 
-✓ Changes pushed
+✓ Changes are pushed
 
-✓ Ready for next task
+✓ Work is ready for the next task
 
 ---
 
@@ -184,15 +276,17 @@ Before closing a sprint, confirm:
 
 ☐ What remains?
 
-☐ Any blockers?
+☐ Are there any blockers?
 
-☐ Any architectural changes?
+☐ Were there architectural changes?
 
-☐ Documentation updated?
+☐ Is documentation current?
 
-☐ Repository clean?
+☐ Is the repository clean?
 
-☐ Ready to continue?
+☐ Is the production branch synchronized?
+
+☐ Is the project ready to continue?
 
 ---
 
