@@ -50,6 +50,9 @@ namespace Sentinel.App
                 ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)"
                 : $"Processes: {snapshot.ProcessCount} running";
 
+            SecurityText.Text =
+                $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
+
             LastUpdatedText.Text =
                 $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
         }
