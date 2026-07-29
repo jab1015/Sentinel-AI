@@ -1,6 +1,6 @@
 # SAI-008 — Release Checklist
 
-Version: 1.2
+Version: 1.1
 
 Status: Active
 
