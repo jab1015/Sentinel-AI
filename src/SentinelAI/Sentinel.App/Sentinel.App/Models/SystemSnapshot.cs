@@ -25,6 +25,11 @@ namespace Sentinel.App.Models
         public int FlaggedProcessCount { get; set; }
         public string PrimaryFlaggedProcessName { get; set; } = "None";
         public string PrimaryFlaggedProcessReason { get; set; } = "No process warning conditions were detected.";
+        public int InstalledServiceCount { get; set; }
+        public int RunningServiceCount { get; set; }
+        public int FlaggedServiceCount { get; set; }
+        public string PrimaryFlaggedServiceName { get; set; } = "None";
+        public string PrimaryFlaggedServiceReason { get; set; } = "No service warning conditions were detected.";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
