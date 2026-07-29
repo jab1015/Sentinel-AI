@@ -53,5 +53,13 @@ namespace Sentinel.App.Models
 
         public string LatestEventMessage { get; set; } =
             "No critical or error events detected in the last 24 hours.";
+
+        public int RiskScore { get; set; }
+
+        public string RiskLevel { get; set; } = "Calculating...";
+
+        public string RiskSummary { get; set; } = "Analyzing current conditions.";
+
+        public string Recommendation { get; set; } = "Waiting for monitoring data.";
     }
 }
