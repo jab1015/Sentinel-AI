@@ -46,6 +46,10 @@ namespace Sentinel.App
             NetworkText.Text =
                 $"Network: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
 
+            ProcessText.Text = snapshot.HighestMemoryProcessGB > 0
+                ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)"
+                : $"Processes: {snapshot.ProcessCount} running";
+
             LastUpdatedText.Text =
                 $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
         }
