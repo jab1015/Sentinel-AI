@@ -16,6 +16,7 @@ namespace Sentinel.App.Services
         private readonly NetworkMonitor _networkMonitor = new();
         private readonly ProcessMonitor _processMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
+        private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
@@ -29,6 +30,9 @@ namespace Sentinel.App.Services
 
             SecurityMonitor.SecurityStatusSnapshot securitySnapshot =
                 _securityMonitor.GetStatus();
+
+            EventLogMonitor.EventLogStatusSnapshot eventLogSnapshot =
+                _eventLogMonitor.GetStatus();
 
             CurrentSnapshot = new SystemSnapshot
             {
@@ -53,7 +57,13 @@ namespace Sentinel.App.Services
                 DefenderEnabled = securitySnapshot.DefenderStatus == "Enabled",
                 FirewallEnabled = securitySnapshot.FirewallStatus == "Enabled",
                 DefenderStatus = securitySnapshot.DefenderStatus,
-                FirewallStatus = securitySnapshot.FirewallStatus
+                FirewallStatus = securitySnapshot.FirewallStatus,
+
+                CriticalEventCount = eventLogSnapshot.CriticalCount,
+                ErrorEventCount = eventLogSnapshot.ErrorCount,
+                LatestEventTime = eventLogSnapshot.LatestEventTime,
+                LatestEventSource = eventLogSnapshot.LatestEventSource,
+                LatestEventMessage = eventLogSnapshot.LatestEventMessage
             };
 
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
