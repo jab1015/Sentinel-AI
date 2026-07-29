@@ -12,37 +12,56 @@ Sentinel AI is designed to explain what is happening on a Windows system, why it
 
 **Version:** 0.3.0  
 **Status:** Active Development  
-**Current Sprint:** Sprint 3 — Native Windows Monitoring
+**Completed Sprint:** Sprint 3 — Native Windows Monitoring  
+**Current Sprint:** Sprint 4 — Monitoring Expansion
 
-Sprint 3 has established the production system-monitoring foundation:
+Sprint 3 established and verified the production CPU and physical-memory monitoring foundation.
 
-- Native Windows API integration through Microsoft.Windows.CsWin32
-- Production CPU monitoring using `GetSystemTimes`
-- Production physical-memory monitoring using `GlobalMemoryStatusEx`
-- Live one-second dashboard refresh
-- Snapshot-based monitoring architecture
-- Verified successful build and runtime operation
+Current Sprint 4 work focuses on displaying and verifying disk data, implementing live network throughput, expanding process monitoring, and adding production Defender and Firewall status checks.
 
 ---
 
-# Current Features
-
-The current implementation includes:
+# Verified Production Features
 
 - WinUI 3 desktop application
-- Modern Windows dashboard
-- Monitoring engine and system snapshot model
-- Real-time CPU usage monitoring
-- Real-time physical-memory used, total, and percentage reporting
-- CsWin32-generated native API bindings
-- Live dashboard timestamps
-- Disk monitoring framework
-- Network monitoring framework
-- Process monitoring framework
-- Windows information monitoring
-- Security monitoring framework
-- Modular service architecture
-- Engineering and release documentation
+- .NET 8 runtime
+- MonitoringEngine and SystemSnapshot architecture
+- Microsoft.Windows.CsWin32 integration
+- Native CPU monitoring through `GetSystemTimes`
+- Native physical-memory monitoring through `GlobalMemoryStatusEx`
+- Real CPU utilization displayed on the dashboard
+- Real used, total, and percentage physical-memory values displayed on the dashboard
+- One-second dashboard refresh
+- Live timestamp updates
+- Successful build and application launch
+- Runtime verification by the Product Owner
+
+---
+
+# Implemented Service Capabilities Awaiting Dashboard Completion
+
+The repository already contains service-level support for:
+
+- System-drive total capacity
+- System-drive free space
+- System-drive used space
+- System-drive usage percentage
+- Running process count
+
+These values are collected by MonitoringEngine, but the current MainWindow displays only CPU, memory, and timestamp.
+
+---
+
+# Current Limitations
+
+- Disk values are not yet rendered by the dashboard
+- Network download throughput remains zero
+- Network upload throughput remains zero
+- Process count is not yet rendered by the dashboard
+- Process intelligence is incomplete
+- Microsoft Defender operational status is incomplete
+- Windows Firewall operational status is incomplete
+- Monitoring integration tests are not yet complete
 
 ---
 
@@ -57,7 +76,7 @@ CPU utilization is calculated from consecutive Windows system-time samples obtai
 - Kernel time
 - User time
 
-The first sample returns zero because a previous sample is required to calculate utilization. Later values are constrained to the valid range of 0–100 percent.
+The first sample returns zero because a previous sample is required. Invalid or reversed samples are handled safely, and calculated values are constrained to 0–100 percent.
 
 ## Physical Memory Monitoring
 
@@ -69,20 +88,19 @@ Physical-memory statistics are obtained through:
 - Used physical memory
 - Percentage used
 
-Win32 failures are handled gracefully without crashing the dashboard.
+Win32 failures are handled without terminating the dashboard.
 
 ---
 
 # Technology Stack
 
 | Component | Technology |
-|-----------|------------|
+|---|---|
 | Language | C# |
 | Framework | .NET 8 |
 | UI Framework | WinUI 3 |
 | Native API Generation | Microsoft.Windows.CsWin32 |
-| Windows APIs | GetSystemTimes, GlobalMemoryStatusEx |
-| IDE | Visual Studio |
+| Native APIs | GetSystemTimes, GlobalMemoryStatusEx |
 | Target Platform | Windows 10 and later |
 | Version Control | Git |
 | Repository | GitHub |
@@ -144,11 +162,7 @@ Core principles:
 
 ---
 
-# Current Sprint
-
-Sprint 3 replaces placeholder system metrics with production-quality Windows monitoring.
-
-## Completed
+# Sprint 3 — Complete
 
 - [x] Add Microsoft.Windows.CsWin32
 - [x] Add `NativeMethods.txt`
@@ -156,24 +170,30 @@ Sprint 3 replaces placeholder system metrics with production-quality Windows mon
 - [x] Generate `GlobalMemoryStatusEx`
 - [x] Replace random CPU values
 - [x] Implement consecutive CPU sampling
-- [x] Return zero on the first CPU sample
+- [x] Handle first and invalid CPU samples
 - [x] Clamp CPU utilization to 0–100 percent
 - [x] Report physical memory used
 - [x] Report total physical memory
 - [x] Report physical-memory percentage
-- [x] Handle Win32 failures gracefully
-- [x] Preserve monitoring-engine compatibility
+- [x] Connect CPU and memory to MonitoringEngine
+- [x] Display CPU and memory on the dashboard
 - [x] Verify successful build
-- [x] Verify successful runtime behavior
+- [x] Verify successful application launch
+- [x] Verify runtime behavior
 
-## Next
+---
 
-- [ ] Production disk monitoring
-- [ ] Network throughput monitoring
-- [ ] Process statistics and intelligence
-- [ ] Microsoft Defender status
-- [ ] Windows Firewall status
-- [ ] Monitoring integration tests
+# Sprint 4 — Active
+
+Priority order:
+
+1. Display existing disk metrics
+2. Verify disk runtime values
+3. Implement network download and upload throughput
+4. Display process count and expand process intelligence
+5. Implement Microsoft Defender operational status
+6. Implement Windows Firewall operational status
+7. Add monitoring integration and failure-path tests
 
 ---
 
@@ -189,15 +209,16 @@ Sprint 3 replaces placeholder system metrics with production-quality Windows mon
 
 ## Version 0.4
 
-- Disk monitoring
+- Disk dashboard integration
 - Network throughput
 - Process intelligence
 - Microsoft Defender integration
 - Windows Firewall integration
-- Event Log monitoring
+- Monitoring tests
 
 ## Version 0.5
 
+- Event Log intelligence
 - Threat analysis engine
 - Risk and confidence scoring
 - AI recommendations
@@ -224,17 +245,17 @@ Sprint 3 replaces placeholder system metrics with production-quality Windows mon
 
 Every feature follows the same workflow:
 
-1. Plan
-2. Review repository usage and architecture
+1. Review project status and implementation tracker
+2. Review repository call sites and architecture
 3. Implement
 4. Build
 5. Run
 6. Verify
 7. Update documentation
 8. Commit
-9. Push
+9. Push to `main`
 
-The application should remain buildable and runnable throughout development.
+The application must remain buildable and runnable throughout development.
 
 ---
 
@@ -247,34 +268,16 @@ The application should remain buildable and runnable throughout development.
 
 ---
 
-# Engineering Philosophy
-
-Every completed feature should be:
-
-- Functional
-- Stable
-- Secure
-- Tested
-- Maintainable
-- Documented
-- Production-ready
-
-Architecture and long-term maintainability take precedence over short-term implementation shortcuts.
-
----
-
 # Documentation
 
-The `docs` directory contains project planning, architecture, engineering, security, testing, and release documents.
+Primary tracking documents:
 
-Important references include:
-
-- Project status
-- Product requirements
-- System architecture
-- Coding standards
-- Release checklist
-- Development and implementation trackers
+- `docs/SAI-000_Project_Status.md`
+- `docs/SAI-004_Sprint_History.md`
+- `docs/SAI-005_Product_Roadmap.md`
+- `docs/SAI-008_Release_Checklist.md`
+- `docs/SAI-031_Implementation_Tracker.md`
+- `CHANGELOG.md`
 
 ---
 
@@ -289,13 +292,11 @@ Sentinel AI is intended to become a professional Windows security platform capab
 - Assisting users with system maintenance
 - Supporting enterprise environments
 
-Rather than simply displaying technical information, Sentinel AI aims to help users understand their computers through intelligent analysis, transparent explanations, and actionable guidance.
-
 ---
 
 # License
 
-This project is currently under active development. Licensing terms will be finalized prior to the first public release.
+This project is currently under active development. Licensing terms will be finalized before the first public release.
 
 ---
 
