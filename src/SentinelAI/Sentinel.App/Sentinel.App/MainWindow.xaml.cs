@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Dispatching;
 using Sentinel.App.Services;
 using System;
+using System.Diagnostics;
 
 namespace Sentinel.App
 {
@@ -10,6 +11,7 @@ namespace Sentinel.App
         private readonly DispatcherTimer _timer = new();
         private readonly MonitoringEngine _engine = new();
         private bool _isRefreshing;
+        private string _guidanceActionId = string.Empty;
 
         public MainWindow()
         {
@@ -85,6 +87,12 @@ namespace Sentinel.App
                 GuidanceFixAvailabilityText.Text = snapshot.GuidanceFixAvailability;
                 GuidanceFixDetailsText.Text = snapshot.GuidanceFixDetails;
 
+                _guidanceActionId = snapshot.GuidanceActionId;
+                GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
+                GuidanceActionButton.Visibility = string.IsNullOrWhiteSpace(_guidanceActionId)
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+
                 RiskScoreText.Text = snapshot.RiskScore.ToString();
                 RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
                 RiskSummaryText.Text = snapshot.RiskSummary;
@@ -94,6 +102,50 @@ namespace Sentinel.App
             finally
             {
                 _isRefreshing = false;
+            }
+        }
+
+        private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e)
+        {
+            switch (_guidanceActionId)
+            {
+                case "open-services":
+                    Launch("services.msc");
+                    break;
+                case "open-task-manager":
+                    Launch("taskmgr.exe");
+                    break;
+                case "open-windows-security":
+                    Launch("windowsdefender:");
+                    break;
+                case "open-firewall":
+                    Launch("windowsdefender://network");
+                    break;
+                case "open-windows-update":
+                    Launch("ms-settings:windowsupdate");
+                    break;
+                case "open-storage":
+                    Launch("ms-settings:storagesense");
+                    break;
+                case "check-again":
+                    await UpdateDashboardAsync();
+                    break;
+            }
+        }
+
+        private static void Launch(string target)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = target,
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // Guidance remains visible if Windows cannot open the requested tool.
             }
         }
     }
