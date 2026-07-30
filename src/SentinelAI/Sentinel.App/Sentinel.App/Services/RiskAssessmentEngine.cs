@@ -30,6 +30,16 @@ namespace Sentinel.App.Services
             score += Math.Min(snapshot.CriticalEventCount * 12, 24);
             score += Math.Min(snapshot.ErrorEventCount * 2, 16);
 
+            bool repeatedServiceFailure =
+                Contains(snapshot.LatestEventSource, "Service Control Manager") &&
+                Contains(snapshot.LatestEventMessage, "terminated unexpectedly");
+
+            if (repeatedServiceFailure)
+            {
+                score += 8;
+                recommendation = "A Windows service has stopped unexpectedly. Review the named service and check whether the failure repeats before changing its startup settings.";
+            }
+
             if (snapshot.MemoryUsagePercent >= 90)
             {
                 score += 10;
@@ -73,11 +83,17 @@ namespace Sentinel.App.Services
                 "High" => "Important security or reliability conditions need attention.",
                 "Elevated" => "One or more conditions should be reviewed soon.",
                 "Moderate" => "The computer is generally protected, with a few items worth reviewing.",
-                _ => "Core protections are active and no major warning conditions were detected."
+                _ => repeatedServiceFailure
+                    ? "Core protections are active, but a repeated Windows service failure should be reviewed."
+                    : "Core protections are active and no major warning conditions were detected."
             };
 
             return new RiskAssessment(score, level, summary, recommendation);
         }
+
+        private static bool Contains(string? value, string text) =>
+            !string.IsNullOrWhiteSpace(value) &&
+            value.Contains(text, StringComparison.OrdinalIgnoreCase);
 
         public sealed record RiskAssessment(
             int Score,
