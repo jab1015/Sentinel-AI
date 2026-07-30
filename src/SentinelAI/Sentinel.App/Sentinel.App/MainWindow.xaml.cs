@@ -77,6 +77,14 @@ namespace Sentinel.App
                     : "No service warning conditions were detected.";
                 PrimaryServiceReasonText.Text = snapshot.PrimaryFlaggedServiceReason;
 
+                GuidanceTitleText.Text = snapshot.GuidanceTitle;
+                GuidanceSeverityText.Text = snapshot.GuidanceSeverity;
+                GuidanceWhatHappenedText.Text = snapshot.GuidanceWhatHappened;
+                GuidanceWhyItMattersText.Text = snapshot.GuidanceWhyItMatters;
+                GuidanceActionText.Text = snapshot.GuidanceRecommendedAction;
+                GuidanceFixAvailabilityText.Text = snapshot.GuidanceFixAvailability;
+                GuidanceFixDetailsText.Text = snapshot.GuidanceFixDetails;
+
                 RiskScoreText.Text = snapshot.RiskScore.ToString();
                 RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
                 RiskSummaryText.Text = snapshot.RiskSummary;
