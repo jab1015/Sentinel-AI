@@ -24,6 +24,7 @@ namespace Sentinel.App.Services
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
+        private readonly GuidanceEngine _guidanceEngine = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
         private ProcessMonitor.ProcessIntelligenceSnapshot _processSnapshot =
@@ -98,6 +99,15 @@ namespace Sentinel.App.Services
             snapshot.RiskLevel = assessment.Level;
             snapshot.RiskSummary = assessment.Summary;
             snapshot.Recommendation = assessment.Recommendation;
+
+            GuidanceEngine.GuidanceResult guidance = _guidanceEngine.Analyze(snapshot);
+            snapshot.GuidanceTitle = guidance.Title;
+            snapshot.GuidanceSeverity = guidance.Severity;
+            snapshot.GuidanceWhatHappened = guidance.WhatHappened;
+            snapshot.GuidanceWhyItMatters = guidance.WhyItMatters;
+            snapshot.GuidanceRecommendedAction = guidance.RecommendedAction;
+            snapshot.GuidanceFixAvailability = guidance.FixAvailability;
+            snapshot.GuidanceFixDetails = guidance.FixDetails;
 
             CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
