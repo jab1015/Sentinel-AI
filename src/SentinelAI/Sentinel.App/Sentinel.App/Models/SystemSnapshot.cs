@@ -44,5 +44,12 @@ namespace Sentinel.App.Models
         public string RiskLevel { get; set; } = "Calculating...";
         public string RiskSummary { get; set; } = "Analyzing current conditions.";
         public string Recommendation { get; set; } = "Waiting for monitoring data.";
+        public string GuidanceTitle { get; set; } = "Analyzing your computer";
+        public string GuidanceSeverity { get; set; } = "Loading";
+        public string GuidanceWhatHappened { get; set; } = "Sentinel AI is reviewing current conditions.";
+        public string GuidanceWhyItMatters { get; set; } = "Waiting for enough information to explain the result.";
+        public string GuidanceRecommendedAction { get; set; } = "Please wait while monitoring starts.";
+        public string GuidanceFixAvailability { get; set; } = "Checking";
+        public string GuidanceFixDetails { get; set; } = "Sentinel AI is determining whether a safe fix is available.";
     }
 }
