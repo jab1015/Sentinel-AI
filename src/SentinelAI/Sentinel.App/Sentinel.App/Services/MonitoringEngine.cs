@@ -108,6 +108,8 @@ namespace Sentinel.App.Services
             snapshot.GuidanceRecommendedAction = guidance.RecommendedAction;
             snapshot.GuidanceFixAvailability = guidance.FixAvailability;
             snapshot.GuidanceFixDetails = guidance.FixDetails;
+            snapshot.GuidanceActionId = guidance.ActionId;
+            snapshot.GuidanceActionLabel = guidance.ActionLabel;
 
             CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
