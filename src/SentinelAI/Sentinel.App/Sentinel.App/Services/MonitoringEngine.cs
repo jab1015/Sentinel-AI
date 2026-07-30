@@ -103,6 +103,9 @@ namespace Sentinel.App.Services
             GuidanceEngine.GuidanceResult guidance = _guidanceEngine.Analyze(snapshot);
             snapshot.GuidanceTitle = guidance.Title;
             snapshot.GuidanceSeverity = guidance.Severity;
+            snapshot.GuidanceConfidencePercent = guidance.ConfidencePercent;
+            snapshot.GuidanceConfidenceLabel = guidance.ConfidenceLabel;
+            snapshot.GuidanceEvidence = guidance.Evidence;
             snapshot.GuidanceWhatHappened = guidance.WhatHappened;
             snapshot.GuidanceWhyItMatters = guidance.WhyItMatters;
             snapshot.GuidanceRecommendedAction = guidance.RecommendedAction;
