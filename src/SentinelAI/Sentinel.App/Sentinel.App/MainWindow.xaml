@@ -78,6 +78,33 @@
                     </StackPanel>
                 </Border>
 
+                <Border Background="#1F2937" CornerRadius="10" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="What Sentinel Recommends" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Plain-language guidance based on the most important current finding" Margin="0,6,0,0" FontSize="14" Foreground="#9CA3AF"/>
+                        <Grid Margin="0,20,0,0" ColumnSpacing="18">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="#111827" CornerRadius="8" Padding="18">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="Priority" FontSize="14" Foreground="#9CA3AF" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="GuidanceSeverityText" Text="Loading" Margin="0,8,0,0" FontSize="22" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                    <TextBlock x:Name="GuidanceFixAvailabilityText" Text="Checking" Margin="0,14,0,0" FontSize="14" Foreground="#D1D5DB" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock x:Name="GuidanceTitleText" Text="Analyzing your computer" FontSize="20" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                                <TextBlock Text="What happened" Margin="0,16,0,0" FontSize="14" Foreground="#9CA3AF"/>
+                                <TextBlock x:Name="GuidanceWhatHappenedText" Margin="0,5,0,0" Text="Sentinel AI is reviewing current conditions." FontSize="16" Foreground="#D1D5DB" TextWrapping="Wrap"/>
+                                <TextBlock Text="Why it matters" Margin="0,16,0,0" FontSize="14" Foreground="#9CA3AF"/>
+                                <TextBlock x:Name="GuidanceWhyItMattersText" Margin="0,5,0,0" Text="Waiting for enough information to explain the result." FontSize="16" Foreground="#D1D5DB" TextWrapping="Wrap"/>
+                                <TextBlock Text="What you should do" Margin="0,16,0,0" FontSize="14" Foreground="#9CA3AF"/>
+                                <TextBlock x:Name="GuidanceActionText" Margin="0,5,0,0" Text="Please wait while monitoring starts." FontSize="16" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="GuidanceFixDetailsText" Margin="0,12,0,0" Text="Sentinel AI is determining whether a safe fix is available." FontSize="14" Foreground="#9CA3AF" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <Border Background="#1F2937" CornerRadius="10" Padding="20" Margin="0,0,0,30">
                     <StackPanel>
                         <TextBlock Text="Sentinel Assessment" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
