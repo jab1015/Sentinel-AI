@@ -46,6 +46,9 @@ namespace Sentinel.App.Models
         public string Recommendation { get; set; } = "Waiting for monitoring data.";
         public string GuidanceTitle { get; set; } = "Analyzing your computer";
         public string GuidanceSeverity { get; set; } = "Loading";
+        public int GuidanceConfidencePercent { get; set; }
+        public string GuidanceConfidenceLabel { get; set; } = "Collecting evidence";
+        public string GuidanceEvidence { get; set; } = "Sentinel AI is collecting evidence for this recommendation.";
         public string GuidanceWhatHappened { get; set; } = "Sentinel AI is reviewing current conditions.";
         public string GuidanceWhyItMatters { get; set; } = "Waiting for enough information to explain the result.";
         public string GuidanceRecommendedAction { get; set; } = "Please wait while monitoring starts.";
