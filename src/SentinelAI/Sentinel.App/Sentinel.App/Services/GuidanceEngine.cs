@@ -38,6 +38,19 @@ namespace Sentinel.App.Services
                     "open-firewall", "Review Firewall");
             }
 
+            if (IsStorageSpacesSmpEvent(snapshot))
+            {
+                return Result(
+                    "Your computer looks healthy", "Low", 96,
+                    "A Microsoft Storage Spaces SMP service event was recorded, but no current condition requires user action.",
+                    "Windows recorded a background Storage Spaces service event.",
+                    "This service may stop when Storage Spaces is not actively needed. Sentinel AI will watch for evidence of an active storage problem.",
+                    "No action is needed right now.",
+                    "No fix needed",
+                    "Monitoring will continue automatically.",
+                    "check-again", "Check Again");
+            }
+
             if (Contains(snapshot.LatestEventSource, "WindowsUpdateClient") &&
                 Contains(snapshot.LatestEventMessage, "0x80073D02"))
             {
@@ -157,6 +170,10 @@ namespace Sentinel.App.Services
                 "Monitoring will continue automatically.",
                 "check-again", "Check Again");
         }
+
+        private static bool IsStorageSpacesSmpEvent(SystemSnapshot snapshot) =>
+            Contains(snapshot.LatestEventSource, "Service Control Manager") &&
+            Contains(snapshot.LatestEventMessage, "Microsoft Storage Spaces SMP");
 
         private static bool IsRepeatedServiceFailure(SystemSnapshot snapshot) =>
             Contains(snapshot.LatestEventSource, "Service Control Manager") &&
