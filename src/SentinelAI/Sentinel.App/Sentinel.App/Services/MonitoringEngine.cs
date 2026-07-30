@@ -118,6 +118,49 @@ namespace Sentinel.App.Services
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
         }
 
+        public async Task<VerificationResult> VerifyCurrentGuidanceAsync()
+        {
+            SystemSnapshot snapshot = CurrentSnapshot;
+            if (!Contains(snapshot.LatestEventSource, "Service Control Manager") ||
+                !Contains(snapshot.LatestEventMessage, "terminated unexpectedly"))
+            {
+                await RefreshAsync();
+                return new VerificationResult(
+                    "Check complete",
+                    "Sentinel AI refreshed the current monitoring data. No targeted service verification was available for this finding.",
+                    false);
+            }
+
+            string serviceName = ExtractServiceDisplayName(snapshot.LatestEventMessage);
+            ServiceMonitor.ServiceStatusSnapshot status = await Task.Run(
+                () => _serviceMonitor.GetServiceStatus(serviceName));
+
+            _lastServiceRefresh = DateTime.MinValue;
+            _lastEventLogRefresh = DateTime.MinValue;
+            await RefreshAsync();
+
+            if (!status.Found)
+            {
+                return new VerificationResult(
+                    "Unable to verify",
+                    status.Summary,
+                    false);
+            }
+
+            if (status.IsRunning)
+            {
+                return new VerificationResult(
+                    "Service is running",
+                    $"{status.Summary} Sentinel AI will continue watching for another unexpected termination before marking the issue fully resolved.",
+                    true);
+            }
+
+            return new VerificationResult(
+                "Service is still not running",
+                $"{status.Summary} Do not change its startup type until you confirm whether the Windows feature that uses it is needed on this computer.",
+                false);
+        }
+
         private async Task RefreshProcessDataIfDueAsync(DateTime now)
         {
             if (now - _lastProcessRefresh < ProcessRefreshInterval)
@@ -162,11 +205,31 @@ namespace Sentinel.App.Services
             _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus);
         }
 
+        private static string ExtractServiceDisplayName(string message)
+        {
+            const string prefix = "The ";
+            const string marker = " service terminated unexpectedly";
+            int start = message.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            int end = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            return start >= 0 && end > start + prefix.Length
+                ? message.Substring(start + prefix.Length, end - start - prefix.Length).Trim()
+                : string.Empty;
+        }
+
+        private static bool Contains(string? value, string text) =>
+            !string.IsNullOrWhiteSpace(value) &&
+            value.Contains(text, StringComparison.OrdinalIgnoreCase);
+
         public string MachineName => _windowsInfoMonitor.GetMachineName();
         public string UserName => _windowsInfoMonitor.GetUserName();
         public string OperatingSystem => _windowsInfoMonitor.GetOsVersion();
         public bool Is64Bit => _windowsInfoMonitor.Is64BitOperatingSystem();
         public int ProcessorCount => _windowsInfoMonitor.ProcessorCount();
         public TimeSpan Uptime => _windowsInfoMonitor.GetSystemUptime();
+
+        public sealed record VerificationResult(
+            string Title,
+            string Message,
+            bool IsPositive);
     }
 }
