@@ -100,12 +100,21 @@ namespace Sentinel.App
                     snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
                     snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
 
-                bool requiresAttention =
+                bool isStorageSpacesSmpEvent =
+                    snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
+                    snapshot.LatestEventMessage.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase);
+
+                bool hasOtherActionableFinding =
                     snapshot.CriticalEventCount > 0 ||
                     snapshot.FlaggedProcessCount > 0 ||
                     snapshot.FlaggedServiceCount > 0 ||
-                    hasServiceFailure ||
-                    snapshot.RiskScore >= 20;
+                    !snapshot.DefenderEnabled ||
+                    !snapshot.FirewallEnabled;
+
+                bool requiresAttention =
+                    hasOtherActionableFinding ||
+                    (!isStorageSpacesSmpEvent &&
+                        (snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20));
 
                 IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
                 OverallStatusText.Text = requiresAttention
@@ -118,10 +127,10 @@ namespace Sentinel.App
                     ? "I’ll continue monitoring this condition and your computer."
                     : "I’ll continue monitoring your computer.";
 
-                VerifyGuidanceButton.Visibility = hasServiceFailure
+                VerifyGuidanceButton.Visibility = hasServiceFailure && !isStorageSpacesSmpEvent
                     ? Visibility.Visible
                     : Visibility.Collapsed;
-                PrimaryCheckAgainButton.Visibility = hasServiceFailure
+                PrimaryCheckAgainButton.Visibility = hasServiceFailure && !isStorageSpacesSmpEvent
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
