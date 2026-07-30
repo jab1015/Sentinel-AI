@@ -96,6 +96,12 @@ namespace Sentinel.App
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
+                VerifyGuidanceButton.Visibility =
+                    snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
+                    snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase)
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+
                 RiskScoreText.Text = snapshot.RiskScore.ToString();
                 RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
                 RiskSummaryText.Text = snapshot.RiskSummary;
@@ -133,6 +139,33 @@ namespace Sentinel.App
                 case "check-again":
                     await UpdateDashboardAsync();
                     break;
+            }
+        }
+
+        private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e)
+        {
+            VerifyGuidanceButton.IsEnabled = false;
+            VerificationResultBorder.Visibility = Visibility.Visible;
+            VerificationResultTitleText.Text = "Checking current status...";
+            VerificationResultMessageText.Text = "Sentinel AI is verifying the affected Windows service and refreshing current event data.";
+
+            try
+            {
+                MonitoringEngine.VerificationResult result =
+                    await _engine.VerifyCurrentGuidanceAsync();
+
+                VerificationResultTitleText.Text = result.Title;
+                VerificationResultMessageText.Text = result.Message;
+                await UpdateDashboardAsync();
+            }
+            catch
+            {
+                VerificationResultTitleText.Text = "Verification could not complete";
+                VerificationResultMessageText.Text = "Sentinel AI could not read the current service status. No system change was made.";
+            }
+            finally
+            {
+                VerifyGuidanceButton.IsEnabled = true;
             }
         }
 
