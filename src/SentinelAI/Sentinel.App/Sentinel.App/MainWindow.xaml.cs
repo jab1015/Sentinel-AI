@@ -96,11 +96,34 @@ namespace Sentinel.App
                     ? Visibility.Collapsed
                     : Visibility.Visible;
 
-                VerifyGuidanceButton.Visibility =
+                bool hasServiceFailure =
                     snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
-                    snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase)
-                        ? Visibility.Visible
-                        : Visibility.Collapsed;
+                    snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
+
+                bool requiresAttention =
+                    snapshot.CriticalEventCount > 0 ||
+                    snapshot.FlaggedProcessCount > 0 ||
+                    snapshot.FlaggedServiceCount > 0 ||
+                    hasServiceFailure ||
+                    snapshot.RiskScore >= 20;
+
+                IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
+                OverallStatusText.Text = requiresAttention
+                    ? "I analyzed your computer and found something worth reviewing."
+                    : "Everything looks good today.";
+                AttentionStatusText.Text = requiresAttention
+                    ? "I investigated the available evidence and summarized what matters below."
+                    : "There is nothing that requires your attention.";
+                MonitoringStatusText.Text = requiresAttention
+                    ? "I’ll continue monitoring this condition and your computer."
+                    : "I’ll continue monitoring your computer.";
+
+                VerifyGuidanceButton.Visibility = hasServiceFailure
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+                PrimaryCheckAgainButton.Visibility = hasServiceFailure
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
 
                 RiskScoreText.Text = snapshot.RiskScore.ToString();
                 RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
@@ -145,9 +168,10 @@ namespace Sentinel.App
         private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e)
         {
             VerifyGuidanceButton.IsEnabled = false;
+            PrimaryCheckAgainButton.IsEnabled = false;
             VerificationResultBorder.Visibility = Visibility.Visible;
             VerificationResultTitleText.Text = "Checking current status...";
-            VerificationResultMessageText.Text = "Sentinel AI is verifying the affected Windows service and refreshing current event data.";
+            VerificationResultMessageText.Text = "Sentinel AI is verifying current conditions and refreshing the available evidence.";
 
             try
             {
@@ -161,11 +185,12 @@ namespace Sentinel.App
             catch
             {
                 VerificationResultTitleText.Text = "Verification could not complete";
-                VerificationResultMessageText.Text = "Sentinel AI could not read the current service status. No system change was made.";
+                VerificationResultMessageText.Text = "Sentinel AI could not verify the current status. No system change was made.";
             }
             finally
             {
                 VerifyGuidanceButton.IsEnabled = true;
+                PrimaryCheckAgainButton.IsEnabled = true;
             }
         }
 
