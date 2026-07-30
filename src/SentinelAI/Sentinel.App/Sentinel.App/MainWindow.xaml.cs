@@ -81,6 +81,9 @@ namespace Sentinel.App
 
                 GuidanceTitleText.Text = snapshot.GuidanceTitle;
                 GuidanceSeverityText.Text = snapshot.GuidanceSeverity;
+                GuidanceConfidenceText.Text = $"{snapshot.GuidanceConfidencePercent}%";
+                GuidanceConfidenceLabelText.Text = snapshot.GuidanceConfidenceLabel;
+                GuidanceEvidenceText.Text = snapshot.GuidanceEvidence;
                 GuidanceWhatHappenedText.Text = snapshot.GuidanceWhatHappened;
                 GuidanceWhyItMattersText.Text = snapshot.GuidanceWhyItMatters;
                 GuidanceActionText.Text = snapshot.GuidanceRecommendedAction;
