@@ -51,5 +51,7 @@ namespace Sentinel.App.Models
         public string GuidanceRecommendedAction { get; set; } = "Please wait while monitoring starts.";
         public string GuidanceFixAvailability { get; set; } = "Checking";
         public string GuidanceFixDetails { get; set; } = "Sentinel AI is determining whether a safe fix is available.";
+        public string GuidanceActionId { get; set; } = string.Empty;
+        public string GuidanceActionLabel { get; set; } = string.Empty;
     }
 }
