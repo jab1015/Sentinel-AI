@@ -89,6 +89,63 @@ namespace Sentinel.App.Services
                 primaryReason);
         }
 
+        public ServiceStatusSnapshot GetServiceStatus(string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                return new ServiceStatusSnapshot(false, false, "Unknown", "No service name was available for verification.");
+            }
+
+            ServiceController[] services;
+            try
+            {
+                services = ServiceController.GetServices();
+            }
+            catch
+            {
+                return new ServiceStatusSnapshot(false, false, "Unavailable", "Windows service information could not be read.");
+            }
+
+            try
+            {
+                foreach (ServiceController service in services)
+                {
+                    try
+                    {
+                        if (!string.Equals(service.DisplayName, displayName, StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(service.ServiceName, displayName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        service.Refresh();
+                        string status = service.Status.ToString();
+                        bool running = service.Status == ServiceControllerStatus.Running;
+                        return new ServiceStatusSnapshot(
+                            true,
+                            running,
+                            status,
+                            running
+                                ? $"{displayName} is currently running."
+                                : $"{displayName} is currently {status.ToLowerInvariant()}.");
+                    }
+                    catch
+                    {
+                        return new ServiceStatusSnapshot(true, false, "Unavailable", $"{displayName} was found, but its current status could not be read.");
+                    }
+                }
+            }
+            finally
+            {
+                foreach (ServiceController service in services)
+                {
+                    service.Dispose();
+                }
+            }
+
+            return new ServiceStatusSnapshot(false, false, "Not found", $"Windows could not find a service named {displayName}.");
+        }
+
         private static string? EvaluateService(
             ServiceController service,
             ServiceRegistryInfo registryInfo)
@@ -117,7 +174,6 @@ namespace Sentinel.App.Services
             {
                 using RegistryKey? key = Registry.LocalMachine.OpenSubKey(
                     $@"{ServicesRegistryPath}\{serviceName}");
-
                 if (key is null)
                 {
                     return ServiceRegistryInfo.Empty;
@@ -225,5 +281,11 @@ namespace Sentinel.App.Services
             int FlaggedServiceCount,
             string PrimaryServiceName,
             string PrimaryReason);
+
+        public sealed record ServiceStatusSnapshot(
+            bool Found,
+            bool IsRunning,
+            string Status,
+            string Summary);
     }
 }
