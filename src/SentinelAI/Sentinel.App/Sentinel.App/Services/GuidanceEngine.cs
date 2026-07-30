@@ -15,7 +15,8 @@ namespace Sentinel.App.Services
             if (!snapshot.DefenderEnabled)
             {
                 return Result(
-                    "Microsoft Defender needs attention", "High",
+                    "Microsoft Defender needs attention", "High", 96,
+                    "Defender status was read directly from Windows protection state.",
                     "Windows' built-in antivirus protection is not fully active.",
                     "Without active antivirus protection, harmful files and applications may not be detected or blocked.",
                     "Open Windows Security and turn on Microsoft Defender protection. Sentinel AI will verify the status afterward.",
@@ -27,7 +28,8 @@ namespace Sentinel.App.Services
             if (!snapshot.FirewallEnabled)
             {
                 return Result(
-                    "Windows Firewall needs attention", "High",
+                    "Windows Firewall needs attention", "High", 95,
+                    "One or more Windows Firewall profiles reported that protection is not fully enabled.",
                     "One or more Windows Firewall profiles are not fully enabled.",
                     "The firewall helps block unsolicited network traffic and reduces exposure to network attacks.",
                     "Review Windows Firewall and enable protection unless another trusted firewall is managing this computer.",
@@ -40,7 +42,8 @@ namespace Sentinel.App.Services
                 Contains(snapshot.LatestEventMessage, "0x80073D02"))
             {
                 return Result(
-                    "An application update could not finish", "Low",
+                    "An application update could not finish", "Low", 98,
+                    "Windows Update reported error 0x80073D02, which indicates that files needed for the update were in use.",
                     "Windows tried to update an application while files used by that application were still open.",
                     "The computer remains protected, but the application may not receive its newest fixes until the update succeeds.",
                     "Close the application named in the event, then retry the update from Microsoft Store or Windows Update.",
@@ -57,7 +60,8 @@ namespace Sentinel.App.Services
                     : string.Empty;
 
                 return Result(
-                    $"{serviceName} stopped repeatedly", "Moderate",
+                    $"{serviceName} stopped repeatedly", "Moderate", 94,
+                    $"The Service Control Manager named '{serviceName}' and reported an unexpected termination. The event also records repeated occurrences.",
                     $"The Windows service '{serviceName}' terminated unexpectedly.{repetition}",
                     "A repeated service failure can affect the Windows feature or application that depends on that service. It does not automatically mean the computer is infected.",
                     "Open Windows Services, locate the named service, and review whether it is running. Restart it only after confirming that no storage, update, or application task is currently using it.",
@@ -69,7 +73,8 @@ namespace Sentinel.App.Services
             if (snapshot.CriticalEventCount > 0)
             {
                 return Result(
-                    "Windows reported a critical system event", "High",
+                    "Windows reported a critical system event", "High", 88,
+                    $"Windows Event Logs contain {snapshot.CriticalEventCount} critical event(s) in the last 24 hours.",
                     "Windows recorded a critical event during the last 24 hours.",
                     "Critical events can indicate a serious reliability, hardware, driver, or security problem.",
                     "Review the latest event details before making changes. Avoid restarting critical services or deleting files until the cause is identified.",
@@ -80,7 +85,8 @@ namespace Sentinel.App.Services
             if (snapshot.ErrorEventCount > 0)
             {
                 return Result(
-                    "Windows reported an error", "Low",
+                    "Windows reported an error", "Low", 72,
+                    $"Windows Event Logs contain {snapshot.ErrorEventCount} error event(s); the latest source is {snapshot.LatestEventSource}.",
                     HumanizeEvent(snapshot.LatestEventSource, snapshot.LatestEventMessage),
                     "Many Windows errors are temporary, but repeated errors can prevent updates or affect application reliability.",
                     "Follow the recommended action shown here. Sentinel AI will continue monitoring to determine whether the error repeats.",
@@ -92,7 +98,8 @@ namespace Sentinel.App.Services
             if (snapshot.FlaggedServiceCount > 0)
             {
                 return Result(
-                    "A Windows service should be reviewed", "Moderate",
+                    "A Windows service should be reviewed", "Moderate", 78,
+                    $"Service analysis found {snapshot.FlaggedServiceCount} condition(s); the primary finding is {snapshot.PrimaryFlaggedServiceName}.",
                     $"Sentinel AI found a service condition involving {snapshot.PrimaryFlaggedServiceName}.",
                     "Services run in the background and can start automatically, so unusual service locations deserve review.",
                     snapshot.PrimaryFlaggedServiceReason,
@@ -104,7 +111,8 @@ namespace Sentinel.App.Services
             if (snapshot.FlaggedProcessCount > 0)
             {
                 return Result(
-                    "A running application should be reviewed", "Informational",
+                    "A running application should be reviewed", "Informational", 68,
+                    $"Process analysis found {snapshot.FlaggedProcessCount} condition(s) based on executable location, signature, or resource use.",
                     $"Sentinel AI found a process condition involving {snapshot.PrimaryFlaggedProcessName}.",
                     "A flagged location or signature does not automatically mean malware. It means the process deserves additional context.",
                     snapshot.PrimaryFlaggedProcessReason,
@@ -116,7 +124,8 @@ namespace Sentinel.App.Services
             if (snapshot.MemoryUsagePercent >= 90)
             {
                 return Result(
-                    "Memory use is very high", "Moderate",
+                    "Memory use is very high", "Moderate", 99,
+                    "The recommendation is based on the current physical-memory measurement reported by Windows.",
                     $"The computer is using {snapshot.MemoryUsagePercent:0.0}% of available physical memory.",
                     "Very high memory use can cause slow response, application freezes, and increased disk activity.",
                     $"Close unneeded applications and review {snapshot.HighestMemoryProcessName}, currently the highest-memory process.",
@@ -128,7 +137,8 @@ namespace Sentinel.App.Services
             if (snapshot.DiskUsagePercent >= 90)
             {
                 return Result(
-                    "The system drive is running low on space", "Moderate",
+                    "The system drive is running low on space", "Moderate", 99,
+                    "The recommendation is based on the system drive's current used and available capacity.",
                     $"The system drive is {snapshot.DiskUsagePercent:0.0}% full.",
                     "Low disk space can interrupt Windows updates, prevent applications from saving data, and reduce reliability.",
                     "Review Windows Storage settings and remove only files you recognize or safe temporary-file categories.",
@@ -138,7 +148,8 @@ namespace Sentinel.App.Services
             }
 
             return Result(
-                "Your computer looks healthy", "Low",
+                "Your computer looks healthy", "Low", 91,
+                "Defender and Firewall are active, and no current critical condition matched a higher-priority guidance rule.",
                 "Core protections are active and no urgent issue currently requires action.",
                 "Sentinel AI is continuing to watch Windows events, processes, services, system resources, Defender, and Firewall.",
                 "No action is needed right now.",
@@ -190,19 +201,36 @@ namespace Sentinel.App.Services
         private static GuidanceResult Result(
             string title,
             string severity,
+            int confidencePercent,
+            string evidence,
             string whatHappened,
             string whyItMatters,
             string recommendedAction,
             string fixAvailability,
             string fixDetails,
             string actionId = "",
-            string actionLabel = "") =>
-            new(title, severity, whatHappened, whyItMatters, recommendedAction,
+            string actionLabel = "")
+        {
+            string confidenceLabel = confidencePercent switch
+            {
+                >= 90 => "Verified condition",
+                >= 75 => "High confidence",
+                >= 55 => "Likely assessment",
+                _ => "Possible assessment"
+            };
+
+            return new GuidanceResult(
+                title, severity, confidencePercent, confidenceLabel, evidence,
+                whatHappened, whyItMatters, recommendedAction,
                 fixAvailability, fixDetails, actionId, actionLabel);
+        }
 
         public sealed record GuidanceResult(
             string Title,
             string Severity,
+            int ConfidencePercent,
+            string ConfidenceLabel,
+            string Evidence,
             string WhatHappened,
             string WhyItMatters,
             string RecommendedAction,
