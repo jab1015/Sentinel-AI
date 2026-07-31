@@ -157,6 +157,7 @@ namespace Sentinel.App.Services
             };
 
             SuppressNonActionableStorageSpacesSmp(snapshot);
+            SuppressTransientWindowsUpdateFileInUse(snapshot);
 
             RiskAssessmentEngine.RiskAssessment assessment =
                 _riskAssessmentEngine.Assess(snapshot);
@@ -262,6 +263,29 @@ namespace Sentinel.App.Services
                 snapshot.PrimaryFlaggedServiceName = "None";
                 snapshot.PrimaryFlaggedServiceReason = "No actionable service conditions were detected.";
             }
+        }
+
+        private static void SuppressTransientWindowsUpdateFileInUse(SystemSnapshot snapshot)
+        {
+            bool isTransientUpdateEvent =
+                Contains(snapshot.LatestEventSource, "WindowsUpdateClient") &&
+                Contains(snapshot.LatestEventMessage, "0x80073D02");
+
+            if (!isTransientUpdateEvent)
+            {
+                return;
+            }
+
+            // 0x80073D02 means an app/package update could not replace files that were
+            // currently in use. Windows/Microsoft Store normally retries later. Treat a
+            // single observed event as self-recovering evidence instead of interrupting
+            // the user. Persistent/repeated update failures can be escalated separately.
+            snapshot.CriticalEventCount = 0;
+            snapshot.ErrorEventCount = 0;
+            snapshot.LatestEventTime = null;
+            snapshot.LatestEventSource = "None";
+            snapshot.LatestEventMessage =
+                "A temporary Windows Update file-in-use condition was detected. Windows can retry automatically; Sentinel will continue monitoring for recurrence.";
         }
 
         private async Task RefreshProcessDataIfDueAsync(DateTime now)
