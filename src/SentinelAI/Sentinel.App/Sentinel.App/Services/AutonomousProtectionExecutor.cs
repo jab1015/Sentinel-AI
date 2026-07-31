@@ -39,15 +39,15 @@ namespace Sentinel.App.Services
                 {
                     case "refresh-security-state":
                         await refreshSecurityStateAsync().ConfigureAwait(false);
-                        return AutonomousProtectionExecutionResult.Success(
+                        return AutonomousProtectionExecutionResult.VerificationPending(
                             "Security state refreshed",
-                            "Sentinel refreshed the current Windows security state and will verify it during the next investigation pass.");
+                            "Sentinel refreshed the current Windows security state. Success will be reported only after a subsequent investigation verifies the protected state.");
 
                     case "retry-transient-operation":
                         await retryTransientOperationAsync().ConfigureAwait(false);
-                        return AutonomousProtectionExecutionResult.Success(
-                            "Temporary operation retried",
-                            "Sentinel safely retried the temporary operation and will verify whether the condition returns.");
+                        return AutonomousProtectionExecutionResult.VerificationPending(
+                            "Temporary condition rechecked",
+                            "Sentinel safely refreshed the transient-operation evidence. The condition will be considered resolved only if a subsequent investigation confirms it did not recur.");
 
                     default:
                         return AutonomousProtectionExecutionResult.NotAttempted(
@@ -72,8 +72,8 @@ namespace Sentinel.App.Services
             public static AutonomousProtectionExecutionResult NotAttempted(string summary) =>
                 new(false, false, string.Empty, summary, null);
 
-            public static AutonomousProtectionExecutionResult Success(string title, string summary) =>
-                new(true, true, title, summary, DateTimeOffset.Now);
+            public static AutonomousProtectionExecutionResult VerificationPending(string title, string summary) =>
+                new(true, false, title, summary, DateTimeOffset.Now);
 
             public static AutonomousProtectionExecutionResult Failure(string title, string summary) =>
                 new(true, false, title, summary, DateTimeOffset.Now);
