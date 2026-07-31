@@ -9,8 +9,7 @@ namespace Sentinel.App
 {
     public sealed partial class MainWindow
     {
-        private readonly AskSentinelContextBuilder _askSentinelContextBuilder = new();
-        private readonly AskSentinelLocalResponder _askSentinelLocalResponder = new();
+        private readonly AskSentinelResponseOrchestrator _askSentinelResponseOrchestrator = new();
         private bool _askSentinelBusy;
 
         private async void AskSentinelButton_Click(object sender, RoutedEventArgs e)
@@ -53,12 +52,14 @@ namespace Sentinel.App
             {
                 await _engine.RefreshAsync();
                 var snapshot = _engine.CurrentSnapshot;
-                _ = _askSentinelContextBuilder.Build(snapshot);
+                AskSentinelResponseOrchestrator.AskSentinelResponse response =
+                    _askSentinelResponseOrchestrator.CreateResponse(question, snapshot);
 
-                string answer = _askSentinelLocalResponder.Answer(question, snapshot);
-                AskSentinelAnswerText.Text = answer;
+                AskSentinelAnswerText.Text = response.Answer;
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
-                AskSentinelStatusText.Text = $"Answered from verified local evidence updated {snapshot.Timestamp:h:mm:ss tt}.";
+                AskSentinelStatusText.Text = response.IsInsufficientEvidence
+                    ? $"Checked verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}; Sentinel will not guess beyond it."
+                    : $"Answered from verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}.";
             }
             catch (Exception)
             {
