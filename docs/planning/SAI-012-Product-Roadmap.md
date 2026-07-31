@@ -1,6 +1,6 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.5  
+**Version:** 2.6  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
@@ -16,15 +16,16 @@
 - Structured production diagnostic logging foundation
 - Fresh-clone and release-configuration verification foundation
 - Automated development regression safety coverage
+- Startup performance profiling and launch-path optimization
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active — 3 of 12 complete**
+**Status: Active — 4 of 12 complete**
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
-4. [ ] Performance profiling and optimization.
+4. [x] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
@@ -34,7 +35,7 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Regression coverage now automatically verifies key Ask Sentinel safety invariants in Debug builds before the main window opens. Unsupported claims of completed remediation, performed actions, or threats must remain blocked, while grounded healthy responses must remain allowed.
+The application now records launch-to-window-activation timing in diagnostics. Startup logging is non-blocking, avoiding disk I/O on the critical first-window path, and the UI is activated before development-only regression verification runs.
 
 ## Progress Baseline
 
@@ -42,4 +43,4 @@ Regression coverage now automatically verifies key Ask Sentinel safety invariant
 
 ## Product Rule
 
-Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, preserve fail-safe safety behavior through automated regression checks, and make commercial release readiness reproducible from source control.
+Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, preserve fail-safe safety behavior through automated regression checks, and keep release performance measurable without delaying the user's first visible experience.
