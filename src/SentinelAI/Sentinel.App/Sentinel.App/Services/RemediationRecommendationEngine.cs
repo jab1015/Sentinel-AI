@@ -29,20 +29,30 @@ namespace Sentinel.App.Services
             {
                 return new RemediationRecommendation(
                     true,
-                    true,
-                    "restore-defender-protection",
+                    false,
+                    "refresh-security-state",
                     "Microsoft Defender",
-                    "Microsoft Defender protection is not enabled. Sentinel can guide a protected recovery action, but security settings must not be changed silently.");
+                    "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
             }
 
             if (!snapshot.FirewallEnabled)
             {
                 return new RemediationRecommendation(
                     true,
-                    true,
-                    "restore-firewall-protection",
+                    false,
+                    "refresh-security-state",
                     "Windows Firewall",
-                    "Windows Firewall protection is not enabled. Sentinel can guide restoration, but firewall policy changes require explicit approval.");
+                    "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
+            }
+
+            if (IsTransientWindowsUpdateCondition(snapshot))
+            {
+                return new RemediationRecommendation(
+                    true,
+                    false,
+                    "retry-transient-operation",
+                    "Windows Update",
+                    "Sentinel can safely refresh the transient Windows Update evidence automatically and continue monitoring for recurrence.");
             }
 
             if (snapshot.FlaggedConnectionCount > 0 &&
@@ -70,6 +80,14 @@ namespace Sentinel.App.Services
             return RemediationRecommendation.None(
                 "The investigation requires attention, but the current evidence does not justify a supported system-changing action.");
         }
+
+        private static bool IsTransientWindowsUpdateCondition(SystemSnapshot snapshot) =>
+            Contains(snapshot.LatestEventSource, "WindowsUpdateClient") &&
+            Contains(snapshot.LatestEventMessage, "0x80073D02");
+
+        private static bool Contains(string? value, string text) =>
+            !string.IsNullOrWhiteSpace(value) &&
+            value.Contains(text, StringComparison.OrdinalIgnoreCase);
 
         private static bool HasValue(string? value) =>
             !string.IsNullOrWhiteSpace(value) &&
