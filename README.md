@@ -2,7 +2,7 @@
 
 > **Windows Investigation, Security & Remediation Assistant**
 
-Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language investigation conclusions only when attention is warranted, and provides policy-controlled remediation and autonomous protection foundations.
+Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language conclusions when attention is warranted, provides policy-controlled remediation/autonomous protection, and is now adding evidence-grounded Ask Sentinel assistance.
 
 ---
 
@@ -10,13 +10,13 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 **Status:** Active Development  
 **Production Branch:** `main`  
-**Current Phase:** Phase 5 — Remaining Remediation Integration & Performance Hardening  
+**Current Phase:** Phase 6 — Ask Sentinel / AI Assistance  
+**Phase 6 Progress:** **1 of 6 complete**  
+**Phase 5:** **Complete**  
 **Autonomous Protection Core:** **Complete — 10 of 10**  
-**Estimated Overall Product Progress:** **85%**
+**Estimated Overall Product Progress:** **88%**
 
-The application builds, launches, monitors the system continuously, suppresses non-actionable findings, investigates sustained memory pressure with application-level context, and has been repeatedly runtime-verified by the Product Owner.
-
-A remaining performance item is intermittent startup/initial-investigation lag observed during recent runtime verification. This is tracked for continued profiling and hardening and does not block current successful builds.
+The application builds, launches promptly, monitors continuously, suppresses non-actionable findings, investigates causes using local evidence, supports safely governed remediation, and has been repeatedly runtime verified by the Product Owner.
 
 ---
 
@@ -28,90 +28,60 @@ A remaining performance item is intermittent startup/initial-investigation lag o
 | Core system monitoring | Complete |
 | Security posture monitoring | Complete |
 | Investigation Engine | Complete — 18 of 18 |
-| Plain-language investigation experience | Complete core |
+| Investigation experience | Complete core |
 | Safe Remediation Foundation | Complete — 10 of 10 |
-| Remediation decision integration | Complete core |
-| Recurrence-aware investigation | Complete foundation |
 | Autonomous Protection core | Complete — 10 of 10 |
-| Memory-pressure investigation | Implemented and runtime verified |
-| Preferred-name onboarding | Implemented and runtime verified |
-| Performance / startup responsiveness | Improved; intermittent lag remains under hardening |
-| User approval workflow | Remaining Phase 5 integration |
-| Quarantine/recovery management UI | Remaining Phase 5 integration |
-| Remediation/investigation history UI | Remaining Phase 5 integration |
-| Network endpoint attribution/response | Remaining Phase 5 integration |
-| Background actionable notifications | Remaining Phase 5 integration |
-| Failure-path/regression testing | Remaining Phase 5 integration |
-| Ask Sentinel / AI Assistance | Phase 6 planned |
+| Phase 5 remediation integration | Complete — 7 of 7 |
+| Preferred-name onboarding | Complete / runtime verified |
+| Memory-pressure investigation | Complete / runtime verified |
+| Startup responsiveness | Current behavior accepted; further hardening in Phase 7 |
+| Ask Sentinel / AI Assistance | Active — 1 of 6 |
 | Production hardening / commercial release | Phase 7 planned / partially underway |
-
----
-
-# Verified Runtime Features
-
-- Native CPU monitoring through `GetSystemTimes`
-- Native physical-memory monitoring through `GlobalMemoryStatusEx`
-- System-drive used, total, and percentage reporting
-- Network download and upload throughput
-- Running process count and highest-memory process
-- Sustained memory-pressure investigation with application contributor context
-- Microsoft Defender enabled status
-- Windows Firewall enabled status
-- Windows Event Log investigation
-- Process, service, persistence, and network evidence collection
-- Risk and confidence evaluation
-- Plain-language investigation summaries
-- Healthy-state suppression of unnecessary technical warnings
-- Guided Windows actions when user intervention is actually required
-- Five-second dashboard refresh cadence
-- Deferred first investigation pass so the application shell paints promptly
-- Per-Windows-profile preferred-name onboarding
-
----
-
-# Remediation & Autonomous Protection
-
-Completed foundation and core:
-
-- Central remediation policy and safety gating
-- Explicit evidence requirements before system-changing actions
-- User approval requirements for moderate/high-risk actions
-- Windows protected-component safeguards
-- Verified process termination service
-- Verified outbound Windows Firewall blocking service
-- File quarantine and hash-verified restore service
-- Remediation audit trail and outcome state
-- Investigation recurrence tracking integrated into the monitoring pipeline
-- Remediation recommendation state carried in the system snapshot
-- Low-risk automatic-action gating
-- Evidence-confidence gating
-- Execution-time revalidation
-- Safe security-state refresh and transient-operation retry handling
-- Verification-pending outcomes rather than unverified success claims
-- Recurrence-aware escalation safeguards
-- No automatic force-closing of applications for transient Windows Update error `0x80073D02`
-
-System-changing capabilities remain policy controlled. Sentinel prefers silent monitoring when Windows is expected to self-correct and does not interrupt the user for a single transient condition.
 
 ---
 
 # User Experience Direction
 
-Sentinel is designed for non-technical users.
+Sentinel is designed for non-technical users. When the system is healthy, it stays calm and says so. When evidence warrants attention, Sentinel investigates first, explains what happened and why it matters, identifies contributing causes when evidence supports them, recommends or performs safe actions under policy, requests approval when required, and verifies system-changing outcomes.
 
-Normal state:
+Technical details remain available through progressive disclosure rather than overwhelming the normal experience.
 
-- **Your computer is healthy.**
-- Nothing requires attention.
-- Technical evidence remains available through progressive disclosure.
+---
 
-Issue state:
+# Phase 5 — Complete
 
-- Sentinel investigates first.
-- It explains what happened, what is contributing, why it matters, and what should be done.
-- It fixes safe conditions automatically only when policy permits.
-- It asks the user only when approval, elevation, or a human decision is genuinely required.
-- It verifies the outcome after remediation.
+Phase 5 completed remediation integration and Autonomous Protection, including:
+
+- User-facing approval workflow and execution-time approval revalidation
+- Quarantine/restore foundations and presentation integration
+- Investigation/remediation history presentation
+- Network attribution/response integration
+- Background actionable attention signaling
+- Failure-path and remediation regression fail-safe safeguards
+- Accepted current startup/load behavior
+- Autonomous Protection core — 10 of 10
+- Remaining Phase 5 integration milestone — 7 of 7
+
+---
+
+# Phase 6 — Ask Sentinel / AI Assistance
+
+**Status: Active — 1 of 6 complete**
+
+1. [x] Grounded local evidence context layer.
+2. [ ] Natural-language Ask Sentinel interaction surface.
+3. [ ] Evidence-grounded response orchestration.
+4. [ ] Investigation-history-aware explanations.
+5. [ ] Explainable recommendations with strict no-invention safeguards.
+6. [ ] Integration, failure-path, and runtime verification.
+
+Ask Sentinel must remain grounded in verified Sentinel evidence. It must explicitly acknowledge insufficient evidence rather than inventing system state, threats, causes, history, or remediation outcomes.
+
+---
+
+# Phase 7 — Production Hardening & Commercial Release
+
+Remaining release work includes structured diagnostics, fresh-clone/release verification, automated regression coverage, performance optimization, long-duration stability tests, Windows 10/11 verification, installer/uninstaller, code signing, application updates, privacy/user/troubleshooting documentation, accessibility/UX polish, and release acceptance testing.
 
 ---
 
@@ -130,84 +100,22 @@ Issue state:
 
 ---
 
-# Architecture
-
-```text
-User Interface
-      │
-Investigation / Monitoring Engine
-      │
-System Snapshot + Evidence
-      │
-Classification / Guidance / Policy
-      │
-Remediation + Recurrence Decisions
-      │
-Verified Windows Remediation Services
-      │
-Windows and .NET System APIs
-```
-
-Core principles:
+# Core Product Rules
 
 - Evidence before action
+- Investigate causes rather than merely report metrics
 - Least-risk remediation
-- Verify every system-changing outcome
-- Do not claim success without verification
-- Progressive disclosure for technical information
+- Verify system-changing outcomes
+- Never claim success without verification
+- Never invent system state in AI assistance
 - Keep healthy users undisturbed
 - Preserve working features during expansion
-- Maintain clear service boundaries
-
----
-
-# Current Phase 5 Remaining Work
-
-1. Complete user-facing approval workflow for supported moderate-risk actions.
-2. Complete quarantine management and safe restore presentation.
-3. Add remediation/investigation history presentation without cluttering healthy state.
-4. Expand network endpoint attribution and response.
-5. Add background/minimized notifications for genuinely actionable findings.
-6. Complete failure-path and remediation integration regression testing.
-7. Continue startup and investigation performance profiling and eliminate the intermittent lag observed in recent runtime runs.
-
----
-
-# Phase 6 — Ask Sentinel / AI Assistance
-
-Planned capabilities:
-
-- Natural-language questions grounded in current local evidence
-- Investigation-history-aware explanations
-- Verified system-state answers
-- Explainable recommendations
-- No unsupported claims or invented system state
-
----
-
-# Phase 7 — Production Hardening & Commercial Release
-
-Remaining release work includes:
-
-- Structured logging and diagnostics
-- Fresh-clone build verification
-- Release configuration verification
-- Automated regression coverage
-- Performance profiling and optimization
-- One-hour and eight-hour stability testing
-- Windows 10 and Windows 11 compatibility verification
-- Installer/uninstaller
-- Code signing
-- Application updates
-- Privacy, user, and troubleshooting documentation
-- Accessibility and UX polish
-- Release acceptance testing
 
 ---
 
 # Progress Baseline
 
-**85% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Future progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
+**88% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
 
 ---
 
