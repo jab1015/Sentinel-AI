@@ -13,6 +13,8 @@ namespace Sentinel.App
         private readonly DispatcherTimer _timer = new();
         private readonly MonitoringEngine _engine = new();
         private readonly UserProfileService _userProfileService = new();
+        private readonly RemediationApprovalCoordinator _approvalCoordinator = new();
+        private readonly ApprovedServiceRestartCoordinator _approvedServiceRestartCoordinator = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private string _guidanceActionId = string.Empty;
@@ -108,6 +110,11 @@ namespace Sentinel.App
                 bool hasSecurityOrProcessFinding = snapshot.FlaggedProcessCount > 0 || !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
                 bool hasActionableServiceOrEventFinding = !isStorageSpacesSmpFinding && (snapshot.FlaggedServiceCount > 0 || snapshot.CriticalEventCount > 0 || snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20);
                 bool requiresAttention = hasSecurityOrProcessFinding || hasActionableServiceOrEventFinding || memoryRequiresAttention;
+                bool hasApprovalAction = snapshot.AutonomousProtectionRequiresUserApproval &&
+                    !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
+                    !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
+                    !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
 
                 if (memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding)
                 {
@@ -125,8 +132,18 @@ namespace Sentinel.App
                 }
                 else
                 {
-                    GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
-                    GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
+                    if (hasApprovalAction)
+                    {
+                        _guidanceActionId = "approve-remediation";
+                        GuidanceActionButton.Content = "Review recommended fix";
+                        GuidanceActionButton.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
+                        GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
+                    }
+
                     IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
                     InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
 
@@ -134,7 +151,9 @@ namespace Sentinel.App
                     {
                         OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
                         AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
-                        MonitoringStatusText.Text = "I’ll continue monitoring this condition and your computer.";
+                        MonitoringStatusText.Text = hasApprovalAction
+                            ? "I found a fix that requires your approval before Sentinel can make the change."
+                            : "I’ll continue monitoring this condition and your computer.";
                         RiskSummaryText.Text = snapshot.RiskSummary;
                         RecommendationText.Text = snapshot.Recommendation;
                     }
@@ -160,6 +179,7 @@ namespace Sentinel.App
         {
             switch (_guidanceActionId)
             {
+                case "approve-remediation": await ReviewAndExecuteApprovedRemediationAsync(); break;
                 case "open-services": Launch("services.msc"); break;
                 case "open-task-manager": Launch("taskmgr.exe"); break;
                 case "open-windows-security": Launch("windowsdefender:"); break;
@@ -168,6 +188,102 @@ namespace Sentinel.App
                 case "open-storage": Launch("ms-settings:storagesense"); break;
                 case "check-again": await UpdateDashboardAsync(); break;
             }
+        }
+
+        private async Task ReviewAndExecuteApprovedRemediationAsync()
+        {
+            var snapshot = _engine.CurrentSnapshot;
+            RemediationApprovalCoordinator.RemediationApprovalRequest? request = _approvalCoordinator.CreateRequest(snapshot);
+
+            if (request is null)
+            {
+                ShowVerificationResult("No approved action is available", "Sentinel rechecked the current investigation and did not find a system change that requires your approval.");
+                return;
+            }
+
+            StackPanel review = new() { Spacing = 10 };
+            review.Children.Add(new TextBlock { Text = request.Summary, TextWrapping = TextWrapping.Wrap });
+            review.Children.Add(new TextBlock { Text = $"Action: {FormatAction(request.Action)}", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            review.Children.Add(new TextBlock { Text = $"Target: {request.Target}", TextWrapping = TextWrapping.Wrap });
+            review.Children.Add(new TextBlock { Text = "Sentinel will recheck the evidence before acting and will verify the result afterward. This approval is valid for one use only and expires shortly.", TextWrapping = TextWrapping.Wrap });
+
+            ContentDialog dialog = new()
+            {
+                Title = request.Title,
+                Content = review,
+                PrimaryButtonText = "Approve this action",
+                CloseButtonText = "Not now",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = ((FrameworkElement)Content).XamlRoot
+            };
+
+            ContentDialogResult dialogResult = await dialog.ShowAsync();
+            if (dialogResult != ContentDialogResult.Primary)
+            {
+                ShowVerificationResult("No change made", "You did not approve the recommended action. Sentinel will continue monitoring the condition.");
+                return;
+            }
+
+            GuidanceActionButton.IsEnabled = false;
+            try
+            {
+                await _engine.RefreshAsync();
+                var currentSnapshot = _engine.CurrentSnapshot;
+                RemediationApprovalCoordinator.ApprovalValidationResult validation = _approvalCoordinator.Validate(request, currentSnapshot, userApproved: true);
+
+                if (!validation.IsApproved)
+                {
+                    ShowVerificationResult("Approval could not be used", validation.Message);
+                    await UpdateDashboardAsync();
+                    return;
+                }
+
+                if (!request.Action.Equals("restart-service", StringComparison.OrdinalIgnoreCase))
+                {
+                    ShowVerificationResult(
+                        "This fix is not enabled yet",
+                        "Sentinel verified your approval, but this specific remediation is not yet connected to a production execution path. No system change was made.");
+                    await UpdateDashboardAsync();
+                    return;
+                }
+
+                ApprovedRemediationExecutor.ApprovedRemediationResult result = await _approvedServiceRestartCoordinator.ExecuteAsync(
+                    currentSnapshot,
+                    request,
+                    validation,
+                    canRequestElevation: true);
+
+                ShowVerificationResult(
+                    string.IsNullOrWhiteSpace(result.Title) ? "Action not performed" : result.Title,
+                    result.Summary);
+
+                await UpdateDashboardAsync();
+            }
+            catch
+            {
+                ShowVerificationResult("The action could not complete", "Sentinel could not safely complete the approved action. No success was reported, and Sentinel will continue monitoring.");
+            }
+            finally
+            {
+                GuidanceActionButton.IsEnabled = true;
+            }
+        }
+
+        private static string FormatAction(string action) => action switch
+        {
+            "restart-service" => "Restart the affected Windows service",
+            "contain-process" => "Close the identified process",
+            "block-outbound-endpoint" => "Block the identified outbound connection",
+            "quarantine-file" => "Quarantine the identified file",
+            "restore-quarantined-file" => "Restore the quarantined file",
+            _ => action
+        };
+
+        private void ShowVerificationResult(string title, string message)
+        {
+            VerificationResultBorder.Visibility = Visibility.Visible;
+            VerificationResultTitleText.Text = title;
+            VerificationResultMessageText.Text = message;
         }
 
         private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e)
