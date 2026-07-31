@@ -5,40 +5,45 @@
 
 using System;
 using System.Threading.Tasks;
+using Sentinel.App.Models;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Executes a user-approved remediation only after validating and consuming
-    /// the exact short-lived approval issued for that action.
+    /// Executes a remediation only after the approval coordinator has validated
+    /// the user's short-lived consent against the current investigation state.
     /// </summary>
     public sealed class ApprovedRemediationExecutor
     {
         public async Task<ApprovedRemediationResult> ExecuteAsync(
-            RemediationPolicy.RemediationDecision decision,
-            RemediationApproval? approval,
+            SystemSnapshot currentSnapshot,
+            RemediationApprovalCoordinator.RemediationApprovalRequest request,
+            RemediationApprovalCoordinator.ApprovalValidationResult validation,
             Func<Task> executeAsync)
         {
-            ArgumentNullException.ThrowIfNull(decision);
+            ArgumentNullException.ThrowIfNull(currentSnapshot);
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(validation);
             ArgumentNullException.ThrowIfNull(executeAsync);
 
-            if (!decision.Allowed || !decision.RequiresUserApproval)
+            if (!validation.IsApproved)
             {
-                return ApprovedRemediationResult.NotAttempted(
-                    "This action is not eligible for the user-approval execution path.");
+                return ApprovedRemediationResult.NotAttempted(validation.Message);
             }
 
-            if (string.IsNullOrWhiteSpace(decision.ApprovalScope) ||
-                decision.ApprovalExpiresAfter is null)
+            // Defense in depth: never trust approval validation alone. Recheck the
+            // exact action, target, reason, confidence, and expiration immediately
+            // before changing system state.
+            if (DateTimeOffset.Now > request.ExpiresAt ||
+                !currentSnapshot.InvestigationRequiresAttention ||
+                !currentSnapshot.AutonomousProtectionRequiresUserApproval ||
+                !string.Equals(request.Action, currentSnapshot.AutonomousProtectionAction, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(request.Target, currentSnapshot.AutonomousProtectionTarget, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(request.ReasonCode, currentSnapshot.InvestigationReasonCode, StringComparison.OrdinalIgnoreCase) ||
+                currentSnapshot.GuidanceConfidencePercent < request.EvidenceConfidencePercent)
             {
                 return ApprovedRemediationResult.NotAttempted(
-                    "Sentinel could not verify a safe approval scope for this action.");
-            }
-
-            if (approval is null || !approval.TryConsume(decision.ApprovalScope))
-            {
-                return ApprovedRemediationResult.NotAttempted(
-                    "The approval is missing, expired, already used, or does not match this action. Sentinel made no change.");
+                    "The investigation changed after approval. Sentinel made no system change and will investigate again.");
             }
 
             try
@@ -46,8 +51,8 @@ namespace Sentinel.App.Services
                 await executeAsync().ConfigureAwait(false);
 
                 return ApprovedRemediationResult.VerificationPending(
-                    decision.Title,
-                    "The approved action was attempted. Sentinel will report success only after follow-up evidence verifies the expected result.");
+                    request.Title,
+                    "The approved action was attempted for the exact target you approved. Sentinel will report success only after follow-up evidence verifies the expected result.");
             }
             catch (Exception ex)
             {
