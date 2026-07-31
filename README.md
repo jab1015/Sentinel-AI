@@ -2,7 +2,7 @@
 
 > **Windows Investigation, Security & Remediation Assistant**
 
-Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language conclusions when attention is warranted, provides policy-controlled remediation/autonomous protection, and is now adding evidence-grounded Ask Sentinel assistance.
+Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language conclusions when attention is warranted, provides policy-controlled remediation/autonomous protection, and now includes evidence-grounded Ask Sentinel assistance with verified investigation-history awareness.
 
 ---
 
@@ -11,12 +11,12 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 **Status:** Active Development  
 **Production Branch:** `main`  
 **Current Phase:** Phase 6 — Ask Sentinel / AI Assistance  
-**Phase 6 Progress:** **3 of 6 complete**  
+**Phase 6 Progress:** **4 of 6 complete**  
 **Phase 5:** **Complete**  
 **Autonomous Protection Core:** **Complete — 10 of 10**  
-**Estimated Overall Product Progress:** **92%**
+**Estimated Overall Product Progress:** **94%**
 
-The application builds, launches promptly, monitors continuously, suppresses non-actionable findings, investigates causes using local evidence, supports safely governed remediation, and now includes a natural-language Ask Sentinel surface with centralized evidence-grounded response orchestration.
+The application builds, launches promptly, monitors continuously, suppresses non-actionable findings, investigates causes using local evidence, supports safely governed remediation, and includes a natural-language Ask Sentinel surface with centralized evidence-grounded response orchestration and persisted investigation-history awareness.
 
 ---
 
@@ -35,7 +35,7 @@ The application builds, launches promptly, monitors continuously, suppresses non
 | Preferred-name onboarding | Complete / runtime verified |
 | Memory-pressure investigation | Complete / runtime verified |
 | Startup responsiveness | Current behavior accepted; further hardening in Phase 7 |
-| Ask Sentinel / AI Assistance | Active — 3 of 6 |
+| Ask Sentinel / AI Assistance | Active — 4 of 6 |
 | Production hardening / commercial release | Phase 7 planned / partially underway |
 
 ---
@@ -66,18 +66,18 @@ Phase 5 completed remediation integration and Autonomous Protection, including:
 
 # Phase 6 — Ask Sentinel / AI Assistance
 
-**Status: Active — 3 of 6 complete**
+**Status: Active — 4 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
 3. [x] Evidence-grounded response orchestration.
-4. [ ] Investigation-history-aware explanations.
+4. [x] Investigation-history-aware explanations.
 5. [ ] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
 
-Ask Sentinel now refreshes verified system evidence, builds a grounded evidence context, routes the question through a central response orchestrator, and explicitly identifies insufficient-evidence outcomes so Sentinel does not guess beyond what it can verify.
+Ask Sentinel refreshes verified system evidence before answering and can now use persisted Sentinel investigation history for explicit questions about prior occurrences. It distinguishes verified matching history from unrelated past findings and does not claim a condition happened before unless the stored evidence supports that conclusion.
 
-Ask Sentinel must remain grounded in verified Sentinel evidence. It must explicitly acknowledge insufficient evidence rather than inventing system state, threats, causes, history, or remediation outcomes.
+Ask Sentinel must remain grounded in verified Sentinel evidence and persisted Sentinel history. It must explicitly acknowledge insufficient evidence rather than inventing system state, threats, causes, history, or remediation outcomes.
 
 ---
 
@@ -109,7 +109,7 @@ Remaining release work includes structured diagnostics, fresh-clone/release veri
 - Least-risk remediation
 - Verify system-changing outcomes
 - Never claim success without verification
-- Never invent system state in AI assistance
+- Never invent system state or history in AI assistance
 - Keep healthy users undisturbed
 - Preserve working features during expansion
 
@@ -117,7 +117,7 @@ Remaining release work includes structured diagnostics, fresh-clone/release veri
 
 # Progress Baseline
 
-**92% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
+**94% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
 
 ---
 
