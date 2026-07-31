@@ -12,8 +12,8 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Coordinates Ask Sentinel responses through verified current evidence and,
-    /// when the user explicitly asks about prior occurrences, persisted Sentinel
-    /// investigation history. The orchestration layer never adds unsupported facts.
+    /// when appropriate, persisted investigation history or safeguarded recommendation
+    /// logic. The orchestration layer never adds unsupported facts.
     /// </summary>
     public sealed class AskSentinelResponseOrchestrator
     {
@@ -22,6 +22,7 @@ namespace Sentinel.App.Services
 
         private readonly AskSentinelContextBuilder _contextBuilder = new();
         private readonly AskSentinelLocalResponder _localResponder = new();
+        private readonly AskSentinelRecommendationAdvisor _recommendationAdvisor = new();
 
         public AskSentinelResponse CreateResponse(
             string question,
@@ -34,11 +35,19 @@ namespace Sentinel.App.Services
             AskSentinelContextBuilder.AskSentinelContext context = _contextBuilder.Build(snapshot);
             string answer;
             bool usedHistory = false;
+            bool usedRecommendationGuard = false;
 
             if (IsHistoryQuestion(question))
             {
                 answer = CreateHistoryAnswer(snapshot, history ?? Array.Empty<InvestigationHistoryService.InvestigationHistoryEntry>());
                 usedHistory = !answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase);
+            }
+            else if (IsRecommendationQuestion(question))
+            {
+                AskSentinelRecommendationAdvisor.RecommendationResult recommendation =
+                    _recommendationAdvisor.CreateRecommendation(snapshot);
+                answer = recommendation.Answer;
+                usedRecommendationGuard = true;
             }
             else
             {
@@ -59,6 +68,10 @@ namespace Sentinel.App.Services
             {
                 groundingSummary = "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
             }
+            else if (usedRecommendationGuard)
+            {
+                groundingSummary = "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
+            }
             else if (insufficientEvidence)
             {
                 groundingSummary = $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
@@ -75,6 +88,7 @@ namespace Sentinel.App.Services
                 RequiresAttention: context.RequiresAttention,
                 IsInsufficientEvidence: insufficientEvidence,
                 UsedInvestigationHistory: usedHistory,
+                UsedRecommendationGuard: usedRecommendationGuard,
                 GroundingSummary: groundingSummary);
         }
 
@@ -89,6 +103,20 @@ namespace Sentinel.App.Services
                    value.Contains("last time") ||
                    value.Contains("past") ||
                    value.Contains("earlier");
+        }
+
+        private static bool IsRecommendationQuestion(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            return value.Contains("recommend") ||
+                   value.Contains("should i") ||
+                   value.Contains("what should") ||
+                   value.Contains("what do i do") ||
+                   value.Contains("what can i do") ||
+                   value.Contains("how do i fix") ||
+                   value.Contains("how should") ||
+                   value.Contains("fix this") ||
+                   value.Contains("do about");
         }
 
         private static string CreateHistoryAnswer(
@@ -141,6 +169,7 @@ namespace Sentinel.App.Services
             bool RequiresAttention,
             bool IsInsufficientEvidence,
             bool UsedInvestigationHistory,
+            bool UsedRecommendationGuard,
             string GroundingSummary);
     }
 }
