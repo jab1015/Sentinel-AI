@@ -32,8 +32,18 @@ namespace Sentinel.App
             if (_initialRefreshStarted) return;
             _initialRefreshStarted = true;
             Activated -= MainWindow_Activated;
-            await Task.Delay(250);
+
             await EnsurePreferredNameAsync();
+
+            // Let WinUI finish presenting the shell before the first deep investigation.
+            // This keeps startup responsive while preserving the full monitoring pass.
+            await Task.Yield();
+            _ = RunInitialRefreshAsync();
+        }
+
+        private async Task RunInitialRefreshAsync()
+        {
+            await Task.Delay(500);
             await UpdateDashboardAsync();
             _timer.Start();
         }
