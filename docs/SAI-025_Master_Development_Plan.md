@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 1.6
+Version: 1.7
 
 Status: Active
 
@@ -20,7 +20,7 @@ Develop a production-quality Windows investigation and security application comb
 
 # Current Status
 
-Estimated overall product completion: **92%**.
+Estimated overall product completion: **94%**.
 
 Completed:
 
@@ -41,20 +41,21 @@ Completed:
 - Grounded local Ask Sentinel evidence context
 - Natural-language Ask Sentinel interaction surface
 - Evidence-grounded Ask Sentinel response orchestration
+- Investigation-history-aware Ask Sentinel explanations
 
 Current milestone:
 
-**Phase 6 — Ask Sentinel / AI Assistance: 3 of 6 complete.**
+**Phase 6 — Ask Sentinel / AI Assistance: 4 of 6 complete.**
 
 Completed Phase 6 work:
 
 1. Grounded local evidence context layer. Ask Sentinel must answer from verified local system evidence and explicitly acknowledge when evidence is insufficient.
 2. Natural-language Ask Sentinel interaction surface. Questions refresh current Sentinel evidence before answering; supported current-system questions use only verified snapshot data and unsupported questions fail closed.
 3. Evidence-grounded response orchestration. A central orchestration layer now builds verified context, coordinates grounded answering, carries evidence metadata, and explicitly marks insufficient-evidence outcomes rather than allowing unsupported claims.
+4. Investigation-history-aware explanations. Explicit history questions use persisted Sentinel investigation records and compare verified investigation fingerprints when available; unrelated historical records are not represented as the same condition.
 
 Remaining Phase 6 work:
 
-4. Investigation-history-aware explanations.
 5. Explainable recommendations with strict no-invention safeguards.
 6. Integration, failure-path, and runtime verification.
 
@@ -93,9 +94,9 @@ Status: **Complete**
 Autonomous Protection core: **10 of 10 complete**. Remaining integration milestone: **7 of 7 complete**.
 
 ## Phase 6 — Ask Sentinel / AI Assistance
-Status: **Active — 3 of 6 complete**
+Status: **Active — 4 of 6 complete**
 
-Ask Sentinel is being built as a grounded assistance layer over verified Sentinel evidence. It must not invent system state, threats, causes, remediation outcomes, or historical facts.
+Ask Sentinel is being built as a grounded assistance layer over verified Sentinel evidence and persisted Sentinel investigation history. It must not invent system state, threats, causes, remediation outcomes, or historical facts.
 
 ## Phase 7 — Production Hardening & Commercial Release
 Status: **Planned / partially underway**
@@ -106,7 +107,7 @@ Recent local verification confirms successful builds and acceptable startup beha
 
 # Progress Governance
 
-**92% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
+**94% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
 
 Progress must not move backward unless previously completed functionality is explicitly reopened, removed, or proven incomplete, with the reason documented.
 
@@ -114,7 +115,7 @@ Progress must not move backward unless previously completed functionality is exp
 
 1. Preserve investigation-before-action behavior and remediation safety boundaries.
 2. Keep healthy users undisturbed.
-3. Ground Ask Sentinel in verified evidence.
+3. Ground Ask Sentinel in verified evidence and verified history.
 4. Verify system-changing outcomes before reporting success.
 5. Maintain synchronized documentation and a buildable application.
 
