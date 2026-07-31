@@ -57,7 +57,7 @@ namespace Sentinel.App.Services
                 {
                     return ApprovedRemediationResult.VerificationPending(
                         request.Title,
-                        "The approved action was attempted. Sentinel has not yet independently verified the result.",
+                        "The approved action was attempted. Sentinel is waiting for independent follow-up evidence before reporting success.",
                         attemptedAt);
                 }
 
@@ -90,27 +90,42 @@ namespace Sentinel.App.Services
             }
         }
 
+        public enum RemediationOutcome
+        {
+            NotAttempted,
+            VerificationPending,
+            VerificationFailed,
+            VerifiedSuccess,
+            ExecutionFailed
+        }
+
         public sealed record ApprovedRemediationResult(
             bool Attempted,
             bool Verified,
+            RemediationOutcome Outcome,
             string Title,
             string Summary,
             DateTimeOffset? AttemptedAt)
         {
+            public bool RequiresContinuedInvestigation =>
+                Outcome is RemediationOutcome.VerificationPending or
+                    RemediationOutcome.VerificationFailed or
+                    RemediationOutcome.ExecutionFailed;
+
             public static ApprovedRemediationResult NotAttempted(string summary) =>
-                new(false, false, string.Empty, summary, null);
+                new(false, false, RemediationOutcome.NotAttempted, string.Empty, summary, null);
 
             public static ApprovedRemediationResult VerificationPending(string title, string summary, DateTimeOffset attemptedAt) =>
-                new(true, false, title, summary, attemptedAt);
+                new(true, false, RemediationOutcome.VerificationPending, title, summary, attemptedAt);
 
             public static ApprovedRemediationResult VerificationFailed(string title, string summary, DateTimeOffset attemptedAt) =>
-                new(true, false, title, summary, attemptedAt);
+                new(true, false, RemediationOutcome.VerificationFailed, title, summary, attemptedAt);
 
             public static ApprovedRemediationResult Success(string title, string summary, DateTimeOffset attemptedAt) =>
-                new(true, true, title, summary, attemptedAt);
+                new(true, true, RemediationOutcome.VerifiedSuccess, title, summary, attemptedAt);
 
             public static ApprovedRemediationResult Failure(string title, string summary) =>
-                new(true, false, title, summary, DateTimeOffset.Now);
+                new(true, false, RemediationOutcome.ExecutionFailed, title, summary, DateTimeOffset.Now);
         }
     }
 }
