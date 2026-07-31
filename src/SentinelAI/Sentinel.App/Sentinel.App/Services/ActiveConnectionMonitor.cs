@@ -19,6 +19,8 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class ActiveConnectionMonitor
     {
+        private const int NetstatTimeoutMilliseconds = 2500;
+
         public ActiveConnectionSnapshot GetSnapshot()
         {
             List<ConnectionFinding> findings = new();
@@ -42,7 +44,12 @@ namespace Sentinel.App.Services
 
                 process.Start();
                 string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(10000);
+
+                if (!process.WaitForExit(NetstatTimeoutMilliseconds))
+                {
+                    TryTerminate(process);
+                    return ActiveConnectionSnapshot.Unavailable;
+                }
 
                 if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
                 {
@@ -192,6 +199,22 @@ namespace Sentinel.App.Services
             catch
             {
                 return new ProcessIdentity(processId, "Unknown process", string.Empty);
+            }
+        }
+
+        private static void TryTerminate(Process process)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(500);
+                }
+            }
+            catch
+            {
+                // Evidence collection failure must never interrupt monitoring.
             }
         }
 
