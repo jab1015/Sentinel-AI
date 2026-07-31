@@ -28,6 +28,7 @@ namespace Sentinel.App.Services
                 !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
 
             bool suspiciousProcess = snapshot.FlaggedProcessCount > 0;
+            bool unusualProcessLineage = snapshot.FlaggedProcessRelationshipCount > 0;
             bool suspiciousStartupPersistence = snapshot.FlaggedStartupEntryCount > 0;
             bool suspiciousScheduledTask = snapshot.FlaggedScheduledTaskCount > 0;
             bool unusualConnection = snapshot.FlaggedConnectionCount > 0;
@@ -38,6 +39,20 @@ namespace Sentinel.App.Services
                 SameName(
                     snapshot.PrimaryFlaggedConnectionProcessName,
                     snapshot.PrimaryFlaggedProcessName);
+
+            bool lineageCorrelatesWithProcess =
+                unusualProcessLineage &&
+                suspiciousProcess &&
+                SameName(
+                    snapshot.PrimaryLineageChildProcessName,
+                    snapshot.PrimaryFlaggedProcessName);
+
+            bool lineageCorrelatesWithConnection =
+                unusualProcessLineage &&
+                unusualConnection &&
+                SameName(
+                    snapshot.PrimaryLineageChildProcessName,
+                    snapshot.PrimaryFlaggedConnectionProcessName);
 
             bool serviceFailure =
                 !storageSpacesSmp &&
@@ -59,6 +74,18 @@ namespace Sentinel.App.Services
                     "Sentinel verified that a core Windows security protection is not enabled.",
                     true,
                     "security-protection-disabled");
+            }
+
+            if (lineageCorrelatesWithProcess || lineageCorrelatesWithConnection)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "Related process activity requires attention.",
+                    $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}. {snapshot.PrimaryLineageReason}",
+                    true,
+                    lineageCorrelatesWithConnection
+                        ? "correlated-lineage-network-finding"
+                        : "correlated-lineage-process-finding");
             }
 
             if (connectionCorrelatesWithProcess)
@@ -109,6 +136,16 @@ namespace Sentinel.App.Services
                     snapshot.GuidanceWhatHappened,
                     true,
                     serviceFailure ? "service-failure" : "system-finding");
+            }
+
+            if (unusualProcessLineage)
+            {
+                return new InvestigationResult(
+                    InvestigationState.Investigating,
+                    "Sentinel is investigating related process activity.",
+                    $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}. This does not require your attention unless other evidence confirms a risk.",
+                    false,
+                    "process-lineage-under-review");
             }
 
             if (unusualConnection)
