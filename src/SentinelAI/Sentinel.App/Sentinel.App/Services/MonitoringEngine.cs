@@ -13,6 +13,7 @@ namespace Sentinel.App.Services
     {
         private static readonly TimeSpan ProcessRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ProcessLineageRefreshInterval = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan CommandLineRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ServiceRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan SecurityRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan EventLogRefreshInterval = TimeSpan.FromSeconds(30);
@@ -25,6 +26,7 @@ namespace Sentinel.App.Services
         private readonly NetworkMonitor _networkMonitor = new();
         private readonly ProcessMonitor _processMonitor = new();
         private readonly ProcessLineageMonitor _processLineageMonitor = new();
+        private readonly CommandLineMonitor _commandLineMonitor = new();
         private readonly ServiceMonitor _serviceMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
@@ -40,6 +42,8 @@ namespace Sentinel.App.Services
             new(0, "Loading...", 0, 0, "None", "Process analysis is loading.");
         private ProcessLineageMonitor.ProcessLineageSnapshot _processLineageSnapshot =
             new(0, 0, "None", "None", "Process lineage analysis is loading.");
+        private CommandLineMonitor.CommandLineSnapshot _commandLineSnapshot =
+            new(0, 0, "None", "Command-line analysis is loading.", "None");
         private ServiceMonitor.ServiceIntelligenceSnapshot _serviceSnapshot =
             new(0, 0, 0, "None", "Service analysis is loading.");
         private SecurityMonitor.SecurityStatusSnapshot _securitySnapshot =
@@ -55,6 +59,7 @@ namespace Sentinel.App.Services
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
         private DateTime _lastProcessLineageRefresh = DateTime.MinValue;
+        private DateTime _lastCommandLineRefresh = DateTime.MinValue;
         private DateTime _lastServiceRefresh = DateTime.MinValue;
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
@@ -71,6 +76,7 @@ namespace Sentinel.App.Services
 
             Task processTask = RefreshProcessDataIfDueAsync(now);
             Task processLineageTask = RefreshProcessLineageDataIfDueAsync(now);
+            Task commandLineTask = RefreshCommandLineDataIfDueAsync(now);
             Task serviceTask = RefreshServiceDataIfDueAsync(now);
             Task securityTask = RefreshSecurityDataIfDueAsync(now);
             Task eventLogTask = RefreshEventLogDataIfDueAsync(now);
@@ -81,6 +87,7 @@ namespace Sentinel.App.Services
             await Task.WhenAll(
                 processTask,
                 processLineageTask,
+                commandLineTask,
                 serviceTask,
                 securityTask,
                 eventLogTask,
@@ -114,6 +121,11 @@ namespace Sentinel.App.Services
                 PrimaryLineageChildProcessName = _processLineageSnapshot.PrimaryChildProcessName,
                 PrimaryLineageParentProcessName = _processLineageSnapshot.PrimaryParentProcessName,
                 PrimaryLineageReason = _processLineageSnapshot.PrimaryReason,
+                ReviewedCommandLineProcessCount = _commandLineSnapshot.ReviewedProcessCount,
+                FlaggedCommandLineCount = _commandLineSnapshot.ReviewFindingCount,
+                PrimaryCommandLineProcessName = _commandLineSnapshot.PrimaryProcessName,
+                PrimaryCommandLineReason = _commandLineSnapshot.PrimaryReason,
+                PrimaryCommandLineSummary = _commandLineSnapshot.PrimaryCommandLineSummary,
                 InstalledServiceCount = _serviceSnapshot.InstalledServiceCount,
                 RunningServiceCount = _serviceSnapshot.RunningServiceCount,
                 FlaggedServiceCount = _serviceSnapshot.FlaggedServiceCount,
@@ -264,6 +276,13 @@ namespace Sentinel.App.Services
             if (now - _lastProcessLineageRefresh < ProcessLineageRefreshInterval) return;
             _lastProcessLineageRefresh = now;
             _processLineageSnapshot = await Task.Run(_processLineageMonitor.GetSnapshot);
+        }
+
+        private async Task RefreshCommandLineDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastCommandLineRefresh < CommandLineRefreshInterval) return;
+            _lastCommandLineRefresh = now;
+            _commandLineSnapshot = await Task.Run(_commandLineMonitor.GetSnapshot);
         }
 
         private async Task RefreshServiceDataIfDueAsync(DateTime now)
