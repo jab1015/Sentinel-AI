@@ -18,6 +18,7 @@ namespace Sentinel.App.Services
     {
         private const int MinimumAutomaticConfidencePercent = 80;
         private readonly RemediationPolicy _policy = new();
+        private readonly ProtectionDecisionSafetyValidator _safetyValidator = new();
 
         public AutonomousProtectionDecision Evaluate(SystemSnapshot snapshot)
         {
@@ -26,8 +27,8 @@ namespace Sentinel.App.Services
             if (!snapshot.RemediationAvailable ||
                 string.Equals(snapshot.RemediationAction, "None", StringComparison.OrdinalIgnoreCase))
             {
-                return AutonomousProtectionDecision.Observe(
-                    "No autonomous remediation is required.");
+                return ValidateOrObserve(AutonomousProtectionDecision.Observe(
+                    "No autonomous remediation is required."));
             }
 
             RemediationPolicy.RemediationAction action = MapAction(snapshot.RemediationAction);
@@ -36,8 +37,8 @@ namespace Sentinel.App.Services
             if (risk == RemediationPolicy.RemediationRisk.Low &&
                 snapshot.GuidanceConfidencePercent < MinimumAutomaticConfidencePercent)
             {
-                return AutonomousProtectionDecision.Observe(
-                    $"Sentinel will continue monitoring because automatic protection requires at least {MinimumAutomaticConfidencePercent}% evidence confidence.");
+                return ValidateOrObserve(AutonomousProtectionDecision.Observe(
+                    $"Sentinel will continue monitoring because automatic protection requires at least {MinimumAutomaticConfidencePercent}% evidence confidence."));
             }
 
             RemediationPolicy.RemediationDecision policyDecision = _policy.Evaluate(
@@ -51,25 +52,37 @@ namespace Sentinel.App.Services
 
             if (!policyDecision.Allowed)
             {
-                return AutonomousProtectionDecision.Observe(policyDecision.Explanation);
+                return ValidateOrObserve(AutonomousProtectionDecision.Observe(policyDecision.Explanation));
             }
 
             if (policyDecision.RequiresUserApproval || snapshot.RemediationRequiresUserApproval)
             {
-                return new AutonomousProtectionDecision(
+                return ValidateOrObserve(new AutonomousProtectionDecision(
                     CanExecuteAutomatically: false,
                     RequiresUserApproval: true,
                     Action: snapshot.RemediationAction,
                     Target: snapshot.RemediationTarget,
-                    Summary: policyDecision.Explanation);
+                    Summary: policyDecision.Explanation));
             }
 
-            return new AutonomousProtectionDecision(
+            return ValidateOrObserve(new AutonomousProtectionDecision(
                 CanExecuteAutomatically: true,
                 RequiresUserApproval: false,
                 Action: snapshot.RemediationAction,
                 Target: snapshot.RemediationTarget,
-                Summary: policyDecision.Explanation);
+                Summary: policyDecision.Explanation));
+        }
+
+        private AutonomousProtectionDecision ValidateOrObserve(AutonomousProtectionDecision decision)
+        {
+            ProtectionDecisionSafetyValidator.ValidationResult validation = _safetyValidator.Validate(decision);
+            if (validation.IsValid)
+            {
+                return decision;
+            }
+
+            return AutonomousProtectionDecision.Observe(
+                $"Sentinel blocked an inconsistent remediation decision and made no system change. {validation.Message}");
         }
 
         private static bool HasVerifiedEvidence(SystemSnapshot snapshot) =>
