@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Net;
 
 namespace Sentinel.App.Services
@@ -80,8 +81,8 @@ namespace Sentinel.App.Services
                         continue;
                     }
 
-                    string processName = GetProcessName(processId);
-                    ConnectionFinding? finding = Assess(processName, remoteAddress, remotePort, processId);
+                    ProcessIdentity identity = GetProcessIdentity(processId);
+                    ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort);
                     if (finding is not null)
                     {
                         findings.Add(finding);
@@ -104,16 +105,15 @@ namespace Sentinel.App.Services
         }
 
         private static ConnectionFinding? Assess(
-            string processName,
+            ProcessIdentity identity,
             IPAddress remoteAddress,
-            int remotePort,
-            int processId)
+            int remotePort)
         {
             bool uncommonRemotePort = remotePort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
             bool systemProcess =
-                processName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
-                processName.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
-                processName.Equals("services", StringComparison.OrdinalIgnoreCase);
+                identity.ProcessName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
+                identity.ProcessName.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
+                identity.ProcessName.Equals("services", StringComparison.OrdinalIgnoreCase);
 
             if (!uncommonRemotePort || systemProcess)
             {
@@ -121,10 +121,14 @@ namespace Sentinel.App.Services
             }
 
             string endpoint = $"{remoteAddress}:{remotePort}";
+            string executableContext = string.IsNullOrWhiteSpace(identity.ExecutablePath)
+                ? "Executable path could not be read."
+                : $"Executable: {ShortenPath(identity.ExecutablePath)}.";
+
             return new ConnectionFinding(
-                processName,
+                identity.ProcessName,
                 endpoint,
-                $"Uses an uncommon external TCP port ({remotePort}); process ID {processId}. Correlation is required before action.");
+                $"{identity.ProcessName} (PID {identity.ProcessId}) owns an established connection to {endpoint} on uncommon remote port {remotePort}. {executableContext} This is attribution evidence only; Sentinel requires correlation before recommending or blocking network activity.");
         }
 
         private static bool TryParseEndpoint(
@@ -168,18 +172,37 @@ namespace Sentinel.App.Services
             return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal;
         }
 
-        private static string GetProcessName(int processId)
+        private static ProcessIdentity GetProcessIdentity(int processId)
         {
             try
             {
                 using Process process = Process.GetProcessById(processId);
-                return process.ProcessName;
+                string path;
+                try
+                {
+                    path = process.MainModule?.FileName ?? string.Empty;
+                }
+                catch
+                {
+                    path = string.Empty;
+                }
+
+                return new ProcessIdentity(processId, process.ProcessName, path);
             }
             catch
             {
-                return "Unknown process";
+                return new ProcessIdentity(processId, "Unknown process", string.Empty);
             }
         }
+
+        private static string ShortenPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+            string normalized = path.Replace('/', '\\');
+            return normalized.Length <= 100 ? normalized : "..." + normalized[^97..];
+        }
+
+        private sealed record ProcessIdentity(int ProcessId, string ProcessName, string ExecutablePath);
 
         private sealed record ConnectionFinding(
             string ProcessName,
