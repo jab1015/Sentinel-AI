@@ -1,90 +1,44 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.3  
+**Version:** 2.4  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 97%.**
+**Estimated product completion: 98%.**
 
 ## Completed Major Foundations
 
-- Phase 1 — Monitoring Foundation
-- Phase 2 — Investigation Experience
-- Investigation Engine — 18 of 18
-- Safe Remediation Foundation — 10 of 10
-- Autonomous Protection core — 10 of 10
-- Phase 5 remaining remediation integration — 7 of 7
-- User-facing approval workflow
-- Quarantine/restore integration
-- Investigation/remediation history presentation
-- Network attribution/response integration
-- Background actionable attention signaling
-- Failure-path/remediation regression safeguards
-- Startup responsiveness improvements and accepted current load behavior
-- Preferred-name onboarding per Windows profile
-- Sustained memory-pressure investigation with application contributor context
-- Phase 6 Ask Sentinel / AI Assistance — 6 of 6
-
-## Phase 1 — Monitoring Foundation
-
-**Status: Complete**
-
-## Phase 2 — Investigation Experience
-
-**Status: Complete**
-
-## Phase 3 — Investigation Engine
-
-**Status: Complete — 18 of 18**
-
-## Phase 4 — Safe Remediation Foundation
-
-**Status: Complete — 10 of 10**
-
-## Phase 5 — Remediation Integration & Autonomous Protection
-
-**Status: Complete**
-
-Autonomous Protection core: **10 of 10 complete**. Remaining integration milestone: **7 of 7 complete**.
-
-## Phase 6 — Ask Sentinel / AI Assistance
-
-**Status: Complete — 6 of 6**
-
-1. [x] Grounded local evidence context layer.
-2. [x] Natural-language Ask Sentinel interaction surface.
-3. [x] Evidence-grounded response orchestration.
-4. [x] Investigation-history-aware explanations.
-5. [x] Explainable recommendations with strict no-invention safeguards.
-6. [x] Integration, failure-path, and runtime verification safeguards.
-
-Ask Sentinel now refreshes verified evidence before answering, uses verified persisted history for explicit historical questions, routes recommendation requests through remediation-state safeguards, and applies a final response safety validator. Unsupported action, outcome, threat, or history claims fail closed instead of being presented as fact.
+- Phases 1–5 complete
+- Phase 6 Ask Sentinel / AI Assistance — 6 of 6 complete
+- Structured production diagnostic logging foundation
+- Fresh-clone and release-configuration verification foundation
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active / partially underway**
+**Status: Active — 2 of 12 complete**
 
-- Structured logging and diagnostics
-- Fresh-clone build verification
-- Release configuration verification
-- Automated regression coverage
-- Performance profiling and optimization
-- One-hour and eight-hour stability tests
-- Windows 10 and Windows 11 verification
-- Installer/uninstaller
-- Code signing
-- Application updates
-- Privacy, user, and troubleshooting documentation
-- Accessibility and UX polish
-- Release acceptance testing
+1. [x] Structured logging and diagnostics foundation.
+2. [x] Fresh-clone and release-configuration verification foundation.
+3. [ ] Automated regression coverage.
+4. [ ] Performance profiling and optimization.
+5. [ ] One-hour and eight-hour stability testing.
+6. [ ] Windows 10 and Windows 11 compatibility verification.
+7. [ ] Installer/uninstaller.
+8. [ ] Code signing.
+9. [ ] Application updates.
+10. [ ] Accessibility and UX review.
+11. [ ] Privacy, user, and troubleshooting documentation.
+12. [ ] Release acceptance testing.
+
+Release verification is now repeatable from repository state through `tools/Verify-ReleaseConfiguration.ps1`, which validates the solution/package structure, Windows target alignment, supported architectures, required package references, packaging entry point, and native API declarations before release work proceeds.
 
 ## Progress Baseline
 
-**97% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**98% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
-Sentinel must investigate before acting, prefer silent monitoring when the system is healthy, request user involvement only when necessary, verify system-changing outcomes, and ensure AI assistance remains grounded in verified Sentinel evidence, history, and remediation state.
+Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, and make commercial release readiness reproducible from source control rather than relying on undocumented developer-machine state.
