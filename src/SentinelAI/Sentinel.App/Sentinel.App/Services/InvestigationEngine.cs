@@ -28,6 +28,7 @@ namespace Sentinel.App.Services
                 !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
 
             bool suspiciousProcess = snapshot.FlaggedProcessCount > 0;
+            bool suspiciousStartupPersistence = snapshot.FlaggedStartupEntryCount > 0;
 
             bool serviceFailure =
                 !storageSpacesSmp &&
@@ -59,6 +60,16 @@ namespace Sentinel.App.Services
                     snapshot.PrimaryFlaggedProcessReason,
                     true,
                     "process-finding");
+            }
+
+            if (suspiciousStartupPersistence)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "A startup item requires attention.",
+                    $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}",
+                    true,
+                    "startup-persistence-finding");
             }
 
             if (serviceFailure || actionableSystemEvidence)
