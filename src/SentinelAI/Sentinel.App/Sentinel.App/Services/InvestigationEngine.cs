@@ -29,6 +29,7 @@ namespace Sentinel.App.Services
 
             bool suspiciousProcess = snapshot.FlaggedProcessCount > 0;
             bool unusualProcessLineage = snapshot.FlaggedProcessRelationshipCount > 0;
+            bool unusualCommandLine = snapshot.FlaggedCommandLineCount > 0;
             bool suspiciousStartupPersistence = snapshot.FlaggedStartupEntryCount > 0;
             bool suspiciousScheduledTask = snapshot.FlaggedScheduledTaskCount > 0;
             bool unusualConnection = snapshot.FlaggedConnectionCount > 0;
@@ -36,23 +37,32 @@ namespace Sentinel.App.Services
             bool connectionCorrelatesWithProcess =
                 unusualConnection &&
                 suspiciousProcess &&
-                SameName(
-                    snapshot.PrimaryFlaggedConnectionProcessName,
-                    snapshot.PrimaryFlaggedProcessName);
+                SameName(snapshot.PrimaryFlaggedConnectionProcessName, snapshot.PrimaryFlaggedProcessName);
 
             bool lineageCorrelatesWithProcess =
                 unusualProcessLineage &&
                 suspiciousProcess &&
-                SameName(
-                    snapshot.PrimaryLineageChildProcessName,
-                    snapshot.PrimaryFlaggedProcessName);
+                SameName(snapshot.PrimaryLineageChildProcessName, snapshot.PrimaryFlaggedProcessName);
 
             bool lineageCorrelatesWithConnection =
                 unusualProcessLineage &&
                 unusualConnection &&
-                SameName(
-                    snapshot.PrimaryLineageChildProcessName,
-                    snapshot.PrimaryFlaggedConnectionProcessName);
+                SameName(snapshot.PrimaryLineageChildProcessName, snapshot.PrimaryFlaggedConnectionProcessName);
+
+            bool commandLineCorrelatesWithProcess =
+                unusualCommandLine &&
+                suspiciousProcess &&
+                SameName(snapshot.PrimaryCommandLineProcessName, snapshot.PrimaryFlaggedProcessName);
+
+            bool commandLineCorrelatesWithLineage =
+                unusualCommandLine &&
+                unusualProcessLineage &&
+                SameName(snapshot.PrimaryCommandLineProcessName, snapshot.PrimaryLineageChildProcessName);
+
+            bool commandLineCorrelatesWithConnection =
+                unusualCommandLine &&
+                unusualConnection &&
+                SameName(snapshot.PrimaryCommandLineProcessName, snapshot.PrimaryFlaggedConnectionProcessName);
 
             bool serviceFailure =
                 !storageSpacesSmp &&
@@ -74,6 +84,22 @@ namespace Sentinel.App.Services
                     "Sentinel verified that a core Windows security protection is not enabled.",
                     true,
                     "security-protection-disabled");
+            }
+
+            if (commandLineCorrelatesWithProcess ||
+                commandLineCorrelatesWithLineage ||
+                commandLineCorrelatesWithConnection)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "Correlated process behavior requires attention.",
+                    $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason}",
+                    true,
+                    commandLineCorrelatesWithConnection
+                        ? "correlated-command-network-finding"
+                        : commandLineCorrelatesWithLineage
+                            ? "correlated-command-lineage-finding"
+                            : "correlated-command-process-finding");
             }
 
             if (lineageCorrelatesWithProcess || lineageCorrelatesWithConnection)
@@ -136,6 +162,16 @@ namespace Sentinel.App.Services
                     snapshot.GuidanceWhatHappened,
                     true,
                     serviceFailure ? "service-failure" : "system-finding");
+            }
+
+            if (unusualCommandLine)
+            {
+                return new InvestigationResult(
+                    InvestigationState.Investigating,
+                    "Sentinel is investigating command activity.",
+                    $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason} This does not require your attention unless other evidence confirms a risk.",
+                    false,
+                    "command-line-under-review");
             }
 
             if (unusualProcessLineage)
