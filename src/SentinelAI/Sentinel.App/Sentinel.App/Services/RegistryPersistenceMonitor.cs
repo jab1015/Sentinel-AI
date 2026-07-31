@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.Win32;
 
 namespace Sentinel.App.Services
@@ -20,6 +21,7 @@ namespace Sentinel.App.Services
             List<RegistryFinding> findings = new();
             int reviewedLocations = 0;
 
+            ReviewRunKeys(findings, ref reviewedLocations);
             ReviewWinlogon(findings, ref reviewedLocations);
             ReviewAppInitDlls(findings, ref reviewedLocations);
             ReviewImageFileExecutionOptions(findings, ref reviewedLocations);
@@ -31,6 +33,97 @@ namespace Sentinel.App.Services
                 primary?.Location ?? "None",
                 primary?.ValueName ?? "None",
                 primary?.Reason ?? "No unusual registry persistence settings were detected.");
+        }
+
+        private static void ReviewRunKeys(List<RegistryFinding> findings, ref int reviewedLocations)
+        {
+            RegistryLocation[] locations =
+            {
+                new(Registry.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Run", "HKCU"),
+                new(Registry.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\RunOnce", "HKCU"),
+                new(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "HKLM"),
+                new(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", "HKLM"),
+                new(Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run", "HKLM"),
+                new(Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce", "HKLM")
+            };
+
+            foreach (RegistryLocation location in locations)
+            {
+                reviewedLocations++;
+
+                try
+                {
+                    using RegistryKey? key = location.Root.OpenSubKey(location.Path);
+                    if (key is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (string valueName in key.GetValueNames())
+                    {
+                        string command = Convert.ToString(key.GetValue(valueName))?.Trim() ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(command))
+                        {
+                            continue;
+                        }
+
+                        string expanded = Environment.ExpandEnvironmentVariables(command);
+                        string executablePath = ExtractExecutablePath(expanded);
+                        string reason = EvaluateRunCommand(executablePath, expanded);
+                        if (string.IsNullOrWhiteSpace(reason))
+                        {
+                            continue;
+                        }
+
+                        findings.Add(new RegistryFinding(
+                            $@"{location.HiveLabel}\{location.Path}",
+                            string.IsNullOrWhiteSpace(valueName) ? "(Default)" : valueName,
+                            $"{reason} Command: {Shorten(expanded)}"));
+                    }
+                }
+                catch
+                {
+                    // Missing permissions or unavailable registry data are skipped safely.
+                }
+            }
+        }
+
+        private static string EvaluateRunCommand(string executablePath, string command)
+        {
+            if (IsTemporaryLocation(executablePath))
+            {
+                return "The startup command launches from a temporary directory.";
+            }
+
+            if (IsDownloadsLocation(executablePath))
+            {
+                return "The startup command launches from the Downloads directory.";
+            }
+
+            bool scriptHost =
+                Contains(command, "powershell") || Contains(command, "pwsh") ||
+                Contains(command, "wscript") || Contains(command, "cscript") ||
+                Contains(command, "mshta");
+
+            bool remoteContent =
+                Contains(command, "http://") || Contains(command, "https://") ||
+                Contains(command, "downloadstring") || Contains(command, "invoke-webrequest");
+
+            bool encodedPowerShell =
+                (Contains(command, "powershell") || Contains(command, "pwsh")) &&
+                (Contains(command, " -enc ") || Contains(command, " -encodedcommand "));
+
+            if (encodedPowerShell)
+            {
+                return "The startup command uses encoded PowerShell content.";
+            }
+
+            if (scriptHost && remoteContent)
+            {
+                return "The startup command combines a script host with remote content.";
+            }
+
+            return string.Empty;
         }
 
         private static void ReviewWinlogon(List<RegistryFinding> findings, ref int reviewedLocations)
@@ -154,6 +247,49 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static string ExtractExecutablePath(string command)
+        {
+            string value = command.Trim();
+            if (value.StartsWith('"'))
+            {
+                int closingQuote = value.IndexOf('"', 1);
+                return closingQuote > 1 ? value[1..closingQuote] : value.Trim('"');
+            }
+
+            int firstSpace = value.IndexOf(' ');
+            return firstSpace > 0 ? value[..firstSpace] : value;
+        }
+
+        private static bool IsTemporaryLocation(string path)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                string temp = Path.GetFullPath(Path.GetTempPath());
+                return fullPath.StartsWith(temp, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsDownloadsLocation(string path)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                string downloads = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                    "Downloads");
+                return fullPath.StartsWith(downloads, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static bool IsExpectedUserinit(string value)
         {
             string normalized = value.Replace('/', '\\').Trim().TrimEnd(',');
@@ -173,9 +309,13 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static bool Contains(string value, string text) =>
+            value.Contains(text, StringComparison.OrdinalIgnoreCase);
+
         private static string Shorten(string value) =>
             value.Length <= 160 ? value : value[..157] + "...";
 
+        private sealed record RegistryLocation(RegistryKey Root, string Path, string HiveLabel);
         private sealed record RegistryFinding(string Location, string ValueName, string Reason);
 
         public sealed record RegistryPersistenceSnapshot(
