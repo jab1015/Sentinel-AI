@@ -14,7 +14,7 @@ using System.Text.Json;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Reviews active Windows kernel drivers as investigation evidence.
+    /// Reviews installed Windows kernel drivers as investigation evidence.
     /// A driver finding is never actionable by itself and must be correlated
     /// with other process, persistence, security, or event evidence.
     /// </summary>
@@ -28,7 +28,7 @@ namespace Sentinel.App.Services
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = "-NoLogo -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_SystemDriver | Where-Object {$_.State -eq 'Running'} | Select-Object Name,DisplayName,PathName,StartMode | ConvertTo-Json -Compress\"",
+                    Arguments = "-NoLogo -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_SystemDriver | Select-Object Name,DisplayName,State,StartMode,PathName | ConvertTo-Json -Compress\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -53,17 +53,24 @@ namespace Sentinel.App.Services
                     : new[] { document.RootElement };
 
                 List<DriverFinding> findings = new();
+                int installedDriverCount = 0;
                 int runningDriverCount = 0;
                 int reviewedFileCount = 0;
 
                 foreach (JsonElement item in items)
                 {
-                    runningDriverCount++;
+                    installedDriverCount++;
 
                     string name = GetString(item, "Name");
                     string displayName = GetString(item, "DisplayName");
-                    string rawPath = GetString(item, "PathName");
-                    string path = NormalizeDriverPath(rawPath);
+                    string state = GetString(item, "State");
+                    string startMode = GetString(item, "StartMode");
+                    string path = NormalizeDriverPath(GetString(item, "PathName"));
+
+                    if (state.Equals("Running", StringComparison.OrdinalIgnoreCase))
+                    {
+                        runningDriverCount++;
+                    }
 
                     if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                     {
@@ -73,8 +80,19 @@ namespace Sentinel.App.Services
                     reviewedFileCount++;
                     SignatureAssessment signature = InspectSignature(path);
                     bool systemLocation = IsSystemDriverLocation(path);
+                    bool userWritable = IsUserWritableLocation(path);
+                    bool bootOrSystemStart =
+                        startMode.Equals("Boot", StringComparison.OrdinalIgnoreCase) ||
+                        startMode.Equals("System", StringComparison.OrdinalIgnoreCase);
 
-                    if (!systemLocation)
+                    if (userWritable)
+                    {
+                        findings.Add(new DriverFinding(
+                            Fallback(displayName, name),
+                            path,
+                            "A kernel driver is installed in a user-writable location."));
+                    }
+                    else if (!systemLocation && state.Equals("Running", StringComparison.OrdinalIgnoreCase))
                     {
                         findings.Add(new DriverFinding(
                             Fallback(displayName, name),
@@ -86,25 +104,33 @@ namespace Sentinel.App.Services
                         findings.Add(new DriverFinding(
                             Fallback(displayName, name),
                             path,
-                            $"A running kernel driver does not expose a readable digital signature: {Shorten(path)}"));
+                            $"An installed kernel driver does not expose a readable digital signature: {Shorten(path)}"));
                     }
-                    else if (!signature.IsTrusted)
+                    else if (!signature.IsTrusted && bootOrSystemStart)
                     {
                         findings.Add(new DriverFinding(
                             Fallback(displayName, name),
                             path,
-                            $"A running kernel driver's certificate chain could not be validated. Publisher: {signature.Publisher}."));
+                            $"A boot or system-start driver's certificate chain could not be validated. Publisher: {signature.Publisher}."));
+                    }
+                    else if (!signature.IsTrusted && state.Equals("Running", StringComparison.OrdinalIgnoreCase))
+                    {
+                        findings.Add(new DriverFinding(
+                            Fallback(displayName, name),
+                            path,
+                            $"A running driver's certificate chain could not be validated. Publisher: {signature.Publisher}."));
                     }
                 }
 
                 DriverFinding? primary = findings.Count > 0 ? findings[0] : null;
                 return new DriverSnapshot(
+                    installedDriverCount,
                     runningDriverCount,
                     reviewedFileCount,
                     findings.Count,
                     primary?.DriverName ?? "None",
                     primary?.Path ?? "None",
-                    primary?.Reason ?? "No unusual running-driver conditions were detected.");
+                    primary?.Reason ?? "No unusual installed-driver conditions were detected.");
             }
             catch
             {
@@ -149,6 +175,14 @@ namespace Sentinel.App.Services
             }
 
             string value = rawPath.Trim().Trim('"');
+            int argumentIndex = value.IndexOf(".sys ", StringComparison.OrdinalIgnoreCase);
+            if (argumentIndex >= 0)
+            {
+                value = value[..(argumentIndex + 4)];
+            }
+
+            value = Environment.ExpandEnvironmentVariables(value);
+
             if (value.StartsWith("\\SystemRoot\\", StringComparison.OrdinalIgnoreCase))
             {
                 value = Path.Combine(
@@ -192,6 +226,27 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static bool IsUserWritableLocation(string path)
+        {
+            try
+            {
+                string fullPath = Path.GetFullPath(path);
+                string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string tempPath = Path.GetFullPath(Path.GetTempPath());
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+                return fullPath.StartsWith(userProfile, StringComparison.OrdinalIgnoreCase) ||
+                       fullPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase) ||
+                       fullPath.StartsWith(appData, StringComparison.OrdinalIgnoreCase) ||
+                       fullPath.StartsWith(localAppData, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static string GetString(JsonElement item, string propertyName)
         {
             return item.TryGetProperty(propertyName, out JsonElement value) &&
@@ -222,9 +277,10 @@ namespace Sentinel.App.Services
         }
 
         private static DriverSnapshot Empty(string reason) =>
-            new(0, 0, 0, "None", "None", reason);
+            new(0, 0, 0, 0, "None", "None", reason);
 
         private sealed record DriverFinding(string DriverName, string Path, string Reason);
+
         private sealed record SignatureAssessment(bool IsSigned, bool IsTrusted, string Publisher)
         {
             public static SignatureAssessment Unsigned { get; } =
@@ -232,6 +288,7 @@ namespace Sentinel.App.Services
         }
 
         public sealed record DriverSnapshot(
+            int InstalledDriverCount,
             int RunningDriverCount,
             int ReviewedDriverFileCount,
             int ReviewFindingCount,
