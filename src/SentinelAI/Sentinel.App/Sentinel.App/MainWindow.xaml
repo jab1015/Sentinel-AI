@@ -11,8 +11,8 @@
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
 
     <Grid Background="#111827">
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="36" Spacing="20" MaxWidth="1100" HorizontalAlignment="Stretch">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
+            <StackPanel Margin="36" Spacing="20" MaxWidth="1100" HorizontalAlignment="Center">
                 <StackPanel Spacing="6">
                     <TextBlock Text="🛡 Sentinel AI" FontSize="30" FontWeight="Bold" Foreground="White"/>
                     <TextBlock Text="Your Windows Investigation Assistant" FontSize="16" Foreground="#9CA3AF"/>
