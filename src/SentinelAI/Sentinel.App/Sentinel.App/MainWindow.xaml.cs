@@ -96,33 +96,28 @@ namespace Sentinel.App
                     snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
                     snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
 
-                bool isStorageSpacesSmpEvent =
-                    snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
-                    snapshot.LatestEventMessage.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase);
-
-                bool storageSpacesIsPrimaryFlaggedService =
+                bool isStorageSpacesSmpFinding =
+                    snapshot.LatestEventMessage.Contains("Storage Spaces SMP", StringComparison.OrdinalIgnoreCase) ||
+                    snapshot.GuidanceTitle.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
+                    snapshot.GuidanceWhatHappened.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
                     snapshot.PrimaryFlaggedServiceName.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
                     snapshot.PrimaryFlaggedServiceName.Contains("SMP", StringComparison.OrdinalIgnoreCase);
 
-                bool hasActionableFlaggedService =
-                    snapshot.FlaggedServiceCount > 0 &&
-                    !(isStorageSpacesSmpEvent && storageSpacesIsPrimaryFlaggedService);
-
-                bool hasNonEventActionableFinding =
+                bool hasSecurityOrProcessFinding =
                     snapshot.FlaggedProcessCount > 0 ||
-                    hasActionableFlaggedService ||
                     !snapshot.DefenderEnabled ||
                     !snapshot.FirewallEnabled;
 
-                bool hasActionableEventFinding =
-                    !isStorageSpacesSmpEvent &&
-                    (snapshot.CriticalEventCount > 0 ||
+                bool hasActionableServiceOrEventFinding =
+                    !isStorageSpacesSmpFinding &&
+                    (snapshot.FlaggedServiceCount > 0 ||
+                     snapshot.CriticalEventCount > 0 ||
                      snapshot.ErrorEventCount > 0 ||
                      hasServiceFailure ||
                      snapshot.RiskScore >= 20);
 
                 bool requiresAttention =
-                    hasNonEventActionableFinding || hasActionableEventFinding;
+                    hasSecurityOrProcessFinding || hasActionableServiceOrEventFinding;
 
                 GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
                 GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId)
@@ -145,12 +140,12 @@ namespace Sentinel.App
                     MonitoringStatusText.Text = "I’ll continue monitoring your computer.";
                 }
 
-                VerifyGuidanceButton.Visibility = hasServiceFailure && !isStorageSpacesSmpEvent
+                VerifyGuidanceButton.Visibility = requiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding
                     ? Visibility.Visible
                     : Visibility.Collapsed;
 
-                RiskScoreText.Text = snapshot.RiskScore.ToString();
-                RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
+                RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0";
+                RiskLevelText.Text = requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 RiskSummaryText.Text = requiresAttention
                     ? snapshot.RiskSummary
                     : "Your computer is healthy.";
