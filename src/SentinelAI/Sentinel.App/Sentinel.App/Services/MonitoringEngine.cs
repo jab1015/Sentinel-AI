@@ -15,6 +15,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan ServiceRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan SecurityRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan EventLogRefreshInterval = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan StartupRefreshInterval = TimeSpan.FromMinutes(2);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -23,8 +24,10 @@ namespace Sentinel.App.Services
         private readonly ServiceMonitor _serviceMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
+        private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
         private readonly GuidanceEngine _guidanceEngine = new();
+        private readonly InvestigationEngine _investigationEngine = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
         private ProcessMonitor.ProcessIntelligenceSnapshot _processSnapshot =
@@ -35,11 +38,14 @@ namespace Sentinel.App.Services
             new("Loading...", "Loading...");
         private EventLogMonitor.EventLogStatusSnapshot _eventLogSnapshot =
             new(0, 0, null, "None", "Event Log analysis is loading.");
+        private StartupPersistenceMonitor.StartupPersistenceSnapshot _startupSnapshot =
+            new(0, 0, "None", "Startup persistence analysis is loading.");
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
         private DateTime _lastServiceRefresh = DateTime.MinValue;
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
+        private DateTime _lastStartupRefresh = DateTime.MinValue;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -52,8 +58,9 @@ namespace Sentinel.App.Services
             Task serviceTask = RefreshServiceDataIfDueAsync(now);
             Task securityTask = RefreshSecurityDataIfDueAsync(now);
             Task eventLogTask = RefreshEventLogDataIfDueAsync(now);
+            Task startupTask = RefreshStartupDataIfDueAsync(now);
 
-            await Task.WhenAll(processTask, serviceTask, securityTask, eventLogTask);
+            await Task.WhenAll(processTask, serviceTask, securityTask, eventLogTask, startupTask);
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot =
                 _networkMonitor.GetThroughput();
@@ -81,6 +88,10 @@ namespace Sentinel.App.Services
                 FlaggedServiceCount = _serviceSnapshot.FlaggedServiceCount,
                 PrimaryFlaggedServiceName = _serviceSnapshot.PrimaryServiceName,
                 PrimaryFlaggedServiceReason = _serviceSnapshot.PrimaryReason,
+                StartupEntryCount = _startupSnapshot.TotalEntryCount,
+                FlaggedStartupEntryCount = _startupSnapshot.ReviewEntryCount,
+                PrimaryFlaggedStartupEntryName = _startupSnapshot.PrimaryEntryName,
+                PrimaryFlaggedStartupEntryReason = _startupSnapshot.PrimaryReason,
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled",
                 FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled",
                 DefenderStatus = _securitySnapshot.DefenderStatus,
@@ -115,6 +126,14 @@ namespace Sentinel.App.Services
             snapshot.GuidanceFixDetails = guidance.FixDetails;
             snapshot.GuidanceActionId = guidance.ActionId;
             snapshot.GuidanceActionLabel = guidance.ActionLabel;
+
+            InvestigationEngine.InvestigationResult investigation =
+                _investigationEngine.Investigate(snapshot);
+            snapshot.InvestigationState = investigation.State.ToString();
+            snapshot.InvestigationConclusion = investigation.Conclusion;
+            snapshot.InvestigationSummary = investigation.Summary;
+            snapshot.InvestigationRequiresAttention = investigation.RequiresAttention;
+            snapshot.InvestigationReasonCode = investigation.ReasonCode;
 
             CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
@@ -194,46 +213,37 @@ namespace Sentinel.App.Services
 
         private async Task RefreshProcessDataIfDueAsync(DateTime now)
         {
-            if (now - _lastProcessRefresh < ProcessRefreshInterval)
-            {
-                return;
-            }
-
+            if (now - _lastProcessRefresh < ProcessRefreshInterval) return;
             _lastProcessRefresh = now;
             _processSnapshot = await Task.Run(_processMonitor.GetIntelligence);
         }
 
         private async Task RefreshServiceDataIfDueAsync(DateTime now)
         {
-            if (now - _lastServiceRefresh < ServiceRefreshInterval)
-            {
-                return;
-            }
-
+            if (now - _lastServiceRefresh < ServiceRefreshInterval) return;
             _lastServiceRefresh = now;
             _serviceSnapshot = await Task.Run(_serviceMonitor.GetIntelligence);
         }
 
         private async Task RefreshSecurityDataIfDueAsync(DateTime now)
         {
-            if (now - _lastSecurityRefresh < SecurityRefreshInterval)
-            {
-                return;
-            }
-
+            if (now - _lastSecurityRefresh < SecurityRefreshInterval) return;
             _lastSecurityRefresh = now;
             _securitySnapshot = await Task.Run(_securityMonitor.GetStatus);
         }
 
         private async Task RefreshEventLogDataIfDueAsync(DateTime now)
         {
-            if (now - _lastEventLogRefresh < EventLogRefreshInterval)
-            {
-                return;
-            }
-
+            if (now - _lastEventLogRefresh < EventLogRefreshInterval) return;
             _lastEventLogRefresh = now;
             _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus);
+        }
+
+        private async Task RefreshStartupDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastStartupRefresh < StartupRefreshInterval) return;
+            _lastStartupRefresh = now;
+            _startupSnapshot = await Task.Run(_startupPersistenceMonitor.GetSnapshot);
         }
 
         private static string ExtractServiceDisplayName(string message)
@@ -258,9 +268,6 @@ namespace Sentinel.App.Services
         public int ProcessorCount => _windowsInfoMonitor.ProcessorCount();
         public TimeSpan Uptime => _windowsInfoMonitor.GetSystemUptime();
 
-        public sealed record VerificationResult(
-            string Title,
-            string Message,
-            bool IsPositive);
+        public sealed record VerificationResult(string Title, string Message, bool IsPositive);
     }
 }
