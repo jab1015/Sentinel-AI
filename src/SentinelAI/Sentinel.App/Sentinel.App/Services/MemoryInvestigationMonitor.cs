@@ -13,30 +13,29 @@ namespace Sentinel.App.Services
     /// <summary>
     /// Builds memory-pressure context without treating Windows Memory Compression
     /// as a suspicious application. High memory must persist across multiple
-    /// samples before Sentinel elevates it to an attention condition.
+    /// samples before Sentinel elevates it, and process growth is correlated before
+    /// Sentinel suggests that a particular application may be responsible.
     /// </summary>
     public sealed class MemoryInvestigationMonitor
     {
         private const double ElevatedMemoryPercent = 85.0;
         private const double HighMemoryPercent = 92.0;
+        private const double MeaningfulProcessGrowthGB = 0.25;
         private const int SustainedHighSampleCount = 3;
         private const int ContributorCount = 3;
 
         private int _consecutiveHighSamples;
+        private Dictionary<string, double> _previousWorkingSets = new(StringComparer.OrdinalIgnoreCase);
 
         public MemoryInvestigationSnapshot GetSnapshot(double memoryUsagePercent)
         {
-            if (memoryUsagePercent >= HighMemoryPercent)
-            {
-                _consecutiveHighSamples++;
-            }
-            else
-            {
-                _consecutiveHighSamples = 0;
-            }
+            _consecutiveHighSamples = memoryUsagePercent >= HighMemoryPercent
+                ? _consecutiveHighSamples + 1
+                : 0;
 
             Process[] processes = Process.GetProcesses();
             List<MemoryContributor> contributors = new();
+            Dictionary<string, double> currentWorkingSets = new(StringComparer.OrdinalIgnoreCase);
             double memoryCompressionGB = 0;
 
             try
@@ -54,10 +53,14 @@ namespace Sentinel.App.Services
                             continue;
                         }
 
-                        if (workingSetGB > 0)
+                        if (workingSetGB <= 0)
                         {
-                            contributors.Add(new MemoryContributor(name, workingSetGB));
+                            continue;
                         }
+
+                        currentWorkingSets[name] = currentWorkingSets.TryGetValue(name, out double existing)
+                            ? existing + workingSetGB
+                            : workingSetGB;
                     }
                     catch
                     {
@@ -65,17 +68,30 @@ namespace Sentinel.App.Services
                     }
                 }
 
+                foreach ((string processName, double workingSetGB) in currentWorkingSets)
+                {
+                    double growthGB = _previousWorkingSets.TryGetValue(processName, out double previous)
+                        ? workingSetGB - previous
+                        : 0;
+
+                    contributors.Add(new MemoryContributor(processName, workingSetGB, growthGB));
+                }
+
                 MemoryContributor[] top = contributors
                     .OrderByDescending(item => item.WorkingSetGB)
                     .Take(ContributorCount)
                     .ToArray();
 
+                MemoryContributor? fastestGrowing = contributors
+                    .Where(item => item.GrowthGB >= MeaningfulProcessGrowthGB)
+                    .OrderByDescending(item => item.GrowthGB)
+                    .FirstOrDefault();
+
                 string topSummary = top.Length == 0
                     ? "No individual application memory contributors could be read."
-                    : string.Join(", ", top.Select(item => $"{item.ProcessName} {item.WorkingSetGB:0.00} GB"));
+                    : string.Join(", ", top.Select(item => FormatContributor(item)));
 
                 bool sustainedHigh = _consecutiveHighSamples >= SustainedHighSampleCount;
-
                 MemoryPressureLevel pressure = sustainedHigh
                     ? MemoryPressureLevel.High
                     : memoryUsagePercent >= ElevatedMemoryPercent
@@ -85,10 +101,15 @@ namespace Sentinel.App.Services
                 string conclusion;
                 string recommendation;
 
-                if (sustainedHigh)
+                if (sustainedHigh && fastestGrowing is not null)
                 {
-                    conclusion = $"Memory remained above {HighMemoryPercent:0}% for {_consecutiveHighSamples} consecutive checks. Sentinel confirmed sustained memory pressure.";
-                    recommendation = "Review the largest application contributors shown by Sentinel. Do not close Windows Memory Compression; Sentinel will continue checking whether one application keeps growing before recommending a specific process action.";
+                    conclusion = $"Memory remained above {HighMemoryPercent:0}% for {_consecutiveHighSamples} consecutive checks, and {fastestGrowing.ProcessName} increased by {fastestGrowing.GrowthGB:0.00} GB since the prior memory sample.";
+                    recommendation = $"Sentinel identified {fastestGrowing.ProcessName} as the fastest-growing application during sustained memory pressure. Continue monitoring for repeated growth before closing it; Windows Memory Compression itself should not be stopped.";
+                }
+                else if (sustainedHigh)
+                {
+                    conclusion = $"Memory remained above {HighMemoryPercent:0}% for {_consecutiveHighSamples} consecutive checks. Sentinel confirmed sustained memory pressure, but no single application showed meaningful growth in the latest comparison.";
+                    recommendation = "Review the largest application contributors shown by Sentinel. Do not close Windows Memory Compression; Sentinel will continue comparing application growth before recommending a specific process action.";
                 }
                 else if (memoryUsagePercent >= HighMemoryPercent)
                 {
@@ -105,6 +126,8 @@ namespace Sentinel.App.Services
                     conclusion = "Memory use is within Sentinel's normal monitoring range.";
                     recommendation = "No action is required.";
                 }
+
+                _previousWorkingSets = currentWorkingSets;
 
                 return new MemoryInvestigationSnapshot(
                     pressure,
@@ -123,11 +146,21 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static string FormatContributor(MemoryContributor contributor)
+        {
+            if (contributor.GrowthGB >= MeaningfulProcessGrowthGB)
+            {
+                return $"{contributor.ProcessName} {contributor.WorkingSetGB:0.00} GB (+{contributor.GrowthGB:0.00} GB)";
+            }
+
+            return $"{contributor.ProcessName} {contributor.WorkingSetGB:0.00} GB";
+        }
+
         private static bool IsMemoryCompression(string processName) =>
             processName.Equals("Memory Compression", StringComparison.OrdinalIgnoreCase) ||
             processName.Equals("MemoryCompression", StringComparison.OrdinalIgnoreCase);
 
-        private sealed record MemoryContributor(string ProcessName, double WorkingSetGB);
+        private sealed record MemoryContributor(string ProcessName, double WorkingSetGB, double GrowthGB);
 
         public enum MemoryPressureLevel
         {
