@@ -96,6 +96,11 @@ namespace Sentinel.App.Models
         public string AutonomousProtectionAction { get; set; } = "None";
         public string AutonomousProtectionTarget { get; set; } = "None";
         public string AutonomousProtectionSummary { get; set; } = "No autonomous protection action is required.";
+        public bool AutonomousProtectionAttempted { get; set; }
+        public bool AutonomousProtectionSucceeded { get; set; }
+        public DateTimeOffset? AutonomousProtectionCompletedAt { get; set; }
+        public string AutonomousProtectionOutcomeTitle { get; set; } = string.Empty;
+        public string AutonomousProtectionOutcomeSummary { get; set; } = string.Empty;
 
         public bool RemediationAttempted { get; set; }
         public bool RemediationSucceeded { get; set; }
