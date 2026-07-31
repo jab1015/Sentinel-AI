@@ -52,14 +52,17 @@ namespace Sentinel.App
             {
                 await _engine.RefreshAsync();
                 var snapshot = _engine.CurrentSnapshot;
+                var history = await _investigationHistoryService.ReadRecentAsync(100);
                 AskSentinelResponseOrchestrator.AskSentinelResponse response =
-                    _askSentinelResponseOrchestrator.CreateResponse(question, snapshot);
+                    _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history);
 
                 AskSentinelAnswerText.Text = response.Answer;
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 AskSentinelStatusText.Text = response.IsInsufficientEvidence
                     ? $"Checked verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}; Sentinel will not guess beyond it."
-                    : $"Answered from verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}.";
+                    : response.UsedInvestigationHistory
+                        ? $"Answered from verified current evidence and Sentinel investigation history; current evidence updated {response.EvidenceTimestamp:h:mm:ss tt}."
+                        : $"Answered from verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}.";
             }
             catch (Exception)
             {
