@@ -1,6 +1,6 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 2.6  
+**Version:** 2.7  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
@@ -25,7 +25,7 @@
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
 4. [x] Performance profiling and optimization.
-5. [ ] One-hour and eight-hour stability testing.
+5. [ ] One-hour and eight-hour stability testing. **Harness implemented; runtime evidence pending.**
 6. [ ] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
 8. [ ] Code signing.
@@ -34,7 +34,7 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Startup performance is now measured in production diagnostics from launch entry to main-window activation. Diagnostic file writes no longer block the first visible window, and the startup path activates the UI before development-only regression work. This preserves the accepted shell-first experience while making startup performance observable and reducing avoidable launch-path I/O latency.
+`tools/Run-StabilityTest.ps1` now provides repeatable one-hour and eight-hour runtime stability verification against a running Sentinel process. It captures responsiveness, working set, private memory, handle count, thread count, processor time, process continuity, CSV evidence, and a human-readable PASS/FAIL summary. Phase 7 item 5 remains open until both required runtime intervals have been completed successfully; implementation of the harness alone is not treated as test evidence.
 
 ## Progress Baseline Rule
 
