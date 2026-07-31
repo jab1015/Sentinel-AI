@@ -16,6 +16,8 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class AutonomousProtectionExecutor
     {
+        private const int MinimumAutomaticConfidencePercent = 80;
+
         public async Task<AutonomousProtectionExecutionResult> ExecuteAsync(
             SystemSnapshot snapshot,
             AutonomousProtectionCoordinator.AutonomousProtectionDecision decision,
@@ -31,6 +33,19 @@ namespace Sentinel.App.Services
             {
                 return AutonomousProtectionExecutionResult.NotAttempted(
                     "Sentinel did not change the computer because this action is not approved for automatic execution.");
+            }
+
+            // Defense in depth: execution revalidates the evidence even though the
+            // coordinator already evaluated it. A stale or mismatched decision must
+            // never be enough to change system state.
+            if (!snapshot.InvestigationRequiresAttention ||
+                snapshot.GuidanceConfidencePercent < MinimumAutomaticConfidencePercent ||
+                !snapshot.RemediationAvailable ||
+                !string.Equals(snapshot.RemediationAction, decision.Action, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(snapshot.RemediationTarget, decision.Target, StringComparison.OrdinalIgnoreCase))
+            {
+                return AutonomousProtectionExecutionResult.NotAttempted(
+                    "Sentinel did not change the computer because the current evidence no longer matches the approved automatic action.");
             }
 
             try
