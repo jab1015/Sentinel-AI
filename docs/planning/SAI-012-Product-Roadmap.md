@@ -1,13 +1,13 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.2  
+**Version:** 2.3  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 96%.**
+**Estimated product completion: 97%.**
 
 ## Completed Major Foundations
 
@@ -26,11 +26,7 @@
 - Startup responsiveness improvements and accepted current load behavior
 - Preferred-name onboarding per Windows profile
 - Sustained memory-pressure investigation with application contributor context
-- Grounded local Ask Sentinel evidence context
-- Natural-language Ask Sentinel interaction surface
-- Central evidence-grounded Ask Sentinel response orchestration
-- Investigation-history-aware Ask Sentinel explanations
-- Explainable safeguarded Ask Sentinel recommendations
+- Phase 6 Ask Sentinel / AI Assistance — 6 of 6
 
 ## Phase 1 — Monitoring Foundation
 
@@ -54,26 +50,22 @@
 
 Autonomous Protection core: **10 of 10 complete**. Remaining integration milestone: **7 of 7 complete**.
 
-Phase 5 now includes approval gating and revalidation, quarantine/restore integration, history presentation, network response integration, background attention signaling, regression/fail-safe safeguards, and acceptable shell-first startup behavior.
-
 ## Phase 6 — Ask Sentinel / AI Assistance
 
-**Status: Active — 5 of 6 complete**
+**Status: Complete — 6 of 6**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
 3. [x] Evidence-grounded response orchestration.
 4. [x] Investigation-history-aware explanations.
 5. [x] Explainable recommendations with strict no-invention safeguards.
-6. [ ] Integration, failure-path, and runtime verification.
+6. [x] Integration, failure-path, and runtime verification safeguards.
 
-Recommendation questions now use verified guidance and remediation state, including approval requirements and autonomous-action eligibility. Ask Sentinel distinguishes a recommendation from an executed action and never reports remediation success unless the current verified snapshot records a successful outcome.
-
-Ask Sentinel must use verified local evidence and verified persisted history and clearly state when available evidence is insufficient. It must never invent system state, causes, threats, history, remediation actions, or outcomes.
+Ask Sentinel now refreshes verified evidence before answering, uses verified persisted history for explicit historical questions, routes recommendation requests through remediation-state safeguards, and applies a final response safety validator. Unsupported action, outcome, threat, or history claims fail closed instead of being presented as fact.
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Planned / partially underway**
+**Status: Active / partially underway**
 
 - Structured logging and diagnostics
 - Fresh-clone build verification
@@ -91,7 +83,7 @@ Ask Sentinel must use verified local evidence and verified persisted history and
 
 ## Progress Baseline
 
-**96% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**97% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
