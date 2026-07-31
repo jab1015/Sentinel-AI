@@ -20,23 +20,16 @@ namespace Sentinel.App
         public MainWindow()
         {
             InitializeComponent();
-
             _timer.Interval = TimeSpan.FromSeconds(5);
             _timer.Tick += Timer_Tick;
-
             Activated += MainWindow_Activated;
         }
 
         private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
-            if (_initialRefreshStarted)
-            {
-                return;
-            }
-
+            if (_initialRefreshStarted) return;
             _initialRefreshStarted = true;
             Activated -= MainWindow_Activated;
-
             await Task.Delay(250);
             await EnsurePreferredNameAsync();
             await UpdateDashboardAsync();
@@ -49,50 +42,26 @@ namespace Sentinel.App
             if (string.IsNullOrWhiteSpace(preferredName))
             {
                 string suggestedName = _userProfileService.GetSuggestedName();
-                TextBox nameBox = new()
-                {
-                    Text = suggestedName,
-                    PlaceholderText = "Your first name"
-                };
-
+                TextBox nameBox = new() { Text = suggestedName, PlaceholderText = "Your first name" };
                 ContentDialog dialog = new()
                 {
-                    Title = "What should Sentinel call you?",
-                    Content = nameBox,
-                    PrimaryButtonText = "Save",
-                    SecondaryButtonText = "Use Windows name",
-                    DefaultButton = ContentDialogButton.Primary,
-                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    Title = "What should Sentinel call you?", Content = nameBox,
+                    PrimaryButtonText = "Save", SecondaryButtonText = "Use Windows name",
+                    DefaultButton = ContentDialogButton.Primary, XamlRoot = ((FrameworkElement)Content).XamlRoot
                 };
-
                 ContentDialogResult result = await dialog.ShowAsync();
-                preferredName = result == ContentDialogResult.Primary
-                    ? nameBox.Text.Trim()
-                    : suggestedName;
-
-                if (string.IsNullOrWhiteSpace(preferredName))
-                {
-                    preferredName = suggestedName;
-                }
-
+                preferredName = result == ContentDialogResult.Primary ? nameBox.Text.Trim() : suggestedName;
+                if (string.IsNullOrWhiteSpace(preferredName)) preferredName = suggestedName;
                 _userProfileService.SavePreferredName(preferredName);
             }
-
             GreetingText.Text = $"Hello, {preferredName}.";
         }
 
-        private async void Timer_Tick(object? sender, object e)
-        {
-            await UpdateDashboardAsync();
-        }
+        private async void Timer_Tick(object? sender, object e) => await UpdateDashboardAsync();
 
         private async Task UpdateDashboardAsync()
         {
-            if (_isRefreshing)
-            {
-                return;
-            }
-
+            if (_isRefreshing) return;
             _isRefreshing = true;
             try
             {
@@ -100,42 +69,25 @@ namespace Sentinel.App
                 var snapshot = _engine.CurrentSnapshot;
 
                 CpuText.Text = $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
-                MemoryText.Text =
-                    $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
-
+                MemoryText.Text = $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
                 double diskUsedGB = Math.Max(snapshot.DiskTotalGB - snapshot.DiskFreeGB, 0);
-                DiskText.Text = snapshot.DiskTotalGB > 0
-                    ? $"Disk: {diskUsedGB:0.00} GB / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)"
-                    : "Disk: Unavailable";
-
-                NetworkText.Text =
-                    $"Network: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
-                ProcessText.Text = snapshot.HighestMemoryProcessGB > 0
-                    ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)"
-                    : $"Processes: {snapshot.ProcessCount} running";
-                SecurityText.Text =
-                    $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
+                DiskText.Text = snapshot.DiskTotalGB > 0 ? $"Disk: {diskUsedGB:0.00} GB / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)" : "Disk: Unavailable";
+                NetworkText.Text = $"Network: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
+                ProcessText.Text = snapshot.HighestMemoryProcessGB > 0 ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)" : $"Processes: {snapshot.ProcessCount} running";
+                SecurityText.Text = $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
 
                 CriticalEventsText.Text = snapshot.CriticalEventCount.ToString();
                 ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
-                LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue
-                    ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}"
-                    : "No recent critical or error events.";
+                LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}" : "No recent critical or error events.";
                 LatestEventMessageText.Text = snapshot.LatestEventMessage;
-
                 RunningProcessesText.Text = snapshot.ProcessCount.ToString();
                 FlaggedProcessesText.Text = snapshot.FlaggedProcessCount.ToString();
-                PrimaryProcessText.Text = snapshot.FlaggedProcessCount > 0
-                    ? snapshot.PrimaryFlaggedProcessName
-                    : "No process warning conditions were detected.";
+                PrimaryProcessText.Text = snapshot.FlaggedProcessCount > 0 ? snapshot.PrimaryFlaggedProcessName : "No process warning conditions were detected.";
                 PrimaryProcessReasonText.Text = snapshot.PrimaryFlaggedProcessReason;
-
                 InstalledServicesText.Text = snapshot.InstalledServiceCount.ToString();
                 RunningServicesText.Text = snapshot.RunningServiceCount.ToString();
                 FlaggedServicesText.Text = snapshot.FlaggedServiceCount.ToString();
-                PrimaryServiceText.Text = snapshot.FlaggedServiceCount > 0
-                    ? snapshot.PrimaryFlaggedServiceName
-                    : "No service warning conditions were detected.";
+                PrimaryServiceText.Text = snapshot.FlaggedServiceCount > 0 ? snapshot.PrimaryFlaggedServiceName : "No service warning conditions were detected.";
                 PrimaryServiceReasonText.Text = snapshot.PrimaryFlaggedServiceReason;
 
                 GuidanceTitleText.Text = snapshot.GuidanceTitle;
@@ -148,75 +100,51 @@ namespace Sentinel.App
                 GuidanceActionText.Text = snapshot.GuidanceRecommendedAction;
                 GuidanceFixAvailabilityText.Text = snapshot.GuidanceFixAvailability;
                 GuidanceFixDetailsText.Text = snapshot.GuidanceFixDetails;
-
                 _guidanceActionId = snapshot.GuidanceActionId;
 
-                bool hasServiceFailure =
-                    snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
-                    snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
-
-                bool isStorageSpacesSmpFinding =
-                    snapshot.LatestEventMessage.Contains("Storage Spaces SMP", StringComparison.OrdinalIgnoreCase) ||
-                    snapshot.GuidanceTitle.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
-                    snapshot.GuidanceWhatHappened.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
-                    snapshot.PrimaryFlaggedServiceName.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
-                    snapshot.PrimaryFlaggedServiceName.Contains("SMP", StringComparison.OrdinalIgnoreCase);
-
-                bool hasSecurityOrProcessFinding =
-                    snapshot.FlaggedProcessCount > 0 ||
-                    !snapshot.DefenderEnabled ||
-                    !snapshot.FirewallEnabled;
-
-                bool hasActionableServiceOrEventFinding =
-                    !isStorageSpacesSmpFinding &&
-                    (snapshot.FlaggedServiceCount > 0 ||
-                     snapshot.CriticalEventCount > 0 ||
-                     snapshot.ErrorEventCount > 0 ||
-                     hasServiceFailure ||
-                     snapshot.RiskScore >= 20);
-
-                bool requiresAttention =
-                    hasSecurityOrProcessFinding || hasActionableServiceOrEventFinding;
+                bool hasServiceFailure = snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) && snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
+                bool isStorageSpacesSmpFinding = snapshot.LatestEventMessage.Contains("Storage Spaces SMP", StringComparison.OrdinalIgnoreCase) || snapshot.GuidanceTitle.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.GuidanceWhatHappened.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.PrimaryFlaggedServiceName.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.PrimaryFlaggedServiceName.Contains("SMP", StringComparison.OrdinalIgnoreCase);
+                bool memoryRequiresAttention = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
+                bool hasSecurityOrProcessFinding = snapshot.FlaggedProcessCount > 0 || !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
+                bool hasActionableServiceOrEventFinding = !isStorageSpacesSmpFinding && (snapshot.FlaggedServiceCount > 0 || snapshot.CriticalEventCount > 0 || snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20);
+                bool requiresAttention = hasSecurityOrProcessFinding || hasActionableServiceOrEventFinding || memoryRequiresAttention;
 
                 GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
-                GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-
+                GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
                 IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
                 InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
 
-                if (requiresAttention)
+                if (memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding)
+                {
+                    OverallStatusText.Text = "I found sustained high memory use that requires attention.";
+                    AttentionStatusText.Text = snapshot.MemoryConclusion;
+                    MonitoringStatusText.Text = snapshot.MemoryRecommendation;
+                    RiskSummaryText.Text = $"Memory is at {snapshot.MemoryUsagePercent:0.0}%. Largest application contributors: {snapshot.MemoryTopContributors}. Windows Memory Compression: {snapshot.MemoryCompressionGB:0.00} GB.";
+                    RecommendationText.Text = snapshot.MemoryRecommendation;
+                }
+                else if (requiresAttention)
                 {
                     OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
                     AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
                     MonitoringStatusText.Text = "I’ll continue monitoring this condition and your computer.";
+                    RiskSummaryText.Text = snapshot.RiskSummary;
+                    RecommendationText.Text = snapshot.Recommendation;
                 }
                 else
                 {
                     OverallStatusText.Text = "Your computer is healthy.";
                     AttentionStatusText.Text = "Nothing requires your attention right now.";
                     MonitoringStatusText.Text = "I’ll continue monitoring your computer.";
+                    RiskSummaryText.Text = "Your computer is healthy.";
+                    RecommendationText.Text = "No action is required. Sentinel will continue monitoring your computer.";
                 }
 
-                VerifyGuidanceButton.Visibility = requiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-
+                VerifyGuidanceButton.Visibility = requiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
                 RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0";
-                RiskLevelText.Text = requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
-                RiskSummaryText.Text = requiresAttention
-                    ? snapshot.RiskSummary
-                    : "Your computer is healthy.";
-                RecommendationText.Text = requiresAttention
-                    ? snapshot.Recommendation
-                    : "No action is required. Sentinel will continue monitoring your computer.";
+                RiskLevelText.Text = memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
             }
-            finally
-            {
-                _isRefreshing = false;
-            }
+            finally { _isRefreshing = false; }
         }
 
         private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e)
@@ -239,7 +167,6 @@ namespace Sentinel.App
             VerificationResultBorder.Visibility = Visibility.Visible;
             VerificationResultTitleText.Text = "Checking current status...";
             VerificationResultMessageText.Text = "Sentinel AI is verifying current conditions and refreshing the available evidence.";
-
             try
             {
                 MonitoringEngine.VerificationResult result = await _engine.VerifyCurrentGuidanceAsync();
@@ -252,25 +179,13 @@ namespace Sentinel.App
                 VerificationResultTitleText.Text = "Verification could not complete";
                 VerificationResultMessageText.Text = "Sentinel AI could not verify the current status. No system change was made.";
             }
-            finally
-            {
-                VerifyGuidanceButton.IsEnabled = true;
-            }
+            finally { VerifyGuidanceButton.IsEnabled = true; }
         }
 
         private static void Launch(string target)
         {
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = target,
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-            }
+            try { Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true }); }
+            catch { }
         }
     }
 }
