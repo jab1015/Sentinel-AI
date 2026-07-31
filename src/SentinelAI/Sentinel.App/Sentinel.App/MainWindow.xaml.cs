@@ -117,27 +117,45 @@ namespace Sentinel.App
                         (snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20));
 
                 IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
-                OverallStatusText.Text = requiresAttention
-                    ? "I analyzed your computer and found something worth reviewing."
-                    : "Everything looks good today.";
-                AttentionStatusText.Text = requiresAttention
-                    ? "I investigated the available evidence and summarized what matters below."
-                    : "There is nothing that requires your attention.";
-                MonitoringStatusText.Text = requiresAttention
-                    ? "I’ll continue monitoring this condition and your computer."
-                    : "I’ll continue monitoring your computer.";
+                InvestigationHistoryBorder.Visibility = isStorageSpacesSmpEvent && !requiresAttention
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+                if (requiresAttention)
+                {
+                    OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
+                    AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
+                    MonitoringStatusText.Text = "I’ll continue monitoring this condition and your computer.";
+                }
+                else
+                {
+                    OverallStatusText.Text = "Nothing requires your attention right now.";
+                    AttentionStatusText.Text = "I analyzed your computer and verified its current condition.";
+                    MonitoringStatusText.Text = "I’ll continue monitoring this condition.";
+                }
+
+                if (isStorageSpacesSmpEvent && !requiresAttention)
+                {
+                    HistoryOutcomeIconText.Text = "👁";
+                    HistoryTitleText.Text = "Storage Spaces service event reviewed";
+                    HistorySummaryText.Text = "Windows recorded a background Storage Spaces service event. Sentinel investigated the available evidence and found no current problem.";
+                    HistoryOutcomeText.Text = "Monitoring · No action required";
+                }
 
                 VerifyGuidanceButton.Visibility = hasServiceFailure && !isStorageSpacesSmpEvent
                     ? Visibility.Visible
                     : Visibility.Collapsed;
-                PrimaryCheckAgainButton.Visibility = hasServiceFailure && !isStorageSpacesSmpEvent
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
 
                 RiskScoreText.Text = snapshot.RiskScore.ToString();
                 RiskLevelText.Text = $"{snapshot.RiskLevel} Risk";
-                RiskSummaryText.Text = snapshot.RiskSummary;
-                RecommendationText.Text = snapshot.Recommendation;
+                RiskSummaryText.Text = requiresAttention
+                    ? snapshot.RiskSummary
+                    : "Your computer is healthy.";
+                RecommendationText.Text = requiresAttention
+                    ? snapshot.Recommendation
+                    : isStorageSpacesSmpEvent
+                        ? "A background Storage Spaces event was investigated. No action is required, and Sentinel will continue monitoring."
+                        : "No action is required. Sentinel will continue monitoring your computer.";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
             }
             finally
@@ -177,7 +195,6 @@ namespace Sentinel.App
         private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e)
         {
             VerifyGuidanceButton.IsEnabled = false;
-            PrimaryCheckAgainButton.IsEnabled = false;
             VerificationResultBorder.Visibility = Visibility.Visible;
             VerificationResultTitleText.Text = "Checking current status...";
             VerificationResultMessageText.Text = "Sentinel AI is verifying current conditions and refreshing the available evidence.";
@@ -199,7 +216,6 @@ namespace Sentinel.App
             finally
             {
                 VerifyGuidanceButton.IsEnabled = true;
-                PrimaryCheckAgainButton.IsEnabled = true;
             }
         }
 
