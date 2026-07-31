@@ -1,13 +1,13 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Project Summary
 
-**Estimated overall completion: 94%.**
+**Estimated overall completion: 96%.**
 
 - Phase 1 — Monitoring Foundation: **Complete**
 - Phase 2 — Investigation Experience: **Complete**
@@ -16,7 +16,7 @@
 - Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Autonomous Protection core: **10 of 10 complete**
 - Phase 5 remaining integration: **7 of 7 complete**
-- Current milestone: **Phase 6 — Ask Sentinel / AI Assistance: 4 of 6 complete**
+- Current milestone: **Phase 6 — Ask Sentinel / AI Assistance: 5 of 6 complete**
 
 ## Completed Core Capabilities
 
@@ -46,6 +46,7 @@
 - Natural-language Ask Sentinel interaction surface with fail-closed unsupported-question behavior
 - Central evidence-grounded Ask Sentinel response orchestration
 - Investigation-history-aware Ask Sentinel explanations
+- Explainable Ask Sentinel recommendations with remediation/approval-state safeguards
 
 ## Phase 5 — Remediation Integration & Autonomous Protection
 
@@ -63,16 +64,16 @@ Autonomous Protection core: **10 of 10 complete**. Remaining integration milesto
 
 ## Current Milestone — Phase 6 Ask Sentinel / AI Assistance
 
-**Status: Active — 4 of 6 complete**
+**Status: Active — 5 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
 3. [x] Evidence-grounded response orchestration.
 4. [x] Investigation-history-aware explanations.
-5. [ ] Explainable recommendations with strict no-invention safeguards.
+5. [x] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
 
-Ask Sentinel now distinguishes current-system questions from explicit history questions. For history requests it reads persisted Sentinel investigation records, compares the current verified investigation fingerprint when available, reports prior matching occurrences only when established by stored evidence, and explicitly avoids claiming that unrelated historical findings are the same condition.
+Recommendation questions now route through a dedicated safeguard that uses only current verified guidance, recommendation, remediation availability, approval requirements, autonomous-execution policy state, and verified action outcomes. It does not claim that a change was made merely because one is recommended or available, and it does not report success without a verified successful outcome.
 
 Grounding rule: Ask Sentinel may describe only evidence available from Sentinel's verified local context/history. Missing evidence must be acknowledged rather than inferred as fact.
 
@@ -95,8 +96,8 @@ Grounding rule: Ask Sentinel may describe only evidence available from Sentinel'
 
 ## Progress Baseline Rule
 
-**94% is the synchronized overall project baseline as of 2026-07-31.** Future progress updates must be calculated from this tracker and SAI-012 Product Roadmap. Overall progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and that change is documented.
+**96% is the synchronized overall project baseline as of 2026-07-31.** Future progress updates must be calculated from this tracker and SAI-012 Product Roadmap. Overall progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and that change is documented.
 
 ## Definition of Done
 
-A capability is complete only when it is implemented, preserves safety boundaries, leaves failure paths safe, builds successfully, and has been appropriately runtime verified. AI assistance additionally must remain grounded in verified evidence and must not invent system state.
+A capability is complete only when it is implemented, preserves safety boundaries, leaves failure paths safe, builds successfully, and has been appropriately runtime verified. AI assistance additionally must remain grounded in verified evidence and must not invent system state, history, remediation, or outcomes.
