@@ -37,6 +37,7 @@ namespace Sentinel.App.Services
         private readonly GuidanceEngine _guidanceEngine = new();
         private readonly InvestigationEngine _investigationEngine = new();
         private readonly RemediationRecommendationEngine _remediationRecommendationEngine = new();
+        private readonly AutonomousProtectionCoordinator _autonomousProtectionCoordinator = new();
         private readonly InvestigationRecurrenceTracker _recurrenceTracker = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
@@ -110,20 +111,19 @@ namespace Sentinel.App.Services
             snapshot.InvestigationState = investigation.State.ToString(); snapshot.InvestigationConclusion = investigation.Conclusion; snapshot.InvestigationSummary = investigation.Summary;
             snapshot.InvestigationRequiresAttention = investigation.RequiresAttention; snapshot.InvestigationReasonCode = investigation.ReasonCode;
 
-            InvestigationRecurrenceTracker.RecurrenceResult recurrence = _recurrenceTracker.Record(
-                investigation.ReasonCode,
-                investigation.RequiresAttention,
-                DateTimeOffset.Now);
-            snapshot.InvestigationRecurrenceCount = recurrence.Count;
-            snapshot.InvestigationIsRecurring = recurrence.IsRecurring;
-            snapshot.InvestigationShouldEscalate = recurrence.ShouldEscalate;
+            InvestigationRecurrenceTracker.RecurrenceResult recurrence = _recurrenceTracker.Record(investigation.ReasonCode, investigation.RequiresAttention, DateTimeOffset.Now);
+            snapshot.InvestigationRecurrenceCount = recurrence.Count; snapshot.InvestigationIsRecurring = recurrence.IsRecurring; snapshot.InvestigationShouldEscalate = recurrence.ShouldEscalate;
 
             RemediationRecommendationEngine.RemediationRecommendation remediation = _remediationRecommendationEngine.Evaluate(snapshot);
-            snapshot.RemediationAvailable = remediation.Available;
-            snapshot.RemediationRequiresUserApproval = remediation.RequiresUserApproval;
-            snapshot.RemediationAction = remediation.Action;
-            snapshot.RemediationTarget = remediation.Target;
-            snapshot.RemediationSummary = remediation.Summary;
+            snapshot.RemediationAvailable = remediation.Available; snapshot.RemediationRequiresUserApproval = remediation.RequiresUserApproval;
+            snapshot.RemediationAction = remediation.Action; snapshot.RemediationTarget = remediation.Target; snapshot.RemediationSummary = remediation.Summary;
+
+            AutonomousProtectionCoordinator.AutonomousProtectionDecision protection = _autonomousProtectionCoordinator.Evaluate(snapshot);
+            snapshot.AutonomousProtectionCanExecute = protection.CanExecuteAutomatically;
+            snapshot.AutonomousProtectionRequiresUserApproval = protection.RequiresUserApproval;
+            snapshot.AutonomousProtectionAction = protection.Action;
+            snapshot.AutonomousProtectionTarget = protection.Target;
+            snapshot.AutonomousProtectionSummary = protection.Summary;
 
             CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
