@@ -12,11 +12,13 @@ namespace Sentinel.App.Services
     /// <summary>
     /// Executes a remediation only after the approval coordinator has validated
     /// the user's short-lived consent against the current investigation state.
-    /// Success is never assumed: a separate verification callback must confirm
-    /// that the intended system-state change actually occurred.
+    /// Success is never assumed: independent follow-up evidence must confirm it.
     /// </summary>
     public sealed class ApprovedRemediationExecutor
     {
+        private const int VerificationAttempts = 3;
+        private static readonly TimeSpan VerificationDelay = TimeSpan.FromSeconds(1);
+
         public async Task<ApprovedRemediationResult> ExecuteAsync(
             SystemSnapshot currentSnapshot,
             RemediationApprovalCoordinator.RemediationApprovalRequest request,
@@ -59,18 +61,25 @@ namespace Sentinel.App.Services
                         attemptedAt);
                 }
 
-                bool verified = await verifyAsync().ConfigureAwait(false);
-                if (!verified)
+                for (int attempt = 1; attempt <= VerificationAttempts; attempt++)
                 {
-                    return ApprovedRemediationResult.VerificationFailed(
-                        request.Title,
-                        "The approved action was attempted, but follow-up evidence did not confirm the expected result. Sentinel will continue investigating and will not report this action as successful.",
-                        attemptedAt);
+                    if (await verifyAsync().ConfigureAwait(false))
+                    {
+                        return ApprovedRemediationResult.Success(
+                            request.Title,
+                            "Sentinel completed the approved action and follow-up evidence verified the expected result.",
+                            attemptedAt);
+                    }
+
+                    if (attempt < VerificationAttempts)
+                    {
+                        await Task.Delay(VerificationDelay).ConfigureAwait(false);
+                    }
                 }
 
-                return ApprovedRemediationResult.Success(
+                return ApprovedRemediationResult.VerificationFailed(
                     request.Title,
-                    "Sentinel completed the approved action and follow-up evidence verified the expected result.",
+                    "The approved action was attempted, but repeated follow-up checks did not confirm the expected result. Sentinel will continue investigating and will not report this action as successful.",
                     attemptedAt);
             }
             catch (Exception ex)
