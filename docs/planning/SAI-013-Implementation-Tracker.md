@@ -1,13 +1,13 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Project Summary
 
-**Estimated overall completion: 92%.**
+**Estimated overall completion: 94%.**
 
 - Phase 1 — Monitoring Foundation: **Complete**
 - Phase 2 — Investigation Experience: **Complete**
@@ -16,7 +16,7 @@
 - Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Autonomous Protection core: **10 of 10 complete**
 - Phase 5 remaining integration: **7 of 7 complete**
-- Current milestone: **Phase 6 — Ask Sentinel / AI Assistance: 3 of 6 complete**
+- Current milestone: **Phase 6 — Ask Sentinel / AI Assistance: 4 of 6 complete**
 
 ## Completed Core Capabilities
 
@@ -45,6 +45,7 @@
 - Grounded local Ask Sentinel evidence context
 - Natural-language Ask Sentinel interaction surface with fail-closed unsupported-question behavior
 - Central evidence-grounded Ask Sentinel response orchestration
+- Investigation-history-aware Ask Sentinel explanations
 
 ## Phase 5 — Remediation Integration & Autonomous Protection
 
@@ -62,16 +63,16 @@ Autonomous Protection core: **10 of 10 complete**. Remaining integration milesto
 
 ## Current Milestone — Phase 6 Ask Sentinel / AI Assistance
 
-**Status: Active — 3 of 6 complete**
+**Status: Active — 4 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
 3. [x] Evidence-grounded response orchestration.
-4. [ ] Investigation-history-aware explanations.
+4. [x] Investigation-history-aware explanations.
 5. [ ] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
 
-Ask Sentinel now routes responses through a central orchestration layer that builds the verified local evidence context, obtains the fail-closed grounded answer, records evidence metadata, and explicitly distinguishes supported answers from insufficient-evidence outcomes.
+Ask Sentinel now distinguishes current-system questions from explicit history questions. For history requests it reads persisted Sentinel investigation records, compares the current verified investigation fingerprint when available, reports prior matching occurrences only when established by stored evidence, and explicitly avoids claiming that unrelated historical findings are the same condition.
 
 Grounding rule: Ask Sentinel may describe only evidence available from Sentinel's verified local context/history. Missing evidence must be acknowledged rather than inferred as fact.
 
@@ -94,7 +95,7 @@ Grounding rule: Ask Sentinel may describe only evidence available from Sentinel'
 
 ## Progress Baseline Rule
 
-**92% is the synchronized overall project baseline as of 2026-07-31.** Future progress updates must be calculated from this tracker and SAI-012 Product Roadmap. Overall progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and that change is documented.
+**94% is the synchronized overall project baseline as of 2026-07-31.** Future progress updates must be calculated from this tracker and SAI-012 Product Roadmap. Overall progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and that change is documented.
 
 ## Definition of Done
 
