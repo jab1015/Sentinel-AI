@@ -38,6 +38,7 @@ namespace Sentinel.App.Services
         private readonly InvestigationEngine _investigationEngine = new();
         private readonly RemediationRecommendationEngine _remediationRecommendationEngine = new();
         private readonly AutonomousProtectionCoordinator _autonomousProtectionCoordinator = new();
+        private readonly AutonomousProtectionExecutor _autonomousProtectionExecutor = new();
         private readonly InvestigationRecurrenceTracker _recurrenceTracker = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
@@ -125,8 +126,35 @@ namespace Sentinel.App.Services
             snapshot.AutonomousProtectionTarget = protection.Target;
             snapshot.AutonomousProtectionSummary = protection.Summary;
 
+            if (protection.CanExecuteAutomatically && !protection.RequiresUserApproval)
+            {
+                AutonomousProtectionExecutor.AutonomousProtectionExecutionResult execution = await _autonomousProtectionExecutor.ExecuteAsync(
+                    snapshot,
+                    protection,
+                    RefreshSecurityStateForProtectionAsync,
+                    RetryTransientOperationForProtectionAsync);
+
+                snapshot.AutonomousProtectionAttempted = execution.Attempted;
+                snapshot.AutonomousProtectionSucceeded = execution.Succeeded;
+                snapshot.AutonomousProtectionCompletedAt = execution.CompletedAt;
+                snapshot.AutonomousProtectionOutcomeTitle = execution.Title;
+                snapshot.AutonomousProtectionOutcomeSummary = execution.Summary;
+            }
+
             CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
+        }
+
+        private async Task RefreshSecurityStateForProtectionAsync()
+        {
+            _securitySnapshot = await Task.Run(_securityMonitor.GetStatus);
+            _lastSecurityRefresh = DateTime.Now;
+        }
+
+        private async Task RetryTransientOperationForProtectionAsync()
+        {
+            _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus);
+            _lastEventLogRefresh = DateTime.Now;
         }
 
         public async Task<VerificationResult> VerifyCurrentGuidanceAsync()
