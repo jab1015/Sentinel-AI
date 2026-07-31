@@ -1,51 +1,79 @@
 # Sentinel AI
 
-> **AI-Powered Windows Security & System Intelligence**
+> **Windows Investigation, Security & Remediation Assistant**
 
-Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It combines real-time Windows system monitoring, security posture reporting, and a future security-intelligence layer in a clear dashboard.
+Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language investigation conclusions only when attention is warranted, and is being expanded with policy-controlled remediation capabilities.
 
 ---
 
 # Project Status
 
-**Version:** 0.4.0  
 **Status:** Active Development  
-**Completed Sprint:** Sprint 4 — Core Monitoring Expansion  
-**Current Sprint:** Sprint 5 — Security Intelligence Foundation
+**Production Branch:** `main`  
+**Current Phase:** Investigation + Safe Remediation Foundation  
+**Phase Progress:** 10 of 10 — implementation foundation complete; runtime verification continues as capabilities are integrated
 
-The core dashboard milestone has been built and verified successfully by the Product Owner.
+The application builds, launches, monitors the system continuously, suppresses non-actionable findings, and has been repeatedly runtime-verified by the Product Owner.
 
 ---
 
-# Verified Production Features
+# Verified Runtime Features
 
 - Native CPU monitoring through `GetSystemTimes`
 - Native physical-memory monitoring through `GlobalMemoryStatusEx`
 - System-drive used, total, and percentage reporting
-- Live network download and upload throughput
-- Running process count
-- Highest-memory process identification and memory usage
+- Network download and upload throughput
+- Running process count and highest-memory process
 - Microsoft Defender enabled status
 - Windows Firewall enabled status
-- One-second dashboard refresh
-- Live timestamp updates
-- Graceful unavailable-state handling
-- Successful build, launch, and runtime verification
+- Windows Event Log investigation
+- Process, service, persistence, and network evidence collection
+- Risk and confidence evaluation
+- Plain-language investigation summaries
+- Healthy-state suppression of unnecessary technical warnings
+- Guided Windows actions when user intervention is actually required
+- Five-second investigation refresh cadence to reduce UI lag
+- Deferred first investigation pass so the application shell paints promptly
 
 ---
 
-# Dashboard Status
+# Safe Remediation Foundation
 
-| Component | Status |
-|---|---|
-| CPU | Complete and verified |
-| Memory | Complete and verified |
-| Disk | Complete and verified |
-| Network | Complete and verified |
-| Processes | Complete and verified |
-| Microsoft Defender | Complete and verified |
-| Windows Firewall | Complete and verified |
-| Dashboard refresh | Complete and verified |
+Implemented foundations:
+
+- Central remediation policy and safety gating
+- Explicit evidence requirements before system-changing actions
+- User approval requirements for moderate-risk actions
+- Windows protected-component safeguards
+- Verified process termination service
+- Verified outbound Windows Firewall blocking service
+- File quarantine and hash-verified restore service
+- Persistent remediation audit history
+- Persistent investigation history and recurrence counting
+- No success claim unless the requested action can be verified
+- No automatic force-closing of applications for transient Windows Update error `0x80073D02`
+
+System-changing capabilities remain policy controlled. Sentinel must prefer silent monitoring when Windows is expected to self-correct and must not interrupt the user for a single transient condition.
+
+---
+
+# User Experience Direction
+
+Sentinel is designed for non-technical users.
+
+Normal state:
+
+- **Your computer is healthy.**
+- Nothing requires attention.
+- Technical evidence remains available through progressive disclosure.
+
+Issue state:
+
+- Sentinel investigates first.
+- It explains what happened and why it matters.
+- It fixes safe conditions automatically only when policy permits.
+- It asks the user only when approval, elevation, or a human decision is genuinely required.
+- It verifies the outcome after remediation.
 
 ---
 
@@ -69,100 +97,125 @@ The core dashboard milestone has been built and verified successfully by the Pro
 ```text
 User Interface
       │
-Monitoring Engine
+Investigation / Monitoring Engine
       │
-System Snapshot
+System Snapshot + Evidence
       │
-Monitor Services
+Classification / Guidance / Policy
+      │
+Remediation Services
       │
 Windows and .NET System APIs
 ```
 
 Core principles:
 
-- Single responsibility
-- Snapshot-based communication
-- Native Windows integration
-- Graceful failure handling
-- Maintainable service boundaries
+- Evidence before action
+- Least-risk remediation
+- Verify every system-changing outcome
+- Do not claim success without verification
+- Progressive disclosure for technical information
+- Keep healthy users undisturbed
 - Preserve working features during expansion
+- Maintain clear service boundaries
 
 ---
 
-# Sprint 4 — Complete
+# Completed Development Areas
 
-- [x] Display production disk metrics
-- [x] Verify disk values at runtime
-- [x] Implement network download throughput
-- [x] Implement network upload throughput
-- [x] Display process count
-- [x] Display highest-memory process
-- [x] Implement Microsoft Defender enabled status
-- [x] Implement Windows Firewall enabled status
-- [x] Verify successful build and application launch
-- [x] Verify all dashboard values at runtime
+- Core system monitoring
+- Security posture monitoring
+- Event Log investigation
+- Process investigation
+- Service investigation
+- Persistence/startup investigation
+- Active network evidence
+- Investigation guidance and confidence
+- Healthy-state suppression
+- Transient Windows Update suppression
+- Remediation policy foundation
+- Process remediation foundation
+- Firewall remediation foundation
+- Quarantine/restore foundation
+- Remediation audit persistence
+- Investigation history persistence
+- Startup and refresh responsiveness improvements
 
 ---
 
-# Sprint 5 — Active
+# Next Phase
 
 Priority order:
 
-1. Add Windows Event Log monitoring
-2. Add critical and security event classification
-3. Add suspicious-process indicators
-4. Add startup application monitoring
-5. Add service-health monitoring
-6. Add integration and failure-path tests
-7. Introduce alerting and notification foundations
-8. Prepare explainable security recommendations
+1. Integrate remediation services into investigation decisions
+2. Add safe automatic remediation classes for low-risk conditions
+3. Add user-approval workflow for moderate-risk remediation
+4. Add post-remediation verification and UI outcome reporting
+5. Use investigation history to distinguish transient from recurring failures
+6. Add quarantine management UI and recovery workflow
+7. Add remediation/audit history UI only when useful to the user
+8. Expand network investigation and endpoint attribution
+9. Add notification behavior for issues requiring attention while Sentinel is minimized
+10. Complete integration, failure-path, and regression testing
 
 ---
 
 # Roadmap
 
-## Version 0.4 — Core Monitoring
+## Investigation Intelligence
 
-Complete:
+Substantially implemented:
 
-- CPU, memory, disk, network, and process monitoring
-- Defender and Firewall status
-- Live dashboard integration
-
-## Version 0.5 — Security Intelligence
-
-- Event Log intelligence
-- Suspicious process indicators
-- Startup and service analysis
-- Threat classification
+- System evidence collection
+- Windows Event intelligence
+- Process/service/persistence/network evidence
 - Risk and confidence scoring
+- Plain-language conclusions
+- Progressive disclosure
 
-## Version 0.6 — Recommendations and Alerts
+## Safe Remediation
 
-- Explainable recommendations
-- Notification center
-- Historical reporting
-- Security timeline
+Foundation implemented; integration and runtime verification in progress:
 
-## Version 1.0 — Commercial Release
+- Policy-controlled actions
+- Process termination
+- Firewall blocking
+- Quarantine and restore
+- Verification
+- Audit/history persistence
+
+## Autonomous Protection
+
+Planned expansion:
+
+- Low-risk automatic correction
+- Recurrence-aware escalation
+- Verified recovery actions
+- Minimal user interruption
+- Continuous protection while minimized
+
+## Commercial Release
 
 - Production installer
 - Automatic updates
-- Complete testing and documentation
+- Complete automated and runtime test coverage
+- Performance hardening
+- Accessibility and UX polish
+- Release documentation
 - Public-release readiness
 
 ---
 
 # Development Workflow
 
-1. Review project status and implementation tracker
-2. Review repository call sites and architecture
-3. Implement
-4. Build
-5. Run
-6. Verify
-7. Update documentation
-8. Commit and push to `main`
+1. Review current implementation and call sites
+2. Implement the smallest production-quality increment
+3. Commit directly to `main`
+4. Pull locally
+5. Build
+6. Run
+7. Verify behavior
+8. Update progress/planning documentation at phase boundaries
 
 The application must remain buildable and runnable throughout development.
 
