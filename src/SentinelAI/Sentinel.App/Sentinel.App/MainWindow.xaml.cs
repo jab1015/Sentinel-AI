@@ -52,8 +52,7 @@ namespace Sentinel.App
                 TextBox nameBox = new()
                 {
                     Text = suggestedName,
-                    PlaceholderText = "Your first name",
-                    SelectAllOnFocus = true
+                    PlaceholderText = "Your first name"
                 };
 
                 ContentDialog dialog = new()
