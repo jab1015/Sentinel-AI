@@ -24,16 +24,13 @@
                         <TextBlock x:Name="OverallStatusText" Text="I’m analyzing your computer." FontSize="23" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
                         <TextBlock x:Name="AttentionStatusText" Text="I’ll tell you only if something requires your attention." FontSize="17" Foreground="#D1D5DB" TextWrapping="Wrap"/>
                         <TextBlock x:Name="MonitoringStatusText" Text="I’ll continue monitoring your computer." FontSize="15" Foreground="#9CA3AF" TextWrapping="Wrap"/>
-                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
-                            <Button x:Name="PrimaryCheckAgainButton" Content="Check Again" Click="VerifyGuidanceButton_Click"/>
-                            <Button x:Name="GuidanceActionButton" Visibility="Collapsed" Click="GuidanceActionButton_Click"/>
-                        </StackPanel>
+                        <Button x:Name="GuidanceActionButton" Visibility="Collapsed" HorizontalAlignment="Left" Click="GuidanceActionButton_Click"/>
                     </StackPanel>
                 </Border>
 
                 <Border x:Name="IssueSummaryBorder" Background="#1F2937" CornerRadius="14" Padding="26" Visibility="Collapsed">
                     <StackPanel Spacing="16">
-                        <TextBlock Text="I found an issue." FontSize="24" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Investigation Summary" FontSize="24" FontWeight="SemiBold" Foreground="White"/>
 
                         <StackPanel Spacing="5">
                             <TextBlock Text="What I found" FontSize="14" Foreground="#9CA3AF"/>
@@ -66,6 +63,24 @@
                                 <TextBlock x:Name="VerificationResultMessageText" Margin="0,6,0,0" FontSize="14" Foreground="#D1D5DB" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="InvestigationHistoryBorder" Background="#1F2937" CornerRadius="14" Padding="26" Visibility="Collapsed">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Recent Investigations" FontSize="24" FontWeight="SemiBold" Foreground="White"/>
+                        <Grid ColumnSpacing="14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="HistoryOutcomeIconText" Text="👁" FontSize="20" VerticalAlignment="Top"/>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <TextBlock x:Name="HistoryTitleText" FontSize="17" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="HistorySummaryText" FontSize="15" Foreground="#D1D5DB" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="HistoryOutcomeText" FontSize="14" Foreground="#9CA3AF" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
