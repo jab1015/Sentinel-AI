@@ -20,7 +20,7 @@
 
                 <Border Background="#1F2937" CornerRadius="14" Padding="30">
                     <StackPanel Spacing="14">
-                        <TextBlock x:Name="GreetingText" Text="Hello, Jerry." FontSize="30" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock x:Name="GreetingText" Text="Hello." FontSize="30" FontWeight="SemiBold" Foreground="White"/>
                         <TextBlock x:Name="OverallStatusText" Text="I’m analyzing your computer." FontSize="23" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
                         <TextBlock x:Name="AttentionStatusText" Text="I’ll tell you only if something requires your attention." FontSize="17" Foreground="#D1D5DB" TextWrapping="Wrap"/>
                         <TextBlock x:Name="MonitoringStatusText" Text="I’ll continue monitoring your computer." FontSize="15" Foreground="#9CA3AF" TextWrapping="Wrap"/>
