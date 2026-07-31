@@ -2,7 +2,7 @@
 
 > **Windows Investigation, Security & Remediation Assistant**
 
-Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language investigation conclusions only when attention is warranted, and is being expanded with policy-controlled remediation capabilities.
+Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language investigation conclusions only when attention is warranted, and provides policy-controlled remediation foundations.
 
 ---
 
@@ -10,8 +10,8 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 **Status:** Active Development  
 **Production Branch:** `main`  
-**Current Phase:** Investigation + Safe Remediation Foundation  
-**Phase Progress:** 10 of 10 — implementation foundation complete; runtime verification continues as capabilities are integrated
+**Current Phase:** Remediation Integration Complete — Autonomous Protection Next  
+**Remediation Integration Progress:** 10 of 10 — complete
 
 The application builds, launches, monitors the system continuously, suppresses non-actionable findings, and has been repeatedly runtime-verified by the Product Owner.
 
@@ -37,9 +37,9 @@ The application builds, launches, monitors the system continuously, suppresses n
 
 ---
 
-# Safe Remediation Foundation
+# Remediation Integration
 
-Implemented foundations:
+Completed integration foundation:
 
 - Central remediation policy and safety gating
 - Explicit evidence requirements before system-changing actions
@@ -48,12 +48,14 @@ Implemented foundations:
 - Verified process termination service
 - Verified outbound Windows Firewall blocking service
 - File quarantine and hash-verified restore service
-- Persistent remediation audit history
-- Persistent investigation history and recurrence counting
+- Remediation audit trail and outcome state
+- Investigation recurrence tracking integrated into the monitoring pipeline
+- Recurrence and escalation state carried in the system snapshot
+- Remediation recommendation state carried in the system snapshot
 - No success claim unless the requested action can be verified
 - No automatic force-closing of applications for transient Windows Update error `0x80073D02`
 
-System-changing capabilities remain policy controlled. Sentinel must prefer silent monitoring when Windows is expected to self-correct and must not interrupt the user for a single transient condition.
+System-changing capabilities remain policy controlled. Sentinel prefers silent monitoring when Windows is expected to self-correct and does not interrupt the user for a single transient condition.
 
 ---
 
@@ -103,7 +105,9 @@ System Snapshot + Evidence
       │
 Classification / Guidance / Policy
       │
-Remediation Services
+Remediation + Recurrence Decisions
+      │
+Verified Windows Remediation Services
       │
 Windows and .NET System APIs
 ```
@@ -137,26 +141,27 @@ Core principles:
 - Process remediation foundation
 - Firewall remediation foundation
 - Quarantine/restore foundation
-- Remediation audit persistence
-- Investigation history persistence
+- Remediation audit trail
+- Investigation recurrence tracking
+- Remediation and recurrence snapshot integration
 - Startup and refresh responsiveness improvements
 
 ---
 
-# Next Phase
+# Next Phase — Autonomous Protection
 
 Priority order:
 
-1. Integrate remediation services into investigation decisions
-2. Add safe automatic remediation classes for low-risk conditions
-3. Add user-approval workflow for moderate-risk remediation
-4. Add post-remediation verification and UI outcome reporting
-5. Use investigation history to distinguish transient from recurring failures
-6. Add quarantine management UI and recovery workflow
+1. Execute approved low-risk remediation automatically when policy permits
+2. Connect remediation outcomes to the user-facing investigation summary
+3. Add explicit approval workflow for actions that require user consent
+4. Perform post-remediation verification before declaring an issue resolved
+5. Use recurrence escalation to increase intervention only when a verified condition persists
+6. Add quarantine management and recovery workflow
 7. Add remediation/audit history UI only when useful to the user
 8. Expand network investigation and endpoint attribution
 9. Add notification behavior for issues requiring attention while Sentinel is minimized
-10. Complete integration, failure-path, and regression testing
+10. Complete integration, failure-path, performance, and regression testing
 
 ---
 
@@ -175,18 +180,19 @@ Substantially implemented:
 
 ## Safe Remediation
 
-Foundation implemented; integration and runtime verification in progress:
+Integration foundation complete:
 
 - Policy-controlled actions
 - Process termination
 - Firewall blocking
 - Quarantine and restore
-- Verification
-- Audit/history persistence
+- Verification foundations
+- Audit state
+- Recurrence-aware escalation state
 
 ## Autonomous Protection
 
-Planned expansion:
+Next active phase:
 
 - Low-risk automatic correction
 - Recurrence-aware escalation
