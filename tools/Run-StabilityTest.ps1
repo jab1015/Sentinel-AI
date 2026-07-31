@@ -85,8 +85,8 @@ $completedAt = Get-Date
 $completedDuration = $completedAt - $startedAt
 $lastSample = $samples | Select-Object -Last 1
 
-if ($null -eq $lastSample) {
-    $failureReason = $failureReason ?? "No stability samples were recorded."
+if ($null -eq $lastSample -and $null -eq $failureReason) {
+    $failureReason = "No stability samples were recorded."
 }
 
 $peakWorkingSetMb = if ($samples.Count -gt 0) { ($samples | Measure-Object WorkingSetMB -Maximum).Maximum } else { 0 }
@@ -100,6 +100,7 @@ $threadGrowth = if ($null -ne $lastSample) { $lastSample.ThreadCount - $initialT
 
 $passed = $null -eq $failureReason -and $completedDuration.TotalMinutes -ge (($Hours * 60) - 1)
 $status = if ($passed) { "PASS" } else { "FAIL" }
+$failureText = if ($null -eq $failureReason) { "None" } else { $failureReason }
 
 $summary = @"
 Sentinel AI Stability Test
@@ -122,7 +123,7 @@ Handle growth: $handleGrowth
 Initial threads: $initialThreads
 Peak threads: $peakThreads
 Thread growth: $threadGrowth
-Failure: $(if ($null -eq $failureReason) { "None" } else { $failureReason })
+Failure: $failureText
 CSV evidence: $csvPath
 "@
 
