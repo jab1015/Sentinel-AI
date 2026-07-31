@@ -1,13 +1,13 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 92%.**
+**Estimated product completion: 94%.**
 
 ## Completed Major Foundations
 
@@ -29,6 +29,7 @@
 - Grounded local Ask Sentinel evidence context
 - Natural-language Ask Sentinel interaction surface
 - Central evidence-grounded Ask Sentinel response orchestration
+- Investigation-history-aware Ask Sentinel explanations
 
 ## Phase 1 — Monitoring Foundation
 
@@ -56,18 +57,18 @@ Phase 5 now includes approval gating and revalidation, quarantine/restore integr
 
 ## Phase 6 — Ask Sentinel / AI Assistance
 
-**Status: Active — 3 of 6 complete**
+**Status: Active — 4 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
 3. [x] Evidence-grounded response orchestration.
-4. [ ] Investigation-history-aware explanations.
+4. [x] Investigation-history-aware explanations.
 5. [ ] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
 
-Ask Sentinel now routes supported and unsupported questions through a central evidence-grounded orchestration layer. The orchestrator builds the current verified evidence context, returns only grounded local responses, retains evidence metadata, and marks insufficient-evidence outcomes so the UI can clearly say when Sentinel will not guess.
+Ask Sentinel now answers explicit history questions from persisted Sentinel investigation records. When the current investigation has a verified fingerprint, history responses distinguish a matching prior occurrence from unrelated prior findings. Sentinel does not claim historical equivalence without evidence.
 
-Ask Sentinel must use verified local evidence and clearly state when available evidence is insufficient. It must never invent system state, causes, threats, history, or remediation outcomes.
+Ask Sentinel must use verified local evidence and verified persisted history and clearly state when available evidence is insufficient. It must never invent system state, causes, threats, history, or remediation outcomes.
 
 ## Phase 7 — Production Hardening & Commercial Release
 
@@ -89,8 +90,8 @@ Ask Sentinel must use verified local evidence and clearly state when available e
 
 ## Progress Baseline
 
-**92% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**94% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
-Sentinel must investigate before acting, prefer silent monitoring when the system is healthy, request user involvement only when necessary, verify system-changing outcomes, and ensure AI assistance remains grounded in verified Sentinel evidence.
+Sentinel must investigate before acting, prefer silent monitoring when the system is healthy, request user involvement only when necessary, verify system-changing outcomes, and ensure AI assistance remains grounded in verified Sentinel evidence and history.
