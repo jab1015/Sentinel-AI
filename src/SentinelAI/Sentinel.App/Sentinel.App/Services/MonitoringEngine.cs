@@ -12,6 +12,7 @@ namespace Sentinel.App.Services
     public class MonitoringEngine
     {
         private static readonly TimeSpan ProcessRefreshInterval = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan MemoryInvestigationRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ProcessLineageRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan CommandLineRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ServiceRefreshInterval = TimeSpan.FromSeconds(30);
@@ -25,6 +26,7 @@ namespace Sentinel.App.Services
         private readonly DiskMonitor _diskMonitor = new();
         private readonly NetworkMonitor _networkMonitor = new();
         private readonly ProcessMonitor _processMonitor = new();
+        private readonly MemoryInvestigationMonitor _memoryInvestigationMonitor = new();
         private readonly ProcessLineageMonitor _processLineageMonitor = new();
         private readonly CommandLineMonitor _commandLineMonitor = new();
         private readonly ServiceMonitor _serviceMonitor = new();
@@ -43,6 +45,13 @@ namespace Sentinel.App.Services
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
         private ProcessMonitor.ProcessIntelligenceSnapshot _processSnapshot = new(0, "Loading...", 0, 0, "None", "Process analysis is loading.");
+        private MemoryInvestigationMonitor.MemoryInvestigationSnapshot _memoryInvestigationSnapshot = new(
+            MemoryInvestigationMonitor.MemoryPressureLevel.Normal,
+            0,
+            0,
+            "Memory investigation is loading.",
+            "Memory investigation is loading.",
+            "No action is required while Sentinel collects memory context.");
         private ProcessLineageMonitor.ProcessLineageSnapshot _processLineageSnapshot = new(0, 0, "None", "None", "Process lineage analysis is loading.");
         private CommandLineMonitor.CommandLineSnapshot _commandLineSnapshot = new(0, 0, "None", "Command-line analysis is loading.", "None");
         private ServiceMonitor.ServiceIntelligenceSnapshot _serviceSnapshot = new(0, 0, 0, "None", "Service analysis is loading.");
@@ -53,6 +62,7 @@ namespace Sentinel.App.Services
         private ActiveConnectionMonitor.ActiveConnectionSnapshot _activeConnectionSnapshot = new(0, 0, 0, "None", "None", "Active connection analysis is loading.");
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
+        private DateTime _lastMemoryInvestigationRefresh = DateTime.MinValue;
         private DateTime _lastProcessLineageRefresh = DateTime.MinValue;
         private DateTime _lastCommandLineRefresh = DateTime.MinValue;
         private DateTime _lastServiceRefresh = DateTime.MinValue;
@@ -68,16 +78,33 @@ namespace Sentinel.App.Services
         public async Task RefreshAsync()
         {
             DateTime now = DateTime.Now;
+            double memoryUsagePercent = _systemMonitor.GetMemoryPercent();
+
             await Task.WhenAll(
-                RefreshProcessDataIfDueAsync(now), RefreshProcessLineageDataIfDueAsync(now), RefreshCommandLineDataIfDueAsync(now),
-                RefreshServiceDataIfDueAsync(now), RefreshSecurityDataIfDueAsync(now), RefreshEventLogDataIfDueAsync(now),
-                RefreshStartupDataIfDueAsync(now), RefreshScheduledTaskDataIfDueAsync(now), RefreshActiveConnectionDataIfDueAsync(now));
+                RefreshProcessDataIfDueAsync(now),
+                RefreshMemoryInvestigationDataIfDueAsync(now, memoryUsagePercent),
+                RefreshProcessLineageDataIfDueAsync(now),
+                RefreshCommandLineDataIfDueAsync(now),
+                RefreshServiceDataIfDueAsync(now),
+                RefreshSecurityDataIfDueAsync(now),
+                RefreshEventLogDataIfDueAsync(now),
+                RefreshStartupDataIfDueAsync(now),
+                RefreshScheduledTaskDataIfDueAsync(now),
+                RefreshActiveConnectionDataIfDueAsync(now));
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot = _networkMonitor.GetThroughput();
             SystemSnapshot snapshot = new()
             {
                 Timestamp = DateTime.Now,
-                CpuUsagePercent = _systemMonitor.GetCpuUsage(), MemoryUsedGB = _systemMonitor.GetMemoryUsedGB(), MemoryTotalGB = _systemMonitor.GetMemoryTotalGB(), MemoryUsagePercent = _systemMonitor.GetMemoryPercent(),
+                CpuUsagePercent = _systemMonitor.GetCpuUsage(),
+                MemoryUsedGB = _systemMonitor.GetMemoryUsedGB(),
+                MemoryTotalGB = _systemMonitor.GetMemoryTotalGB(),
+                MemoryUsagePercent = memoryUsagePercent,
+                MemoryPressureLevel = _memoryInvestigationSnapshot.PressureLevel.ToString(),
+                MemoryCompressionGB = _memoryInvestigationSnapshot.MemoryCompressionGB,
+                MemoryTopContributors = _memoryInvestigationSnapshot.TopContributors,
+                MemoryConclusion = _memoryInvestigationSnapshot.Conclusion,
+                MemoryRecommendation = _memoryInvestigationSnapshot.Recommendation,
                 DiskUsagePercent = _diskMonitor.GetUsagePercent(), DiskFreeGB = _diskMonitor.GetFreeSpaceGB(), DiskTotalGB = _diskMonitor.GetTotalSpaceGB(),
                 DownloadMbps = networkSnapshot.DownloadMbps, UploadMbps = networkSnapshot.UploadMbps,
                 ProcessCount = _processSnapshot.TotalProcessCount, HighestMemoryProcessName = _processSnapshot.HighestMemoryProcessName, HighestMemoryProcessGB = _processSnapshot.HighestMemoryProcessGB,
@@ -191,6 +218,7 @@ namespace Sentinel.App.Services
         }
 
         private async Task RefreshProcessDataIfDueAsync(DateTime now) { if (now - _lastProcessRefresh < ProcessRefreshInterval) return; _lastProcessRefresh = now; _processSnapshot = await Task.Run(_processMonitor.GetIntelligence); }
+        private async Task RefreshMemoryInvestigationDataIfDueAsync(DateTime now, double memoryUsagePercent) { if (now - _lastMemoryInvestigationRefresh < MemoryInvestigationRefreshInterval) return; _lastMemoryInvestigationRefresh = now; _memoryInvestigationSnapshot = await Task.Run(() => _memoryInvestigationMonitor.GetSnapshot(memoryUsagePercent)); }
         private async Task RefreshProcessLineageDataIfDueAsync(DateTime now) { if (now - _lastProcessLineageRefresh < ProcessLineageRefreshInterval) return; _lastProcessLineageRefresh = now; _processLineageSnapshot = await Task.Run(_processLineageMonitor.GetSnapshot); }
         private async Task RefreshCommandLineDataIfDueAsync(DateTime now) { if (now - _lastCommandLineRefresh < CommandLineRefreshInterval) return; _lastCommandLineRefresh = now; _commandLineSnapshot = await Task.Run(_commandLineMonitor.GetSnapshot); }
         private async Task RefreshServiceDataIfDueAsync(DateTime now) { if (now - _lastServiceRefresh < ServiceRefreshInterval) return; _lastServiceRefresh = now; _serviceSnapshot = await Task.Run(_serviceMonitor.GetIntelligence); }
