@@ -124,36 +124,6 @@ namespace Sentinel.App.Services
                     "correlated-process-network-finding");
             }
 
-            if (suspiciousProcess)
-            {
-                return new InvestigationResult(
-                    InvestigationState.ActionRequired,
-                    "A running process requires attention.",
-                    snapshot.PrimaryFlaggedProcessReason,
-                    true,
-                    "process-finding");
-            }
-
-            if (suspiciousStartupPersistence)
-            {
-                return new InvestigationResult(
-                    InvestigationState.ActionRequired,
-                    "A startup item requires attention.",
-                    $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}",
-                    true,
-                    "startup-persistence-finding");
-            }
-
-            if (suspiciousScheduledTask)
-            {
-                return new InvestigationResult(
-                    InvestigationState.ActionRequired,
-                    "A scheduled task requires attention.",
-                    $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}",
-                    true,
-                    "scheduled-task-finding");
-            }
-
             if (serviceFailure || actionableSystemEvidence)
             {
                 return new InvestigationResult(
@@ -169,7 +139,7 @@ namespace Sentinel.App.Services
                 return new InvestigationResult(
                     InvestigationState.Investigating,
                     "Sentinel is investigating command activity.",
-                    $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason} This does not require your attention unless other evidence confirms a risk.",
+                    $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason} No action is required unless another signal confirms a risk.",
                     false,
                     "command-line-under-review");
             }
@@ -179,9 +149,39 @@ namespace Sentinel.App.Services
                 return new InvestigationResult(
                     InvestigationState.Investigating,
                     "Sentinel is investigating related process activity.",
-                    $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}. This does not require your attention unless other evidence confirms a risk.",
+                    $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}. No action is required unless another signal confirms a risk.",
                     false,
                     "process-lineage-under-review");
+            }
+
+            if (suspiciousProcess)
+            {
+                return new InvestigationResult(
+                    InvestigationState.Investigating,
+                    "Sentinel is investigating a running process.",
+                    $"{snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason} No action is required unless another signal confirms a risk.",
+                    false,
+                    "process-evidence-under-review");
+            }
+
+            if (suspiciousStartupPersistence)
+            {
+                return new InvestigationResult(
+                    InvestigationState.Investigating,
+                    "Sentinel is investigating a startup item.",
+                    $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason} No action is required unless another signal confirms a risk.",
+                    false,
+                    "startup-persistence-under-review");
+            }
+
+            if (suspiciousScheduledTask)
+            {
+                return new InvestigationResult(
+                    InvestigationState.Investigating,
+                    "Sentinel is investigating a scheduled task.",
+                    $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason} No action is required unless another signal confirms a risk.",
+                    false,
+                    "scheduled-task-under-review");
             }
 
             if (unusualConnection)
@@ -189,7 +189,7 @@ namespace Sentinel.App.Services
                 return new InvestigationResult(
                     InvestigationState.Investigating,
                     "Sentinel is investigating network activity.",
-                    $"{snapshot.PrimaryFlaggedConnectionProcessName} connected to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}. This does not require your attention unless other evidence confirms a risk.",
+                    $"{snapshot.PrimaryFlaggedConnectionProcessName} connected to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}. No action is required unless another signal confirms a risk.",
                     false,
                     "network-evidence-under-review");
             }
