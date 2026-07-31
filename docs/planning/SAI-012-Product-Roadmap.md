@@ -1,31 +1,35 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 1.6  
+**Version:** 1.7  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 80%.**
+**Estimated product completion: 85%.**
 
 Completed major foundations:
 
 - Windows monitoring and security telemetry
 - Investigation-first user experience
-- Investigation Engine core
+- Investigation Engine core — 18 of 18
 - Evidence correlation and confidence foundations
-- Safe remediation policy
+- Safe Remediation Foundation — 10 of 10
 - Process termination foundation
 - Firewall blocking foundation
 - Quarantine and restore foundation
 - Remediation audit persistence
 - Investigation history persistence
-- Autonomous Protection decision, execution, and verification safeguards
+- Autonomous Protection core — 10 of 10
 - Low-risk automatic remediation gating
 - User-approval boundaries for moderate/high-risk remediation
+- Evidence-confidence and execution-time revalidation safeguards
+- Recurrence-aware escalation safeguards
 - Startup and refresh responsiveness improvements
 - First-refresh CPU sampling improvement
+- Per-Windows-profile preferred-name onboarding
+- Sustained memory-pressure investigation with application contributor context and actionable guidance
 
 ## Phase 1 — Monitoring Foundation
 
@@ -43,7 +47,7 @@ Healthy-state presentation, progressive technical disclosure, plain-language con
 
 **Status: Complete — 18 of 18**
 
-Process, service, persistence, scheduled task, active connection, driver, firewall, WMI, ancestry, command-line, and multi-signal investigation foundations are implemented.
+Process, service, persistence, scheduled task, active connection, driver, firewall, WMI, ancestry, command-line, Windows Event, memory-pressure, and multi-signal investigation foundations are implemented.
 
 ## Phase 4 — Safe Remediation Foundation
 
@@ -66,7 +70,7 @@ Implemented:
 
 ## Phase 5 — Remediation Integration & Autonomous Protection
 
-**Status: Autonomous Protection core complete — 10 of 10**
+**Status: Autonomous Protection core complete — 10 of 10; remaining integration active**
 
 Completed:
 
@@ -83,18 +87,19 @@ Completed:
 
 Remaining Phase 5 integration work:
 
-- Complete user-facing approval workflow for supported moderate-risk actions.
-- Complete quarantine management and safe restore presentation.
-- Add remediation/investigation history presentation without cluttering healthy state.
-- Expand network endpoint attribution and response.
-- Add background/minimized notification behavior for genuinely actionable findings.
-- Complete failure-path and remediation integration regression testing.
+1. Complete user-facing approval workflow for supported moderate-risk actions.
+2. Complete quarantine management and safe restore presentation.
+3. Add remediation/investigation history presentation without cluttering healthy state.
+4. Expand network endpoint attribution and response.
+5. Add background/minimized notification behavior for genuinely actionable findings.
+6. Complete failure-path and remediation integration regression testing.
+7. Continue startup/initial-investigation performance profiling and eliminate the intermittent lag observed in recent runtime verification.
 
 ## Phase 6 — Ask Sentinel / AI Assistance
 
 **Status: Planned**
 
-Natural-language questions grounded in current local evidence, investigation history, and verified system state.
+Natural-language questions grounded in current local evidence, investigation history, and verified system state, with explainable recommendations and no invented system state.
 
 ## Phase 7 — Production Hardening & Commercial Release
 
@@ -103,15 +108,20 @@ Natural-language questions grounded in current local evidence, investigation his
 - Structured logging and diagnostics
 - Fresh-clone build verification
 - Release configuration verification
-- Performance profiling
+- Automated regression coverage
+- Performance profiling and optimization
 - One-hour and eight-hour stability tests
 - Windows 10 and Windows 11 compatibility verification
 - Installer/uninstaller
 - Code signing
 - Application updates
-- Privacy and user documentation
+- Privacy, user, and troubleshooting documentation
 - Accessibility and UX polish
 - Release acceptance testing
+
+## Progress Baseline
+
+**85% is the synchronized overall product baseline as of 2026-07-31.** Future reported progress must use the roadmap and implementation tracker together. Progress must not move backward unless previously completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
