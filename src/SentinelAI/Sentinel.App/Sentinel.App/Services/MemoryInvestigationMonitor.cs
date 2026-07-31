@@ -12,17 +12,29 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Builds memory-pressure context without treating Windows Memory Compression
-    /// as a suspicious application. This monitor is read-only and intended to
-    /// explain what is actually consuming memory before Sentinel recommends action.
+    /// as a suspicious application. High memory must persist across multiple
+    /// samples before Sentinel elevates it to an attention condition.
     /// </summary>
     public sealed class MemoryInvestigationMonitor
     {
         private const double ElevatedMemoryPercent = 85.0;
         private const double HighMemoryPercent = 92.0;
+        private const int SustainedHighSampleCount = 3;
         private const int ContributorCount = 3;
+
+        private int _consecutiveHighSamples;
 
         public MemoryInvestigationSnapshot GetSnapshot(double memoryUsagePercent)
         {
+            if (memoryUsagePercent >= HighMemoryPercent)
+            {
+                _consecutiveHighSamples++;
+            }
+            else
+            {
+                _consecutiveHighSamples = 0;
+            }
+
             Process[] processes = Process.GetProcesses();
             List<MemoryContributor> contributors = new();
             double memoryCompressionGB = 0;
@@ -62,25 +74,37 @@ namespace Sentinel.App.Services
                     ? "No individual application memory contributors could be read."
                     : string.Join(", ", top.Select(item => $"{item.ProcessName} {item.WorkingSetGB:0.00} GB"));
 
-                MemoryPressureLevel pressure = memoryUsagePercent >= HighMemoryPercent
+                bool sustainedHigh = _consecutiveHighSamples >= SustainedHighSampleCount;
+
+                MemoryPressureLevel pressure = sustainedHigh
                     ? MemoryPressureLevel.High
                     : memoryUsagePercent >= ElevatedMemoryPercent
                         ? MemoryPressureLevel.Elevated
                         : MemoryPressureLevel.Normal;
 
-                string conclusion = pressure switch
-                {
-                    MemoryPressureLevel.High => "Memory use is high enough to investigate for sustained pressure.",
-                    MemoryPressureLevel.Elevated => "Memory use is elevated, but the current level alone does not indicate a problem.",
-                    _ => "Memory use is within Sentinel's normal monitoring range."
-                };
+                string conclusion;
+                string recommendation;
 
-                string recommendation = pressure switch
+                if (sustainedHigh)
                 {
-                    MemoryPressureLevel.High => "Sentinel should watch whether memory remains above 92% and whether one application continues growing before recommending that anything be closed.",
-                    MemoryPressureLevel.Elevated => "No immediate action is required. Sentinel should continue monitoring the largest applications and Windows memory management.",
-                    _ => "No action is required."
-                };
+                    conclusion = $"Memory remained above {HighMemoryPercent:0}% for {_consecutiveHighSamples} consecutive checks. Sentinel confirmed sustained memory pressure.";
+                    recommendation = "Review the largest application contributors shown by Sentinel. Do not close Windows Memory Compression; Sentinel will continue checking whether one application keeps growing before recommending a specific process action.";
+                }
+                else if (memoryUsagePercent >= HighMemoryPercent)
+                {
+                    conclusion = $"Memory is currently high, but Sentinel has only confirmed {_consecutiveHighSamples} of {SustainedHighSampleCount} required consecutive checks.";
+                    recommendation = "No immediate action is required. Sentinel is verifying whether this is temporary or sustained before interrupting you.";
+                }
+                else if (pressure == MemoryPressureLevel.Elevated)
+                {
+                    conclusion = "Memory use is elevated, but the current level alone does not indicate a problem.";
+                    recommendation = "No immediate action is required. Sentinel will continue monitoring the largest applications and Windows memory management.";
+                }
+                else
+                {
+                    conclusion = "Memory use is within Sentinel's normal monitoring range.";
+                    recommendation = "No action is required.";
+                }
 
                 return new MemoryInvestigationSnapshot(
                     pressure,
