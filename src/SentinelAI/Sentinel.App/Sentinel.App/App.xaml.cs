@@ -1,6 +1,7 @@
 ﻿using Microsoft.UI.Xaml;
 using Sentinel.App.Services;
 using System;
+using System.Diagnostics;
 
 namespace Sentinel.App
 {
@@ -24,24 +25,35 @@ namespace Sentinel.App
         /// <summary>
         /// Invoked when the application is launched.
         /// </summary>
-        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            await _diagnosticLog.InformationAsync("ApplicationLaunch", "Sentinel AI launch started.");
+            Stopwatch startupTimer = Stopwatch.StartNew();
+            _ = _diagnosticLog.InformationAsync("ApplicationLaunch", "Sentinel AI launch started.");
 
             try
             {
-#if DEBUG
-                DevelopmentRegressionChecks.Run();
-                await _diagnosticLog.InformationAsync("RegressionChecks", "Development safety regression checks passed.");
-#endif
-
+                // Keep disk diagnostics and development-only verification off the critical
+                // path that creates and activates the first visible window.
                 _window = new MainWindow();
                 _window.Activate();
-                await _diagnosticLog.InformationAsync("ApplicationLaunch", "Sentinel AI main window activated.");
+
+                startupTimer.Stop();
+                _ = _diagnosticLog.InformationAsync(
+                    "StartupPerformance",
+                    $"Main window activated in {startupTimer.ElapsedMilliseconds} ms.");
+
+#if DEBUG
+                DevelopmentRegressionChecks.Run();
+                _ = _diagnosticLog.InformationAsync("RegressionChecks", "Development safety regression checks passed.");
+#endif
             }
             catch (Exception ex)
             {
-                await _diagnosticLog.ErrorAsync("ApplicationLaunchFailure", "Sentinel AI could not activate the main window.", ex);
+                startupTimer.Stop();
+                _ = _diagnosticLog.ErrorAsync(
+                    "ApplicationLaunchFailure",
+                    $"Sentinel AI could not activate the main window after {startupTimer.ElapsedMilliseconds} ms.",
+                    ex);
                 throw;
             }
         }
