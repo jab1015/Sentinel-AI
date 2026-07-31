@@ -38,6 +38,12 @@ namespace Sentinel.App.Models
         public int FlaggedScheduledTaskCount { get; set; }
         public string PrimaryFlaggedScheduledTaskName { get; set; } = "None";
         public string PrimaryFlaggedScheduledTaskReason { get; set; } = "No unusual scheduled-task persistence was detected.";
+        public int EstablishedConnectionCount { get; set; }
+        public int ExternalConnectionCount { get; set; }
+        public int FlaggedConnectionCount { get; set; }
+        public string PrimaryFlaggedConnectionProcessName { get; set; } = "None";
+        public string PrimaryFlaggedConnectionRemoteEndpoint { get; set; } = "None";
+        public string PrimaryFlaggedConnectionReason { get; set; } = "No unusual active TCP connections were detected.";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
