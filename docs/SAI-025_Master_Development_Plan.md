@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 1.2
+Version: 1.3
 
 Status: Active
 
@@ -12,9 +12,7 @@ Copyright (c) 2026 Modern Methods.
 
 # Purpose
 
-This document serves as the master engineering plan for Sentinel AI.
-
-It consolidates the project vision, architecture, implementation strategy, development phases, quality objectives, and release milestones into a single reference that guides future development.
+This document serves as the master engineering plan for Sentinel AI and consolidates the project vision, architecture, implementation strategy, development phases, quality objectives, remaining work, and release milestones.
 
 ---
 
@@ -34,18 +32,18 @@ Develop a production-quality Windows investigation and security application that
 
 # Current Status
 
-Estimated overall product completion: **80%**.
+Estimated overall product completion: **85%**.
 
-Completed
+Completed:
 
 - Project architecture and documentation framework
 - Monitoring Engine and snapshot architecture
 - Native CPU, memory, disk, and network monitoring
 - Process, service, security, persistence, scheduled-task, connection, and Windows Event evidence
 - Investigation-first dashboard and healthy-state UX
-- Investigation Engine core
+- Investigation Engine core — 18 of 18
 - Risk assessment and guidance foundations
-- Safe remediation policy
+- Safe Remediation Foundation — 10 of 10
 - Verified process termination foundation
 - Verified outbound firewall blocking foundation
 - Quarantine and hash-verified restore foundation
@@ -54,29 +52,37 @@ Completed
 - Low-risk automatic action gating
 - Evidence-confidence and execution-time revalidation safeguards
 - User-approval boundary for moderate/high-risk remediation
+- Recurrence-aware investigation and escalation safeguards
 - Startup/refresh responsiveness improvements
 - First-refresh CPU sampling improvement
 - Per-Windows-profile preferred-name onboarding
 - Sustained memory-pressure investigation with application contributor context and actionable guidance
 
-In Progress / Next
+In Progress / Next:
 
-- User-facing approval workflow for moderate-risk remediation
-- Quarantine management and restore experience
-- Remediation and investigation history presentation
-- Network endpoint attribution improvements
-- Background actionable notifications
-- Failure-path regression testing
-- Continued startup and investigation performance profiling; intermittent lag remains observable in recent runtime verification
+1. User-facing approval workflow for moderate-risk remediation.
+2. Quarantine management and restore experience.
+3. Remediation and investigation history presentation.
+4. Network endpoint attribution and response improvements.
+5. Background actionable notifications.
+6. Failure-path and remediation integration regression testing.
+7. Continued startup and investigation performance profiling; intermittent lag remains observable in recent runtime verification.
 
-Planned
+Planned after Phase 5:
 
 - Ask Sentinel / AI Assistance
-- Production hardening
-- Installer and code signing
+- Production hardening and structured diagnostics
+- Fresh-clone and release configuration verification
+- Automated regression coverage
+- Long-duration stability testing
+- Windows 10 and Windows 11 compatibility verification
+- Installer/uninstaller
+- Code signing
 - Application updates
+- Privacy/user/troubleshooting documentation
+- Accessibility and UX polish
 - Release acceptance testing
-- Enterprise functionality
+- Enterprise functionality after commercial release foundation
 
 ---
 
@@ -102,7 +108,7 @@ Sentinel defaults to a calm healthy-state experience, exposes technical details 
 
 Status: **Complete — 18 of 18**
 
-Evidence collection and correlation foundations span processes, services, persistence, scheduled tasks, connections, drivers, firewall, WMI, ancestry, command lines, Windows events, and sustained memory-pressure investigation.
+Evidence collection and correlation foundations span processes, services, persistence, scheduled tasks, connections, drivers, firewall, WMI, ancestry, command lines, Windows events, sustained memory-pressure investigation, and multi-signal correlation.
 
 ---
 
@@ -118,7 +124,7 @@ System-changing actions are governed by centralized policy, evidence requirement
 
 Status: **Autonomous Protection core complete — 10 of 10; remaining integration active**
 
-Completed capabilities include low-risk automatic remediation decisions, policy enforcement, confidence gating, execution isolation, stale-decision revalidation, safe refresh/retry actions, verification-pending outcomes, and memory-pressure guidance that identifies application contributors rather than treating Windows Memory Compression itself as the problem.
+Completed capabilities include low-risk automatic remediation decisions, policy enforcement, confidence gating, execution isolation, stale-decision revalidation, safe refresh/retry actions, verification-pending outcomes, recurrence-aware escalation safeguards, and memory-pressure guidance that identifies application contributors rather than treating Windows Memory Compression itself as the problem.
 
 Remaining integration work:
 
@@ -136,7 +142,7 @@ Remaining integration work:
 
 Status: **Planned**
 
-Objectives
+Objectives:
 
 - Natural-language questions grounded in current evidence
 - Investigation-history-aware explanations
@@ -150,17 +156,19 @@ Objectives
 
 Status: **Planned / partially underway**
 
-Objectives
+Objectives:
 
 - Structured logging and diagnostics
 - Fresh-clone build verification
+- Release configuration verification
+- Automated regression coverage
 - Performance profiling and optimization
-- Long-duration stability testing
+- One-hour and eight-hour stability testing
 - Windows 10 and Windows 11 compatibility verification
 - Installer/uninstaller
 - Code signing
 - Application updates
-- Privacy and user documentation
+- Privacy, user, and troubleshooting documentation
 - Accessibility and UX polish
 - Release acceptance testing
 
@@ -168,57 +176,37 @@ Objectives
 
 # Current Performance Note
 
-Recent local runtime verification confirms successful builds and correct monitoring behavior. Intermittent lag is still observable during startup/initial investigation on some runs. This is a tracked performance-hardening item. Future optimization must preserve evidence quality, remediation safeguards, and the responsive shell-first startup behavior already implemented.
+Recent local runtime verification confirms successful builds and correct monitoring behavior. Intermittent lag is still observable during startup/initial investigation on some runs. This is a tracked Phase 5/production-hardening item. Optimization must preserve evidence quality, remediation safeguards, and the responsive shell-first startup behavior already implemented.
+
+---
+
+# Progress Governance
+
+**85% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, this Master Development Plan, and README must report the same overall progress and phase state.
+
+Future progress reports must not reduce the overall percentage unless previously completed functionality is explicitly reopened, removed, or proven incomplete. Any such reduction must be documented with the affected scope and reason.
 
 ---
 
 # Engineering Priorities
 
-Priority 1
-
-Preserve investigation-before-action behavior and safe remediation boundaries.
-
-Priority 2
-
-Maintain a fast, calm user experience that does not overwhelm non-technical users.
-
-Priority 3
-
-Verify system-changing outcomes before reporting success.
-
-Priority 4
-
-Maintain clean architecture and synchronized documentation.
-
-Priority 5
-
-Ensure every sprint results in a buildable, runnable application.
+1. Preserve investigation-before-action behavior and safe remediation boundaries.
+2. Maintain a fast, calm user experience that does not overwhelm non-technical users.
+3. Verify system-changing outcomes before reporting success.
+4. Maintain clean architecture and synchronized documentation.
+5. Ensure every sprint results in a buildable, runnable application.
 
 ---
 
 # Quality Objectives
 
-Sentinel AI shall be:
-
-- Stable
-- Secure
-- Fast
-- Explainable
-- Conservative with system changes
-- Maintainable
-- Extensible
-- Testable
+Sentinel AI shall be stable, secure, fast, explainable, conservative with system changes, maintainable, extensible, and testable.
 
 ---
 
 # Technical Debt Policy
 
-Technical debt should:
-
-- Be documented
-- Be prioritized
-- Never accumulate silently
-- Be resolved before major releases whenever practical
+Technical debt should be documented, prioritized, never accumulate silently, and be resolved before major releases whenever practical.
 
 ---
 
@@ -267,7 +255,7 @@ Sentinel AI will evolve into a trusted Windows investigation and security platfo
 - SAI-010 — Component Architecture
 - SAI-011 — Coding Architecture
 - SAI-012 — Product Roadmap
-- SAI-013 — Product Roadmap
+- SAI-013 — Implementation Tracker
 - SAI-014 — Development Workflow
 - SAI-015 — Contribution Guide
 - SAI-016 — Testing Strategy
