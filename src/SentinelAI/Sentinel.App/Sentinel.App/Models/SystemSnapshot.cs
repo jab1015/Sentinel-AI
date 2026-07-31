@@ -34,6 +34,10 @@ namespace Sentinel.App.Models
         public int FlaggedStartupEntryCount { get; set; }
         public string PrimaryFlaggedStartupEntryName { get; set; } = "None";
         public string PrimaryFlaggedStartupEntryReason { get; set; } = "No unusual startup persistence entries were detected.";
+        public int ScheduledTaskCount { get; set; }
+        public int FlaggedScheduledTaskCount { get; set; }
+        public string PrimaryFlaggedScheduledTaskName { get; set; } = "None";
+        public string PrimaryFlaggedScheduledTaskReason { get; set; } = "No unusual scheduled-task persistence was detected.";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
