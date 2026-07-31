@@ -10,7 +10,7 @@ namespace Sentinel.App.Services
     /// <summary>
     /// Central safety policy for any Sentinel action that changes system state.
     /// Investigation and guidance remain read-only unless this policy explicitly
-    /// permits an action and the required user approval has been obtained.
+    /// permits an action and any required user approval has been obtained.
     /// </summary>
     public sealed class RemediationPolicy
     {
@@ -43,6 +43,24 @@ namespace Sentinel.App.Services
                 return Deny("This action requires administrator permission that Sentinel cannot currently request safely.");
             }
 
+            // Automatic remediation is intentionally narrow. Only explicitly
+            // allow-listed low-risk maintenance actions may run without approval.
+            if (request.RiskLevel == RemediationRisk.Low)
+            {
+                return request.Action switch
+                {
+                    RemediationAction.RetryTransientOperation => AllowAutomatic(
+                        "Retry the temporary operation",
+                        "Sentinel may retry this verified transient operation automatically and will verify the result."),
+
+                    RemediationAction.RefreshSecurityState => AllowAutomatic(
+                        "Refresh security state",
+                        "Sentinel may refresh verified security state automatically because this does not weaken protection or remove user data."),
+
+                    _ => Deny("This action is not approved for automatic remediation. Sentinel will not change the system silently.")
+                };
+            }
+
             return request.Action switch
             {
                 RemediationAction.TerminateProcess => RequireApproval(
@@ -68,6 +86,13 @@ namespace Sentinel.App.Services
                 _ => Deny("This remediation action is not supported by the current safety policy.")
             };
         }
+
+        private static RemediationDecision AllowAutomatic(string title, string explanation) =>
+            new(
+                Allowed: true,
+                RequiresUserApproval: false,
+                Title: title,
+                Explanation: explanation);
 
         private static RemediationDecision RequireApproval(string title, string explanation) =>
             new(
@@ -104,7 +129,9 @@ namespace Sentinel.App.Services
             BlockNetworkEndpoint,
             QuarantineFile,
             RestoreQuarantinedFile,
-            RestartService
+            RestartService,
+            RetryTransientOperation,
+            RefreshSecurityState
         }
 
         public enum RemediationRisk
