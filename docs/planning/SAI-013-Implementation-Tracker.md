@@ -1,6 +1,6 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 2.5  
+**Version:** 2.6  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
@@ -15,16 +15,16 @@
 - Phase 4 — Safe Remediation Foundation: **10 of 10 complete**
 - Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Phase 6 — Ask Sentinel / AI Assistance: **6 of 6 complete**
-- Current milestone: **Phase 7 — Production Hardening & Commercial Release: 3 of 12 complete**
+- Current milestone: **Phase 7 — Production Hardening & Commercial Release: 4 of 12 complete**
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active — 3 of 12 complete**
+**Status: Active — 4 of 12 complete**
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
-4. [ ] Performance profiling and optimization.
+4. [x] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
@@ -34,7 +34,7 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Automated regression coverage now includes deterministic Debug-build safety checks that verify grounded healthy responses remain allowed while unsupported successful-remediation, performed-action, and threat claims remain blocked by the final Ask Sentinel safety boundary. Failed checks stop development startup and are captured by production diagnostics; Release builds are unaffected by development-only regression execution.
+Startup performance is now measured in production diagnostics from launch entry to main-window activation. Diagnostic file writes no longer block the first visible window, and the startup path activates the UI before development-only regression work. This preserves the accepted shell-first experience while making startup performance observable and reducing avoidable launch-path I/O latency.
 
 ## Progress Baseline Rule
 
