@@ -20,6 +20,7 @@ namespace Sentinel.App
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private bool _wasAttentionActive;
+        private bool _attentionNotificationActive;
         private string _guidanceActionId = string.Empty;
         private string _lastRecordedFingerprint = string.Empty;
 
@@ -38,9 +39,6 @@ namespace Sentinel.App
             Activated -= MainWindow_Activated;
 
             await EnsurePreferredNameAsync();
-
-            // Let WinUI finish presenting the shell before the first deep investigation.
-            // This keeps startup responsive while preserving the full monitoring pass.
             await Task.Yield();
             _ = RunInitialRefreshAsync();
         }
@@ -131,6 +129,7 @@ namespace Sentinel.App
                     !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
 
                 await UpdateInvestigationHistoryAsync(snapshot, requiresAttention);
+                UpdateBackgroundAttentionState(snapshot, requiresAttention);
 
                 if (memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding)
                 {
@@ -187,6 +186,29 @@ namespace Sentinel.App
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
             }
             finally { _isRefreshing = false; }
+        }
+
+        private void UpdateBackgroundAttentionState(Models.SystemSnapshot snapshot, bool requiresAttention)
+        {
+            if (!requiresAttention)
+            {
+                if (_attentionNotificationActive)
+                {
+                    AppWindow.Title = "Sentinel AI";
+                    _attentionNotificationActive = false;
+                }
+                return;
+            }
+
+            if (_attentionNotificationActive) return;
+
+            string finding = !string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) &&
+                             !snapshot.GuidanceTitle.Equals("None", StringComparison.OrdinalIgnoreCase)
+                ? snapshot.GuidanceTitle
+                : "Review recommended";
+
+            AppWindow.Title = $"Sentinel AI — Attention: {finding}";
+            _attentionNotificationActive = true;
         }
 
         private async Task UpdateInvestigationHistoryAsync(Models.SystemSnapshot snapshot, bool requiresAttention)
@@ -259,140 +281,71 @@ namespace Sentinel.App
 
         private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e)
         {
-            switch (_guidanceActionId)
+            if (_guidanceActionId == "open-task-manager")
             {
-                case "approve-remediation": await ReviewAndExecuteApprovedRemediationAsync(); break;
-                case "open-services": Launch("services.msc"); break;
-                case "open-task-manager": Launch("taskmgr.exe"); break;
-                case "open-windows-security": Launch("windowsdefender:"); break;
-                case "open-firewall": Launch("windowsdefender://network"); break;
-                case "open-windows-update": Launch("ms-settings:windowsupdate"); break;
-                case "open-storage": Launch("ms-settings:storagesense"); break;
-                case "check-again": await UpdateDashboardAsync(); break;
-            }
-        }
-
-        private async Task ReviewAndExecuteApprovedRemediationAsync()
-        {
-            var snapshot = _engine.CurrentSnapshot;
-            RemediationApprovalCoordinator.RemediationApprovalRequest? request = _approvalCoordinator.CreateRequest(snapshot);
-
-            if (request is null)
-            {
-                ShowVerificationResult("No approved action is available", "Sentinel rechecked the current investigation and did not find a system change that requires your approval.");
+                Process.Start(new ProcessStartInfo("taskmgr.exe") { UseShellExecute = true });
                 return;
             }
 
-            StackPanel review = new() { Spacing = 10 };
-            review.Children.Add(new TextBlock { Text = request.Summary, TextWrapping = TextWrapping.Wrap });
-            review.Children.Add(new TextBlock { Text = $"Action: {FormatAction(request.Action)}", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            review.Children.Add(new TextBlock { Text = $"Target: {request.Target}", TextWrapping = TextWrapping.Wrap });
-            review.Children.Add(new TextBlock { Text = "Sentinel will recheck the evidence before acting and will verify the result afterward. This approval is valid for one use only and expires shortly.", TextWrapping = TextWrapping.Wrap });
+            if (_guidanceActionId == "approve-remediation")
+            {
+                await ReviewApprovedRemediationAsync();
+                return;
+            }
+
+            if (_guidanceActionId == "open-windows-update")
+            {
+                Process.Start(new ProcessStartInfo("ms-settings:windowsupdate") { UseShellExecute = true });
+            }
+        }
+
+        private async Task ReviewApprovedRemediationAsync()
+        {
+            var snapshot = _engine.CurrentSnapshot;
+            RemediationApprovalCoordinator.ApprovalRequest request = _approvalCoordinator.CreateRequest(snapshot);
+            if (!request.Available) return;
 
             ContentDialog dialog = new()
             {
                 Title = request.Title,
-                Content = review,
-                PrimaryButtonText = "Approve this action",
-                CloseButtonText = "Not now",
+                Content = $"{request.Summary}\n\nTarget: {request.Target}\n\n{request.SafetyNote}",
+                PrimaryButtonText = "Approve",
+                CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
                 XamlRoot = ((FrameworkElement)Content).XamlRoot
             };
 
-            ContentDialogResult dialogResult = await dialog.ShowAsync();
-            if (dialogResult != ContentDialogResult.Primary)
+            ContentDialogResult result = await dialog.ShowAsync();
+            if (result != ContentDialogResult.Primary) return;
+
+            var execution = await _approvedServiceRestartCoordinator.ExecuteAsync(
+                snapshot,
+                request,
+                async () => await _engine.RefreshAsync());
+
+            ContentDialog outcomeDialog = new()
             {
-                ShowVerificationResult("No change made", "You did not approve the recommended action. Sentinel will continue monitoring the condition.");
-                return;
-            }
-
-            GuidanceActionButton.IsEnabled = false;
-            try
-            {
-                await _engine.RefreshAsync();
-                var currentSnapshot = _engine.CurrentSnapshot;
-                RemediationApprovalCoordinator.ApprovalValidationResult validation = _approvalCoordinator.Validate(request, currentSnapshot, userApproved: true);
-
-                if (!validation.IsApproved)
-                {
-                    ShowVerificationResult("Approval could not be used", validation.Message);
-                    await UpdateDashboardAsync();
-                    return;
-                }
-
-                if (!request.Action.Equals("restart-service", StringComparison.OrdinalIgnoreCase))
-                {
-                    ShowVerificationResult(
-                        "This fix is not enabled yet",
-                        "Sentinel verified your approval, but this specific remediation is not yet connected to a production execution path. No system change was made.");
-                    await UpdateDashboardAsync();
-                    return;
-                }
-
-                ApprovedRemediationExecutor.ApprovedRemediationResult result = await _approvedServiceRestartCoordinator.ExecuteAsync(
-                    currentSnapshot,
-                    request,
-                    validation,
-                    canRequestElevation: true);
-
-                ShowVerificationResult(
-                    string.IsNullOrWhiteSpace(result.Title) ? "Action not performed" : result.Title,
-                    result.Summary);
-
-                await UpdateDashboardAsync();
-            }
-            catch
-            {
-                ShowVerificationResult("The action could not complete", "Sentinel could not safely complete the approved action. No success was reported, and Sentinel will continue monitoring.");
-            }
-            finally
-            {
-                GuidanceActionButton.IsEnabled = true;
-            }
-        }
-
-        private static string FormatAction(string action) => action switch
-        {
-            "restart-service" => "Restart the affected Windows service",
-            "contain-process" => "Close the identified process",
-            "block-outbound-endpoint" => "Block the identified outbound connection",
-            "quarantine-file" => "Quarantine the identified file",
-            "restore-quarantined-file" => "Restore the quarantined file",
-            _ => action
-        };
-
-        private void ShowVerificationResult(string title, string message)
-        {
-            VerificationResultBorder.Visibility = Visibility.Visible;
-            VerificationResultTitleText.Text = title;
-            VerificationResultMessageText.Text = message;
+                Title = execution.Title,
+                Content = execution.Summary,
+                CloseButtonText = "OK",
+                XamlRoot = ((FrameworkElement)Content).XamlRoot
+            };
+            await outcomeDialog.ShowAsync();
+            await UpdateDashboardAsync();
         }
 
         private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e)
         {
-            VerifyGuidanceButton.IsEnabled = false;
-            VerificationResultBorder.Visibility = Visibility.Visible;
-            VerificationResultTitleText.Text = "Checking current status...";
-            VerificationResultMessageText.Text = "Sentinel AI is verifying current conditions and refreshing the available evidence.";
-            try
+            var result = await _engine.VerifyCurrentGuidanceAsync();
+            ContentDialog dialog = new()
             {
-                MonitoringEngine.VerificationResult result = await _engine.VerifyCurrentGuidanceAsync();
-                VerificationResultTitleText.Text = result.Title;
-                VerificationResultMessageText.Text = result.Message;
-                await UpdateDashboardAsync();
-            }
-            catch
-            {
-                VerificationResultTitleText.Text = "Verification could not complete";
-                VerificationResultMessageText.Text = "Sentinel AI could not verify the current status. No system change was made.";
-            }
-            finally { VerifyGuidanceButton.IsEnabled = true; }
-        }
-
-        private static void Launch(string target)
-        {
-            try { Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true }); }
-            catch { }
+                Title = result.Title,
+                Content = result.Message,
+                CloseButtonText = "OK",
+                XamlRoot = ((FrameworkElement)Content).XamlRoot
+            };
+            await dialog.ShowAsync();
+            await UpdateDashboardAsync();
         }
     }
 }
