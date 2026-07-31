@@ -91,10 +91,6 @@ namespace Sentinel.App
                 GuidanceFixDetailsText.Text = snapshot.GuidanceFixDetails;
 
                 _guidanceActionId = snapshot.GuidanceActionId;
-                GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
-                GuidanceActionButton.Visibility = string.IsNullOrWhiteSpace(_guidanceActionId)
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
 
                 bool hasServiceFailure =
                     snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
@@ -104,17 +100,26 @@ namespace Sentinel.App
                     snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
                     snapshot.LatestEventMessage.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase);
 
-                bool hasOtherActionableFinding =
-                    snapshot.CriticalEventCount > 0 ||
+                bool hasNonEventActionableFinding =
                     snapshot.FlaggedProcessCount > 0 ||
                     snapshot.FlaggedServiceCount > 0 ||
                     !snapshot.DefenderEnabled ||
                     !snapshot.FirewallEnabled;
 
+                bool hasActionableEventFinding =
+                    !isStorageSpacesSmpEvent &&
+                    (snapshot.CriticalEventCount > 0 ||
+                     snapshot.ErrorEventCount > 0 ||
+                     hasServiceFailure ||
+                     snapshot.RiskScore >= 20);
+
                 bool requiresAttention =
-                    hasOtherActionableFinding ||
-                    (!isStorageSpacesSmpEvent &&
-                        (snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20));
+                    hasNonEventActionableFinding || hasActionableEventFinding;
+
+                GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
+                GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
 
                 IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
                 InvestigationHistoryBorder.Visibility = isStorageSpacesSmpEvent && !requiresAttention
@@ -129,9 +134,9 @@ namespace Sentinel.App
                 }
                 else
                 {
-                    OverallStatusText.Text = "Nothing requires your attention right now.";
-                    AttentionStatusText.Text = "I analyzed your computer and verified its current condition.";
-                    MonitoringStatusText.Text = "I’ll continue monitoring this condition.";
+                    OverallStatusText.Text = "Your computer is healthy.";
+                    AttentionStatusText.Text = "Nothing requires your attention right now.";
+                    MonitoringStatusText.Text = "I’ll continue monitoring your computer.";
                 }
 
                 if (isStorageSpacesSmpEvent && !requiresAttention)
