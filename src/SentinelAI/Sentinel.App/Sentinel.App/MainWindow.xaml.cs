@@ -109,34 +109,43 @@ namespace Sentinel.App
                 bool hasActionableServiceOrEventFinding = !isStorageSpacesSmpFinding && (snapshot.FlaggedServiceCount > 0 || snapshot.CriticalEventCount > 0 || snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20);
                 bool requiresAttention = hasSecurityOrProcessFinding || hasActionableServiceOrEventFinding || memoryRequiresAttention;
 
-                GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
-                GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
-                IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
-                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
-
                 if (memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding)
                 {
+                    _guidanceActionId = "open-task-manager";
+                    GuidanceActionButton.Content = "Review memory use";
+                    GuidanceActionButton.Visibility = Visibility.Visible;
+                    IssueSummaryBorder.Visibility = Visibility.Visible;
+                    InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+
                     OverallStatusText.Text = "I found sustained high memory use that requires attention.";
                     AttentionStatusText.Text = snapshot.MemoryConclusion;
                     MonitoringStatusText.Text = snapshot.MemoryRecommendation;
-                    RiskSummaryText.Text = $"Memory is at {snapshot.MemoryUsagePercent:0.0}%. Largest application contributors: {snapshot.MemoryTopContributors}. Windows Memory Compression: {snapshot.MemoryCompressionGB:0.00} GB.";
+                    RiskSummaryText.Text = $"Memory is at {snapshot.MemoryUsagePercent:0.0}%. Largest application contributors: {snapshot.MemoryTopContributors}. Windows Memory Compression is using {snapshot.MemoryCompressionGB:0.00} GB and should not be stopped.";
                     RecommendationText.Text = snapshot.MemoryRecommendation;
-                }
-                else if (requiresAttention)
-                {
-                    OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
-                    AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
-                    MonitoringStatusText.Text = "I’ll continue monitoring this condition and your computer.";
-                    RiskSummaryText.Text = snapshot.RiskSummary;
-                    RecommendationText.Text = snapshot.Recommendation;
                 }
                 else
                 {
-                    OverallStatusText.Text = "Your computer is healthy.";
-                    AttentionStatusText.Text = "Nothing requires your attention right now.";
-                    MonitoringStatusText.Text = "I’ll continue monitoring your computer.";
-                    RiskSummaryText.Text = "Your computer is healthy.";
-                    RecommendationText.Text = "No action is required. Sentinel will continue monitoring your computer.";
+                    GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
+                    GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
+                    IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
+                    InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+
+                    if (requiresAttention)
+                    {
+                        OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
+                        AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
+                        MonitoringStatusText.Text = "I’ll continue monitoring this condition and your computer.";
+                        RiskSummaryText.Text = snapshot.RiskSummary;
+                        RecommendationText.Text = snapshot.Recommendation;
+                    }
+                    else
+                    {
+                        OverallStatusText.Text = "Your computer is healthy.";
+                        AttentionStatusText.Text = "Nothing requires your attention right now.";
+                        MonitoringStatusText.Text = "I’ll continue monitoring your computer.";
+                        RiskSummaryText.Text = "Your computer is healthy.";
+                        RecommendationText.Text = "No action is required. Sentinel will continue monitoring your computer.";
+                    }
                 }
 
                 VerifyGuidanceButton.Visibility = requiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
