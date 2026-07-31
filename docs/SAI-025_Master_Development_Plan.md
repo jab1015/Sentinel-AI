@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 1.8
+Version: 1.9
 
 Status: Active
 
@@ -20,7 +20,7 @@ Develop a production-quality Windows investigation and security application comb
 
 # Current Status
 
-Estimated overall product completion: **96%**.
+Estimated overall product completion: **97%**.
 
 Completed:
 
@@ -29,6 +29,7 @@ Completed:
 - Phase 3 — Investigation Engine: 18 of 18
 - Phase 4 — Safe Remediation Foundation: 10 of 10
 - Phase 5 — Remediation Integration & Autonomous Protection: 7 of 7 remaining-integration items complete; Autonomous Protection core 10 of 10 complete
+- Phase 6 — Ask Sentinel / AI Assistance: 6 of 6 complete
 - User-facing approval workflow and execution-time approval revalidation
 - Quarantine/restore foundations and presentation integration
 - Investigation/remediation history presentation
@@ -43,37 +44,11 @@ Completed:
 - Evidence-grounded Ask Sentinel response orchestration
 - Investigation-history-aware Ask Sentinel explanations
 - Explainable safeguarded Ask Sentinel recommendations
+- Final Ask Sentinel fail-safe response validation
 
 Current milestone:
 
-**Phase 6 — Ask Sentinel / AI Assistance: 5 of 6 complete.**
-
-Completed Phase 6 work:
-
-1. Grounded local evidence context layer. Ask Sentinel must answer from verified local system evidence and explicitly acknowledge when evidence is insufficient.
-2. Natural-language Ask Sentinel interaction surface. Questions refresh current Sentinel evidence before answering; supported current-system questions use only verified snapshot data and unsupported questions fail closed.
-3. Evidence-grounded response orchestration. A central orchestration layer now builds verified context, coordinates grounded answering, carries evidence metadata, and explicitly marks insufficient-evidence outcomes rather than allowing unsupported claims.
-4. Investigation-history-aware explanations. Explicit history questions use persisted Sentinel investigation records and compare verified investigation fingerprints when available; unrelated historical records are not represented as the same condition.
-5. Explainable recommendations with strict no-invention safeguards. Recommendation questions use only verified guidance, remediation availability, approval state, autonomous-execution eligibility, and verified action outcomes. Recommendations are never represented as completed actions, and success is never claimed without a verified successful outcome.
-
-Remaining Phase 6 work:
-
-6. Integration, failure-path, and runtime verification.
-
-Planned after Phase 6:
-
-- Phase 7 — Production Hardening & Commercial Release
-- Structured diagnostics and logging
-- Fresh-clone/release configuration verification
-- Automated regression coverage
-- Long-duration stability testing
-- Windows 10/11 compatibility verification
-- Installer/uninstaller
-- Code signing
-- Application updates
-- Privacy/user/troubleshooting documentation
-- Accessibility/UX polish
-- Release acceptance testing
+**Phase 7 — Production Hardening & Commercial Release.**
 
 # Development Phases
 
@@ -95,20 +70,35 @@ Status: **Complete**
 Autonomous Protection core: **10 of 10 complete**. Remaining integration milestone: **7 of 7 complete**.
 
 ## Phase 6 — Ask Sentinel / AI Assistance
-Status: **Active — 5 of 6 complete**
+Status: **Complete — 6 of 6**
 
-Ask Sentinel is being built as a grounded assistance layer over verified Sentinel evidence, persisted Sentinel investigation history, and verified remediation state. It must not invent system state, threats, causes, remediation outcomes, or historical facts.
+Ask Sentinel is a grounded assistance layer over verified Sentinel evidence, persisted Sentinel investigation history, and verified remediation state. It refreshes evidence before answering, fails closed when support is insufficient, distinguishes recommendations from executed actions, never reports remediation success without verified outcomes, and applies a final response safety validator to block unsupported action, threat, history, or outcome claims.
 
 ## Phase 7 — Production Hardening & Commercial Release
-Status: **Planned / partially underway**
+Status: **Active / partially underway**
+
+Remaining work includes:
+
+- Structured diagnostics and logging
+- Fresh-clone/release configuration verification
+- Automated regression coverage
+- Performance profiling and optimization
+- Long-duration stability testing
+- Windows 10/11 compatibility verification
+- Installer/uninstaller
+- Code signing
+- Application updates
+- Privacy/user/troubleshooting documentation
+- Accessibility/UX polish
+- Release acceptance testing
 
 # Current Performance Note
 
-Recent local verification confirms successful builds and acceptable startup behavior. The responsive shell-first startup and brief analysis state are accepted for the current development stage. Performance remains subject to Phase 7 hardening without reopening Phase 5.
+Recent local verification confirms successful builds and acceptable startup behavior. The responsive shell-first startup and brief analysis state are accepted for the current development stage. Performance remains subject to Phase 7 hardening without reopening completed phases.
 
 # Progress Governance
 
-**96% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
+**97% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
 
 Progress must not move backward unless previously completed functionality is explicitly reopened, removed, or proven incomplete, with the reason documented.
 
@@ -116,9 +106,10 @@ Progress must not move backward unless previously completed functionality is exp
 
 1. Preserve investigation-before-action behavior and remediation safety boundaries.
 2. Keep healthy users undisturbed.
-3. Ground Ask Sentinel in verified evidence, verified history, and verified remediation state.
+3. Preserve Ask Sentinel grounding and final fail-safe response validation.
 4. Verify system-changing outcomes before reporting success.
-5. Maintain synchronized documentation and a buildable application.
+5. Complete production hardening and commercial release readiness.
+6. Maintain synchronized documentation and a buildable application.
 
 # Definition of Success
 
