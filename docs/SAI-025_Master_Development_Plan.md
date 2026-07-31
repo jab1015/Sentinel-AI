@@ -1,10 +1,10 @@
 # SAI-025 — Master Development Plan
 
-Version: 1.0
+Version: 1.1
 
 Status: Active
 
-Last Updated: 2026-07-29
+Last Updated: 2026-07-31
 
 Copyright (c) 2026 Modern Methods.
 
@@ -20,119 +20,138 @@ It consolidates the project vision, architecture, implementation strategy, devel
 
 # Project Mission
 
-Develop a production-quality Windows security application that combines:
+Develop a production-quality Windows investigation and security application that combines:
 
 - Native Windows monitoring
-- Artificial Intelligence
-- Threat analysis
+- Investigation and evidence correlation
+- Explainable security intelligence
+- Safe remediation
+- Autonomous low-risk protection
 - Actionable recommendations
-- Professional user experience
+- Professional, non-technical user experience
 
 ---
 
 # Current Status
 
+Estimated overall product completion: **80%**.
+
 Completed
 
-- Project architecture
-- Documentation framework
-- Monitoring Engine
-- Snapshot architecture
-- Core monitor services
-- Dashboard integration
+- Project architecture and documentation framework
+- Monitoring Engine and snapshot architecture
+- Native CPU, memory, disk, and network monitoring
+- Process, service, security, persistence, scheduled-task, connection, and Windows Event evidence
+- Investigation-first dashboard and healthy-state UX
+- Investigation Engine core
+- Risk assessment and guidance foundations
+- Safe remediation policy
+- Verified process termination foundation
+- Verified outbound firewall blocking foundation
+- Quarantine and hash-verified restore foundation
+- Remediation audit and investigation history foundations
+- Autonomous Protection core — 10 of 10
+- Low-risk automatic action gating
+- Evidence-confidence and execution-time revalidation safeguards
+- User-approval boundary for moderate/high-risk remediation
+- Startup/refresh responsiveness improvements
+- First-refresh CPU sampling improvement
 
-In Progress
+In Progress / Next
 
-- Native monitoring implementation
-- Windows API integration
+- User-facing approval workflow for moderate-risk remediation
+- Quarantine management and restore experience
+- Remediation and investigation history presentation
+- Network endpoint attribution improvements
+- Background actionable notifications
+- Failure-path regression testing
 
 Planned
 
-- AI Engine
-- Threat Analysis
-- Rules Engine
-- Reporting
+- Ask Sentinel / AI Assistance
+- Production hardening
+- Installer and code signing
+- Application updates
+- Release acceptance testing
 - Enterprise functionality
 
 ---
 
 # Development Phases
 
-## Phase 1 — Foundation
+## Phase 1 — Monitoring Foundation
 
-Objectives
+Status: **Complete**
 
-- Monitoring Engine
-- Core monitor services
-- Dashboard
-- Documentation
-
-Status
-
-Completed
+Native monitoring and core Windows evidence collection are operational and locally verified.
 
 ---
 
-## Phase 2 — Native Monitoring
+## Phase 2 — Investigation Experience
 
-Objectives
+Status: **Complete**
 
-- Accurate CPU monitoring
-- Memory monitoring
-- Disk monitoring
-- Network monitoring
-- Windows Security Center integration
-- Event Log monitoring
-
-Status
-
-Active
+Sentinel defaults to a calm healthy-state experience, exposes technical details progressively, and interrupts the user only when investigation evidence justifies attention.
 
 ---
 
-## Phase 3 — Security Intelligence
+## Phase 3 — Investigation Engine
 
-Objectives
+Status: **Complete — 18 of 18**
 
-- Threat detection
-- Startup analysis
-- Registry monitoring
-- Service analysis
-- Behavioral monitoring
-
-Status
-
-Planned
+Evidence collection and correlation foundations span processes, services, persistence, scheduled tasks, connections, drivers, firewall, WMI, ancestry, command lines, and Windows events.
 
 ---
 
-## Phase 4 — Artificial Intelligence
+## Phase 4 — Safe Remediation Foundation
 
-Objectives
+Status: **Complete — 10 of 10**
 
-- AI reasoning
-- Recommendations
-- Threat prioritization
-- Explainable AI
-
-Status
-
-Planned
+System-changing actions are governed by centralized policy, evidence requirements, approval boundaries, protected-component safeguards, verification, and audit/history foundations.
 
 ---
 
-## Phase 5 — Enterprise Features
+## Phase 5 — Remediation Integration & Autonomous Protection
+
+Status: **Autonomous Protection core complete — 10 of 10; remaining integration active**
+
+Completed capabilities include low-risk automatic remediation decisions, policy enforcement, confidence gating, execution isolation, stale-decision revalidation, safe refresh/retry actions, and verification-pending outcomes that prevent Sentinel from claiming success before verification.
+
+Next work focuses on user approval UX, quarantine/restore management, history presentation, endpoint response, notifications, and regression testing.
+
+---
+
+## Phase 6 — Ask Sentinel / AI Assistance
+
+Status: **Planned**
 
 Objectives
 
-- Centralized management
-- Multi-device support
-- Policy management
-- Enterprise reporting
+- Natural-language questions grounded in current evidence
+- Investigation-history-aware explanations
+- Verified system-state answers
+- Explainable recommendations
+- No unsupported claims or invented system state
 
-Status
+---
 
-Planned
+## Phase 7 — Production Hardening & Commercial Release
+
+Status: **Planned / partially underway**
+
+Objectives
+
+- Structured logging and diagnostics
+- Fresh-clone build verification
+- Performance profiling and optimization
+- Long-duration stability testing
+- Windows 10 and Windows 11 compatibility verification
+- Installer/uninstaller
+- Code signing
+- Application updates
+- Privacy and user documentation
+- Accessibility and UX polish
+- Release acceptance testing
 
 ---
 
@@ -140,17 +159,21 @@ Planned
 
 Priority 1
 
-Replace all placeholder monitoring with production-quality implementations.
+Preserve investigation-before-action behavior and safe remediation boundaries.
 
 Priority 2
 
-Maintain clean architecture.
+Maintain a fast, calm user experience that does not overwhelm non-technical users.
 
 Priority 3
 
-Keep documentation synchronized with implementation.
+Verify system-changing outcomes before reporting success.
 
 Priority 4
+
+Maintain clean architecture and synchronized documentation.
+
+Priority 5
 
 Ensure every sprint results in a buildable, runnable application.
 
@@ -163,6 +186,8 @@ Sentinel AI shall be:
 - Stable
 - Secure
 - Fast
+- Explainable
+- Conservative with system changes
 - Maintainable
 - Extensible
 - Testable
@@ -207,13 +232,15 @@ A successful release:
 - Meets acceptance criteria
 - Has updated documentation
 - Passes verification
+- Preserves remediation safety boundaries
+- Does not report unverified remediation as successful
 - Is committed and versioned
 
 ---
 
 # Long-Term Vision
 
-Sentinel AI will evolve into a trusted, enterprise-capable Windows security platform that combines native operating system integration with explainable AI to help users understand, detect, and respond to threats efficiently and confidently.
+Sentinel AI will evolve into a trusted Windows investigation and security platform that combines native operating-system evidence, explainable intelligence, and carefully governed autonomous protection so users can understand and respond to threats without being overwhelmed by technical complexity.
 
 ---
 
@@ -222,7 +249,7 @@ Sentinel AI will evolve into a trusted, enterprise-capable Windows security plat
 - SAI-009 — System Architecture
 - SAI-010 — Component Architecture
 - SAI-011 — Coding Architecture
-- SAI-012 — AI Architecture
+- SAI-012 — Product Roadmap
 - SAI-013 — Product Roadmap
 - SAI-014 — Development Workflow
 - SAI-015 — Contribution Guide
