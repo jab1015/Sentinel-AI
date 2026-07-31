@@ -4,18 +4,20 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Sentinel.App.Models;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Creates short-lived, exact-target approval requests for remediation that
-    /// must never execute silently. Approval is bound to the investigation state
-    /// that produced it so stale user consent cannot authorize a later action.
+    /// Creates short-lived, exact-target, single-use approval requests for
+    /// remediation that must never execute silently.
     /// </summary>
     public sealed class RemediationApprovalCoordinator
     {
         private static readonly TimeSpan ApprovalLifetime = TimeSpan.FromMinutes(2);
+        private readonly HashSet<Guid> _consumedRequestIds = new();
+        private readonly object _sync = new();
 
         public RemediationApprovalRequest? CreateRequest(SystemSnapshot snapshot)
         {
@@ -57,6 +59,14 @@ namespace Sentinel.App.Services
                 return ApprovalValidationResult.Denied("You did not approve this action. Sentinel made no system change.");
             }
 
+            lock (_sync)
+            {
+                if (_consumedRequestIds.Contains(request.RequestId))
+                {
+                    return ApprovalValidationResult.Denied("This approval was already used. Sentinel made no additional system change.");
+                }
+            }
+
             if (DateTimeOffset.Now > request.ExpiresAt)
             {
                 return ApprovalValidationResult.Denied("This approval expired because the system may have changed. Sentinel will investigate again before offering the action.");
@@ -79,8 +89,16 @@ namespace Sentinel.App.Services
                 return ApprovalValidationResult.Denied("Evidence confidence decreased after approval. Sentinel will not proceed without re-investigating.");
             }
 
+            lock (_sync)
+            {
+                if (!_consumedRequestIds.Add(request.RequestId))
+                {
+                    return ApprovalValidationResult.Denied("This approval was already used. Sentinel made no additional system change.");
+                }
+            }
+
             return ApprovalValidationResult.Approved(
-                "Approval verified. Sentinel may proceed with the exact action and target shown to you.");
+                "Approval verified for one use. Sentinel may proceed with the exact action and target shown to you.");
         }
 
         private static string BuildTitle(string action) =>
@@ -96,7 +114,7 @@ namespace Sentinel.App.Services
 
         private static string BuildSummary(SystemSnapshot snapshot) =>
             $"Sentinel investigated the condition and recommends '{snapshot.AutonomousProtectionAction}' for '{snapshot.AutonomousProtectionTarget}'. " +
-            "The action will apply only to this exact target, and Sentinel will verify the result afterward.";
+            "The action will apply only to this exact target, this approval can be used once, and Sentinel will verify the result afterward.";
 
         public sealed record RemediationApprovalRequest(
             Guid RequestId,
