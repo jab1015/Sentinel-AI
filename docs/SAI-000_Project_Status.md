@@ -1,8 +1,8 @@
 # SAI-000 — Project Status
 
-Version: 1.2  
+Version: 1.3  
 Status: Active  
-Last Updated: 2026-07-29
+Last Updated: 2026-07-31
 
 Copyright (c) 2026 Modern Methods.
 
@@ -28,79 +28,88 @@ This document is the single source of truth for the current state of Sentinel AI
 
 # Current Version
 
-0.4.0
+0.4.0 development line
 
 ---
 
-# Current Sprint
+# Current Phase
 
-Sprint 5 — Security Intelligence Foundation
+Security Intelligence and Safe Remediation
 
 ---
 
 # Current Objective
 
-Build the first security-intelligence layer on top of the verified core monitoring dashboard.
-
-Immediate priorities:
-
-1. Windows Event Log monitoring
-2. Critical and security event classification
-3. Suspicious-process indicators
-4. Startup application monitoring
-5. Service-health monitoring
-6. Monitoring integration and failure-path tests
+Continue expanding Sentinel from passive monitoring and investigation into a trustworthy Windows investigation assistant that can recommend and safely execute narrowly scoped remediation while preserving explicit user control.
 
 ---
 
 # Completed Work
 
-## Foundation
+## Foundation and Core Monitoring
 
-- [x] WinUI 3 application
+- [x] WinUI 3 application and Sentinel AI dashboard
 - [x] MonitoringEngine and SystemSnapshot architecture
-- [x] Modular monitor services
-- [x] GitHub workflow on `main`
-- [x] Project documentation system
-
-## Core Monitoring
-
-- [x] Native CPU monitoring
-- [x] Native physical-memory monitoring
+- [x] Native CPU and physical-memory monitoring
 - [x] Disk capacity and usage monitoring
 - [x] Network download and upload throughput
-- [x] Running process count
-- [x] Highest-memory process reporting
-- [x] Microsoft Defender enabled status
-- [x] Windows Firewall enabled status
-- [x] One-second dashboard refresh
-- [x] Live timestamp updates
+- [x] Running process count and highest-memory process reporting
+- [x] Microsoft Defender and Windows Firewall status
+- [x] Live dashboard refresh and timestamps
+- [x] Progressive-disclosure technical details
+- [x] User-facing healthy-state executive summary
 
-## Verification
+## Investigation Experience
 
-- [x] Solution builds successfully
-- [x] Application launches successfully
-- [x] All core dashboard metrics display live values
-- [x] Runtime behavior verified by the Product Owner
-- [x] Existing monitoring features remain functional
+- [x] Investigation-oriented user messaging
+- [x] Evidence-driven attention state
+- [x] Guided remediation language
+- [x] Windows Update transient-condition handling
+- [x] Personalized per-user greeting setup
+- [x] Background monitoring designed to avoid unnecessary user interruption
+
+## User Approval and Recovery
+
+Status: Completed and runtime build verified by Product Owner on 2026-07-31.
+
+- [x] Explicit approval model for sensitive remediation
+- [x] Exact action and target binding
+- [x] Short-lived approval requests
+- [x] Single-use approval enforcement
+- [x] Revalidation immediately before execution
+- [x] Approval invalidation when investigation state changes
+- [x] Confidence regression protection
+- [x] Post-remediation verification contract
+- [x] Bounded verification retries
+- [x] Distinct not-attempted, pending, failed, verified-success, and execution-failed outcomes
+- [x] Continued-investigation state when remediation cannot be verified
+- [x] Successful build and launch after completion
+
+---
+
+# Current Runtime Observation
+
+The application is building and running successfully. The Product Owner reports some remaining UI/runtime lag. Performance responsiveness remains an active optimization item and must not be ignored as additional monitoring and remediation capabilities are added.
 
 ---
 
 # Known Remaining Work
 
-- Windows Event Log collection and classification
-- Suspicious-process detection
-- Startup and service analysis
-- Integration and failure-path tests
+- Reduce remaining dashboard/runtime lag
+- Complete production wiring of approval-gated remediation actions to concrete Windows operations
+- Expand security event and suspicious activity intelligence
+- Complete startup and service analysis
+- Expand integration, failure-path, and remediation verification tests
 - Alerts and notifications
-- Historical reporting
+- Historical reporting and investigation history
 - AI-assisted explanations and recommendations
+- Release hardening and production acceptance
 
 ---
 
 # Immediate Next Task
 
-Implement Windows Event Log monitoring without regressing the completed dashboard.
+Begin the next implementation phase after User Approval & Recovery, with performance responsiveness treated as a standing acceptance requirement.
 
 ---
 
