@@ -43,8 +43,6 @@ namespace Sentinel.App.Services
                 return Deny("This action requires administrator permission that Sentinel cannot currently request safely.");
             }
 
-            // Automatic remediation is intentionally narrow. Only explicitly
-            // allow-listed low-risk maintenance actions may run without approval.
             if (request.RiskLevel == RemediationRisk.Low)
             {
                 return request.Action switch
@@ -64,22 +62,27 @@ namespace Sentinel.App.Services
             return request.Action switch
             {
                 RemediationAction.TerminateProcess => RequireApproval(
+                    request.Action,
                     "Close the selected process",
                     "The process will be stopped only after you approve the exact process Sentinel identified."),
 
                 RemediationAction.BlockNetworkEndpoint => RequireApproval(
+                    request.Action,
                     "Block the selected network activity",
                     "A Windows Firewall rule will be created only after you approve the exact target and rule."),
 
                 RemediationAction.QuarantineFile => RequireApproval(
+                    request.Action,
                     "Quarantine the selected file",
                     "The file will be isolated only after you approve the exact file and Sentinel records how to restore it."),
 
                 RemediationAction.RestoreQuarantinedFile => RequireApproval(
+                    request.Action,
                     "Restore the quarantined file",
                     "The file will be restored only after you approve the destination and Sentinel verifies the quarantine record."),
 
                 RemediationAction.RestartService => RequireApproval(
+                    request.Action,
                     "Restart the selected service",
                     "The service will be restarted only after Sentinel verifies its current state and you approve the action."),
 
@@ -92,21 +95,30 @@ namespace Sentinel.App.Services
                 Allowed: true,
                 RequiresUserApproval: false,
                 Title: title,
-                Explanation: explanation);
+                Explanation: explanation,
+                ApprovalScope: string.Empty,
+                ApprovalExpiresAfter: null);
 
-        private static RemediationDecision RequireApproval(string title, string explanation) =>
+        private static RemediationDecision RequireApproval(
+            RemediationAction action,
+            string title,
+            string explanation) =>
             new(
                 Allowed: true,
                 RequiresUserApproval: true,
                 Title: title,
-                Explanation: explanation);
+                Explanation: explanation,
+                ApprovalScope: action.ToString(),
+                ApprovalExpiresAfter: TimeSpan.FromMinutes(2));
 
         private static RemediationDecision Deny(string explanation) =>
             new(
                 Allowed: false,
                 RequiresUserApproval: false,
                 Title: "Action unavailable",
-                Explanation: explanation);
+                Explanation: explanation,
+                ApprovalScope: string.Empty,
+                ApprovalExpiresAfter: null);
 
         public sealed record RemediationRequest(
             RemediationAction Action,
@@ -120,7 +132,9 @@ namespace Sentinel.App.Services
             bool Allowed,
             bool RequiresUserApproval,
             string Title,
-            string Explanation);
+            string Explanation,
+            string ApprovalScope,
+            TimeSpan? ApprovalExpiresAfter);
 
         public enum RemediationAction
         {
