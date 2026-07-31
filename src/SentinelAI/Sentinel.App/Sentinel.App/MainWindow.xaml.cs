@@ -100,9 +100,17 @@ namespace Sentinel.App
                     snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) &&
                     snapshot.LatestEventMessage.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase);
 
+                bool storageSpacesIsPrimaryFlaggedService =
+                    snapshot.PrimaryFlaggedServiceName.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) ||
+                    snapshot.PrimaryFlaggedServiceName.Contains("SMP", StringComparison.OrdinalIgnoreCase);
+
+                bool hasActionableFlaggedService =
+                    snapshot.FlaggedServiceCount > 0 &&
+                    !(isStorageSpacesSmpEvent && storageSpacesIsPrimaryFlaggedService);
+
                 bool hasNonEventActionableFinding =
                     snapshot.FlaggedProcessCount > 0 ||
-                    snapshot.FlaggedServiceCount > 0 ||
+                    hasActionableFlaggedService ||
                     !snapshot.DefenderEnabled ||
                     !snapshot.FirewallEnabled;
 
@@ -122,9 +130,7 @@ namespace Sentinel.App
                     : Visibility.Collapsed;
 
                 IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
-                InvestigationHistoryBorder.Visibility = isStorageSpacesSmpEvent && !requiresAttention
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
+                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
 
                 if (requiresAttention)
                 {
@@ -139,14 +145,6 @@ namespace Sentinel.App
                     MonitoringStatusText.Text = "I’ll continue monitoring your computer.";
                 }
 
-                if (isStorageSpacesSmpEvent && !requiresAttention)
-                {
-                    HistoryOutcomeIconText.Text = "👁";
-                    HistoryTitleText.Text = "Storage Spaces service event reviewed";
-                    HistorySummaryText.Text = "Windows recorded a background Storage Spaces service event. Sentinel investigated the available evidence and found no current problem.";
-                    HistoryOutcomeText.Text = "Monitoring · No action required";
-                }
-
                 VerifyGuidanceButton.Visibility = hasServiceFailure && !isStorageSpacesSmpEvent
                     ? Visibility.Visible
                     : Visibility.Collapsed;
@@ -158,9 +156,7 @@ namespace Sentinel.App
                     : "Your computer is healthy.";
                 RecommendationText.Text = requiresAttention
                     ? snapshot.Recommendation
-                    : isStorageSpacesSmpEvent
-                        ? "A background Storage Spaces event was investigated. No action is required, and Sentinel will continue monitoring."
-                        : "No action is required. Sentinel will continue monitoring your computer.";
+                    : "No action is required. Sentinel will continue monitoring your computer.";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
             }
             finally
