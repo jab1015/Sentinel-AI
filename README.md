@@ -11,12 +11,12 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 **Status:** Active Development  
 **Production Branch:** `main`  
 **Current Phase:** Phase 6 — Ask Sentinel / AI Assistance  
-**Phase 6 Progress:** **2 of 6 complete**  
+**Phase 6 Progress:** **3 of 6 complete**  
 **Phase 5:** **Complete**  
 **Autonomous Protection Core:** **Complete — 10 of 10**  
-**Estimated Overall Product Progress:** **90%**
+**Estimated Overall Product Progress:** **92%**
 
-The application builds, launches promptly, monitors continuously, suppresses non-actionable findings, investigates causes using local evidence, supports safely governed remediation, and now includes a natural-language Ask Sentinel surface grounded in current verified system evidence.
+The application builds, launches promptly, monitors continuously, suppresses non-actionable findings, investigates causes using local evidence, supports safely governed remediation, and now includes a natural-language Ask Sentinel surface with centralized evidence-grounded response orchestration.
 
 ---
 
@@ -35,7 +35,7 @@ The application builds, launches promptly, monitors continuously, suppresses non
 | Preferred-name onboarding | Complete / runtime verified |
 | Memory-pressure investigation | Complete / runtime verified |
 | Startup responsiveness | Current behavior accepted; further hardening in Phase 7 |
-| Ask Sentinel / AI Assistance | Active — 2 of 6 |
+| Ask Sentinel / AI Assistance | Active — 3 of 6 |
 | Production hardening / commercial release | Phase 7 planned / partially underway |
 
 ---
@@ -66,16 +66,16 @@ Phase 5 completed remediation integration and Autonomous Protection, including:
 
 # Phase 6 — Ask Sentinel / AI Assistance
 
-**Status: Active — 2 of 6 complete**
+**Status: Active — 3 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
-3. [ ] Evidence-grounded response orchestration.
+3. [x] Evidence-grounded response orchestration.
 4. [ ] Investigation-history-aware explanations.
 5. [ ] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
 
-The current Ask Sentinel surface accepts natural-language questions, refreshes current Sentinel evidence before answering, provides grounded responses for supported system-status intents, and explicitly says when verified evidence is insufficient rather than guessing.
+Ask Sentinel now refreshes verified system evidence, builds a grounded evidence context, routes the question through a central response orchestrator, and explicitly identifies insufficient-evidence outcomes so Sentinel does not guess beyond what it can verify.
 
 Ask Sentinel must remain grounded in verified Sentinel evidence. It must explicitly acknowledge insufficient evidence rather than inventing system state, threats, causes, history, or remediation outcomes.
 
@@ -117,7 +117,7 @@ Remaining release work includes structured diagnostics, fresh-clone/release veri
 
 # Progress Baseline
 
-**90% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
+**92% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
 
 ---
 
