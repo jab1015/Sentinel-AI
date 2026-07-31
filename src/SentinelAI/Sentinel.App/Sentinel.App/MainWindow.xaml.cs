@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Dispatching;
 using Sentinel.App.Services;
 using System;
@@ -11,6 +12,7 @@ namespace Sentinel.App
     {
         private readonly DispatcherTimer _timer = new();
         private readonly MonitoringEngine _engine = new();
+        private readonly UserProfileService _userProfileService = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private string _guidanceActionId = string.Empty;
@@ -19,10 +21,6 @@ namespace Sentinel.App
         {
             InitializeComponent();
 
-            // Full investigation passes are intentionally less frequent than the
-            // old one-second cadence. They enumerate processes, services, events,
-            // persistence and network evidence; running that work every second can
-            // make the desktop feel sluggish without improving user protection.
             _timer.Interval = TimeSpan.FromSeconds(5);
             _timer.Tick += Timer_Tick;
 
@@ -39,10 +37,49 @@ namespace Sentinel.App
             _initialRefreshStarted = true;
             Activated -= MainWindow_Activated;
 
-            // Paint the shell first so startup never waits on an investigation pass.
             await Task.Delay(250);
+            await EnsurePreferredNameAsync();
             await UpdateDashboardAsync();
             _timer.Start();
+        }
+
+        private async Task EnsurePreferredNameAsync()
+        {
+            string preferredName = _userProfileService.GetPreferredName();
+            if (string.IsNullOrWhiteSpace(preferredName))
+            {
+                string suggestedName = _userProfileService.GetSuggestedName();
+                TextBox nameBox = new()
+                {
+                    Text = suggestedName,
+                    PlaceholderText = "Your first name",
+                    SelectAllOnFocus = true
+                };
+
+                ContentDialog dialog = new()
+                {
+                    Title = "What should Sentinel call you?",
+                    Content = nameBox,
+                    PrimaryButtonText = "Save",
+                    SecondaryButtonText = "Use Windows name",
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                };
+
+                ContentDialogResult result = await dialog.ShowAsync();
+                preferredName = result == ContentDialogResult.Primary
+                    ? nameBox.Text.Trim()
+                    : suggestedName;
+
+                if (string.IsNullOrWhiteSpace(preferredName))
+                {
+                    preferredName = suggestedName;
+                }
+
+                _userProfileService.SavePreferredName(preferredName);
+            }
+
+            GreetingText.Text = $"Hello, {preferredName}.";
         }
 
         private async void Timer_Tick(object? sender, object e)
@@ -187,27 +224,13 @@ namespace Sentinel.App
         {
             switch (_guidanceActionId)
             {
-                case "open-services":
-                    Launch("services.msc");
-                    break;
-                case "open-task-manager":
-                    Launch("taskmgr.exe");
-                    break;
-                case "open-windows-security":
-                    Launch("windowsdefender:");
-                    break;
-                case "open-firewall":
-                    Launch("windowsdefender://network");
-                    break;
-                case "open-windows-update":
-                    Launch("ms-settings:windowsupdate");
-                    break;
-                case "open-storage":
-                    Launch("ms-settings:storagesense");
-                    break;
-                case "check-again":
-                    await UpdateDashboardAsync();
-                    break;
+                case "open-services": Launch("services.msc"); break;
+                case "open-task-manager": Launch("taskmgr.exe"); break;
+                case "open-windows-security": Launch("windowsdefender:"); break;
+                case "open-firewall": Launch("windowsdefender://network"); break;
+                case "open-windows-update": Launch("ms-settings:windowsupdate"); break;
+                case "open-storage": Launch("ms-settings:storagesense"); break;
+                case "check-again": await UpdateDashboardAsync(); break;
             }
         }
 
@@ -220,9 +243,7 @@ namespace Sentinel.App
 
             try
             {
-                MonitoringEngine.VerificationResult result =
-                    await _engine.VerifyCurrentGuidanceAsync();
-
+                MonitoringEngine.VerificationResult result = await _engine.VerifyCurrentGuidanceAsync();
                 VerificationResultTitleText.Text = result.Title;
                 VerificationResultMessageText.Text = result.Message;
                 await UpdateDashboardAsync();
@@ -250,7 +271,6 @@ namespace Sentinel.App
             }
             catch
             {
-                // Guidance remains visible if Windows cannot open the requested tool.
             }
         }
     }
