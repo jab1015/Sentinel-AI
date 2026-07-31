@@ -62,8 +62,7 @@ namespace Sentinel.App.Models
         public int ErrorEventCount { get; set; }
         public DateTime? LatestEventTime { get; set; }
         public string LatestEventSource { get; set; } = "None";
-        public string LatestEventMessage { get; set; } =
-            "No critical or error events detected in the last 24 hours.";
+        public string LatestEventMessage { get; set; } = "No critical or error events detected in the last 24 hours.";
         public int RiskScore { get; set; }
         public string RiskLevel { get; set; } = "Calculating...";
         public string RiskSummary { get; set; } = "Analyzing current conditions.";
@@ -85,5 +84,14 @@ namespace Sentinel.App.Models
         public string InvestigationSummary { get; set; } = "Sentinel is reviewing available evidence.";
         public bool InvestigationRequiresAttention { get; set; }
         public string InvestigationReasonCode { get; set; } = "initializing";
+
+        // Remediation recommendation produced from the completed investigation.
+        // This is intentionally descriptive only: execution remains behind the
+        // RemediationPolicy and the individual verified remediation services.
+        public bool RemediationAvailable { get; set; }
+        public bool RemediationRequiresUserApproval { get; set; }
+        public string RemediationAction { get; set; } = "None";
+        public string RemediationTarget { get; set; } = "None";
+        public string RemediationSummary { get; set; } = "No remediation is required.";
     }
 }
