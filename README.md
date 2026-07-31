@@ -10,10 +10,32 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 **Status:** Active Development  
 **Production Branch:** `main`  
-**Current Phase:** Remediation Integration Complete — Autonomous Protection Next  
-**Remediation Integration Progress:** 10 of 10 — complete
+**Current Phase:** Autonomous Protection  
+**Completed Phase:** Remediation Integration — 10 of 10  
+**Estimated Overall Product Progress:** **70%**
 
-The application builds, launches, monitors the system continuously, suppresses non-actionable findings, and has been repeatedly runtime-verified by the Product Owner.
+The application builds, launches, monitors the system continuously, suppresses non-actionable findings, and has been repeatedly runtime-verified by the Product Owner. The Remediation Integration phase is complete and the next development work advances Sentinel from investigation/recommendation into verified autonomous protection.
+
+---
+
+# Overall Progress
+
+| Area | Status |
+|---|---|
+| Application foundation / WinUI shell | Complete |
+| Core system monitoring | Complete |
+| Security posture monitoring | Complete |
+| Investigation intelligence | Substantially complete |
+| Plain-language user experience | Substantially complete |
+| Performance / startup responsiveness | Substantially complete; continued hardening planned |
+| Safe remediation foundation | Complete |
+| Remediation decision integration | Complete |
+| Recurrence-aware investigation | Complete foundation |
+| Autonomous protection | Next active phase |
+| Quarantine/recovery management UI | Planned |
+| Background notifications | Planned |
+| Release hardening / regression testing | Planned |
+| Installer / update / commercial release readiness | Planned |
 
 ---
 
@@ -37,7 +59,7 @@ The application builds, launches, monitors the system continuously, suppresses n
 
 ---
 
-# Remediation Integration
+# Remediation Integration — Complete
 
 Completed integration foundation:
 
@@ -148,7 +170,7 @@ Core principles:
 
 ---
 
-# Next Phase — Autonomous Protection
+# Active Phase — Autonomous Protection
 
 Priority order:
 
@@ -192,7 +214,7 @@ Integration foundation complete:
 
 ## Autonomous Protection
 
-Next active phase:
+Active phase:
 
 - Low-risk automatic correction
 - Recurrence-aware escalation
@@ -201,6 +223,8 @@ Next active phase:
 - Continuous protection while minimized
 
 ## Commercial Release
+
+Remaining release work includes:
 
 - Production installer
 - Automatic updates
