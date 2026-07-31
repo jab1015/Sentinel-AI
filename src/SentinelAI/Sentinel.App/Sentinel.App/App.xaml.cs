@@ -30,6 +30,11 @@ namespace Sentinel.App
 
             try
             {
+#if DEBUG
+                DevelopmentRegressionChecks.Run();
+                await _diagnosticLog.InformationAsync("RegressionChecks", "Development safety regression checks passed.");
+#endif
+
                 _window = new MainWindow();
                 _window.Activate();
                 await _diagnosticLog.InformationAsync("ApplicationLaunch", "Sentinel AI main window activated.");
