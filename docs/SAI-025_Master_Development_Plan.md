@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 1.1
+Version: 1.2
 
 Status: Active
 
@@ -56,6 +56,8 @@ Completed
 - User-approval boundary for moderate/high-risk remediation
 - Startup/refresh responsiveness improvements
 - First-refresh CPU sampling improvement
+- Per-Windows-profile preferred-name onboarding
+- Sustained memory-pressure investigation with application contributor context and actionable guidance
 
 In Progress / Next
 
@@ -65,6 +67,7 @@ In Progress / Next
 - Network endpoint attribution improvements
 - Background actionable notifications
 - Failure-path regression testing
+- Continued startup and investigation performance profiling; intermittent lag remains observable in recent runtime verification
 
 Planned
 
@@ -99,7 +102,7 @@ Sentinel defaults to a calm healthy-state experience, exposes technical details 
 
 Status: **Complete — 18 of 18**
 
-Evidence collection and correlation foundations span processes, services, persistence, scheduled tasks, connections, drivers, firewall, WMI, ancestry, command lines, and Windows events.
+Evidence collection and correlation foundations span processes, services, persistence, scheduled tasks, connections, drivers, firewall, WMI, ancestry, command lines, Windows events, and sustained memory-pressure investigation.
 
 ---
 
@@ -115,9 +118,17 @@ System-changing actions are governed by centralized policy, evidence requirement
 
 Status: **Autonomous Protection core complete — 10 of 10; remaining integration active**
 
-Completed capabilities include low-risk automatic remediation decisions, policy enforcement, confidence gating, execution isolation, stale-decision revalidation, safe refresh/retry actions, and verification-pending outcomes that prevent Sentinel from claiming success before verification.
+Completed capabilities include low-risk automatic remediation decisions, policy enforcement, confidence gating, execution isolation, stale-decision revalidation, safe refresh/retry actions, verification-pending outcomes, and memory-pressure guidance that identifies application contributors rather than treating Windows Memory Compression itself as the problem.
 
-Next work focuses on user approval UX, quarantine/restore management, history presentation, endpoint response, notifications, and regression testing.
+Remaining integration work:
+
+1. User-facing approval workflow for supported moderate-risk actions.
+2. Quarantine management and safe restore presentation.
+3. Remediation and investigation history presentation without cluttering healthy state.
+4. Expanded network endpoint attribution and response.
+5. Background/minimized notification behavior for genuinely actionable findings.
+6. Failure-path and remediation integration regression testing.
+7. Continued startup/initial-investigation performance profiling and optimization.
 
 ---
 
@@ -152,6 +163,12 @@ Objectives
 - Privacy and user documentation
 - Accessibility and UX polish
 - Release acceptance testing
+
+---
+
+# Current Performance Note
+
+Recent local runtime verification confirms successful builds and correct monitoring behavior. Intermittent lag is still observable during startup/initial investigation on some runs. This is a tracked performance-hardening item. Future optimization must preserve evidence quality, remediation safeguards, and the responsive shell-first startup behavior already implemented.
 
 ---
 
