@@ -14,6 +14,11 @@ namespace Sentinel.App.Models
         public double MemoryUsedGB { get; set; }
         public double MemoryTotalGB { get; set; }
         public double MemoryUsagePercent { get; set; }
+        public string MemoryPressureLevel { get; set; } = "Normal";
+        public double MemoryCompressionGB { get; set; }
+        public string MemoryTopContributors { get; set; } = "No memory investigation data available.";
+        public string MemoryConclusion { get; set; } = "Memory use is within Sentinel's normal monitoring range.";
+        public string MemoryRecommendation { get; set; } = "No action is required.";
         public double DiskUsagePercent { get; set; }
         public double DiskFreeGB { get; set; }
         public double DiskTotalGB { get; set; }
