@@ -86,12 +86,25 @@ namespace Sentinel.App.Models
         public string InvestigationReasonCode { get; set; } = "initializing";
 
         // Remediation recommendation produced from the completed investigation.
-        // This is intentionally descriptive only: execution remains behind the
-        // RemediationPolicy and the individual verified remediation services.
+        // Execution remains behind RemediationPolicy and verified remediation services.
         public bool RemediationAvailable { get; set; }
         public bool RemediationRequiresUserApproval { get; set; }
         public string RemediationAction { get; set; } = "None";
         public string RemediationTarget { get; set; } = "None";
         public string RemediationSummary { get; set; } = "No remediation is required.";
+
+        // Outcome state lets the UI explain completed remediation without exposing
+        // implementation details to non-technical users.
+        public bool RemediationAttempted { get; set; }
+        public bool RemediationSucceeded { get; set; }
+        public DateTimeOffset? RemediationCompletedAt { get; set; }
+        public string RemediationOutcomeTitle { get; set; } = string.Empty;
+        public string RemediationOutcomeSummary { get; set; } = string.Empty;
+
+        // Recurrence state supports escalation only when the same verified finding
+        // persists or returns, avoiding unnecessary alerts for one-time conditions.
+        public int InvestigationRecurrenceCount { get; set; }
+        public bool InvestigationIsRecurring { get; set; }
+        public bool InvestigationShouldEscalate { get; set; }
     }
 }
