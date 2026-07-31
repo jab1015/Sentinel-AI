@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 2.0
+Version: 2.1
 
 Status: Active
 
@@ -28,16 +28,17 @@ Completed:
 - Phase 6 — Ask Sentinel / AI Assistance: 6 of 6
 - Phase 7 item 1 — Structured logging and diagnostics foundation
 - Phase 7 item 2 — Fresh-clone and release-configuration verification foundation
+- Phase 7 item 3 — Automated regression coverage
 
 Current milestone:
 
-**Phase 7 — Production Hardening & Commercial Release: 2 of 12 complete.**
+**Phase 7 — Production Hardening & Commercial Release: 3 of 12 complete.**
 
 ## Phase 7 — Production Hardening & Commercial Release
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
-3. [ ] Automated regression coverage.
+3. [x] Automated regression coverage.
 4. [ ] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
@@ -48,7 +49,7 @@ Current milestone:
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-The release configuration verification is source-controlled and repeatable. It validates required release files, .NET/Windows target alignment, supported architectures, packaging project linkage, required dependencies, and CsWin32 declarations. Code signing remains a separate controlled release step.
+Debug builds now execute deterministic safety regression checks before the main window opens. The checks preserve core Ask Sentinel fail-safe invariants and stop development startup if unsupported action, successful-remediation, or threat claims become allowed.
 
 # Progress Governance
 
