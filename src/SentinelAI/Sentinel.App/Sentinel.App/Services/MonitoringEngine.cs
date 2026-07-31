@@ -16,6 +16,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan SecurityRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan EventLogRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan StartupRefreshInterval = TimeSpan.FromMinutes(2);
+        private static readonly TimeSpan ScheduledTaskRefreshInterval = TimeSpan.FromMinutes(2);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -25,6 +26,7 @@ namespace Sentinel.App.Services
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
+        private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
         private readonly GuidanceEngine _guidanceEngine = new();
         private readonly InvestigationEngine _investigationEngine = new();
@@ -40,12 +42,15 @@ namespace Sentinel.App.Services
             new(0, 0, null, "None", "Event Log analysis is loading.");
         private StartupPersistenceMonitor.StartupPersistenceSnapshot _startupSnapshot =
             new(0, 0, "None", "Startup persistence analysis is loading.");
+        private ScheduledTaskMonitor.ScheduledTaskSnapshot _scheduledTaskSnapshot =
+            new(0, 0, "None", "Scheduled-task analysis is loading.");
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
         private DateTime _lastServiceRefresh = DateTime.MinValue;
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
         private DateTime _lastStartupRefresh = DateTime.MinValue;
+        private DateTime _lastScheduledTaskRefresh = DateTime.MinValue;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -59,8 +64,15 @@ namespace Sentinel.App.Services
             Task securityTask = RefreshSecurityDataIfDueAsync(now);
             Task eventLogTask = RefreshEventLogDataIfDueAsync(now);
             Task startupTask = RefreshStartupDataIfDueAsync(now);
+            Task scheduledTask = RefreshScheduledTaskDataIfDueAsync(now);
 
-            await Task.WhenAll(processTask, serviceTask, securityTask, eventLogTask, startupTask);
+            await Task.WhenAll(
+                processTask,
+                serviceTask,
+                securityTask,
+                eventLogTask,
+                startupTask,
+                scheduledTask);
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot =
                 _networkMonitor.GetThroughput();
@@ -92,6 +104,10 @@ namespace Sentinel.App.Services
                 FlaggedStartupEntryCount = _startupSnapshot.ReviewEntryCount,
                 PrimaryFlaggedStartupEntryName = _startupSnapshot.PrimaryEntryName,
                 PrimaryFlaggedStartupEntryReason = _startupSnapshot.PrimaryReason,
+                ScheduledTaskCount = _scheduledTaskSnapshot.TotalTaskCount,
+                FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount,
+                PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName,
+                PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled",
                 FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled",
                 DefenderStatus = _securitySnapshot.DefenderStatus,
@@ -244,6 +260,13 @@ namespace Sentinel.App.Services
             if (now - _lastStartupRefresh < StartupRefreshInterval) return;
             _lastStartupRefresh = now;
             _startupSnapshot = await Task.Run(_startupPersistenceMonitor.GetSnapshot);
+        }
+
+        private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return;
+            _lastScheduledTaskRefresh = now;
+            _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot);
         }
 
         private static string ExtractServiceDisplayName(string message)
