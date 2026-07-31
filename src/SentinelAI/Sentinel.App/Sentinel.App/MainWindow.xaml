@@ -28,6 +28,46 @@
                     </StackPanel>
                 </Border>
 
+                <Border Background="#1F2937" CornerRadius="14" Padding="26">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="Ask Sentinel" FontSize="24" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Ask a question about what Sentinel can currently verify on this computer." FontSize="15" Foreground="#D1D5DB" TextWrapping="Wrap"/>
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="AskSentinelQuestionBox"
+                                     PlaceholderText="For example: Why is my computer using so much memory?"
+                                     AcceptsReturn="False"
+                                     KeyDown="AskSentinelQuestionBox_KeyDown"/>
+                            <Button Grid.Column="1"
+                                    x:Name="AskSentinelButton"
+                                    Content="Ask"
+                                    MinWidth="92"
+                                    Click="AskSentinelButton_Click"/>
+                        </Grid>
+                        <TextBlock x:Name="AskSentinelStatusText"
+                                   Text="Sentinel answers only from verified local evidence."
+                                   FontSize="13"
+                                   Foreground="#9CA3AF"
+                                   TextWrapping="Wrap"/>
+                        <Border x:Name="AskSentinelAnswerBorder"
+                                Background="#111827"
+                                CornerRadius="8"
+                                Padding="16"
+                                Visibility="Collapsed">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Sentinel" FontSize="14" FontWeight="SemiBold" Foreground="#9CA3AF"/>
+                                <TextBlock x:Name="AskSentinelAnswerText"
+                                           FontSize="16"
+                                           Foreground="White"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
                 <Border x:Name="IssueSummaryBorder" Background="#1F2937" CornerRadius="14" Padding="26" Visibility="Collapsed">
                     <StackPanel Spacing="16">
                         <TextBlock Text="Investigation Summary" FontSize="24" FontWeight="SemiBold" Foreground="White"/>
