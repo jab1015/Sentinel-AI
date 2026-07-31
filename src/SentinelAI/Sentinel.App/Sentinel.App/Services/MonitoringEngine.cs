@@ -37,6 +37,7 @@ namespace Sentinel.App.Services
         private readonly GuidanceEngine _guidanceEngine = new();
         private readonly InvestigationEngine _investigationEngine = new();
         private readonly RemediationRecommendationEngine _remediationRecommendationEngine = new();
+        private readonly InvestigationRecurrenceTracker _recurrenceTracker = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
 
         private ProcessMonitor.ProcessIntelligenceSnapshot _processSnapshot = new(0, "Loading...", 0, 0, "None", "Process analysis is loading.");
@@ -108,6 +109,14 @@ namespace Sentinel.App.Services
             InvestigationEngine.InvestigationResult investigation = _investigationEngine.Investigate(snapshot);
             snapshot.InvestigationState = investigation.State.ToString(); snapshot.InvestigationConclusion = investigation.Conclusion; snapshot.InvestigationSummary = investigation.Summary;
             snapshot.InvestigationRequiresAttention = investigation.RequiresAttention; snapshot.InvestigationReasonCode = investigation.ReasonCode;
+
+            InvestigationRecurrenceTracker.RecurrenceResult recurrence = _recurrenceTracker.Record(
+                investigation.ReasonCode,
+                investigation.RequiresAttention,
+                DateTimeOffset.Now);
+            snapshot.InvestigationRecurrenceCount = recurrence.Count;
+            snapshot.InvestigationIsRecurring = recurrence.IsRecurring;
+            snapshot.InvestigationShouldEscalate = recurrence.ShouldEscalate;
 
             RemediationRecommendationEngine.RemediationRecommendation remediation = _remediationRecommendationEngine.Evaluate(snapshot);
             snapshot.RemediationAvailable = remediation.Available;
