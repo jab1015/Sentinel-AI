@@ -39,13 +39,13 @@ namespace Sentinel.App.Services
                 {
                     case "refresh-security-state":
                         await refreshSecurityStateAsync().ConfigureAwait(false);
-                        return AutonomousProtectionExecutionResult.Succeeded(
+                        return AutonomousProtectionExecutionResult.Success(
                             "Security state refreshed",
                             "Sentinel refreshed the current Windows security state and will verify it during the next investigation pass.");
 
                     case "retry-transient-operation":
                         await retryTransientOperationAsync().ConfigureAwait(false);
-                        return AutonomousProtectionExecutionResult.Succeeded(
+                        return AutonomousProtectionExecutionResult.Success(
                             "Temporary operation retried",
                             "Sentinel safely retried the temporary operation and will verify whether the condition returns.");
 
@@ -56,7 +56,7 @@ namespace Sentinel.App.Services
             }
             catch (Exception ex)
             {
-                return AutonomousProtectionExecutionResult.Failed(
+                return AutonomousProtectionExecutionResult.Failure(
                     "Automatic protection could not complete",
                     $"Sentinel left the computer unchanged where possible and will continue monitoring. {ex.Message}");
             }
@@ -72,10 +72,10 @@ namespace Sentinel.App.Services
             public static AutonomousProtectionExecutionResult NotAttempted(string summary) =>
                 new(false, false, string.Empty, summary, null);
 
-            public static AutonomousProtectionExecutionResult Succeeded(string title, string summary) =>
+            public static AutonomousProtectionExecutionResult Success(string title, string summary) =>
                 new(true, true, title, summary, DateTimeOffset.Now);
 
-            public static AutonomousProtectionExecutionResult Failed(string title, string summary) =>
+            public static AutonomousProtectionExecutionResult Failure(string title, string summary) =>
                 new(true, false, title, summary, DateTimeOffset.Now);
         }
     }
