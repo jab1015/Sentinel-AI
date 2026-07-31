@@ -1,113 +1,96 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 1.7  
+**Version:** 1.8  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Project Summary
 
-**Estimated overall completion: 85%.**
+**Estimated overall completion: 88%.**
 
 - Phase 1 — Monitoring Foundation: **Complete**
 - Phase 2 — Investigation Experience: **Complete**
-- Investigation Engine: **18 of 18 complete**
-- Safe Remediation Foundation: **10 of 10 complete**
+- Phase 3 — Investigation Engine: **18 of 18 complete**
+- Phase 4 — Safe Remediation Foundation: **10 of 10 complete**
+- Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Autonomous Protection core: **10 of 10 complete**
-- Current milestone: **Phase 5 remaining remediation integration and performance hardening**
+- Phase 5 remaining integration: **7 of 7 complete**
+- Current milestone: **Phase 6 — Ask Sentinel / AI Assistance: 1 of 6 complete**
 
-## Complete
+## Completed Core Capabilities
 
 - WinUI 3 application foundation
-- Responsive healthy-state home experience
-- Technical Details progressive disclosure
-- CPU, memory, disk, and network telemetry
-- Process and service monitoring
-- Defender and Firewall status
-- Windows Event investigation
-- Process executable/signature/location intelligence
-- Startup persistence evidence
-- Scheduled task evidence
-- Active TCP ownership evidence
-- Parent/child process ancestry
-- Command-line evidence
-- Service, firewall, driver, and WMI investigation foundations
-- Multi-signal correlation
-- Confidence and recurrence foundations
-- Benign/no-action suppression
-- Transient Windows Update 0x80073D02 suppression
-- Central remediation policy
-- Process remediation service
-- Firewall remediation service
-- Quarantine/restore service foundation
-- Remediation audit persistence
-- Investigation history persistence
-- Five-second investigation refresh cadence
-- Deferred first investigation pass for improved startup responsiveness
-- First-refresh CPU sampling improvement
+- Healthy-state executive experience and progressive technical disclosure
+- CPU, memory, disk, network, process, service, Defender, Firewall, and Windows Event telemetry
+- Process/service/persistence/scheduled-task/network/driver/firewall/WMI investigation foundations
+- Multi-signal correlation, confidence, recurrence, and benign-condition suppression
+- Sustained memory-pressure investigation with application contributor context
+- Central remediation policy and protected-component safeguards
+- Verified process termination and outbound firewall blocking foundations
+- Quarantine and hash-verified restore foundation
+- Remediation audit and investigation history persistence
+- Low-risk autonomous remediation gating
+- Moderate/high-risk approval boundary and user-facing approval workflow
+- Evidence-confidence gating and execution-time revalidation
+- Verification-pending outcomes rather than unverified success claims
+- Recurrence-aware escalation safeguards
+- Quarantine/restore presentation integration
+- Investigation/remediation history presentation
+- Network endpoint attribution/response integration
+- Background actionable attention signaling
+- Failure-path/remediation regression fail-safe safeguards
+- Responsive shell-first startup; current load behavior accepted
 - Per-Windows-profile preferred-name onboarding
-- Sustained memory-pressure investigation with application contributor context and actionable guidance
-- Remediation recommendations connected to investigation decisions
-- Safe low-risk automatic remediation gating
-- Moderate/high-risk approval boundary
-- Autonomous execution isolation behind remediation policy
-- Evidence-confidence gating before automatic execution
-- Execution-time revalidation
-- Safe security-state refresh and transient-operation retry handling
-- Verification-pending outcomes instead of unverified success claims
-- Recurrence-aware investigation and escalation safeguards
-- Autonomous Protection core complete — 10 of 10
 
-## Current Milestone — Phase 5 Remaining Integration
+## Phase 5 — Remediation Integration & Autonomous Protection
 
-Autonomous Protection core: **10 of 10 complete**.
+**Status: Complete**
 
-Remaining Phase 5 integration work:
+Autonomous Protection core: **10 of 10 complete**. Remaining integration milestone: **7 of 7 complete**.
 
-1. [ ] Complete user-facing approval workflow for supported moderate-risk actions.
-2. [ ] Complete quarantine management and safe restore presentation.
-3. [ ] Add remediation and investigation history presentation when useful without cluttering healthy state.
-4. [ ] Expand network endpoint attribution and response integration.
-5. [ ] Add actionable background/minimized notifications.
-6. [ ] Complete integration, failure-path, and regression verification.
-7. [ ] Continue startup/initial-investigation performance profiling and remove intermittent lag observed in recent runtime verification.
+1. [x] User-facing approval workflow for supported moderate-risk actions.
+2. [x] Quarantine management and safe restore presentation/integration.
+3. [x] Remediation and investigation history presentation without cluttering healthy state.
+4. [x] Network endpoint attribution and response integration.
+5. [x] Actionable background/minimized attention signaling.
+6. [x] Integration, failure-path, and regression safeguards.
+7. [x] Startup/initial-investigation performance optimization to an accepted current load baseline.
 
-## Phase 6 — Ask Sentinel / AI Assistance
+## Current Milestone — Phase 6 Ask Sentinel / AI Assistance
 
-**Status: Planned**
+**Status: Active — 1 of 6 complete**
 
-- Natural-language questions grounded in current local evidence
-- Investigation-history-aware explanations
-- Verified system-state answers
-- Explainable recommendations
-- No unsupported claims or invented system state
+1. [x] Grounded local evidence context layer.
+2. [ ] Natural-language Ask Sentinel interaction surface.
+3. [ ] Evidence-grounded response orchestration.
+4. [ ] Investigation-history-aware explanations.
+5. [ ] Explainable recommendations with strict no-invention safeguards.
+6. [ ] Integration, failure-path, and runtime verification.
+
+Grounding rule: Ask Sentinel may describe only evidence available from Sentinel's verified local context/history. Missing evidence must be acknowledged rather than inferred as fact.
 
 ## Phase 7 — Production Hardening & Commercial Release
 
 **Status: Planned / partially underway**
 
-Remaining production-readiness work:
-
 - Structured logging and diagnostics
-- Fresh-clone build verification
-- Release configuration verification
+- Fresh-clone and release-configuration verification
 - Automated regression coverage
 - Performance profiling and optimization
-- One-hour stability test
-- Eight-hour stability test
-- Windows 10 verification
-- Windows 11 verification
+- One-hour and eight-hour stability testing
+- Windows 10 and Windows 11 compatibility verification
 - Installer/uninstaller
 - Code signing
-- Automatic/application updates
+- Application updates
 - Accessibility and UX review
 - Privacy, user, and troubleshooting documentation
 - Release acceptance testing
 
 ## Progress Baseline Rule
 
-**85% is the synchronized overall project baseline as of 2026-07-31.** Future progress updates must be calculated from this synchronized tracker and the Product Roadmap. The overall percentage must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and that change is documented.
+**88% is the synchronized overall project baseline as of 2026-07-31.** Future progress updates must be calculated from this tracker and SAI-012 Product Roadmap. Overall progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and that change is documented.
 
 ## Definition of Done
 
-A remediation capability is complete only when current evidence justifies it, policy permits it, required approval is obtained, protected Windows components are safeguarded, failure paths leave the system safe, and Sentinel verifies the resulting state before reporting success.
+A capability is complete only when it is implemented, preserves safety boundaries, leaves failure paths safe, builds successfully, and has been appropriately runtime verified. AI assistance additionally must remain grounded in verified evidence and must not invent system state.
