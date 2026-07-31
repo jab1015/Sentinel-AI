@@ -17,6 +17,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan EventLogRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan StartupRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ScheduledTaskRefreshInterval = TimeSpan.FromMinutes(2);
+        private static readonly TimeSpan ActiveConnectionRefreshInterval = TimeSpan.FromSeconds(30);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -27,6 +28,7 @@ namespace Sentinel.App.Services
         private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
+        private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
         private readonly GuidanceEngine _guidanceEngine = new();
         private readonly InvestigationEngine _investigationEngine = new();
@@ -44,6 +46,8 @@ namespace Sentinel.App.Services
             new(0, 0, "None", "Startup persistence analysis is loading.");
         private ScheduledTaskMonitor.ScheduledTaskSnapshot _scheduledTaskSnapshot =
             new(0, 0, "None", "Scheduled-task analysis is loading.");
+        private ActiveConnectionMonitor.ActiveConnectionSnapshot _activeConnectionSnapshot =
+            new(0, 0, 0, "None", "None", "Active connection analysis is loading.");
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
         private DateTime _lastServiceRefresh = DateTime.MinValue;
@@ -51,6 +55,7 @@ namespace Sentinel.App.Services
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
         private DateTime _lastStartupRefresh = DateTime.MinValue;
         private DateTime _lastScheduledTaskRefresh = DateTime.MinValue;
+        private DateTime _lastActiveConnectionRefresh = DateTime.MinValue;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -65,6 +70,7 @@ namespace Sentinel.App.Services
             Task eventLogTask = RefreshEventLogDataIfDueAsync(now);
             Task startupTask = RefreshStartupDataIfDueAsync(now);
             Task scheduledTask = RefreshScheduledTaskDataIfDueAsync(now);
+            Task activeConnectionTask = RefreshActiveConnectionDataIfDueAsync(now);
 
             await Task.WhenAll(
                 processTask,
@@ -72,7 +78,8 @@ namespace Sentinel.App.Services
                 securityTask,
                 eventLogTask,
                 startupTask,
-                scheduledTask);
+                scheduledTask,
+                activeConnectionTask);
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot =
                 _networkMonitor.GetThroughput();
@@ -108,6 +115,12 @@ namespace Sentinel.App.Services
                 FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount,
                 PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName,
                 PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
+                EstablishedConnectionCount = _activeConnectionSnapshot.EstablishedConnectionCount,
+                ExternalConnectionCount = _activeConnectionSnapshot.ExternalConnectionCount,
+                FlaggedConnectionCount = _activeConnectionSnapshot.ReviewConnectionCount,
+                PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName,
+                PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint,
+                PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled",
                 FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled",
                 DefenderStatus = _securitySnapshot.DefenderStatus,
@@ -267,6 +280,13 @@ namespace Sentinel.App.Services
             if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return;
             _lastScheduledTaskRefresh = now;
             _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot);
+        }
+
+        private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return;
+            _lastActiveConnectionRefresh = now;
+            _activeConnectionSnapshot = await Task.Run(_activeConnectionMonitor.GetSnapshot);
         }
 
         private static string ExtractServiceDisplayName(string message)
