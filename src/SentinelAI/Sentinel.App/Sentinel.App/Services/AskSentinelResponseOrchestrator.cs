@@ -13,7 +13,7 @@ namespace Sentinel.App.Services
     /// <summary>
     /// Coordinates Ask Sentinel responses through verified current evidence and,
     /// when appropriate, persisted investigation history or safeguarded recommendation
-    /// logic. The orchestration layer never adds unsupported facts.
+    /// logic. Every response passes a final fail-safe validation before presentation.
     /// </summary>
     public sealed class AskSentinelResponseOrchestrator
     {
@@ -23,6 +23,7 @@ namespace Sentinel.App.Services
         private readonly AskSentinelContextBuilder _contextBuilder = new();
         private readonly AskSentinelLocalResponder _localResponder = new();
         private readonly AskSentinelRecommendationAdvisor _recommendationAdvisor = new();
+        private readonly AskSentinelResponseSafetyValidator _safetyValidator = new();
 
         public AskSentinelResponse CreateResponse(
             string question,
@@ -40,7 +41,8 @@ namespace Sentinel.App.Services
             if (IsHistoryQuestion(question))
             {
                 answer = CreateHistoryAnswer(snapshot, history ?? Array.Empty<InvestigationHistoryService.InvestigationHistoryEntry>());
-                usedHistory = !answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase);
+                usedHistory = !answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase) &&
+                              !answer.Contains("does not have a verified prior investigation", StringComparison.OrdinalIgnoreCase);
             }
             else if (IsRecommendationQuestion(question))
             {
@@ -59,29 +61,9 @@ namespace Sentinel.App.Services
                 answer = InsufficientEvidence;
             }
 
-            bool insufficientEvidence = answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("does not currently have verified", StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("does not yet have enough verified", StringComparison.OrdinalIgnoreCase);
+            bool insufficientEvidence = IsInsufficientEvidence(answer);
 
-            string groundingSummary;
-            if (usedHistory)
-            {
-                groundingSummary = "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
-            }
-            else if (usedRecommendationGuard)
-            {
-                groundingSummary = "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
-            }
-            else if (insufficientEvidence)
-            {
-                groundingSummary = $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
-            }
-            else
-            {
-                groundingSummary = $"Answer grounded in {context.Evidence.Count} verified local evidence item(s) from the current Sentinel snapshot.";
-            }
-
-            return new AskSentinelResponse(
+            AskSentinelResponse preliminary = new(
                 Answer: answer,
                 EvidenceTimestamp: snapshot.Timestamp,
                 EvidenceCount: context.Evidence.Count,
@@ -89,8 +71,60 @@ namespace Sentinel.App.Services
                 IsInsufficientEvidence: insufficientEvidence,
                 UsedInvestigationHistory: usedHistory,
                 UsedRecommendationGuard: usedRecommendationGuard,
-                GroundingSummary: groundingSummary);
+                PassedFinalSafetyValidation: false,
+                GroundingSummary: BuildGroundingSummary(context, usedHistory, usedRecommendationGuard, insufficientEvidence));
+
+            AskSentinelResponseSafetyValidator.ValidationResult validation =
+                _safetyValidator.Validate(preliminary, snapshot);
+
+            if (!validation.IsSafe)
+            {
+                return preliminary with
+                {
+                    Answer = validation.Answer,
+                    IsInsufficientEvidence = true,
+                    UsedInvestigationHistory = false,
+                    UsedRecommendationGuard = false,
+                    PassedFinalSafetyValidation = true,
+                    GroundingSummary = "Sentinel blocked an unsupported or internally inconsistent response and returned an insufficient-evidence answer instead."
+                };
+            }
+
+            return preliminary with
+            {
+                PassedFinalSafetyValidation = true
+            };
         }
+
+        private static string BuildGroundingSummary(
+            AskSentinelContextBuilder.AskSentinelContext context,
+            bool usedHistory,
+            bool usedRecommendationGuard,
+            bool insufficientEvidence)
+        {
+            if (usedHistory)
+            {
+                return "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
+            }
+
+            if (usedRecommendationGuard)
+            {
+                return "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
+            }
+
+            if (insufficientEvidence)
+            {
+                return $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
+            }
+
+            return $"Answer grounded in {context.Evidence.Count} verified local evidence item(s) from the current Sentinel snapshot.";
+        }
+
+        private static bool IsInsufficientEvidence(string answer) =>
+            answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase) ||
+            answer.Contains("does not currently have verified", StringComparison.OrdinalIgnoreCase) ||
+            answer.Contains("does not yet have enough verified", StringComparison.OrdinalIgnoreCase) ||
+            answer.Contains("does not have a verified prior investigation", StringComparison.OrdinalIgnoreCase);
 
         private static bool IsHistoryQuestion(string question)
         {
@@ -170,6 +204,7 @@ namespace Sentinel.App.Services
             bool IsInsufficientEvidence,
             bool UsedInvestigationHistory,
             bool UsedRecommendationGuard,
+            bool PassedFinalSafetyValidation,
             string GroundingSummary);
     }
 }
