@@ -1,6 +1,6 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 2.4  
+**Version:** 2.5  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
@@ -15,15 +15,15 @@
 - Phase 4 — Safe Remediation Foundation: **10 of 10 complete**
 - Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Phase 6 — Ask Sentinel / AI Assistance: **6 of 6 complete**
-- Current milestone: **Phase 7 — Production Hardening & Commercial Release: 2 of 12 complete**
+- Current milestone: **Phase 7 — Production Hardening & Commercial Release: 3 of 12 complete**
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active — 2 of 12 complete**
+**Status: Active — 3 of 12 complete**
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
-3. [ ] Automated regression coverage.
+3. [x] Automated regression coverage.
 4. [ ] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
@@ -34,7 +34,7 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-The release verification step adds a repository-local PowerShell verification tool that checks required solution/project/package files, target-framework and Windows-version alignment, expected x86/x64/ARM64 platforms, packaging entry-point configuration, required production package references, and required CsWin32 native API declarations. Signing remains intentionally disabled until the dedicated code-signing step.
+Automated regression coverage now includes deterministic Debug-build safety checks that verify grounded healthy responses remain allowed while unsupported successful-remediation, performed-action, and threat claims remain blocked by the final Ask Sentinel safety boundary. Failed checks stop development startup and are captured by production diagnostics; Release builds are unaffected by development-only regression execution.
 
 ## Progress Baseline Rule
 
