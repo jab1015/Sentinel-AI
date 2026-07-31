@@ -25,10 +25,11 @@ namespace Sentinel.App.Services
                     "Get-NetFirewallRule -Enabled True -ErrorAction SilentlyContinue | " +
                     "ForEach-Object { $rule=$_; $app=$rule | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue; " +
                     "$port=$rule | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue; " +
+                    "$address=$rule | Get-NetFirewallAddressFilter -ErrorAction SilentlyContinue; " +
                     "[pscustomobject]@{Name=$rule.Name;DisplayName=$rule.DisplayName;Direction=$rule.Direction.ToString();" +
                     "Action=$rule.Action.ToString();Profile=$rule.Profile.ToString();Program=$app.Program;" +
-                    "Protocol=$port.Protocol;LocalPort=$port.LocalPort;RemotePort=$port.RemotePort} } | " +
-                    "ConvertTo-Json -Compress";
+                    "Protocol=$port.Protocol;LocalPort=$port.LocalPort;RemotePort=$port.RemotePort;" +
+                    "RemoteAddress=$address.RemoteAddress} } | ConvertTo-Json -Compress";
 
                 using Process process = new();
                 process.StartInfo = new ProcessStartInfo
@@ -73,6 +74,7 @@ namespace Sentinel.App.Services
                     string program = GetString(item, "Program");
                     string protocol = GetValue(item, "Protocol");
                     string localPort = GetValue(item, "LocalPort");
+                    string remoteAddress = GetValue(item, "RemoteAddress");
 
                     bool inboundAllow =
                         direction.Equals("Inbound", StringComparison.OrdinalIgnoreCase) &&
@@ -88,22 +90,21 @@ namespace Sentinel.App.Services
                     bool allProfiles =
                         profile.Contains("Any", StringComparison.OrdinalIgnoreCase) ||
                         profile.Contains("Domain, Private, Public", StringComparison.OrdinalIgnoreCase);
-                    bool anyProgram = string.IsNullOrWhiteSpace(program) ||
-                                      program.Equals("Any", StringComparison.OrdinalIgnoreCase);
-                    bool broadPort = string.IsNullOrWhiteSpace(localPort) ||
-                                     localPort.Equals("Any", StringComparison.OrdinalIgnoreCase);
+                    bool anyProgram = IsAny(program);
+                    bool broadPort = IsAny(localPort);
+                    bool anyRemoteAddress = IsAny(remoteAddress);
 
-                    if (allProfiles && anyProgram && broadPort)
+                    if (allProfiles && anyProgram && broadPort && anyRemoteAddress)
                     {
                         findings.Add(new FirewallRuleFinding(
                             Fallback(name, "Unnamed firewall rule"),
-                            "An enabled inbound allow rule applies broadly to all programs, ports, and network profiles."));
+                            "An enabled inbound allow rule applies to all programs, ports, remote addresses, and network profiles."));
                     }
-                    else if (allProfiles && anyProgram && IsHighRiskPort(localPort))
+                    else if (allProfiles && anyProgram && anyRemoteAddress && IsHighRiskPort(localPort))
                     {
                         findings.Add(new FirewallRuleFinding(
                             Fallback(name, "Unnamed firewall rule"),
-                            $"An enabled inbound allow rule exposes {protocol} port {localPort} for any program on all profiles."));
+                            $"An enabled inbound allow rule exposes {protocol} port {localPort} to any remote address on all profiles."));
                     }
                 }
 
@@ -130,6 +131,11 @@ namespace Sentinel.App.Services
                    normalized.Equals("5985", StringComparison.OrdinalIgnoreCase) ||
                    normalized.Equals("5986", StringComparison.OrdinalIgnoreCase);
         }
+
+        private static bool IsAny(string value) =>
+            string.IsNullOrWhiteSpace(value) ||
+            value.Equals("Any", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("*", StringComparison.OrdinalIgnoreCase);
 
         private static string GetString(JsonElement item, string propertyName)
         {
