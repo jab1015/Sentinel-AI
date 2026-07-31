@@ -22,7 +22,8 @@ namespace Sentinel.App.Services
             try
             {
                 string script =
-                    "$ns='root/subscription';" +
+                    "$ErrorActionPreference='Stop';" +
+                    "$ns='root\\subscription';" +
                     "$filters=@(Get-CimInstance -Namespace $ns -ClassName __EventFilter -ErrorAction SilentlyContinue);" +
                     "$cmd=@(Get-CimInstance -Namespace $ns -ClassName CommandLineEventConsumer -ErrorAction SilentlyContinue);" +
                     "$scriptConsumers=@(Get-CimInstance -Namespace $ns -ClassName ActiveScriptEventConsumer -ErrorAction SilentlyContinue);" +
@@ -108,6 +109,11 @@ namespace Sentinel.App.Services
                 string name = GetString(item, "Name");
                 string engine = GetString(item, "ScriptingEngine");
                 string scriptText = GetString(item, "ScriptText");
+
+                if (string.IsNullOrWhiteSpace(scriptText))
+                {
+                    continue;
+                }
 
                 findings.Add(new WmiFinding(
                     string.IsNullOrWhiteSpace(name) ? "Unnamed consumer" : name,
