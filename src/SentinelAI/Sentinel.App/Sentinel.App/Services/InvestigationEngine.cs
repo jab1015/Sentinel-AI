@@ -30,6 +30,14 @@ namespace Sentinel.App.Services
             bool suspiciousProcess = snapshot.FlaggedProcessCount > 0;
             bool suspiciousStartupPersistence = snapshot.FlaggedStartupEntryCount > 0;
             bool suspiciousScheduledTask = snapshot.FlaggedScheduledTaskCount > 0;
+            bool unusualConnection = snapshot.FlaggedConnectionCount > 0;
+
+            bool connectionCorrelatesWithProcess =
+                unusualConnection &&
+                suspiciousProcess &&
+                SameName(
+                    snapshot.PrimaryFlaggedConnectionProcessName,
+                    snapshot.PrimaryFlaggedProcessName);
 
             bool serviceFailure =
                 !storageSpacesSmp &&
@@ -51,6 +59,16 @@ namespace Sentinel.App.Services
                     "Sentinel verified that a core Windows security protection is not enabled.",
                     true,
                     "security-protection-disabled");
+            }
+
+            if (connectionCorrelatesWithProcess)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "A running process and its network activity require attention.",
+                    $"{snapshot.PrimaryFlaggedProcessName} has a process warning and is connected to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}. {snapshot.PrimaryFlaggedConnectionReason}",
+                    true,
+                    "correlated-process-network-finding");
             }
 
             if (suspiciousProcess)
@@ -93,6 +111,16 @@ namespace Sentinel.App.Services
                     serviceFailure ? "service-failure" : "system-finding");
             }
 
+            if (unusualConnection)
+            {
+                return new InvestigationResult(
+                    InvestigationState.Investigating,
+                    "Sentinel is investigating network activity.",
+                    $"{snapshot.PrimaryFlaggedConnectionProcessName} connected to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}. This does not require your attention unless other evidence confirms a risk.",
+                    false,
+                    "network-evidence-under-review");
+            }
+
             return new InvestigationResult(
                 InvestigationState.NoIssue,
                 "Your computer is healthy.",
@@ -100,6 +128,11 @@ namespace Sentinel.App.Services
                 false,
                 "healthy");
         }
+
+        private static bool SameName(string? first, string? second) =>
+            !string.IsNullOrWhiteSpace(first) &&
+            !string.IsNullOrWhiteSpace(second) &&
+            first.Equals(second, StringComparison.OrdinalIgnoreCase);
 
         private static bool Contains(string? value, string text) =>
             !string.IsNullOrWhiteSpace(value) &&
