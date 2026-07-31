@@ -30,6 +30,10 @@ namespace Sentinel.App.Models
         public int FlaggedServiceCount { get; set; }
         public string PrimaryFlaggedServiceName { get; set; } = "None";
         public string PrimaryFlaggedServiceReason { get; set; } = "No service warning conditions were detected.";
+        public int StartupEntryCount { get; set; }
+        public int FlaggedStartupEntryCount { get; set; }
+        public string PrimaryFlaggedStartupEntryName { get; set; } = "None";
+        public string PrimaryFlaggedStartupEntryReason { get; set; } = "No unusual startup persistence entries were detected.";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
@@ -56,5 +60,10 @@ namespace Sentinel.App.Models
         public string GuidanceFixDetails { get; set; } = "Sentinel AI is determining whether a safe fix is available.";
         public string GuidanceActionId { get; set; } = string.Empty;
         public string GuidanceActionLabel { get; set; } = string.Empty;
+        public string InvestigationState { get; set; } = "Investigating";
+        public string InvestigationConclusion { get; set; } = "Analyzing your computer.";
+        public string InvestigationSummary { get; set; } = "Sentinel is reviewing available evidence.";
+        public bool InvestigationRequiresAttention { get; set; }
+        public string InvestigationReasonCode { get; set; } = "initializing";
     }
 }
