@@ -84,6 +84,7 @@ namespace Sentinel.App.Services
                 IsInsufficientEvidence: false,
                 UsedInvestigationHistory: false,
                 UsedRecommendationGuard: false,
+                PassedFinalSafetyValidation: false,
                 GroundingSummary: "Regression test evidence.");
 
         private static void Require(bool condition, string message)
