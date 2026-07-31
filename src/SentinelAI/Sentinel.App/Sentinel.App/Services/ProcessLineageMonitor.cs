@@ -37,7 +37,8 @@ namespace Sentinel.App.Services
             foreach (ProcessEntry child in processes.Values)
             {
                 if (child.ParentProcessId == 0 ||
-                    !processes.TryGetValue(child.ParentProcessId, out ProcessEntry parent))
+                    !processes.TryGetValue(child.ParentProcessId, out ProcessEntry? parent) ||
+                    parent is null)
                 {
                     continue;
                 }
@@ -104,7 +105,7 @@ namespace Sentinel.App.Services
             return processes;
         }
 
-        private static string NormalizeProcessName(string value)
+        private static string NormalizeProcessName(string? value)
         {
             string name = value?.Trim() ?? string.Empty;
             return name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
@@ -129,7 +130,7 @@ namespace Sentinel.App.Services
             public uint Flags;
 
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
-            public string ExecutableFile;
+            public string? ExecutableFile;
         }
 
         [DllImport("kernel32.dll", SetLastError = true)]
