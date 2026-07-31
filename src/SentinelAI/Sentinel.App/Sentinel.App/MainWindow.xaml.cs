@@ -3,6 +3,7 @@ using Microsoft.UI.Dispatching;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace Sentinel.App
 {
@@ -11,15 +12,33 @@ namespace Sentinel.App
         private readonly DispatcherTimer _timer = new();
         private readonly MonitoringEngine _engine = new();
         private bool _isRefreshing;
+        private bool _initialRefreshStarted;
         private string _guidanceActionId = string.Empty;
 
         public MainWindow()
         {
             InitializeComponent();
+
             _timer.Interval = TimeSpan.FromSeconds(1);
             _timer.Tick += Timer_Tick;
+
+            Activated += MainWindow_Activated;
+        }
+
+        private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
+        {
+            if (_initialRefreshStarted)
+            {
+                return;
+            }
+
+            _initialRefreshStarted = true;
+            Activated -= MainWindow_Activated;
+
+            // Allow the window to paint before starting the first investigation pass.
+            await Task.Delay(150);
+            await UpdateDashboardAsync();
             _timer.Start();
-            _ = UpdateDashboardAsync();
         }
 
         private async void Timer_Tick(object? sender, object e)
@@ -27,7 +46,7 @@ namespace Sentinel.App
             await UpdateDashboardAsync();
         }
 
-        private async System.Threading.Tasks.Task UpdateDashboardAsync()
+        private async Task UpdateDashboardAsync()
         {
             if (_isRefreshing)
             {
