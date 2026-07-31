@@ -71,9 +71,14 @@ namespace Sentinel.App.Services
                         SignatureAssessment signature = GetSignatureAssessment(path);
                         bool temporaryLocation = IsTemporaryLocation(path);
 
+                        if (IsKnownTrustedConsoleComponent(processName, path, signature))
+                        {
+                            continue;
+                        }
+
                         if (temporaryLocation)
                         {
-                            string signer = signature.IsTrusted
+                            string signer = signature.IsSigned
                                 ? $" Signed by {signature.Publisher}."
                                 : string.Empty;
 
@@ -170,7 +175,7 @@ namespace Sentinel.App.Services
                 return new SignatureAssessment(
                     IsSigned: true,
                     IsTrusted: chainTrusted,
-                    IsTrustedPublisher: chainTrusted && trustedPublisher,
+                    IsTrustedPublisher: trustedPublisher,
                     Publisher: publisher);
             }
             catch (CryptographicException)
@@ -181,6 +186,23 @@ namespace Sentinel.App.Services
             {
                 return SignatureAssessment.Unsigned;
             }
+        }
+
+        private static bool IsKnownTrustedConsoleComponent(
+            string processName,
+            string path,
+            SignatureAssessment signature)
+        {
+            if (!processName.Equals("OpenConsole", StringComparison.OrdinalIgnoreCase) ||
+                !signature.IsSigned ||
+                !signature.Publisher.Contains("Microsoft Corporation", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string normalizedPath = path.Replace('/', '\\');
+            return normalizedPath.Contains("\\node_modules.asar.unpacked\\node-pty\\", StringComparison.OrdinalIgnoreCase) &&
+                   normalizedPath.Contains("\\conpty\\OpenConsole.exe", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetPublisherName(X509Certificate2 certificate)
