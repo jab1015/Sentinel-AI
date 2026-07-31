@@ -1,13 +1,13 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 1.9  
+**Version:** 2.0  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 90%.**
+**Estimated product completion: 92%.**
 
 ## Completed Major Foundations
 
@@ -28,6 +28,7 @@
 - Sustained memory-pressure investigation with application contributor context
 - Grounded local Ask Sentinel evidence context
 - Natural-language Ask Sentinel interaction surface
+- Central evidence-grounded Ask Sentinel response orchestration
 
 ## Phase 1 — Monitoring Foundation
 
@@ -55,16 +56,16 @@ Phase 5 now includes approval gating and revalidation, quarantine/restore integr
 
 ## Phase 6 — Ask Sentinel / AI Assistance
 
-**Status: Active — 2 of 6 complete**
+**Status: Active — 3 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
 2. [x] Natural-language Ask Sentinel interaction surface.
-3. [ ] Evidence-grounded response orchestration.
+3. [x] Evidence-grounded response orchestration.
 4. [ ] Investigation-history-aware explanations.
 5. [ ] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
 
-Ask Sentinel accepts natural-language questions and refreshes verified local evidence before responding. Supported current-system questions are answered only from the live Sentinel snapshot; unsupported questions explicitly report insufficient verified evidence.
+Ask Sentinel now routes supported and unsupported questions through a central evidence-grounded orchestration layer. The orchestrator builds the current verified evidence context, returns only grounded local responses, retains evidence metadata, and marks insufficient-evidence outcomes so the UI can clearly say when Sentinel will not guess.
 
 Ask Sentinel must use verified local evidence and clearly state when available evidence is insufficient. It must never invent system state, causes, threats, history, or remediation outcomes.
 
@@ -88,7 +89,7 @@ Ask Sentinel must use verified local evidence and clearly state when available e
 
 ## Progress Baseline
 
-**90% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**92% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
