@@ -29,6 +29,7 @@ namespace Sentinel.App.Services
 
             bool suspiciousProcess = snapshot.FlaggedProcessCount > 0;
             bool suspiciousStartupPersistence = snapshot.FlaggedStartupEntryCount > 0;
+            bool suspiciousScheduledTask = snapshot.FlaggedScheduledTaskCount > 0;
 
             bool serviceFailure =
                 !storageSpacesSmp &&
@@ -70,6 +71,16 @@ namespace Sentinel.App.Services
                     $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}",
                     true,
                     "startup-persistence-finding");
+            }
+
+            if (suspiciousScheduledTask)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "A scheduled task requires attention.",
+                    $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}",
+                    true,
+                    "scheduled-task-finding");
             }
 
             if (serviceFailure || actionableSystemEvidence)
