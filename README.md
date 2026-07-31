@@ -10,13 +10,13 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 **Status:** Active Development  
 **Production Branch:** `main`  
-**Current Phase:** Phase 5 — Remediation Integration & Autonomous Protection  
+**Current Phase:** Phase 5 — Remaining Remediation Integration & Performance Hardening  
 **Autonomous Protection Core:** **Complete — 10 of 10**  
-**Estimated Overall Product Progress:** **80%**
+**Estimated Overall Product Progress:** **85%**
 
 The application builds, launches, monitors the system continuously, suppresses non-actionable findings, investigates sustained memory pressure with application-level context, and has been repeatedly runtime-verified by the Product Owner.
 
-A remaining performance item is intermittent startup/initial-investigation lag observed during recent runtime verification. This is tracked for continued profiling and hardening and does not block the current successful builds.
+A remaining performance item is intermittent startup/initial-investigation lag observed during recent runtime verification. This is tracked for continued profiling and hardening and does not block current successful builds.
 
 ---
 
@@ -27,22 +27,23 @@ A remaining performance item is intermittent startup/initial-investigation lag o
 | Application foundation / WinUI shell | Complete |
 | Core system monitoring | Complete |
 | Security posture monitoring | Complete |
-| Investigation intelligence | Complete core |
-| Plain-language user experience | Substantially complete |
-| Safe remediation foundation | Complete |
-| Remediation decision integration | Complete |
+| Investigation Engine | Complete — 18 of 18 |
+| Plain-language investigation experience | Complete core |
+| Safe Remediation Foundation | Complete — 10 of 10 |
+| Remediation decision integration | Complete core |
 | Recurrence-aware investigation | Complete foundation |
-| Autonomous protection core | Complete — 10 of 10 |
+| Autonomous Protection core | Complete — 10 of 10 |
 | Memory-pressure investigation | Implemented and runtime verified |
-| Performance / startup responsiveness | Substantially complete; intermittent lag remains under hardening |
+| Preferred-name onboarding | Implemented and runtime verified |
+| Performance / startup responsiveness | Improved; intermittent lag remains under hardening |
 | User approval workflow | Remaining Phase 5 integration |
 | Quarantine/recovery management UI | Remaining Phase 5 integration |
 | Remediation/investigation history UI | Remaining Phase 5 integration |
-| Network endpoint attribution | Remaining Phase 5 integration |
+| Network endpoint attribution/response | Remaining Phase 5 integration |
 | Background actionable notifications | Remaining Phase 5 integration |
 | Failure-path/regression testing | Remaining Phase 5 integration |
-| Ask Sentinel / AI Assistance | Planned |
-| Installer / update / commercial release readiness | Planned |
+| Ask Sentinel / AI Assistance | Phase 6 planned |
+| Production hardening / commercial release | Phase 7 planned / partially underway |
 
 ---
 
@@ -87,6 +88,7 @@ Completed foundation and core:
 - Execution-time revalidation
 - Safe security-state refresh and transient-operation retry handling
 - Verification-pending outcomes rather than unverified success claims
+- Recurrence-aware escalation safeguards
 - No automatic force-closing of applications for transient Windows Update error `0x80073D02`
 
 System-changing capabilities remain policy controlled. Sentinel prefers silent monitoring when Windows is expected to self-correct and does not interrupt the user for a single transient condition.
@@ -167,19 +169,45 @@ Core principles:
 4. Expand network endpoint attribution and response.
 5. Add background/minimized notifications for genuinely actionable findings.
 6. Complete failure-path and remediation integration regression testing.
-7. Continue startup and investigation performance profiling, including the intermittent lag observed in recent runtime runs.
+7. Continue startup and investigation performance profiling and eliminate the intermittent lag observed in recent runtime runs.
 
 ---
 
-# Later Phases
+# Phase 6 — Ask Sentinel / AI Assistance
 
-## Phase 6 — Ask Sentinel / AI Assistance
+Planned capabilities:
 
-Natural-language questions grounded in current local evidence, investigation history, and verified system state.
+- Natural-language questions grounded in current local evidence
+- Investigation-history-aware explanations
+- Verified system-state answers
+- Explainable recommendations
+- No unsupported claims or invented system state
 
-## Phase 7 — Production Hardening & Commercial Release
+---
 
-Remaining release work includes structured diagnostics, performance profiling, long-duration stability testing, Windows compatibility verification, installer/uninstaller, code signing, application updates, privacy documentation, accessibility/UX polish, and release acceptance testing.
+# Phase 7 — Production Hardening & Commercial Release
+
+Remaining release work includes:
+
+- Structured logging and diagnostics
+- Fresh-clone build verification
+- Release configuration verification
+- Automated regression coverage
+- Performance profiling and optimization
+- One-hour and eight-hour stability testing
+- Windows 10 and Windows 11 compatibility verification
+- Installer/uninstaller
+- Code signing
+- Application updates
+- Privacy, user, and troubleshooting documentation
+- Accessibility and UX polish
+- Release acceptance testing
+
+---
+
+# Progress Baseline
+
+**85% is the synchronized overall product baseline as of 2026-07-31.** README, SAI-012 Product Roadmap, SAI-013 Implementation Tracker, and SAI-025 Master Development Plan must remain synchronized. Future progress must not move backward unless completed scope is explicitly reopened, removed, or proven incomplete and the reason is documented.
 
 ---
 
