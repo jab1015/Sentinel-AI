@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 1.4
+Version: 1.5
 
 Status: Active
 
@@ -20,7 +20,7 @@ Develop a production-quality Windows investigation and security application comb
 
 # Current Status
 
-Estimated overall product completion: **88%**.
+Estimated overall product completion: **90%**.
 
 Completed:
 
@@ -38,18 +38,20 @@ Completed:
 - Startup/load responsiveness improved and locally accepted
 - Per-Windows-profile preferred-name onboarding
 - Sustained memory-pressure investigation with application contributor context
+- Grounded local Ask Sentinel evidence context
+- Natural-language Ask Sentinel interaction surface
 
 Current milestone:
 
-**Phase 6 — Ask Sentinel / AI Assistance: 1 of 6 complete.**
+**Phase 6 — Ask Sentinel / AI Assistance: 2 of 6 complete.**
 
 Completed Phase 6 work:
 
 1. Grounded local evidence context layer. Ask Sentinel must answer from verified local system evidence and explicitly acknowledge when evidence is insufficient.
+2. Natural-language Ask Sentinel interaction surface. Questions refresh current Sentinel evidence before answering; supported current-system questions use only verified snapshot data and unsupported questions fail closed.
 
 Remaining Phase 6 work:
 
-2. Natural-language Ask Sentinel interaction surface.
 3. Evidence-grounded response orchestration.
 4. Investigation-history-aware explanations.
 5. Explainable recommendations with strict no-invention safeguards.
@@ -90,7 +92,7 @@ Status: **Complete**
 Autonomous Protection core: **10 of 10 complete**. Remaining integration milestone: **7 of 7 complete**.
 
 ## Phase 6 — Ask Sentinel / AI Assistance
-Status: **Active — 1 of 6 complete**
+Status: **Active — 2 of 6 complete**
 
 Ask Sentinel is being built as a grounded assistance layer over verified Sentinel evidence. It must not invent system state, threats, causes, remediation outcomes, or historical facts.
 
@@ -103,7 +105,7 @@ Recent local verification confirms successful builds and acceptable startup beha
 
 # Progress Governance
 
-**88% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
+**90% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
 
 Progress must not move backward unless previously completed functionality is explicitly reopened, removed, or proven incomplete, with the reason documented.
 
