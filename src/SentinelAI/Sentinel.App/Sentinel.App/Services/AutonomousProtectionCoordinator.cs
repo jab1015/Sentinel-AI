@@ -16,6 +16,7 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class AutonomousProtectionCoordinator
     {
+        private const int MinimumAutomaticConfidencePercent = 80;
         private readonly RemediationPolicy _policy = new();
 
         public AutonomousProtectionDecision Evaluate(SystemSnapshot snapshot)
@@ -31,6 +32,13 @@ namespace Sentinel.App.Services
 
             RemediationPolicy.RemediationAction action = MapAction(snapshot.RemediationAction);
             RemediationPolicy.RemediationRisk risk = MapRisk(action);
+
+            if (risk == RemediationPolicy.RemediationRisk.Low &&
+                snapshot.GuidanceConfidencePercent < MinimumAutomaticConfidencePercent)
+            {
+                return AutonomousProtectionDecision.Observe(
+                    $"Sentinel will continue monitoring because automatic protection requires at least {MinimumAutomaticConfidencePercent}% evidence confidence.");
+            }
 
             RemediationPolicy.RemediationDecision policyDecision = _policy.Evaluate(
                 new RemediationPolicy.RemediationRequest(
