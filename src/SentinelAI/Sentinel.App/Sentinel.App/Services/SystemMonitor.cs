@@ -4,6 +4,7 @@
  */
 
 using System;
+using System.Threading;
 using Windows.Win32;
 using Windows.Win32.System.SystemInformation;
 using FILETIME = System.Runtime.InteropServices.ComTypes.FILETIME;
@@ -13,6 +14,7 @@ namespace Sentinel.App.Services
     public sealed class SystemMonitor
     {
         private const double BytesPerGigabyte = 1024d * 1024d * 1024d;
+        private const int InitialCpuSampleDelayMilliseconds = 150;
 
         private readonly object _sampleLock = new();
         private ulong _previousIdleTime;
@@ -22,18 +24,10 @@ namespace Sentinel.App.Services
 
         public unsafe double GetCpuUsage()
         {
-            FILETIME idleTime = default;
-            FILETIME kernelTime = default;
-            FILETIME userTime = default;
-
-            if (PInvoke.GetSystemTimes(&idleTime, &kernelTime, &userTime).Value == 0)
+            if (!TryReadCpuTimes(out ulong currentIdleTime, out ulong currentKernelTime, out ulong currentUserTime))
             {
                 return 0;
             }
-
-            ulong currentIdleTime = ToUInt64(idleTime);
-            ulong currentKernelTime = ToUInt64(kernelTime);
-            ulong currentUserTime = ToUInt64(userTime);
 
             lock (_sampleLock)
             {
@@ -41,7 +35,16 @@ namespace Sentinel.App.Services
                 {
                     StoreCpuSample(currentIdleTime, currentKernelTime, currentUserTime);
                     _hasPreviousCpuSample = true;
-                    return 0;
+
+                    // GetSystemTimes requires two samples to calculate utilization.
+                    // Take a short warm-up sample now so the first dashboard refresh
+                    // can show a real CPU value instead of waiting for another cycle.
+                    Thread.Sleep(InitialCpuSampleDelayMilliseconds);
+
+                    if (!TryReadCpuTimes(out currentIdleTime, out currentKernelTime, out currentUserTime))
+                    {
+                        return 0;
+                    }
                 }
 
                 if (currentIdleTime < _previousIdleTime ||
@@ -85,6 +88,24 @@ namespace Sentinel.App.Services
         {
             MemoryUsageSnapshot snapshot = GetMemoryUsageSnapshot();
             return Math.Round(snapshot.PercentageUsed, 1);
+        }
+
+        private static unsafe bool TryReadCpuTimes(out ulong idle, out ulong kernel, out ulong user)
+        {
+            FILETIME idleTime = default;
+            FILETIME kernelTime = default;
+            FILETIME userTime = default;
+
+            if (PInvoke.GetSystemTimes(&idleTime, &kernelTime, &userTime).Value == 0)
+            {
+                idle = kernel = user = 0;
+                return false;
+            }
+
+            idle = ToUInt64(idleTime);
+            kernel = ToUInt64(kernelTime);
+            user = ToUInt64(userTime);
+            return true;
         }
 
         private static unsafe MemoryUsageSnapshot GetMemoryUsageSnapshot()
