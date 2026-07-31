@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 2.1
+Version: 2.2
 
 Status: Active
 
@@ -29,17 +29,18 @@ Completed:
 - Phase 7 item 1 — Structured logging and diagnostics foundation
 - Phase 7 item 2 — Fresh-clone and release-configuration verification foundation
 - Phase 7 item 3 — Automated regression coverage
+- Phase 7 item 4 — Performance profiling and optimization
 
 Current milestone:
 
-**Phase 7 — Production Hardening & Commercial Release: 3 of 12 complete.**
+**Phase 7 — Production Hardening & Commercial Release: 4 of 12 complete.**
 
 ## Phase 7 — Production Hardening & Commercial Release
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
-4. [ ] Performance profiling and optimization.
+4. [x] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
@@ -49,7 +50,7 @@ Current milestone:
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Debug builds now execute deterministic safety regression checks before the main window opens. The checks preserve core Ask Sentinel fail-safe invariants and stop development startup if unsupported action, successful-remediation, or threat claims become allowed.
+Startup performance is now directly measured in the production diagnostic log. Launch logging no longer performs awaited disk I/O before first-window activation, and the window is activated before development-only regression execution. This preserves safety verification while removing avoidable work from the critical startup path.
 
 # Progress Governance
 
@@ -59,7 +60,7 @@ Progress must not move backward unless previously completed functionality is exp
 
 # Definition of Success
 
-A successful release builds without errors, runs successfully, meets acceptance criteria, preserves remediation safety boundaries, never reports unverified remediation as successful, never presents unsupported AI claims as verified facts, and can be reproduced from a clean repository checkout using documented release configuration.
+A successful release builds without errors, runs successfully, meets acceptance criteria, preserves remediation safety boundaries, never reports unverified remediation as successful, never presents unsupported AI claims as verified facts, can be reproduced from a clean repository checkout using documented release configuration, and keeps startup performance measurable without blocking the first visible user experience.
 
 ---
 
