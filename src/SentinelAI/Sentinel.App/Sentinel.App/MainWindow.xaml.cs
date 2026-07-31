@@ -302,13 +302,13 @@ namespace Sentinel.App
         private async Task ReviewApprovedRemediationAsync()
         {
             var snapshot = _engine.CurrentSnapshot;
-            RemediationApprovalCoordinator.ApprovalRequest request = _approvalCoordinator.CreateRequest(snapshot);
-            if (!request.Available) return;
+            RemediationApprovalCoordinator.RemediationApprovalRequest? request = _approvalCoordinator.CreateRequest(snapshot);
+            if (request is null) return;
 
             ContentDialog dialog = new()
             {
                 Title = request.Title,
-                Content = $"{request.Summary}\n\nTarget: {request.Target}\n\n{request.SafetyNote}",
+                Content = $"{request.Summary}\n\nTarget: {request.Target}\n\nSentinel will revalidate the investigation immediately before acting. This approval is single-use and expires automatically.",
                 PrimaryButtonText = "Approve",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
@@ -318,14 +318,20 @@ namespace Sentinel.App
             ContentDialogResult result = await dialog.ShowAsync();
             if (result != ContentDialogResult.Primary) return;
 
+            await _engine.RefreshAsync();
+            var currentSnapshot = _engine.CurrentSnapshot;
+            RemediationApprovalCoordinator.ApprovalValidationResult validation =
+                _approvalCoordinator.Validate(request, currentSnapshot, userApproved: true);
+
             var execution = await _approvedServiceRestartCoordinator.ExecuteAsync(
-                snapshot,
+                currentSnapshot,
                 request,
-                async () => await _engine.RefreshAsync());
+                validation,
+                canRequestElevation: true);
 
             ContentDialog outcomeDialog = new()
             {
-                Title = execution.Title,
+                Title = string.IsNullOrWhiteSpace(execution.Title) ? "Sentinel did not make a change" : execution.Title,
                 Content = execution.Summary,
                 CloseButtonText = "OK",
                 XamlRoot = ((FrameworkElement)Content).XamlRoot
