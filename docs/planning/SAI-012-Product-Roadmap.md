@@ -1,13 +1,13 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 1.8  
+**Version:** 1.9  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 88%.**
+**Estimated product completion: 90%.**
 
 ## Completed Major Foundations
 
@@ -26,6 +26,8 @@
 - Startup responsiveness improvements and accepted current load behavior
 - Preferred-name onboarding per Windows profile
 - Sustained memory-pressure investigation with application contributor context
+- Grounded local Ask Sentinel evidence context
+- Natural-language Ask Sentinel interaction surface
 
 ## Phase 1 — Monitoring Foundation
 
@@ -53,14 +55,16 @@ Phase 5 now includes approval gating and revalidation, quarantine/restore integr
 
 ## Phase 6 — Ask Sentinel / AI Assistance
 
-**Status: Active — 1 of 6 complete**
+**Status: Active — 2 of 6 complete**
 
 1. [x] Grounded local evidence context layer.
-2. [ ] Natural-language Ask Sentinel interaction surface.
+2. [x] Natural-language Ask Sentinel interaction surface.
 3. [ ] Evidence-grounded response orchestration.
 4. [ ] Investigation-history-aware explanations.
 5. [ ] Explainable recommendations with strict no-invention safeguards.
 6. [ ] Integration, failure-path, and runtime verification.
+
+Ask Sentinel accepts natural-language questions and refreshes verified local evidence before responding. Supported current-system questions are answered only from the live Sentinel snapshot; unsupported questions explicitly report insufficient verified evidence.
 
 Ask Sentinel must use verified local evidence and clearly state when available evidence is insufficient. It must never invent system state, causes, threats, history, or remediation outcomes.
 
@@ -84,7 +88,7 @@ Ask Sentinel must use verified local evidence and clearly state when available e
 
 ## Progress Baseline
 
-**88% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**90% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
