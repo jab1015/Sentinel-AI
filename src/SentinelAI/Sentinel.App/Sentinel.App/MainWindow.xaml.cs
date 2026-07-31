@@ -4,6 +4,7 @@ using Microsoft.UI.Dispatching;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Sentinel.App
@@ -15,9 +16,12 @@ namespace Sentinel.App
         private readonly UserProfileService _userProfileService = new();
         private readonly RemediationApprovalCoordinator _approvalCoordinator = new();
         private readonly ApprovedServiceRestartCoordinator _approvedServiceRestartCoordinator = new();
+        private readonly InvestigationHistoryService _investigationHistoryService = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
+        private bool _wasAttentionActive;
         private string _guidanceActionId = string.Empty;
+        private string _lastRecordedFingerprint = string.Empty;
 
         public MainWindow()
         {
@@ -126,13 +130,14 @@ namespace Sentinel.App
                     !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
                     !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
 
+                await UpdateInvestigationHistoryAsync(snapshot, requiresAttention);
+
                 if (memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding)
                 {
                     _guidanceActionId = "open-task-manager";
                     GuidanceActionButton.Content = "Review memory use";
                     GuidanceActionButton.Visibility = Visibility.Visible;
                     IssueSummaryBorder.Visibility = Visibility.Visible;
-                    InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
 
                     OverallStatusText.Text = "I found sustained high memory use that requires attention.";
                     AttentionStatusText.Text = snapshot.MemoryConclusion;
@@ -155,7 +160,6 @@ namespace Sentinel.App
                     }
 
                     IssueSummaryBorder.Visibility = requiresAttention ? Visibility.Visible : Visibility.Collapsed;
-                    InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
 
                     if (requiresAttention)
                     {
@@ -183,6 +187,74 @@ namespace Sentinel.App
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
             }
             finally { _isRefreshing = false; }
+        }
+
+        private async Task UpdateInvestigationHistoryAsync(Models.SystemSnapshot snapshot, bool requiresAttention)
+        {
+            string fingerprint = snapshot.InvestigationReasonCode?.Trim() ?? string.Empty;
+            bool validFingerprint = !string.IsNullOrWhiteSpace(fingerprint) &&
+                !fingerprint.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+                !fingerprint.Equals("Healthy", StringComparison.OrdinalIgnoreCase);
+
+            if (!requiresAttention)
+            {
+                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+
+                if (_wasAttentionActive && !string.IsNullOrWhiteSpace(_lastRecordedFingerprint))
+                {
+                    await _investigationHistoryService.RecordAsync(
+                        _lastRecordedFingerprint,
+                        "Condition resolved",
+                        "Sentinel no longer detects the condition that previously required attention.",
+                        "Resolved",
+                        requiresAttention: false,
+                        resolved: true);
+                }
+
+                _wasAttentionActive = false;
+                _lastRecordedFingerprint = string.Empty;
+                return;
+            }
+
+            _wasAttentionActive = true;
+            if (!validFingerprint)
+            {
+                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (!fingerprint.Equals(_lastRecordedFingerprint, StringComparison.OrdinalIgnoreCase))
+            {
+                var recent = await _investigationHistoryService.ReadRecentAsync(50);
+                var previous = recent.FirstOrDefault(entry =>
+                    entry.RequiresAttention &&
+                    string.Equals(entry.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase));
+
+                if (previous is not null)
+                {
+                    HistoryOutcomeIconText.Text = "↻";
+                    HistoryTitleText.Text = "Sentinel has seen this condition before";
+                    HistorySummaryText.Text = string.IsNullOrWhiteSpace(previous.Conclusion)
+                        ? snapshot.InvestigationSummary
+                        : previous.Conclusion;
+                    HistoryOutcomeText.Text = $"Previously investigated {previous.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}. Sentinel is comparing the current evidence with that earlier occurrence.";
+                    InvestigationHistoryBorder.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+                }
+
+                await _investigationHistoryService.RecordAsync(
+                    fingerprint,
+                    string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) ? "Investigation" : snapshot.GuidanceTitle,
+                    string.IsNullOrWhiteSpace(snapshot.InvestigationSummary) ? snapshot.GuidanceWhatHappened : snapshot.InvestigationSummary,
+                    snapshot.GuidanceSeverity,
+                    requiresAttention: true,
+                    resolved: false);
+
+                _lastRecordedFingerprint = fingerprint;
+            }
         }
 
         private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e)
