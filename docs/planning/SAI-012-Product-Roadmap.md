@@ -1,13 +1,13 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 1.5  
+**Version:** 1.6  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 72%.**
+**Estimated product completion: 80%.**
 
 Completed major foundations:
 
@@ -21,7 +21,11 @@ Completed major foundations:
 - Quarantine and restore foundation
 - Remediation audit persistence
 - Investigation history persistence
+- Autonomous Protection decision, execution, and verification safeguards
+- Low-risk automatic remediation gating
+- User-approval boundaries for moderate/high-risk remediation
 - Startup and refresh responsiveness improvements
+- First-refresh CPU sampling improvement
 
 ## Phase 1 — Monitoring Foundation
 
@@ -62,20 +66,29 @@ Implemented:
 
 ## Phase 5 — Remediation Integration & Autonomous Protection
 
-**Status: Next**
+**Status: Autonomous Protection core complete — 10 of 10**
 
-Planned sequence:
+Completed:
 
-1. Connect remediation services to Investigation Engine decisions.
-2. Define low-risk actions Sentinel may perform automatically.
-3. Add user approval workflow for moderate-risk actions.
-4. Add post-remediation verification and outcome presentation.
-5. Use investigation history for recurrence-aware escalation.
-6. Integrate quarantine management and safe restore workflow.
-7. Add useful remediation/investigation history presentation without cluttering the healthy experience.
-8. Expand network endpoint attribution and response.
-9. Add background/minimized notification behavior for genuinely actionable findings.
-10. Complete remediation integration and failure-path regression testing.
+1. Connected remediation recommendations to investigation decisions.
+2. Defined low-risk actions Sentinel may perform automatically.
+3. Preserved user approval requirements for moderate/high-risk actions.
+4. Added autonomous execution isolation behind remediation policy.
+5. Added evidence-confidence gating before automatic execution.
+6. Added execution-time revalidation so stale decisions cannot trigger action.
+7. Added safe security-state refresh and transient-operation retry handling.
+8. Added verification-pending outcomes rather than claiming unverified success.
+9. Added recurrence-aware investigation foundations and escalation safeguards.
+10. Completed the Autonomous Protection core with defense-in-depth execution safeguards.
+
+Remaining Phase 5 integration work:
+
+- Complete user-facing approval workflow for supported moderate-risk actions.
+- Complete quarantine management and safe restore presentation.
+- Add remediation/investigation history presentation without cluttering healthy state.
+- Expand network endpoint attribution and response.
+- Add background/minimized notification behavior for genuinely actionable findings.
+- Complete failure-path and remediation integration regression testing.
 
 ## Phase 6 — Ask Sentinel / AI Assistance
 
