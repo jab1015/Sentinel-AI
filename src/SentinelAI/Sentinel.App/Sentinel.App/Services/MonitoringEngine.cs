@@ -92,6 +92,8 @@ namespace Sentinel.App.Services
                 LatestEventMessage = _eventLogSnapshot.LatestEventMessage
             };
 
+            SuppressNonActionableStorageSpacesSmp(snapshot);
+
             RiskAssessmentEngine.RiskAssessment assessment =
                 _riskAssessmentEngine.Assess(snapshot);
 
@@ -159,6 +161,35 @@ namespace Sentinel.App.Services
                 "Service is still not running",
                 $"{status.Summary} Do not change its startup type until you confirm whether the Windows feature that uses it is needed on this computer.",
                 false);
+        }
+
+        private static void SuppressNonActionableStorageSpacesSmp(SystemSnapshot snapshot)
+        {
+            bool isStorageSpacesSmpEvent =
+                Contains(snapshot.LatestEventSource, "Service Control Manager") &&
+                Contains(snapshot.LatestEventMessage, "Microsoft Storage Spaces SMP");
+
+            if (!isStorageSpacesSmpEvent)
+            {
+                return;
+            }
+
+            bool isStorageSpacesPrimaryService =
+                Contains(snapshot.PrimaryFlaggedServiceName, "Storage Spaces") ||
+                Contains(snapshot.PrimaryFlaggedServiceName, "SMP");
+
+            snapshot.CriticalEventCount = 0;
+            snapshot.ErrorEventCount = 0;
+            snapshot.LatestEventTime = null;
+            snapshot.LatestEventSource = "None";
+            snapshot.LatestEventMessage = "No actionable Windows events were detected.";
+
+            if (isStorageSpacesPrimaryService)
+            {
+                snapshot.FlaggedServiceCount = 0;
+                snapshot.PrimaryFlaggedServiceName = "None";
+                snapshot.PrimaryFlaggedServiceReason = "No actionable service conditions were detected.";
+            }
         }
 
         private async Task RefreshProcessDataIfDueAsync(DateTime now)
