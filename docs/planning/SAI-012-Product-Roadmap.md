@@ -1,6 +1,6 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.4  
+**Version:** 2.5  
 **Status:** Active  
 **Last Updated:** 2026-07-31  
 **Production Branch:** `main`
@@ -15,14 +15,15 @@
 - Phase 6 Ask Sentinel / AI Assistance — 6 of 6 complete
 - Structured production diagnostic logging foundation
 - Fresh-clone and release-configuration verification foundation
+- Automated development regression safety coverage
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active — 2 of 12 complete**
+**Status: Active — 3 of 12 complete**
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
-3. [ ] Automated regression coverage.
+3. [x] Automated regression coverage.
 4. [ ] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
@@ -33,7 +34,7 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Release verification is now repeatable from repository state through `tools/Verify-ReleaseConfiguration.ps1`, which validates the solution/package structure, Windows target alignment, supported architectures, required package references, packaging entry point, and native API declarations before release work proceeds.
+Regression coverage now automatically verifies key Ask Sentinel safety invariants in Debug builds before the main window opens. Unsupported claims of completed remediation, performed actions, or threats must remain blocked, while grounded healthy responses must remain allowed.
 
 ## Progress Baseline
 
@@ -41,4 +42,4 @@ Release verification is now repeatable from repository state through `tools/Veri
 
 ## Product Rule
 
-Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, and make commercial release readiness reproducible from source control rather than relying on undocumented developer-machine state.
+Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, preserve fail-safe safety behavior through automated regression checks, and make commercial release readiness reproducible from source control.
