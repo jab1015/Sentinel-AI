@@ -11,11 +11,11 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 **Status:** Active Development  
 **Production Branch:** `main`  
 **Current Phase:** Phase 7 — Production Hardening & Commercial Release  
-**Phase 7 Progress:** **3 of 12 complete**  
+**Phase 7 Progress:** **4 of 12 complete**  
 **Phase 6:** **Complete — 6 of 6**  
 **Estimated Overall Product Progress:** **98%**
 
-The application builds, launches promptly, monitors continuously, investigates with verified evidence, supports safely governed remediation, includes grounded Ask Sentinel assistance, and now runs automated development regression checks for critical response-safety invariants.
+The application builds, launches promptly, monitors continuously, investigates with verified evidence, supports safely governed remediation, includes grounded Ask Sentinel assistance, runs automated safety regression checks, and now records startup performance while keeping diagnostic disk I/O off the critical first-window path.
 
 ---
 
@@ -24,7 +24,7 @@ The application builds, launches promptly, monitors continuously, investigates w
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
-4. [ ] Performance profiling and optimization.
+4. [x] Performance profiling and optimization.
 5. [ ] One-hour and eight-hour stability testing.
 6. [ ] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
@@ -34,7 +34,7 @@ The application builds, launches promptly, monitors continuously, investigates w
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Debug builds execute deterministic regression checks before normal startup. These checks verify that grounded healthy responses remain valid while unsupported remediation-success, performed-action, and threat claims remain blocked by Ask Sentinel's final safety boundary.
+Startup now records launch-to-window-activation duration in the production diagnostic log. Diagnostic writes no longer block first-window creation, and development-only regression checks execute after activation rather than before the user-visible shell is created.
 
 ---
 
@@ -65,6 +65,7 @@ Debug builds execute deterministic regression checks before normal startup. Thes
 - Preserve working features during expansion
 - Keep release readiness reproducible from source control
 - Protect critical safety invariants with automated regression checks
+- Keep startup performance observable without blocking first-window presentation
 
 ---
 
