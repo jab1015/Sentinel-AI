@@ -19,7 +19,11 @@ namespace Sentinel.App
         {
             InitializeComponent();
 
-            _timer.Interval = TimeSpan.FromSeconds(1);
+            // Full investigation passes are intentionally less frequent than the
+            // old one-second cadence. They enumerate processes, services, events,
+            // persistence and network evidence; running that work every second can
+            // make the desktop feel sluggish without improving user protection.
+            _timer.Interval = TimeSpan.FromSeconds(5);
             _timer.Tick += Timer_Tick;
 
             Activated += MainWindow_Activated;
@@ -35,8 +39,8 @@ namespace Sentinel.App
             _initialRefreshStarted = true;
             Activated -= MainWindow_Activated;
 
-            // Allow the window to paint before starting the first investigation pass.
-            await Task.Delay(150);
+            // Paint the shell first so startup never waits on an investigation pass.
+            await Task.Delay(250);
             await UpdateDashboardAsync();
             _timer.Start();
         }
