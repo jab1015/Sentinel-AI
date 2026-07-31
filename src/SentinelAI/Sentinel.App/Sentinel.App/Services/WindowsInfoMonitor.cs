@@ -38,5 +38,10 @@ namespace Sentinel.App.Services
         {
             return TimeSpan.FromMilliseconds(Environment.TickCount64);
         }
+
+        public TimeSpan GetUptime()
+        {
+            return GetSystemUptime();
+        }
     }
 }
