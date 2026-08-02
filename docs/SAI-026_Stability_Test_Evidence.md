@@ -1,10 +1,10 @@
 # SAI-026 — Stability Test Evidence
 
-Version: 1.0
+Version: 1.1
 
 Status: Active
 
-Last Updated: 2026-07-31
+Last Updated: 2026-08-01
 
 Copyright (c) 2026 Modern Methods.
 
@@ -20,31 +20,39 @@ Record production-hardening stability evidence for Sentinel AI Phase 7.
 
 - Requested duration: 1 hour
 - Observed duration: 60.09 minutes
-- Started: 2026-07-31T18:59:59.1808280-04:00
-- Completed: 2026-07-31T20:00:04.6581937-04:00
-- Process: Sentinel.App
-- Process ID: 15832
 - Samples: 120
-- Initial working set: 124.23 MB
-- Peak working set: 139.88 MB
-- Initial private memory: 100.03 MB
-- Peak private memory: 109.43 MB
-- Private memory growth: 7.83 MB
-- Initial handles: 926
-- Peak handles: 1145
-- Handle growth: 38
-- Initial threads: 51
-- Peak threads: 53
-- Thread growth: -4
+- Process: Sentinel.App
 - Failure: None
-
-The one-hour test completed without process exit, hang, or reported failure. Resource growth remained bounded over the observed interval.
 
 # Eight-Hour Stability Test
 
-**Status: Pending**
+**Result: PASS**
 
-Phase 7 stability testing is not complete until the eight-hour run also passes and its evidence is recorded.
+- Requested duration: 8 hours
+- Observed duration: 480.19 minutes
+- Started: 2026-07-31T20:03:29.7935846-04:00
+- Completed: 2026-08-01T04:03:41.1015955-04:00
+- Process: Sentinel.App
+- Process ID: 36128
+- Samples: 959
+- Initial working set: 132.39 MB
+- Peak working set: 146.08 MB
+- Initial private memory: 102.16 MB
+- Peak private memory: 114.70 MB
+- Private memory growth: 10.16 MB
+- Initial handles: 1066
+- Peak handles: 1200
+- Handle growth: -38
+- Initial threads: 49
+- Peak threads: 51
+- Thread growth: 1
+- Failure: None
+
+The eight-hour test completed without process exit, hang, or reported failure. Resource growth remained bounded over the observed interval.
+
+Evidence artifact:
+
+`artifacts/stability/stability-8h-20260731-200329.csv`
 
 ---
 
