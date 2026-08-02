@@ -1,6 +1,6 @@
 # SAI-026 — Stability Test Evidence
 
-Version: 1.1
+Version: 1.2
 
 Status: Active
 
@@ -14,7 +14,9 @@ Copyright (c) 2026 Modern Methods.
 
 Record production-hardening stability evidence for Sentinel AI Phase 7.
 
-# One-Hour Stability Test
+# Stability Test Results
+
+## One-Hour Stability Test
 
 **Result: PASS**
 
@@ -24,7 +26,7 @@ Record production-hardening stability evidence for Sentinel AI Phase 7.
 - Process: Sentinel.App
 - Failure: None
 
-# Eight-Hour Stability Test
+## Eight-Hour Stability Test
 
 **Result: PASS**
 
