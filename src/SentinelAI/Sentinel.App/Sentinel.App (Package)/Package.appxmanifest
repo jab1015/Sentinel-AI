@@ -5,38 +5,40 @@
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
-  IgnorableNamespaces="uap rescap systemai">
+  IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="07414ecb-83de-4656-bf2d-b299d64ce5c5"
-    Publisher="CN=Tech-1"
+    Name="ModernMethods.SentinelAI"
+    Publisher="CN=Modern Methods"
     Version="1.0.0.0" />
 
-  <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+  <mp:PhoneIdentity
+    PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5"
+    PhonePublisherId="00000000-0000-0000-0000-000000000000" />
 
   <Properties>
-    <DisplayName>Sentinel.App (Package)</DisplayName>
-    <PublisherDisplayName>Tech-1</PublisherDisplayName>
+    <DisplayName>Sentinel AI</DisplayName>
+    <PublisherDisplayName>Modern Methods</PublisherDisplayName>
+    <Description>Windows investigation, security, and remediation assistant.</Description>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
   </Dependencies>
 
   <Resources>
-    <Resource Language="x-generate"/>
+    <Resource Language="en-US" />
   </Resources>
 
   <Applications>
-    <Application Id="App"
+    <Application
+      Id="App"
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Sentinel.App (Package)"
-        Description="Sentinel.App (Package)"
+        DisplayName="Sentinel AI"
+        Description="Windows investigation, security, and remediation assistant."
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
         Square44x44Logo="Images\Square44x44Logo.png">
@@ -48,6 +50,5 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
-    <systemai:Capability Name="systemAIModels"/>
   </Capabilities>
 </Package>
