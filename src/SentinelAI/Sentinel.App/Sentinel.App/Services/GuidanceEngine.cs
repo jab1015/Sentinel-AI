@@ -43,22 +43,30 @@ namespace Sentinel.App.Services
             if (snapshot.FlaggedProcessCount > 0)
             {
                 bool explainedAsNormal = Contains(snapshot.PrimaryFlaggedProcessReason, "No action is required") || Contains(snapshot.PrimaryFlaggedProcessReason, "not evidence of malware");
-                string title = explainedAsNormal ? "Sentinel identified the running application" : "A running application is being investigated";
-                string why = explainedAsNormal
-                    ? "Sentinel identified the application, checked the evidence available from Windows, and found no independent evidence that the memory observation is a security threat."
-                    : "The observation does not automatically mean malware. Sentinel is keeping it under review while looking for corroborating evidence such as an unexpected location, signature problem, unusual command activity, lineage, or network behavior.";
-                string action = explainedAsNormal
-                    ? snapshot.PrimaryFlaggedProcessReason
-                    : $"Sentinel identified {snapshot.PrimaryFlaggedProcessName}. {snapshot.PrimaryFlaggedProcessReason}";
-                string availability = explainedAsNormal ? "No fix needed" : "Review only";
-                string details = explainedAsNormal
-                    ? "No security action is recommended from this evidence alone. Sentinel will continue monitoring automatically."
-                    : "Sentinel will not stop or quarantine the application without user approval and stronger correlated evidence.";
+                if (explainedAsNormal)
+                {
+                    string application = HumanizeProcessName(snapshot.PrimaryFlaggedProcessName);
+                    string resource = ExtractResourceSummary(snapshot.PrimaryFlaggedProcessReason);
+                    return Result(
+                        $"Sentinel checked {application} — no security risk found",
+                        "Informational", 90,
+                        snapshot.PrimaryFlaggedProcessReason,
+                        $"{application} is running{resource}.",
+                        "Sentinel checked the available process evidence and found no other indication of a security threat.",
+                        "No action is needed. Sentinel will continue monitoring it.",
+                        "No fix needed",
+                        "Sentinel has completed this review. Technical evidence remains available in Technical details.");
+                }
 
-                return Result(title, "Informational", explainedAsNormal ? 90 : 72,
+                return Result(
+                    "A running application is being investigated", "Informational", 72,
                     snapshot.PrimaryFlaggedProcessReason,
-                    $"Sentinel identified {snapshot.PrimaryFlaggedProcessName} and collected identity, signature, location, and resource context where Windows allowed it.",
-                    why, action, availability, details, "open-task-manager", "Open Task Manager");
+                    $"Sentinel identified {snapshot.PrimaryFlaggedProcessName} and is checking the evidence available from Windows.",
+                    "This observation does not automatically mean malware. Sentinel is looking for stronger correlated evidence before recommending any security action.",
+                    "No action is required while Sentinel continues the investigation.",
+                    "Review only",
+                    "Sentinel will not stop or quarantine the application without user approval and stronger correlated evidence.",
+                    "open-task-manager", "Open Task Manager");
             }
 
             if (snapshot.MemoryUsagePercent >= 90)
@@ -68,6 +76,21 @@ namespace Sentinel.App.Services
                 return Result("The system drive is running low on space", "Moderate", 99, "The recommendation is based on the system drive's current used and available capacity.", $"The system drive is {snapshot.DiskUsagePercent:0.0}% full.", "Low disk space can interrupt Windows updates, prevent applications from saving data, and reduce reliability.", "Review Windows Storage settings and remove only files you recognize or safe temporary-file categories.", "Guided fix available", "Sentinel AI will open Storage settings without deleting anything.", "open-storage", "Open Storage Settings");
 
             return Result("Your computer looks healthy", "Low", 91, "Defender and Firewall are active, and no current critical condition matched a higher-priority guidance rule.", "Core protections are active and no urgent issue currently requires action.", "Sentinel AI is continuing to watch Windows events, processes, services, system resources, Defender, and Firewall.", "No action is needed right now.", "No fix needed", "Monitoring will continue automatically.", "check-again", "Check Again");
+        }
+
+        private static string HumanizeProcessName(string processName) =>
+            processName.Equals("vmware-vmx", StringComparison.OrdinalIgnoreCase) ? "VMware" : processName;
+
+        private static string ExtractResourceSummary(string reason)
+        {
+            const string marker = " is using ";
+            int start = reason.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) return string.Empty;
+            start += marker.Length;
+            int end = reason.IndexOf(" of memory", start, StringComparison.OrdinalIgnoreCase);
+            if (end < 0) return string.Empty;
+            string amount = reason.Substring(start, end - start).Trim();
+            return string.IsNullOrWhiteSpace(amount) ? string.Empty : $" and is using {amount} of memory";
         }
 
         private static bool IsStorageSpacesSmpEvent(SystemSnapshot snapshot) => Contains(snapshot.LatestEventSource, "Service Control Manager") && Contains(snapshot.LatestEventMessage, "Microsoft Storage Spaces SMP");
