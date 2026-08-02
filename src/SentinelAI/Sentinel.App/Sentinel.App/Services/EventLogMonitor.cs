@@ -75,6 +75,16 @@ namespace Sentinel.App.Services
                         break;
                     }
 
+                    // DistributedCOM event 10010 is commonly emitted when a COM server does
+                    // not register before Windows' timeout. By itself it is not evidence of a
+                    // security incident or a user-actionable reliability problem, so Sentinel
+                    // keeps it as Windows diagnostic noise rather than elevating it solely
+                    // because Event Viewer classifies it as an error.
+                    if (IsRoutineDistributedComTimeout(record))
+                    {
+                        continue;
+                    }
+
                     if (record.Level == 1)
                     {
                         criticalCount++;
@@ -108,6 +118,13 @@ namespace Sentinel.App.Services
             {
                 // Some event channels require elevation. Continue gracefully.
             }
+        }
+
+        private static bool IsRoutineDistributedComTimeout(EventRecord record)
+        {
+            return record.Id == 10010 &&
+                !string.IsNullOrWhiteSpace(record.ProviderName) &&
+                record.ProviderName.Contains("DistributedCOM", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string GetSafeDescription(EventRecord record)
