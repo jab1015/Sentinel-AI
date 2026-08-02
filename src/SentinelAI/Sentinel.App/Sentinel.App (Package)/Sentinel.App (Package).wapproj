@@ -33,6 +33,7 @@
     <WapProjPath Condition="'$(WapProjPath)'==''">$(MSBuildExtensionsPath)\Microsoft\DesktopBridge\</WapProjPath>
     <PathToXAMLWinRTImplementations>Sentinel.App\</PathToXAMLWinRTImplementations>
     <WinUISDKReferences>false</WinUISDKReferences>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
   </PropertyGroup>
   <Import Project="$(WapProjPath)\Microsoft.DesktopBridge.props" />
   <PropertyGroup>
