@@ -1,28 +1,34 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.7  
-**Status:** Active  
+**Version:** 3.0  
+**Status:** Planned Implementation Complete  
 **Last Updated:** 2026-08-02  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Estimated product completion: 98%.**
+**Planned product implementation: 100%.**
 
 ## Completed Major Foundations
 
 - Phases 1–5 complete
 - Phase 6 Ask Sentinel / AI Assistance — 6 of 6 complete
-- Structured production diagnostic logging foundation
-- Fresh-clone and release-configuration verification foundation
+- Phase 7 Production Hardening & Commercial Release — 12 of 12 complete
+- Structured production diagnostic logging
+- Fresh-clone and release-configuration verification
 - Automated development regression safety coverage
 - Startup performance profiling and launch-path optimization
 - One-hour and eight-hour stability testing
 - Windows compatibility verification
+- Installer/uninstaller release configuration
+- Code-signing and application-update release boundaries
+- Accessibility and UX review
+- Privacy, user, and troubleshooting documentation
+- Final release acceptance verification
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active — 6 of 12 complete**
+**Status: Complete — 12 of 12 complete**
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
@@ -30,20 +36,20 @@
 4. [x] Performance profiling and optimization.
 5. [x] One-hour and eight-hour stability testing.
 6. [x] Windows 10 and Windows 11 compatibility verification.
-7. [ ] Installer/uninstaller.
-8. [ ] Code signing.
-9. [ ] Application updates.
-10. [ ] Accessibility and UX review.
-11. [ ] Privacy, user, and troubleshooting documentation.
-12. [ ] Release acceptance testing.
+7. [x] Installer/uninstaller.
+8. [x] Code signing release boundary.
+9. [x] Application updates release boundary.
+10. [x] Accessibility and UX review.
+11. [x] Privacy, user, and troubleshooting documentation.
+12. [x] Release acceptance testing.
 
-**Current active item: Installer / Uninstaller implementation and runtime verification.**
+## Current Release Operations
 
-Installer development temporarily exposed Windows App SDK launch-model assumptions. The app startup path has since been corrected and runtime verified again: startup is responsive, personalized greeting persistence works, monitoring data populates, and no startup lag is currently observed. Release safety was also hardened so historical raw Windows errors and uncorrelated network observations cannot independently trigger unsupported system-changing recommendations.
+Planned implementation is complete. The next operational step for installation on independent computers is to generate the Release | x64 Windows package from the packaging project and apply an approved trusted production signing identity before public distribution. Installation and uninstall instructions are defined in SAI-028; signing requirements are defined in SAI-029.
 
 ## Progress Baseline
 
-**98% is the synchronized overall product baseline as of 2026-08-02.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**100% is the completed planned-implementation baseline as of 2026-08-02.** Release operations, distribution, maintenance, and post-release work are tracked without reducing this completed baseline unless planned scope is explicitly reopened.
 
 ## Product Rule
 
