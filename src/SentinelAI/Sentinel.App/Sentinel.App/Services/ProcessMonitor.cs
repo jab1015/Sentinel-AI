@@ -18,7 +18,8 @@ namespace Sentinel.App.Services
         {
             "Microsoft Corporation", "Google LLC", "Google Inc", "GitHub, Inc.",
             "JetBrains s.r.o.", "Docker Inc", "NVIDIA Corporation", "Intel Corporation",
-            "Advanced Micro Devices, Inc.", "Adobe Inc.", "Oracle America, Inc.", "Mozilla Corporation"
+            "Advanced Micro Devices, Inc.", "Adobe Inc.", "Oracle America, Inc.", "Mozilla Corporation",
+            "VMware, Inc.", "Broadcom Inc."
         };
 
         private readonly Dictionary<string, SignatureAssessment> _signatureCache = new(StringComparer.OrdinalIgnoreCase);
@@ -38,6 +39,9 @@ namespace Sentinel.App.Services
                     {
                         string processName = process.ProcessName;
                         long workingSet = process.WorkingSet64;
+                        string path = GetProcessPath(process);
+                        SignatureAssessment signature = GetSignatureAssessment(path);
+                        string productName = GetProductName(path);
 
                         if (workingSet > highestWorkingSet)
                         {
@@ -45,24 +49,16 @@ namespace Sentinel.App.Services
                             highestMemoryProcessName = processName;
                         }
 
-                        // Windows Memory Compression is an operating-system memory-management
-                        // mechanism, not an ordinary application. Its working set can legitimately
-                        // exceed the generic application threshold and must not by itself create a
-                        // suspicious-process investigation. System-wide memory pressure is evaluated
-                        // separately from process trust/security findings.
                         if (workingSet >= 2L * 1024 * 1024 * 1024 && !IsWindowsMemoryCompression(processName))
                         {
                             findings.Add(new ProcessFinding(
                                 processName,
-                                $"High memory use ({workingSet / 1024d / 1024d / 1024d:0.00} GB)"));
+                                BuildHighMemoryReason(processName, workingSet, path, signature, productName)));
                         }
 
-                        string path = GetProcessPath(process);
                         if (!IsUserWritableLocation(path)) continue;
 
-                        SignatureAssessment signature = GetSignatureAssessment(path);
                         bool temporaryLocation = IsTemporaryLocation(path);
-
                         if (IsKnownTrustedConsoleComponent(processName, path, signature)) continue;
 
                         if (temporaryLocation)
@@ -100,6 +96,40 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static string BuildHighMemoryReason(string processName, long workingSet, string path, SignatureAssessment signature, string productName)
+        {
+            string memory = $"{workingSet / 1024d / 1024d / 1024d:0.00} GB";
+            string identity = string.IsNullOrWhiteSpace(productName) ? processName : productName;
+            string location = string.IsNullOrWhiteSpace(path) ? "Windows did not expose the executable path." : $"Location: {ShortenPath(path)}.";
+            string publisher = signature.IsSigned
+                ? $"Publisher/signature: {signature.Publisher}{(signature.IsTrusted ? " (signature chain verified)" : " (signature present; trust could not be fully verified)")}."
+                : "Publisher/signature: no verifiable digital signature was found.";
+
+            if (IsVmwareVirtualMachineProcess(processName, productName, signature.Publisher))
+            {
+                return $"{identity} is the VMware virtual-machine process and is using {memory} of memory. {publisher} {location} This level of memory use can be expected while a virtual machine is running. No action is required unless the virtual machine is causing performance problems.";
+            }
+
+            return $"{identity} is using {memory} of memory. {publisher} {location} High memory use alone is a performance observation, not evidence of malware. Review only if the application is unexpected or the computer is experiencing performance problems.";
+        }
+
+        private static bool IsVmwareVirtualMachineProcess(string processName, string productName, string publisher) =>
+            processName.Equals("vmware-vmx", StringComparison.OrdinalIgnoreCase) ||
+            productName.Contains("VMware", StringComparison.OrdinalIgnoreCase) ||
+            publisher.Contains("VMware", StringComparison.OrdinalIgnoreCase) ||
+            publisher.Contains("Broadcom", StringComparison.OrdinalIgnoreCase);
+
+        private static string GetProductName(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return string.Empty;
+            try
+            {
+                FileVersionInfo version = FileVersionInfo.GetVersionInfo(path);
+                return version.ProductName?.Trim() ?? string.Empty;
+            }
+            catch { return string.Empty; }
+        }
+
         private static bool IsWindowsMemoryCompression(string processName) =>
             processName.Equals("Memory Compression", StringComparison.OrdinalIgnoreCase) ||
             processName.Equals("MemoryCompression", StringComparison.OrdinalIgnoreCase);
@@ -107,14 +137,11 @@ namespace Sentinel.App.Services
         private SignatureAssessment GetSignatureAssessment(string path)
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return SignatureAssessment.Unsigned;
-
             DateTime lastWriteTimeUtc;
             try { lastWriteTimeUtc = File.GetLastWriteTimeUtc(path); }
             catch { return SignatureAssessment.Unsigned; }
-
             string cacheKey = $"{path}|{lastWriteTimeUtc.Ticks}";
             if (_signatureCache.TryGetValue(cacheKey, out SignatureAssessment? cached)) return cached;
-
             SignatureAssessment assessment = InspectSignature(path);
             if (_signatureCache.Count >= 500) _signatureCache.Clear();
             _signatureCache[cacheKey] = assessment;
@@ -142,7 +169,6 @@ namespace Sentinel.App.Services
         {
             if (!processName.Equals("OpenConsole", StringComparison.OrdinalIgnoreCase) || !signature.IsSigned ||
                 !signature.Publisher.Contains("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)) return false;
-
             string normalizedPath = path.Replace('/', '\\');
             return normalizedPath.Contains("\\node_modules.asar.unpacked\\node-pty\\", StringComparison.OrdinalIgnoreCase) &&
                    normalizedPath.Contains("\\conpty\\OpenConsole.exe", StringComparison.OrdinalIgnoreCase);
