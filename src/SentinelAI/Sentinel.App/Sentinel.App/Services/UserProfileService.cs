@@ -4,23 +4,45 @@
  */
 
 using System;
-using Windows.Storage;
+using System.IO;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
     /// Stores Sentinel's preferred greeting name in the current Windows user's
-    /// local application settings. Each Windows profile therefore keeps its own
-    /// preferred name without sharing it with other users on the computer.
+    /// local application data. Each Windows profile therefore keeps its own
+    /// preferred name without requiring packaged-app identity.
     /// </summary>
     public sealed class UserProfileService
     {
-        private const string PreferredNameKey = "PreferredGreetingName";
+        private static readonly string SettingsDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Modern Methods",
+            "Sentinel AI");
+
+        private static readonly string PreferredNamePath = Path.Combine(
+            SettingsDirectory,
+            "preferred-greeting-name.txt");
 
         public string GetPreferredName()
         {
-            object? value = ApplicationData.Current.LocalSettings.Values[PreferredNameKey];
-            return value as string ?? string.Empty;
+            try
+            {
+                if (!File.Exists(PreferredNamePath))
+                {
+                    return string.Empty;
+                }
+
+                return File.ReadAllText(PreferredNamePath).Trim();
+            }
+            catch (IOException)
+            {
+                return string.Empty;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return string.Empty;
+            }
         }
 
         public bool HasPreferredName() =>
@@ -42,7 +64,8 @@ namespace Sentinel.App.Services
                 return;
             }
 
-            ApplicationData.Current.LocalSettings.Values[PreferredNameKey] = normalized;
+            Directory.CreateDirectory(SettingsDirectory);
+            File.WriteAllText(PreferredNamePath, normalized);
         }
     }
 }
