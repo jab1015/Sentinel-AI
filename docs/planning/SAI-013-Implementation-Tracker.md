@@ -1,6 +1,6 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 2.9  
+**Version:** 3.0  
 **Status:** Active  
 **Last Updated:** 2026-08-01  
 **Production Branch:** `main`
@@ -34,7 +34,7 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Stability verification completed successfully. One-hour and eight-hour runtime intervals passed with no process exit, hang, or recorded failure. Evidence is recorded in `docs/SAI-026_Stability_Test_Evidence.md`.
+Windows compatibility verification procedure created in `docs/SAI-027_Windows_Compatibility_Verification.md`. Runtime evidence is required before completion.
 
 ## Progress Baseline Rule
 
