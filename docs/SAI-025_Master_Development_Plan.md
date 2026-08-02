@@ -1,10 +1,10 @@
 # SAI-025 — Master Development Plan
 
-Version: 2.2
+Version: 2.3
 
 Status: Active
 
-Last Updated: 2026-07-31
+Last Updated: 2026-08-02
 
 Copyright (c) 2026 Modern Methods.
 
@@ -30,10 +30,16 @@ Completed:
 - Phase 7 item 2 — Fresh-clone and release-configuration verification foundation
 - Phase 7 item 3 — Automated regression coverage
 - Phase 7 item 4 — Performance profiling and optimization
+- Phase 7 item 5 — One-hour and eight-hour stability testing
+- Phase 7 item 6 — Windows compatibility verification
 
 Current milestone:
 
-**Phase 7 — Production Hardening & Commercial Release: 4 of 12 complete.**
+**Phase 7 — Production Hardening & Commercial Release: 6 of 12 complete.**
+
+Active item:
+
+**Phase 7 item 7 — Installer / Uninstaller implementation and runtime verification.**
 
 ## Phase 7 — Production Hardening & Commercial Release
 
@@ -41,8 +47,8 @@ Current milestone:
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
 4. [x] Performance profiling and optimization.
-5. [ ] One-hour and eight-hour stability testing.
-6. [ ] Windows 10 and Windows 11 compatibility verification.
+5. [x] One-hour and eight-hour stability testing.
+6. [x] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
 8. [ ] Code signing.
 9. [ ] Application updates.
@@ -50,11 +56,11 @@ Current milestone:
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-Startup performance is now directly measured in the production diagnostic log. Launch logging no longer performs awaited disk I/O before first-window activation, and the window is activated before development-only regression execution. This preserves safety verification while removing avoidable work from the critical startup path.
+Stability evidence includes successful one-hour and eight-hour runs with no reported failure. Current development startup is responsive with no observed lag. Installer work exposed launch-model and unpackaged-runtime assumptions; those startup issues have been corrected without weakening the product safety model. Sentinel now launches successfully, preserves the personalized greeting, refreshes technical evidence, and suppresses unsupported remediation recommendations from uncorrelated network evidence or historical raw Windows errors.
 
 # Progress Governance
 
-**98% is the synchronized overall project baseline as of 2026-07-31.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
+**98% is the synchronized overall project baseline as of 2026-08-02.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must report the same baseline and phase state.
 
 Progress must not move backward unless previously completed functionality is explicitly reopened, removed, or proven incomplete, with the reason documented.
 
