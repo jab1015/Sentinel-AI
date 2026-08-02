@@ -20,7 +20,7 @@ namespace Sentinel.App.Services
             int errorCount = 0;
             DateTime? latestEventTime = null;
             string latestEventSource = "None";
-            string latestEventMessage = "No critical or error events detected in the last 24 hours.";
+            string latestEventMessage = "No actionable critical or error events detected in the last 24 hours.";
 
             ReadLog(
                 "System",
@@ -75,12 +75,8 @@ namespace Sentinel.App.Services
                         break;
                     }
 
-                    // DistributedCOM event 10010 is commonly emitted when a COM server does
-                    // not register before Windows' timeout. By itself it is not evidence of a
-                    // security incident or a user-actionable reliability problem, so Sentinel
-                    // keeps it as Windows diagnostic noise rather than elevating it solely
-                    // because Event Viewer classifies it as an error.
-                    if (IsRoutineDistributedComTimeout(record))
+                    string description = GetSafeDescription(record);
+                    if (!IsActionable(record, description))
                     {
                         continue;
                     }
@@ -102,7 +98,7 @@ namespace Sentinel.App.Services
                         latestEventSource = string.IsNullOrWhiteSpace(record.ProviderName)
                             ? logName
                             : record.ProviderName;
-                        latestEventMessage = GetSafeDescription(record);
+                        latestEventMessage = description;
                     }
                 }
             }
@@ -120,11 +116,66 @@ namespace Sentinel.App.Services
             }
         }
 
-        private static bool IsRoutineDistributedComTimeout(EventRecord record)
+        private static bool IsActionable(EventRecord record, string description)
         {
-            return record.Id == 10010 &&
-                !string.IsNullOrWhiteSpace(record.ProviderName) &&
-                record.ProviderName.Contains("DistributedCOM", StringComparison.OrdinalIgnoreCase);
+            // Critical Windows events remain actionable unless they are a specifically known
+            // benign condition handled elsewhere.
+            if (record.Level == 1)
+            {
+                return true;
+            }
+
+            string provider = record.ProviderName ?? string.Empty;
+
+            // DistributedCOM 10010/10016 events are extremely common Windows background noise.
+            // They are not surfaced by themselves because the event does not establish impact,
+            // compromise, or a repair the user should perform.
+            if (provider.Contains("DistributedCOM", StringComparison.OrdinalIgnoreCase) &&
+                (record.Id == 10010 || record.Id == 10016))
+            {
+                return false;
+            }
+
+            // Service Control Manager writes many error-classified lifecycle events. Sentinel
+            // surfaces only messages that actually describe a failed start or unexpected stop.
+            if (provider.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase))
+            {
+                return ContainsAny(
+                    description,
+                    "terminated unexpectedly",
+                    "failed to start",
+                    "could not be started",
+                    "service hung on starting",
+                    "failed to launch");
+            }
+
+            // Windows can retry this package-update file-in-use condition automatically.
+            if (provider.Contains("WindowsUpdateClient", StringComparison.OrdinalIgnoreCase) &&
+                description.Contains("0x80073D02", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            // Storage Spaces SMP absence is common on systems where the feature is not active.
+            if (description.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool ContainsAny(string value, params string[] phrases)
+        {
+            foreach (string phrase in phrases)
+            {
+                if (value.Contains(phrase, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string GetSafeDescription(EventRecord record)
