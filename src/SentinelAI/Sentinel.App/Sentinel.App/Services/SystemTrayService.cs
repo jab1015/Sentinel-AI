@@ -50,11 +50,13 @@ namespace Sentinel.App.Services
                 ToolTipText = "Sentinel AI — monitoring your computer",
                 IconSource = new GeneratedIconSource
                 {
-                    Text = "S",
-                    FontSize = 42,
+                    // Use the Unicode text-presentation shield so the tray branding remains
+                    // deterministic and does not depend on a color emoji renderer or external file.
+                    Text = "🛡︎",
+                    FontSize = 38,
                     FontWeight = Microsoft.UI.Text.FontWeights.Bold,
                     Foreground = new SolidColorBrush(Colors.White),
-                    Background = new SolidColorBrush(Colors.DodgerBlue)
+                    Background = new SolidColorBrush(Colors.Crimson)
                 },
                 ContextFlyout = contextMenu,
                 ContextMenuMode = ContextMenuMode.SecondWindow,
