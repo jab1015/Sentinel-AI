@@ -1,8 +1,8 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 2.6  
+**Version:** 2.7  
 **Status:** Active  
-**Last Updated:** 2026-07-31  
+**Last Updated:** 2026-08-02  
 **Production Branch:** `main`
 
 ## Overall Progress
@@ -17,17 +17,19 @@
 - Fresh-clone and release-configuration verification foundation
 - Automated development regression safety coverage
 - Startup performance profiling and launch-path optimization
+- One-hour and eight-hour stability testing
+- Windows compatibility verification
 
 ## Phase 7 — Production Hardening & Commercial Release
 
-**Status: Active — 4 of 12 complete**
+**Status: Active — 6 of 12 complete**
 
 1. [x] Structured logging and diagnostics foundation.
 2. [x] Fresh-clone and release-configuration verification foundation.
 3. [x] Automated regression coverage.
 4. [x] Performance profiling and optimization.
-5. [ ] One-hour and eight-hour stability testing.
-6. [ ] Windows 10 and Windows 11 compatibility verification.
+5. [x] One-hour and eight-hour stability testing.
+6. [x] Windows 10 and Windows 11 compatibility verification.
 7. [ ] Installer/uninstaller.
 8. [ ] Code signing.
 9. [ ] Application updates.
@@ -35,11 +37,13 @@
 11. [ ] Privacy, user, and troubleshooting documentation.
 12. [ ] Release acceptance testing.
 
-The application now records launch-to-window-activation timing in diagnostics. Startup logging is non-blocking, avoiding disk I/O on the critical first-window path, and the UI is activated before development-only regression verification runs.
+**Current active item: Installer / Uninstaller implementation and runtime verification.**
+
+Installer development temporarily exposed Windows App SDK launch-model assumptions. The app startup path has since been corrected and runtime verified again: startup is responsive, personalized greeting persistence works, monitoring data populates, and no startup lag is currently observed. Release safety was also hardened so historical raw Windows errors and uncorrelated network observations cannot independently trigger unsupported system-changing recommendations.
 
 ## Progress Baseline
 
-**98% is the synchronized overall product baseline as of 2026-07-31.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
+**98% is the synchronized overall product baseline as of 2026-08-02.** Future progress must use this roadmap and the implementation tracker together and must not move backward unless completed scope is explicitly reopened or proven incomplete and the reason is documented.
 
 ## Product Rule
 
