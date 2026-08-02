@@ -44,8 +44,14 @@
         <uap:SplashScreen Image="Images\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
-        <uap5:Extension Category="windows.startupTask" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
-          <uap5:StartupTask TaskId="SentinelAIStartup" Enabled="true" DisplayName="Sentinel AI" />
+        <uap5:Extension
+          Category="windows.startupTask"
+          Executable="Sentinel.App\Sentinel.App.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap5:StartupTask
+            TaskId="SentinelAIStartup"
+            Enabled="true"
+            DisplayName="Sentinel AI" />
         </uap5:Extension>
       </Extensions>
     </Application>
