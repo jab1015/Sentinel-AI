@@ -55,20 +55,45 @@ namespace Sentinel.App
             string preferredName = _userProfileService.GetPreferredName();
             if (string.IsNullOrWhiteSpace(preferredName))
             {
+                FrameworkElement rootElement = (FrameworkElement)Content;
+                await WaitForXamlRootAsync(rootElement);
+
                 string suggestedName = _userProfileService.GetSuggestedName();
                 TextBox nameBox = new() { Text = suggestedName, PlaceholderText = "Your first name" };
                 ContentDialog dialog = new()
                 {
-                    Title = "What should Sentinel call you?", Content = nameBox,
-                    PrimaryButtonText = "Save", SecondaryButtonText = "Use Windows name",
-                    DefaultButton = ContentDialogButton.Primary, XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    Title = "What should Sentinel call you?",
+                    Content = nameBox,
+                    PrimaryButtonText = "Save",
+                    SecondaryButtonText = "Use Windows name",
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = rootElement.XamlRoot
                 };
+
                 ContentDialogResult result = await dialog.ShowAsync();
                 preferredName = result == ContentDialogResult.Primary ? nameBox.Text.Trim() : suggestedName;
                 if (string.IsNullOrWhiteSpace(preferredName)) preferredName = suggestedName;
                 _userProfileService.SavePreferredName(preferredName);
             }
             GreetingText.Text = $"Hello, {preferredName}.";
+        }
+
+        private static Task WaitForXamlRootAsync(FrameworkElement rootElement)
+        {
+            if (rootElement.XamlRoot is not null)
+            {
+                return Task.CompletedTask;
+            }
+
+            TaskCompletionSource<bool> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            RoutedEventHandler? loadedHandler = null;
+            loadedHandler = (sender, args) =>
+            {
+                rootElement.Loaded -= loadedHandler;
+                completion.TrySetResult(true);
+            };
+            rootElement.Loaded += loadedHandler;
+            return completion.Task;
         }
 
         private async void Timer_Tick(object? sender, object e) => await UpdateDashboardAsync();
