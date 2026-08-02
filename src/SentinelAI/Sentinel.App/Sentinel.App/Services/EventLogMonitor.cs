@@ -20,7 +20,7 @@ namespace Sentinel.App.Services
             int errorCount = 0;
             DateTime? latestEventTime = null;
             string latestEventSource = "None";
-            string latestEventMessage = "No actionable critical or error events detected in the last 24 hours.";
+            string latestEventMessage = "No user-actionable Windows event evidence was detected.";
 
             ReadLog(
                 "System",
@@ -76,7 +76,7 @@ namespace Sentinel.App.Services
                     }
 
                     string description = GetSafeDescription(record);
-                    if (!IsActionable(record, description))
+                    if (!IsUserActionable(record))
                     {
                         continue;
                     }
@@ -116,96 +116,22 @@ namespace Sentinel.App.Services
             }
         }
 
-        private static bool IsActionable(EventRecord record, string description)
+        private static bool IsUserActionable(EventRecord record)
         {
-            if (record.Level == 1)
-            {
-                return true;
-            }
-
-            string provider = record.ProviderName ?? string.Empty;
-
-            if (provider.Contains("DistributedCOM", StringComparison.OrdinalIgnoreCase) &&
-                (record.Id == 10010 || record.Id == 10016))
+            // Sentinel does not elevate ordinary Windows "Error" entries to the user simply
+            // because Event Viewer labels them errors. Level-2 events remain diagnostic context
+            // for internal investigation and must be corroborated by a current process, service,
+            // security, resource, persistence, or network condition before the UI asks the user
+            // to do anything. This prevents routine DCOM, SCEP, licensing, Bluetooth, camera,
+            // device-state, update, and service lifecycle noise from becoming false alarms.
+            if (record.Level == 2)
             {
                 return false;
             }
 
-            if (provider.Contains("CertificateServicesClient-CertEnroll", StringComparison.OrdinalIgnoreCase) &&
-                description.Contains("SCEP Certificate enrollment initialization", StringComparison.OrdinalIgnoreCase) &&
-                description.Contains("microsoftaik.azure.net", StringComparison.OrdinalIgnoreCase) &&
-                description.Contains("GetCACaps", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            if (provider.Contains("Security-SPP", StringComparison.OrdinalIgnoreCase) &&
-                description.Contains("License Activation", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            if (provider.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase))
-            {
-                // Bluetooth dependency failures on machines with Bluetooth disabled or no
-                // Bluetooth hardware are expected and do not require user action.
-                if (description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase) &&
-                    description.Contains("disabled or because it has no enabled devices associated with it", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                // Camera frame-server failures are not security findings. They matter only when
-                // the user is actually experiencing a camera problem, so Sentinel keeps them
-                // quiet rather than presenting them as a computer-security warning.
-                if (description.Contains("Windows Camera Frame Server Monitor", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                // NcbService can report a missing/virtual device condition during normal VM and
-                // device-state transitions. By itself this does not establish a security or
-                // reliability problem requiring user action.
-                if (description.Contains("NcbService", StringComparison.OrdinalIgnoreCase) &&
-                    description.Contains("A device attached to the system is not functioning", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                return ContainsAny(
-                    description,
-                    "terminated unexpectedly",
-                    "failed to start",
-                    "could not be started",
-                    "service hung on starting",
-                    "failed to launch");
-            }
-
-            if (provider.Contains("WindowsUpdateClient", StringComparison.OrdinalIgnoreCase) &&
-                description.Contains("0x80073D02", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            if (description.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        private static bool ContainsAny(string value, params string[] phrases)
-        {
-            foreach (string phrase in phrases)
-            {
-                if (value.Contains(phrase, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            // Critical Windows events are retained as high-value evidence. Downstream engines
+            // still decide what the user needs to know and what Sentinel can do about it.
+            return record.Level == 1;
         }
 
         private static string GetSafeDescription(EventRecord record)
