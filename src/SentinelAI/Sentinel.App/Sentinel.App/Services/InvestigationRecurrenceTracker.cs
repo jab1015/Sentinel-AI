@@ -16,6 +16,7 @@ namespace Sentinel.App.Services
     public sealed class InvestigationRecurrenceTracker
     {
         private static readonly TimeSpan RecurrenceWindow = TimeSpan.FromHours(24);
+        private static readonly TimeSpan MinimumDistinctObservationInterval = TimeSpan.FromMinutes(5);
         private readonly object _sync = new();
         private readonly Dictionary<string, RecurrenceState> _states = new(StringComparer.OrdinalIgnoreCase);
 
@@ -38,11 +39,23 @@ namespace Sentinel.App.Services
                     return new RecurrenceResult(1, false, false);
                 }
 
+                // Monitoring refreshes frequently. Re-reading the same live finding
+                // must not be counted as a new occurrence on every refresh; otherwise
+                // one condition could falsely become "recurring" within seconds.
+                if (timestamp - state.LastSeen < MinimumDistinctObservationInterval)
+                {
+                    return new RecurrenceResult(
+                        state.Count,
+                        IsRecurring: state.Count >= 2,
+                        ShouldEscalate: state.Count >= 3);
+                }
+
                 state = state with { LastSeen = timestamp, Count = state.Count + 1 };
                 _states[reasonCode] = state;
 
-                // Two occurrences establish recurrence; three or more justify
-                // stronger escalation. The caller still decides what action is safe.
+                // Two distinct observations establish recurrence; three or more
+                // justify stronger escalation. The caller still decides what action
+                // is safe and whether the evidence is actionable.
                 return new RecurrenceResult(
                     state.Count,
                     IsRecurring: state.Count >= 2,
