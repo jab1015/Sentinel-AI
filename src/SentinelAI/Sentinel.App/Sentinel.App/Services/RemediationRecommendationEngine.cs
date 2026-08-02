@@ -55,7 +55,12 @@ namespace Sentinel.App.Services
                     "Sentinel can safely refresh the transient Windows Update evidence automatically and continue monitoring for recurrence.");
             }
 
-            if (snapshot.FlaggedConnectionCount > 0 &&
+            // A connection on an uncommon port is evidence for review, not proof of
+            // malicious activity. Only offer a system-changing network block when the
+            // Investigation Engine has independently correlated the connection with
+            // another process signal and promoted it to an actionable finding.
+            if (IsVerifiedNetworkFinding(snapshot) &&
+                snapshot.FlaggedConnectionCount > 0 &&
                 HasValue(snapshot.PrimaryFlaggedConnectionRemoteEndpoint))
             {
                 return new RemediationRecommendation(
@@ -63,11 +68,12 @@ namespace Sentinel.App.Services
                     true,
                     "block-outbound-endpoint",
                     snapshot.PrimaryFlaggedConnectionRemoteEndpoint,
-                    "The investigation identified an outbound network endpoint that may warrant blocking. Sentinel must obtain approval and verify the resulting firewall rule before reporting success.");
+                    "Sentinel correlated this network endpoint with additional process evidence. Approval is required before blocking it, and Sentinel will verify the resulting firewall rule before reporting success.");
             }
 
             if (snapshot.FlaggedProcessCount > 0 &&
-                HasValue(snapshot.PrimaryFlaggedProcessName))
+                HasValue(snapshot.PrimaryFlaggedProcessName) &&
+                IsVerifiedProcessFinding(snapshot))
             {
                 return new RemediationRecommendation(
                     true,
@@ -80,6 +86,18 @@ namespace Sentinel.App.Services
             return RemediationRecommendation.None(
                 "The investigation requires attention, but the current evidence does not justify a supported system-changing action.");
         }
+
+        private static bool IsVerifiedNetworkFinding(SystemSnapshot snapshot) =>
+            snapshot.InvestigationReasonCode is
+                "correlated-process-network-finding" or
+                "correlated-lineage-network-finding" or
+                "correlated-command-network-finding";
+
+        private static bool IsVerifiedProcessFinding(SystemSnapshot snapshot) =>
+            snapshot.InvestigationReasonCode is
+                "correlated-command-process-finding" or
+                "correlated-command-lineage-finding" or
+                "correlated-lineage-process-finding";
 
         private static bool IsTransientWindowsUpdateCondition(SystemSnapshot snapshot) =>
             Contains(snapshot.LatestEventSource, "WindowsUpdateClient") &&
