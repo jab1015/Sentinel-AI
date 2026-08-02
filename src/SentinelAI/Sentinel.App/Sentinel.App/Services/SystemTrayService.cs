@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Windows.Input;
 
 namespace Sentinel.App.Services
 {
@@ -57,13 +58,11 @@ namespace Sentinel.App.Services
                 },
                 ContextFlyout = contextMenu,
                 ContextMenuMode = ContextMenuMode.SecondWindow,
-                MenuActivation = PopupActivationMode.RightClick,
-                PopupActivation = PopupActivationMode.DoubleClick,
+                LeftClickCommand = new RelayCommand(showApplication),
                 Visibility = Visibility.Visible,
                 NoLeftClickDelay = true
             };
 
-            _trayIcon.TrayMouseDoubleClick += (_, _) => showApplication();
             _trayIcon.ForceCreate(enablesEfficiencyMode: false);
         }
 
@@ -76,6 +75,26 @@ namespace Sentinel.App.Services
 
             _disposed = true;
             _trayIcon.Dispose();
+        }
+
+        private sealed class RelayCommand : ICommand
+        {
+            private readonly Action _execute;
+
+            public RelayCommand(Action execute)
+            {
+                _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+            }
+
+            public event EventHandler? CanExecuteChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool CanExecute(object? parameter) => true;
+
+            public void Execute(object? parameter) => _execute();
         }
     }
 }
