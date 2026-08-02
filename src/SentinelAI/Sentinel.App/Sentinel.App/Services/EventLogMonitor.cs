@@ -147,6 +147,15 @@ namespace Sentinel.App.Services
                 return false;
             }
 
+            // Security-SPP records Windows licensing and activation attempts as error events.
+            // A failed activation attempt is a licensing state, not evidence of compromise or an
+            // operational failure Sentinel should present as a security/reliability alert.
+            if (provider.Contains("Security-SPP", StringComparison.OrdinalIgnoreCase) &&
+                description.Contains("License Activation", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             // Service Control Manager writes many error-classified lifecycle events. Sentinel
             // surfaces only messages that actually describe a failed start or unexpected stop.
             if (provider.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase))
