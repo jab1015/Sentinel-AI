@@ -118,8 +118,6 @@ namespace Sentinel.App.Services
 
         private static bool IsActionable(EventRecord record, string description)
         {
-            // Critical Windows events remain actionable unless they are a specifically known
-            // benign condition handled elsewhere.
             if (record.Level == 1)
             {
                 return true;
@@ -127,18 +125,12 @@ namespace Sentinel.App.Services
 
             string provider = record.ProviderName ?? string.Empty;
 
-            // DistributedCOM 10010/10016 events are extremely common Windows background noise.
-            // They are not surfaced by themselves because the event does not establish impact,
-            // compromise, or a repair the user should perform.
             if (provider.Contains("DistributedCOM", StringComparison.OrdinalIgnoreCase) &&
                 (record.Id == 10010 || record.Id == 10016))
             {
                 return false;
             }
 
-            // TPM/SCEP attestation enrollment can fail against Microsoft's AIK endpoint when the
-            // device is not enrolled for that attestation path. This commonly appears on normal
-            // Windows systems and VMs and, by itself, does not require user action.
             if (provider.Contains("CertificateServicesClient-CertEnroll", StringComparison.OrdinalIgnoreCase) &&
                 description.Contains("SCEP Certificate enrollment initialization", StringComparison.OrdinalIgnoreCase) &&
                 description.Contains("microsoftaik.azure.net", StringComparison.OrdinalIgnoreCase) &&
@@ -147,19 +139,39 @@ namespace Sentinel.App.Services
                 return false;
             }
 
-            // Security-SPP records Windows licensing and activation attempts as error events.
-            // A failed activation attempt is a licensing state, not evidence of compromise or an
-            // operational failure Sentinel should present as a security/reliability alert.
             if (provider.Contains("Security-SPP", StringComparison.OrdinalIgnoreCase) &&
                 description.Contains("License Activation", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            // Service Control Manager writes many error-classified lifecycle events. Sentinel
-            // surfaces only messages that actually describe a failed start or unexpected stop.
             if (provider.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase))
             {
+                // Bluetooth dependency failures on machines with Bluetooth disabled or no
+                // Bluetooth hardware are expected and do not require user action.
+                if (description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase) &&
+                    description.Contains("disabled or because it has no enabled devices associated with it", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                // Camera frame-server failures are not security findings. They matter only when
+                // the user is actually experiencing a camera problem, so Sentinel keeps them
+                // quiet rather than presenting them as a computer-security warning.
+                if (description.Contains("Windows Camera Frame Server Monitor", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                // NcbService can report a missing/virtual device condition during normal VM and
+                // device-state transitions. By itself this does not establish a security or
+                // reliability problem requiring user action.
+                if (description.Contains("NcbService", StringComparison.OrdinalIgnoreCase) &&
+                    description.Contains("A device attached to the system is not functioning", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
                 return ContainsAny(
                     description,
                     "terminated unexpectedly",
@@ -169,14 +181,12 @@ namespace Sentinel.App.Services
                     "failed to launch");
             }
 
-            // Windows can retry this package-update file-in-use condition automatically.
             if (provider.Contains("WindowsUpdateClient", StringComparison.OrdinalIgnoreCase) &&
                 description.Contains("0x80073D02", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
             }
 
-            // Storage Spaces SMP absence is common on systems where the feature is not active.
             if (description.Contains("Microsoft Storage Spaces SMP", StringComparison.OrdinalIgnoreCase))
             {
                 return false;
