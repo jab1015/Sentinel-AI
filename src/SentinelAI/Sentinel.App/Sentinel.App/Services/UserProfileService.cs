@@ -64,8 +64,20 @@ namespace Sentinel.App.Services
                 return;
             }
 
-            Directory.CreateDirectory(SettingsDirectory);
-            File.WriteAllText(PreferredNamePath, normalized);
+            try
+            {
+                Directory.CreateDirectory(SettingsDirectory);
+                File.WriteAllText(PreferredNamePath, normalized);
+            }
+            catch (IOException)
+            {
+                // Greeting persistence is non-critical. Sentinel must remain available
+                // even if the user profile directory is temporarily unavailable.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Preserve the current session greeting if the profile cannot be written.
+            }
         }
     }
 }
