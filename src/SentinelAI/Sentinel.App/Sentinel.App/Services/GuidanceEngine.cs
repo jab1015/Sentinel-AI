@@ -47,15 +47,18 @@ namespace Sentinel.App.Services
                 {
                     string application = HumanizeProcessName(snapshot.PrimaryFlaggedProcessName);
                     string resource = ExtractResourceSummary(snapshot.PrimaryFlaggedProcessReason);
+                    string expectedBehavior = application.Equals("VMware", StringComparison.OrdinalIgnoreCase)
+                        ? " This is expected while a virtual machine is running."
+                        : " Sentinel found no other indication of a security threat.";
                     return Result(
                         $"Sentinel checked {application} — no security risk found",
                         "Informational", 90,
                         snapshot.PrimaryFlaggedProcessReason,
-                        $"{application} is running{resource}.",
-                        "Sentinel checked the available process evidence and found no other indication of a security threat.",
+                        $"{application} is running{resource}.{expectedBehavior}",
+                        "Sentinel completed the investigation and found no security risk requiring your attention.",
                         "No action is needed. Sentinel will continue monitoring it.",
                         "No fix needed",
-                        "Sentinel has completed this review. Technical evidence remains available in Technical details.");
+                        "Technical evidence is available in Technical details.");
                 }
 
                 return Result(
