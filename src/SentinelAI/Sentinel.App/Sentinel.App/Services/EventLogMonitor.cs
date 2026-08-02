@@ -136,6 +136,17 @@ namespace Sentinel.App.Services
                 return false;
             }
 
+            // TPM/SCEP attestation enrollment can fail against Microsoft's AIK endpoint when the
+            // device is not enrolled for that attestation path. This commonly appears on normal
+            // Windows systems and VMs and, by itself, does not require user action.
+            if (provider.Contains("CertificateServicesClient-CertEnroll", StringComparison.OrdinalIgnoreCase) &&
+                description.Contains("SCEP Certificate enrollment initialization", StringComparison.OrdinalIgnoreCase) &&
+                description.Contains("microsoftaik.azure.net", StringComparison.OrdinalIgnoreCase) &&
+                description.Contains("GetCACaps", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             // Service Control Manager writes many error-classified lifecycle events. Sentinel
             // surfaces only messages that actually describe a failed start or unexpected stop.
             if (provider.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase))
