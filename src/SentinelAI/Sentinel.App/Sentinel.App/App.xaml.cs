@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
+using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 
 namespace Sentinel.App
