@@ -76,6 +76,12 @@ namespace Sentinel.App.Models
         public string SpywareCorrelationTitle { get; set; } = "Analyzing spyware indicators";
         public string SpywareCorrelationSummary { get; set; } = "Sentinel is correlating process, persistence, execution, and network evidence.";
         public string SpywareCorrelationReasonCode { get; set; } = "spyware-initializing";
+        public string ProtectionHealthState { get; set; } = "Starting";
+        public bool ProtectionHealthFullyProtected { get; set; }
+        public string ProtectionHealthTitle { get; set; } = "Checking protection";
+        public string ProtectionHealthSummary { get; set; } = "Sentinel is verifying continuous protection.";
+        public string ProtectionHealthRecommendedAction { get; set; } = "Please wait while protection checks complete.";
+        public string ProtectionHealthReasonCode { get; set; } = "protection-initializing";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
