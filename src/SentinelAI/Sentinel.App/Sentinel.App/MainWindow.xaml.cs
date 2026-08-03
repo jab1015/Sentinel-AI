@@ -136,19 +136,18 @@ namespace Sentinel.App
                     snapshot.GuidanceFixAvailability.Equals("No fix needed", StringComparison.OrdinalIgnoreCase) &&
                     snapshot.GuidanceTitle.Contains("no security risk found", StringComparison.OrdinalIgnoreCase);
                 bool memoryRequiresAttention = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
-                bool hasSecurityOrProcessFinding = (snapshot.FlaggedProcessCount > 0 && !resolvedProcessReview) || !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
-                bool hasActionableServiceOrEventFinding = !isStorageSpacesSmpFinding && (snapshot.FlaggedServiceCount > 0 || snapshot.CriticalEventCount > 0 || snapshot.ErrorEventCount > 0 || hasServiceFailure || snapshot.RiskScore >= 20);
-                bool requiresAttention = hasSecurityOrProcessFinding || hasActionableServiceOrEventFinding || memoryRequiresAttention;
+                bool investigationRequiresAttention = snapshot.InvestigationRequiresAttention;
                 bool hasApprovalAction = snapshot.AutonomousProtectionRequiresUserApproval &&
                     !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
                     !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase) &&
                     !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
                     !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
+                bool requiresAttention = investigationRequiresAttention || hasApprovalAction || memoryRequiresAttention;
 
-                await UpdateInvestigationHistoryAsync(snapshot, requiresAttention);
+                await UpdateInvestigationHistoryAsync(snapshot, investigationRequiresAttention);
                 UpdateBackgroundAttentionState(snapshot, requiresAttention);
 
-                if (memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding)
+                if (memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction)
                 {
                     _guidanceActionId = "open-task-manager";
                     GuidanceActionButton.Content = "Review memory use";
@@ -171,12 +170,12 @@ namespace Sentinel.App
                     else
                     {
                         GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
-                        GuidanceActionButton.Visibility = requiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
+                        GuidanceActionButton.Visibility = investigationRequiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
                     }
 
-                    IssueSummaryBorder.Visibility = (requiresAttention || resolvedProcessReview) ? Visibility.Visible : Visibility.Collapsed;
+                    IssueSummaryBorder.Visibility = (investigationRequiresAttention || hasApprovalAction) ? Visibility.Visible : Visibility.Collapsed;
 
-                    if (requiresAttention)
+                    if (investigationRequiresAttention || hasApprovalAction)
                     {
                         OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
                         AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
@@ -202,9 +201,9 @@ namespace Sentinel.App
                     }
                 }
 
-                VerifyGuidanceButton.Visibility = requiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
+                VerifyGuidanceButton.Visibility = investigationRequiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
                 RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0";
-                RiskLevelText.Text = memoryRequiresAttention && !hasSecurityOrProcessFinding && !hasActionableServiceOrEventFinding ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
+                RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
             }
             finally { _isRefreshing = false; }
