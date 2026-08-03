@@ -6,6 +6,8 @@
 using System;
 using System.Diagnostics;
 using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -15,7 +17,9 @@ namespace Sentinel.App.Services
     /// <summary>
     /// Creates and verifies a narrowly-scoped outbound Windows Firewall block for a
     /// specific remote IP address. This service performs no threat classification;
-    /// callers must obtain policy approval before invoking it.
+    /// callers must obtain policy approval before invoking it. If Sentinel detects
+    /// that connectivity was healthy before containment and materially degraded after
+    /// the new rule, the rule is automatically removed and the rollback is verified.
     /// </summary>
     public sealed class FirewallContainmentService
     {
@@ -32,6 +36,7 @@ namespace Sentinel.App.Services
 
             string remoteIp = address.ToString();
             string ruleName = BuildRuleName(remoteIp);
+            ConnectivityState before = await CheckConnectivityAsync().ConfigureAwait(false);
 
             try
             {
@@ -45,12 +50,39 @@ namespace Sentinel.App.Services
                         $"Windows Firewall returned exit code {addExitCode}. No successful containment claim was recorded.");
                 }
 
-                bool verified = await VerifyRuleAsync(ruleName, remoteIp);
+                bool verified = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
                 if (!verified)
                 {
                     return FirewallContainmentResult.Failure(
                         "Network block could not be verified",
                         "Windows reported that the firewall command completed, but Sentinel could not verify the expected outbound block rule.");
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                ConnectivityState after = await CheckConnectivityAsync().ConfigureAwait(false);
+
+                if (before.IsHealthy && !after.IsHealthy)
+                {
+                    FirewallContainmentResult rollback = await RemoveBlockAsync(remoteEndpoint).ConfigureAwait(false);
+                    return rollback.Succeeded
+                        ? new FirewallContainmentResult(
+                            Attempted: true,
+                            Succeeded: false,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Network block automatically undone",
+                            Summary: "Sentinel detected that internet connectivity became unavailable immediately after the block. The new firewall rule was automatically removed and the rollback was verified. Sentinel will continue investigating instead of leaving the computer offline.",
+                            RolledBack: true,
+                            ConnectivityHealthy: false)
+                        : new FirewallContainmentResult(
+                            Attempted: true,
+                            Succeeded: false,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Network block may have affected connectivity",
+                            Summary: "Sentinel detected a loss of connectivity after containment and attempted to undo the block, but removal could not be verified. User assistance is required to review Windows Firewall rules.",
+                            RolledBack: false,
+                            ConnectivityHealthy: false);
                 }
 
                 return new FirewallContainmentResult(
@@ -59,7 +91,9 @@ namespace Sentinel.App.Services
                     RuleName: ruleName,
                     RemoteIp: remoteIp,
                     Title: "Suspicious network destination blocked",
-                    Summary: $"Sentinel created and verified a Windows Firewall outbound block for {remoteIp}.");
+                    Summary: $"Sentinel created and verified a Windows Firewall outbound block for {remoteIp}. Connectivity remained available after containment.",
+                    RolledBack: false,
+                    ConnectivityHealthy: after.IsHealthy || !before.IsHealthy);
             }
             catch (Exception ex)
             {
@@ -86,7 +120,7 @@ namespace Sentinel.App.Services
                 int deleteExitCode = await RunNetshElevatedAsync(
                     $"advfirewall firewall delete rule name=\"{ruleName}\"");
 
-                bool stillExists = await VerifyRuleAsync(ruleName, remoteIp);
+                bool stillExists = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
                 if (deleteExitCode != 0 || stillExists)
                 {
                     return FirewallContainmentResult.Failure(
@@ -94,13 +128,16 @@ namespace Sentinel.App.Services
                         "Sentinel could not verify removal of the Windows Firewall rule.");
                 }
 
+                ConnectivityState connectivity = await CheckConnectivityAsync().ConfigureAwait(false);
                 return new FirewallContainmentResult(
                     Attempted: true,
                     Succeeded: true,
                     RuleName: ruleName,
                     RemoteIp: remoteIp,
                     Title: "Network block removed",
-                    Summary: $"Sentinel removed and verified removal of the Windows Firewall block for {remoteIp}.");
+                    Summary: $"Sentinel removed and verified removal of the Windows Firewall block for {remoteIp}.",
+                    RolledBack: true,
+                    ConnectivityHealthy: connectivity.IsHealthy);
             }
             catch (Exception ex)
             {
@@ -108,6 +145,38 @@ namespace Sentinel.App.Services
                     "Network block could not be removed",
                     $"Sentinel could not verify removal of the firewall rule. {ex.Message}");
             }
+        }
+
+        private static async Task<ConnectivityState> CheckConnectivityAsync()
+        {
+            if (!NetworkInterface.GetIsNetworkAvailable())
+            {
+                return new ConnectivityState(false, "Windows reports no active network connection.");
+            }
+
+            bool dnsOk = false;
+            bool tcpOk = false;
+
+            try
+            {
+                IPAddress[] addresses = await Dns.GetHostAddressesAsync("www.microsoft.com")
+                    .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                dnsOk = addresses.Length > 0;
+            }
+            catch { }
+
+            try
+            {
+                using TcpClient client = new();
+                await client.ConnectAsync("www.microsoft.com", 443)
+                    .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                tcpOk = client.Connected;
+            }
+            catch { }
+
+            return new ConnectivityState(
+                dnsOk && tcpOk,
+                $"DNS={(dnsOk ? "available" : "unavailable")}; HTTPS={(tcpOk ? "available" : "unavailable")}");
         }
 
         private static async Task<int> RunNetshElevatedAsync(string arguments)
@@ -177,16 +246,20 @@ namespace Sentinel.App.Services
             return $"{RulePrefix} {suffix}";
         }
 
+        private sealed record ConnectivityState(bool IsHealthy, string Evidence);
+
         public sealed record FirewallContainmentResult(
             bool Attempted,
             bool Succeeded,
             string RuleName,
             string RemoteIp,
             string Title,
-            string Summary)
+            string Summary,
+            bool RolledBack = false,
+            bool ConnectivityHealthy = true)
         {
             public static FirewallContainmentResult Failure(string title, string summary) =>
-                new(true, false, string.Empty, string.Empty, title, summary);
+                new(true, false, string.Empty, string.Empty, title, summary, false, false);
         }
     }
 }
