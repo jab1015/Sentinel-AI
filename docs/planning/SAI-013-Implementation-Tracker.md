@@ -1,8 +1,8 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 5.1  
+**Version:** 5.2  
 **Status:** Active  
-**Last Updated:** 2026-08-02  
+**Last Updated:** 2026-08-03  
 **Production Branch:** `main`
 
 ## Project Summary
@@ -14,29 +14,35 @@
 - Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Phase 6 — Ask Sentinel / AI Assistance: **6 of 6 complete**
 - Phase 7 — Production Hardening & Commercial Release: **12 of 12 complete**
-- Phase 8 — Continuous Intrusion & Spyware Protection: **1 of 8 complete**
-- Current milestone: **8.2 Connection Intelligence & Anomaly Classification**
-
-## Why Scope Was Reopened
-
-VM/clean-install verification showed that the prior 100% baseline represented completion of the previously documented plan, but not the owner's original product acceptance target. Sentinel is not considered product-complete until it continuously monitors for meaningful intrusion/spyware behavior and reliably starts with Windows.
+- Phase 8 — Continuous Intrusion & Spyware Protection: **6 of 8 complete**
+- Current milestone: **8.4 Safe Verified Containment / Remediation**
 
 ## Phase 8 — Continuous Intrusion & Spyware Protection
 
-**Status: Active — 1 of 8 complete**
+**Status: Active — 6 of 8 complete**
 
-1. [x] Build continuous inbound/outbound network connection monitoring with process and endpoint correlation. Verified foundation includes 5-second collection cadence, TCP established connections, inbound/outbound direction correlation, TCP listeners, UDP endpoints, process attribution, monitoring-health state, and bounded 10-minute connection observation history for recurring/short-lived activity.
-2. [ ] Add evidence-based connection anomaly/intrusion classification with false-positive controls.
-3. [ ] Correlate spyware/process behavior, including executable trust/location, persistence, process relationships, background/network behavior, and Windows security evidence.
-4. [ ] Integrate safe verified containment/remediation through supported Windows protection mechanisms.
-5. [ ] Deliver plain-English outcome UX: what happened, what Sentinel did, whether risk remains, and exact user instructions only when needed.
-6. [ ] Verify reliable automatic Windows startup, single-instance operation, tray persistence, reboot, sleep/wake, and network recovery.
-7. [ ] Add protection-health/self-monitoring for Sentinel network monitoring and required Windows protection layers.
-8. [ ] Complete intrusion-protection acceptance, false-positive, performance, and long-duration testing.
+1. [x] Continuous inbound/outbound network connection monitoring with process attribution, endpoint data, inbound/outbound direction, TCP listeners, UDP endpoints, monitoring-health state, and bounded connection history.
+2. [x] Evidence-based connection anomaly/intrusion classification with corroboration and false-positive controls.
+3. [x] Spyware/process behavior correlation across process, command-line, lineage, persistence, service, and network evidence.
+4. [ ] Complete supported containment execution for verified threats: outbound endpoint blocking, process containment, quarantine handoff where supported, verification, audit logging, reversal/restore path, and approval/elevation handling.
+5. [x] Plain-English outcome UX that reports what happened, what Sentinel did, whether risk remains, and exact user instructions only when needed.
+6. [x] Reliable Windows startup/background operation. Clean-VM verification confirmed Sentinel starts automatically at sign-in and remains tray-only after reboot.
+7. [x] Protection-health/self-monitoring for Sentinel network monitoring and required Windows protection layers.
+8. [ ] Final product acceptance: controlled benign/suspicious network tests, containment tests, false-positive checks, sleep/wake/network recovery, long-duration operation, clean install/uninstall, startup-to-tray, and final installer branding/assets.
 
-## Current Release Gate
+## Verified Current Capability
 
-**Installer creation is paused.** Do not create or approve the next release installer until all Phase 8 items are complete and verified on a clean/VM environment.
+Sentinel continuously monitors Windows-reported inbound and outbound network connections and correlates network activity with local process and persistence evidence. It identifies spyware-like and intrusion-oriented behavior only when independent evidence corroborates the concern. Routine unfamiliar traffic alone is not treated as malicious.
+
+The remaining release blocker is enforcement completeness: Sentinel can currently recommend supported containment actions, but the production execution path for blocking suspicious endpoints and containing/quarantining responsible processes must be completed and verified before release.
+
+## Final Installer / Branding Gate
+
+The customer-facing package must display **Sentinel AI** only. No `(Package)`, project-name suffix, or developer-facing extension should appear. The Sentinel shield artwork must be used consistently for installer/package visuals, Start menu, Apps list, taskbar/window identity, and system tray where Windows supports the corresponding asset.
+
+## Release Gate
+
+Do not describe Sentinel as product-complete or release-ready until items 4 and 8 pass. Final approval requires verified containment plus a clean VM acceptance pass of the production installer.
 
 ## Acceptance Principles
 
@@ -44,13 +50,9 @@ VM/clean-install verification showed that the prior 100% baseline represented co
 - Incoming/outgoing activity is correlated to responsible processes when Windows provides sufficient evidence.
 - Unfamiliar activity alone is not classified as malicious.
 - Threat/intrusion conclusions require corroborating evidence.
-- Safe automatic actions must be verified and logged.
+- Verified containment must be safe, approval-aware, logged, and outcome-verified.
 - If Sentinel handled the condition, the user receives concise reassurance and remaining-risk status.
 - If user action is required, Sentinel gives exact plain-English instructions.
 - Routine Windows event/network noise remains internal evidence.
 - Sentinel may orchestrate Defender and Windows Firewall rather than replacing their mature protection engines.
-- Sentinel never promises detection of every possible intrusion or spyware program.
-
-## Progress Governance
-
-The historical Phase 1–7 completion record remains preserved. Overall product completion is reopened because original acceptance scope was missing from the prior plan. Phase 8 progress must be reported explicitly as `n of 8` until complete; do not report the product as 100% or release-ready before Phase 8 acceptance passes.
+- Sentinel never promises detection of every possible intrusion or spyware technique.
