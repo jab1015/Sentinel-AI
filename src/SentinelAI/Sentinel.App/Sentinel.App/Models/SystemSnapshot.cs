@@ -65,6 +65,8 @@ namespace Sentinel.App.Models
         public int UdpEndpointCount { get; set; }
         public int AttributedExternalConnectionCount { get; set; }
         public int AttributedUdpEndpointCount { get; set; }
+        public int RecentUniqueExternalConnectionCount { get; set; }
+        public int RepeatingExternalConnectionCount { get; set; }
         public bool NetworkConnectionMonitoringAvailable { get; set; }
         public string NetworkConnectionMonitoringStatus { get; set; } = "Starting";
         public bool DefenderEnabled { get; set; }
