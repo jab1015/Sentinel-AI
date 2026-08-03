@@ -55,6 +55,8 @@ namespace Sentinel.App.Models
         public string PrimaryFlaggedScheduledTaskReason { get; set; } = "No unusual scheduled-task persistence was detected.";
         public int EstablishedConnectionCount { get; set; }
         public int ExternalConnectionCount { get; set; }
+        public int InboundExternalConnectionCount { get; set; }
+        public int OutboundExternalConnectionCount { get; set; }
         public int FlaggedConnectionCount { get; set; }
         public string PrimaryFlaggedConnectionProcessName { get; set; } = "None";
         public string PrimaryFlaggedConnectionRemoteEndpoint { get; set; } = "None";
@@ -62,6 +64,7 @@ namespace Sentinel.App.Models
         public int ListeningTcpEndpointCount { get; set; }
         public int UdpEndpointCount { get; set; }
         public int AttributedExternalConnectionCount { get; set; }
+        public int AttributedUdpEndpointCount { get; set; }
         public bool NetworkConnectionMonitoringAvailable { get; set; }
         public string NetworkConnectionMonitoringStatus { get; set; } = "Starting";
         public bool DefenderEnabled { get; set; }
