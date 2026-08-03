@@ -19,9 +19,10 @@ namespace Sentinel.App.Services
         private readonly TaskbarIcon _trayIcon;
         private bool _disposed;
 
-        public SystemTrayService(Action showApplication, Action exitApplication)
+        public SystemTrayService(Action showApplication, Action showOptions, Action exitApplication)
         {
             ArgumentNullException.ThrowIfNull(showApplication);
+            ArgumentNullException.ThrowIfNull(showOptions);
             ArgumentNullException.ThrowIfNull(exitApplication);
 
             MenuFlyout contextMenu = new()
@@ -34,15 +35,21 @@ namespace Sentinel.App.Services
                 Text = "Open Sentinel AI",
                 Width = 180
             };
+            MenuFlyoutItem optionsItem = new()
+            {
+                Text = "Options"
+            };
             MenuFlyoutItem exitItem = new()
             {
                 Text = "Exit Sentinel AI"
             };
 
             openItem.Click += (_, _) => showApplication();
+            optionsItem.Click += (_, _) => showOptions();
             exitItem.Click += (_, _) => exitApplication();
 
             contextMenu.Items.Add(openItem);
+            contextMenu.Items.Add(optionsItem);
             contextMenu.Items.Add(new MenuFlyoutSeparator());
             contextMenu.Items.Add(exitItem);
 
@@ -68,7 +75,6 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                // Branding must never prevent Sentinel from starting.
                 return new GeneratedIconSource
                 {
                     Text = "S",
