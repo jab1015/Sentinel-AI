@@ -1,6 +1,6 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 5.0  
+**Version:** 5.1  
 **Status:** Active  
 **Last Updated:** 2026-08-02  
 **Production Branch:** `main`
@@ -14,8 +14,8 @@
 - Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
 - Phase 6 — Ask Sentinel / AI Assistance: **6 of 6 complete**
 - Phase 7 — Production Hardening & Commercial Release: **12 of 12 complete**
-- Phase 8 — Continuous Intrusion & Spyware Protection: **0 of 8 complete**
-- Current milestone: **8.1 Continuous Network Connection Monitor**
+- Phase 8 — Continuous Intrusion & Spyware Protection: **1 of 8 complete**
+- Current milestone: **8.2 Connection Intelligence & Anomaly Classification**
 
 ## Why Scope Was Reopened
 
@@ -23,9 +23,9 @@ VM/clean-install verification showed that the prior 100% baseline represented co
 
 ## Phase 8 — Continuous Intrusion & Spyware Protection
 
-**Status: Active — 0 of 8 complete**
+**Status: Active — 1 of 8 complete**
 
-1. [ ] Build continuous inbound/outbound network connection monitoring with process and endpoint correlation.
+1. [x] Build continuous inbound/outbound network connection monitoring with process and endpoint correlation. Verified foundation includes 5-second collection cadence, TCP established connections, inbound/outbound direction correlation, TCP listeners, UDP endpoints, process attribution, monitoring-health state, and bounded 10-minute connection observation history for recurring/short-lived activity.
 2. [ ] Add evidence-based connection anomaly/intrusion classification with false-positive controls.
 3. [ ] Correlate spyware/process behavior, including executable trust/location, persistence, process relationships, background/network behavior, and Windows security evidence.
 4. [ ] Integrate safe verified containment/remediation through supported Windows protection mechanisms.
