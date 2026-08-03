@@ -1,3 +1,4 @@
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Sentinel.App.Services;
 using System;
@@ -10,16 +11,28 @@ namespace Sentinel.App
     {
         private readonly WindowsStartupRegistrationService _startupService = new();
         private bool _loading;
+        private bool _initialLayoutApplied;
 
         public OptionsWindow()
         {
             InitializeComponent();
-            AppWindow.Resize(new SizeInt32(760, 680));
             Activated += OptionsWindow_Activated;
         }
 
         private void OptionsWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
+            if (!_initialLayoutApplied)
+            {
+                _initialLayoutApplied = true;
+                AppWindow.Resize(new SizeInt32(850, 700));
+
+                if (AppWindow.Presenter is OverlappedPresenter presenter)
+                {
+                    presenter.PreferredMinimumWidth = 850;
+                    presenter.PreferredMinimumHeight = 700;
+                }
+            }
+
             Activated -= OptionsWindow_Activated;
             LoadStartupState();
         }
