@@ -15,8 +15,13 @@ int pid = notepad.Id;
 Console.WriteLine($"Disposable test process started: notepad PID {pid}");
 
 ProcessContainmentService service = new();
-ProcessContainmentService.ProcessContainmentResult result = await service.ContainAsync("notepad");
 
+ProcessContainmentService.ProcessContainmentResult ambiguityResult = await service.ContainAsync("notepad");
+bool ambiguitySafe = Process.GetProcessesByName("notepad").Length <= 1 ||
+                     (!ambiguityResult.Succeeded && ambiguityResult.Title.Contains("ambiguous", StringComparison.OrdinalIgnoreCase));
+Console.WriteLine($"Name-only ambiguity safeguard: {ambiguitySafe}");
+
+ProcessContainmentService.ProcessContainmentResult result = await service.ContainAsync("notepad", pid);
 Console.WriteLine($"Attempted: {result.Attempted}");
 Console.WriteLine($"Succeeded: {result.Succeeded}");
 Console.WriteLine($"Title: {result.Title}");
@@ -36,12 +41,12 @@ catch (ArgumentException)
 Console.WriteLine($"Exact PID still running: {stillRunning}");
 
 ProcessContainmentService.ProcessContainmentResult protectedResult = await service.ContainAsync("explorer");
-Console.WriteLine($"Protected-process refusal: {!protectedResult.Succeeded && protectedResult.Title.Contains("blocked", StringComparison.OrdinalIgnoreCase)}");
+bool protectedRefusal = !protectedResult.Succeeded &&
+                        protectedResult.Title.Contains("blocked", StringComparison.OrdinalIgnoreCase);
+Console.WriteLine($"Protected-process refusal: {protectedRefusal}");
 Console.WriteLine($"Protected-process summary: {protectedResult.Summary}");
 
-bool pass = result.Succeeded && !stillRunning &&
-            !protectedResult.Succeeded &&
-            protectedResult.Title.Contains("blocked", StringComparison.OrdinalIgnoreCase);
+bool pass = ambiguitySafe && result.Succeeded && !stillRunning && protectedRefusal;
 
 Console.WriteLine();
 Console.WriteLine(pass ? "RESULT: PASS" : "RESULT: FAIL");
