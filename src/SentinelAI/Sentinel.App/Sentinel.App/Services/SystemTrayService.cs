@@ -65,10 +65,10 @@ namespace Sentinel.App.Services
         {
             try
             {
-                string shieldPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Shield.png");
-                if (File.Exists(shieldPath))
+                string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Shield.ico");
+                if (File.Exists(iconPath))
                 {
-                    return new BitmapImage(new Uri(shieldPath, UriKind.Absolute));
+                    return new BitmapImage(new Uri(iconPath, UriKind.Absolute));
                 }
             }
             catch
@@ -78,8 +78,8 @@ namespace Sentinel.App.Services
 
             return new GeneratedIconSource
             {
-                Text = "🛡︎",
-                FontSize = 38,
+                Text = "S",
+                FontSize = 34,
                 FontWeight = Microsoft.UI.Text.FontWeights.Bold,
                 Foreground = new SolidColorBrush(Colors.White),
                 Background = new SolidColorBrush(Colors.Crimson)
