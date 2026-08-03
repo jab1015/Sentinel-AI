@@ -1,5 +1,7 @@
 using Microsoft.UI.Xaml;
 using Sentinel.App.Services;
+using System;
+using Windows.ApplicationModel;
 
 namespace Sentinel.App
 {
@@ -23,6 +25,17 @@ namespace Sentinel.App
         private void LoadStartupState()
         {
             _loading = true;
+
+            if (!HasInstalledPackageIdentity())
+            {
+                StartWithWindowsToggle.IsOn = false;
+                StartWithWindowsToggle.IsEnabled = false;
+                StartupStatusText.Text = "This option is available in the installed Sentinel app. Visual Studio development runs do not have the package identity Windows needs for startup registration.";
+                _loading = false;
+                return;
+            }
+
+            StartWithWindowsToggle.IsEnabled = true;
             bool preferred = _startupService.GetUserStartupPreference();
             bool registered = _startupService.IsStartupRegistered();
             StartWithWindowsToggle.IsOn = preferred && registered;
@@ -36,7 +49,7 @@ namespace Sentinel.App
 
         private void StartWithWindowsToggle_Toggled(object sender, RoutedEventArgs e)
         {
-            if (_loading)
+            if (_loading || !StartWithWindowsToggle.IsEnabled)
                 return;
 
             WindowsStartupRegistrationService.StartupRegistrationResult result =
@@ -48,6 +61,18 @@ namespace Sentinel.App
             StartWithWindowsToggle.IsOn = _startupService.GetUserStartupPreference() &&
                                           _startupService.IsStartupRegistered();
             _loading = false;
+        }
+
+        private static bool HasInstalledPackageIdentity()
+        {
+            try
+            {
+                return !string.IsNullOrWhiteSpace(Package.Current.Id.FamilyName);
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
     }
 }
