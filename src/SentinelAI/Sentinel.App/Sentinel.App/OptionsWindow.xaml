@@ -15,7 +15,11 @@
 
         <Border Background="#2563EB"/>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Visible"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollMode="Enabled"
+                      Padding="0,0,8,0">
             <StackPanel Margin="34,30" Spacing="22" MaxWidth="610" HorizontalAlignment="Center">
                 <Border Background="#0B2545" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="28,20">
                     <StackPanel Orientation="Horizontal" Spacing="14">
@@ -83,17 +87,23 @@
                         </Border>
 
                         <Border Background="#0A2038" CornerRadius="10" Padding="16">
-                            <StackPanel Spacing="10">
+                            <StackPanel Spacing="12">
                                 <CheckBox x:Name="VerifyEveryChangeCheckBox"
-                                          Content="Verify every optimization after it runs"
                                           Checked="OptimizationSetting_Changed"
-                                          Unchecked="OptimizationSetting_Changed"
-                                          Foreground="White"/>
+                                          Unchecked="OptimizationSetting_Changed">
+                                    <TextBlock Text="Verify every optimization after it runs"
+                                               Foreground="#F3F4F6"
+                                               FontSize="14"
+                                               TextWrapping="Wrap"/>
+                                </CheckBox>
                                 <CheckBox x:Name="RollbackCheckBox"
-                                          Content="Roll back unsuccessful changes when possible"
                                           Checked="OptimizationSetting_Changed"
-                                          Unchecked="OptimizationSetting_Changed"
-                                          Foreground="White"/>
+                                          Unchecked="OptimizationSetting_Changed">
+                                    <TextBlock Text="Roll back unsuccessful changes when possible"
+                                               Foreground="#F3F4F6"
+                                               FontSize="14"
+                                               TextWrapping="Wrap"/>
+                                </CheckBox>
                             </StackPanel>
                         </Border>
 
