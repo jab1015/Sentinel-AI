@@ -30,9 +30,15 @@ namespace Sentinel.App.Services
             score += Math.Min(snapshot.CriticalEventCount * 12, 24);
             score += Math.Min(snapshot.ErrorEventCount * 2, 16);
 
+            bool hasCriticalEvent = snapshot.CriticalEventCount > 0;
             bool repeatedServiceFailure =
                 Contains(snapshot.LatestEventSource, "Service Control Manager") &&
                 Contains(snapshot.LatestEventMessage, "terminated unexpectedly");
+
+            if (hasCriticalEvent)
+            {
+                recommendation = "Review the latest critical event details before making changes. Sentinel will continue correlating the event with current system evidence and will recommend a targeted repair only when the cause is verified.";
+            }
 
             if (repeatedServiceFailure)
             {
@@ -97,15 +103,17 @@ namespace Sentinel.App.Services
                 ? "Multiple independent behaviors correlate into a high-confidence spyware-like concern that requires investigation."
                 : snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase)
                     ? "Multiple independent unusual behaviors overlap and should be investigated."
-                    : level switch
-                    {
-                        "High" => "Important security or reliability conditions need attention.",
-                        "Elevated" => "One or more conditions should be reviewed soon.",
-                        "Moderate" => "The computer is generally protected, with a few items worth reviewing.",
-                        _ => repeatedServiceFailure
-                            ? "Core protections are active, but a repeated Windows service failure should be reviewed."
-                            : "Core protections are active and no major warning conditions were detected."
-                    };
+                    : hasCriticalEvent
+                        ? "Windows reported a critical system event that requires review. Sentinel is correlating it with current system evidence before recommending any change."
+                        : level switch
+                        {
+                            "High" => "Important security or reliability conditions need attention.",
+                            "Elevated" => "One or more conditions should be reviewed soon.",
+                            "Moderate" => "The computer is generally protected, with a few items worth reviewing.",
+                            _ => repeatedServiceFailure
+                                ? "Core protections are active, but a repeated Windows service failure should be reviewed."
+                                : "Core protections are active and no major warning conditions were detected."
+                        };
 
             return new RiskAssessment(score, level, summary, recommendation);
         }
