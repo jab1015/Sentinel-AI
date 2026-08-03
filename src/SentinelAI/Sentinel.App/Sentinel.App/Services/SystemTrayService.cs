@@ -4,10 +4,8 @@
  */
 
 using H.NotifyIcon;
-using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using System;
 using System.Windows.Input;
 
@@ -48,15 +46,9 @@ namespace Sentinel.App.Services
             _trayIcon = new TaskbarIcon
             {
                 ToolTipText = "Sentinel AI — monitoring your computer",
-                IconSource = new GeneratedIconSource
+                IconSource = new BitmapIconSource
                 {
-                    // Use the Unicode text-presentation shield so the tray branding remains
-                    // deterministic and does not depend on a color emoji renderer or external file.
-                    Text = "🛡︎",
-                    FontSize = 38,
-                    FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                    Foreground = new SolidColorBrush(Colors.White),
-                    Background = new SolidColorBrush(Colors.Crimson)
+                    UriSource = new Uri("ms-appx:///Assets/Shield.png")
                 },
                 ContextFlyout = contextMenu,
                 ContextMenuMode = ContextMenuMode.SecondWindow,
