@@ -125,13 +125,25 @@ namespace Sentinel.App
 
             window.DispatcherQueue.TryEnqueue(() =>
             {
-                if (_optionsWindow is null)
+                try
                 {
-                    _optionsWindow = new OptionsWindow();
-                    _optionsWindow.AppWindow.Closing += (_, _) => _optionsWindow = null;
-                }
+                    if (_optionsWindow is null)
+                    {
+                        _optionsWindow = new OptionsWindow();
+                        _optionsWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(720, 440));
+                        _optionsWindow.AppWindow.Closing += (_, _) => _optionsWindow = null;
+                    }
 
-                _optionsWindow.Activate();
+                    _optionsWindow.AppWindow.Show();
+                    _optionsWindow.Activate();
+                    _ = _diagnosticLog.InformationAsync("Options", "Sentinel AI Options opened from the system tray.");
+                }
+                catch (Exception ex)
+                {
+                    _ = _diagnosticLog.ErrorAsync("OptionsOpenFailure", "Sentinel AI could not open Options.", ex);
+                    window.AppWindow.Show();
+                    window.Activate();
+                }
             });
         }
 
