@@ -7,25 +7,27 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Net;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Collects active TCP connection ownership evidence without changing the system.
-    /// Connections are treated as evidence only; the Investigation Engine decides
-    /// whether multiple signals justify notifying the user.
+    /// Collects current TCP and UDP endpoint ownership evidence for Sentinel's continuous
+    /// intrusion-monitoring pipeline. Collection is read-only; classification and response
+    /// remain separate so ordinary network activity is never treated as a threat by itself.
     /// </summary>
     public sealed class ActiveConnectionMonitor
     {
-        private const int NetstatTimeoutMilliseconds = 2500;
+        private const int NetstatTimeoutMilliseconds = 3000;
 
         public ActiveConnectionSnapshot GetSnapshot()
         {
             List<ConnectionFinding> findings = new();
             int establishedCount = 0;
             int externalCount = 0;
+            int listeningTcpCount = 0;
+            int udpEndpointCount = 0;
+            int attributedCount = 0;
 
             try
             {
@@ -34,7 +36,7 @@ namespace Sentinel.App.Services
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "netstat.exe",
-                        Arguments = "-ano -p tcp",
+                        Arguments = "-ano",
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -56,43 +58,57 @@ namespace Sentinel.App.Services
                     return ActiveConnectionSnapshot.Unavailable;
                 }
 
-                string[] lines = output.Split(
-                    new[] { "\r\n", "\n" },
-                    StringSplitOptions.RemoveEmptyEntries);
-
+                string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string line in lines)
                 {
-                    string[] columns = line.Split(
-                        (char[]?)null,
-                        StringSplitOptions.RemoveEmptyEntries);
-
-                    if (columns.Length < 5 ||
-                        !columns[0].Equals("TCP", StringComparison.OrdinalIgnoreCase) ||
-                        !columns[3].Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
+                    string[] columns = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                    if (columns.Length < 4)
                     {
                         continue;
                     }
 
-                    establishedCount++;
-
-                    if (!TryParseEndpoint(columns[2], out IPAddress? remoteAddress, out int remotePort) ||
-                        remoteAddress is null || IsLocalOrPrivate(remoteAddress))
+                    if (columns[0].Equals("TCP", StringComparison.OrdinalIgnoreCase))
                     {
-                        continue;
+                        if (columns.Length < 5 || !int.TryParse(columns[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int pid))
+                        {
+                            continue;
+                        }
+
+                        string state = columns[3];
+                        if (state.Equals("LISTENING", StringComparison.OrdinalIgnoreCase))
+                        {
+                            listeningTcpCount++;
+                            continue;
+                        }
+
+                        if (!state.Equals("ESTABLISHED", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        establishedCount++;
+                        if (!TryParseEndpoint(columns[2], out IPAddress? remoteAddress, out int remotePort) || remoteAddress is null || IsLocalOrPrivate(remoteAddress))
+                        {
+                            continue;
+                        }
+
+                        externalCount++;
+                        ProcessIdentity identity = GetProcessIdentity(pid);
+                        if (!identity.ProcessName.Equals("Unknown process", StringComparison.OrdinalIgnoreCase))
+                        {
+                            attributedCount++;
+                        }
+
+                        ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort);
+                        if (finding is not null)
+                        {
+                            findings.Add(finding);
+                        }
                     }
-
-                    externalCount++;
-
-                    if (!int.TryParse(columns[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int processId))
+                    else if (columns[0].Equals("UDP", StringComparison.OrdinalIgnoreCase))
                     {
-                        continue;
-                    }
-
-                    ProcessIdentity identity = GetProcessIdentity(processId);
-                    ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort);
-                    if (finding is not null)
-                    {
-                        findings.Add(finding);
+                        // netstat reports UDP local endpoint and PID; UDP has no connection state.
+                        udpEndpointCount++;
                     }
                 }
             }
@@ -108,19 +124,19 @@ namespace Sentinel.App.Services
                 findings.Count,
                 primary?.ProcessName ?? "None",
                 primary?.RemoteEndpoint ?? "None",
-                primary?.Reason ?? "No unusual active TCP connections were detected.");
+                primary?.Reason ?? "No unusual active TCP connections were detected.",
+                listeningTcpCount,
+                udpEndpointCount,
+                attributedCount,
+                true);
         }
 
-        private static ConnectionFinding? Assess(
-            ProcessIdentity identity,
-            IPAddress remoteAddress,
-            int remotePort)
+        private static ConnectionFinding? Assess(ProcessIdentity identity, IPAddress remoteAddress, int remotePort)
         {
             bool uncommonRemotePort = remotePort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
-            bool systemProcess =
-                identity.ProcessName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
-                identity.ProcessName.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
-                identity.ProcessName.Equals("services", StringComparison.OrdinalIgnoreCase);
+            bool systemProcess = identity.ProcessName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
+                                 identity.ProcessName.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
+                                 identity.ProcessName.Equals("services", StringComparison.OrdinalIgnoreCase);
 
             if (!uncommonRemotePort || systemProcess)
             {
@@ -138,44 +154,28 @@ namespace Sentinel.App.Services
                 $"{identity.ProcessName} (PID {identity.ProcessId}) owns an established connection to {endpoint} on uncommon remote port {remotePort}. {executableContext} This is attribution evidence only; Sentinel requires correlation before recommending or blocking network activity.");
         }
 
-        private static bool TryParseEndpoint(
-            string value,
-            out IPAddress? address,
-            out int port)
+        private static bool TryParseEndpoint(string value, out IPAddress? address, out int port)
         {
             address = null;
             port = 0;
-
             int separator = value.LastIndexOf(':');
-            if (separator <= 0 || separator >= value.Length - 1)
-            {
-                return false;
-            }
-
+            if (separator <= 0 || separator >= value.Length - 1) return false;
             string addressText = value[..separator].Trim('[', ']');
             string portText = value[(separator + 1)..];
-
-            return IPAddress.TryParse(addressText, out address) &&
-                   int.TryParse(portText, NumberStyles.Integer, CultureInfo.InvariantCulture, out port);
+            return IPAddress.TryParse(addressText, out address) && int.TryParse(portText, NumberStyles.Integer, CultureInfo.InvariantCulture, out port);
         }
 
         private static bool IsLocalOrPrivate(IPAddress address)
         {
-            if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
-            {
-                return true;
-            }
-
+            if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)) return true;
             byte[] bytes = address.GetAddressBytes();
             if (bytes.Length == 4)
             {
-                return bytes[0] == 10 ||
-                       bytes[0] == 127 ||
+                return bytes[0] == 10 || bytes[0] == 127 ||
                        (bytes[0] == 169 && bytes[1] == 254) ||
                        (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
                        (bytes[0] == 192 && bytes[1] == 168);
             }
-
             return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal;
         }
 
@@ -185,21 +185,11 @@ namespace Sentinel.App.Services
             {
                 using Process process = Process.GetProcessById(processId);
                 string path;
-                try
-                {
-                    path = process.MainModule?.FileName ?? string.Empty;
-                }
-                catch
-                {
-                    path = string.Empty;
-                }
-
+                try { path = process.MainModule?.FileName ?? string.Empty; }
+                catch { path = string.Empty; }
                 return new ProcessIdentity(processId, process.ProcessName, path);
             }
-            catch
-            {
-                return new ProcessIdentity(processId, "Unknown process", string.Empty);
-            }
+            catch { return new ProcessIdentity(processId, "Unknown process", string.Empty); }
         }
 
         private static void TryTerminate(Process process)
@@ -212,10 +202,7 @@ namespace Sentinel.App.Services
                     process.WaitForExit(500);
                 }
             }
-            catch
-            {
-                // Evidence collection failure must never interrupt monitoring.
-            }
+            catch { }
         }
 
         private static string ShortenPath(string path)
@@ -226,11 +213,7 @@ namespace Sentinel.App.Services
         }
 
         private sealed record ProcessIdentity(int ProcessId, string ProcessName, string ExecutablePath);
-
-        private sealed record ConnectionFinding(
-            string ProcessName,
-            string RemoteEndpoint,
-            string Reason);
+        private sealed record ConnectionFinding(string ProcessName, string RemoteEndpoint, string Reason);
 
         public sealed record ActiveConnectionSnapshot(
             int EstablishedConnectionCount,
@@ -238,10 +221,14 @@ namespace Sentinel.App.Services
             int ReviewConnectionCount,
             string PrimaryProcessName,
             string PrimaryRemoteEndpoint,
-            string PrimaryReason)
+            string PrimaryReason,
+            int ListeningTcpEndpointCount = 0,
+            int UdpEndpointCount = 0,
+            int AttributedExternalConnectionCount = 0,
+            bool CollectionAvailable = false)
         {
             public static ActiveConnectionSnapshot Unavailable { get; } =
-                new(0, 0, 0, "Unavailable", "Unavailable", "Active connection evidence could not be collected.");
+                new(0, 0, 0, "Unavailable", "Unavailable", "Active connection evidence could not be collected.", 0, 0, 0, false);
         }
     }
 }
