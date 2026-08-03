@@ -13,12 +13,17 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Collects current TCP and UDP endpoint ownership evidence for Sentinel's continuous
-    /// intrusion-monitoring pipeline. Collection is read-only; classification and response
-    /// remain separate so ordinary network activity is never treated as a threat by itself.
+    /// intrusion-monitoring pipeline and retains a bounded in-memory observation history so
+    /// short-lived or repeating external connections can be correlated across refresh cycles.
+    /// Collection is read-only; classification and response remain separate so ordinary
+    /// network activity is never treated as a threat by itself.
     /// </summary>
     public sealed class ActiveConnectionMonitor
     {
         private const int NetstatTimeoutMilliseconds = 3000;
+        private const int MaximumHistoryEntries = 2000;
+        private static readonly TimeSpan HistoryRetention = TimeSpan.FromMinutes(10);
+        private readonly Dictionary<ConnectionHistoryKey, ConnectionHistoryEntry> _history = new();
 
         public ActiveConnectionSnapshot GetSnapshot()
         {
@@ -32,6 +37,7 @@ namespace Sentinel.App.Services
             int attributedUdpCount = 0;
             int inboundExternalCount = 0;
             int outboundExternalCount = 0;
+            DateTimeOffset observedAt = DateTimeOffset.UtcNow;
 
             try
             {
@@ -40,6 +46,8 @@ namespace Sentinel.App.Services
                 {
                     return ActiveConnectionSnapshot.Unavailable;
                 }
+
+                PruneHistory(observedAt);
 
                 // First pass: record listening sockets so established connections can be
                 // direction-classified without guessing from port numbers alone.
@@ -97,6 +105,8 @@ namespace Sentinel.App.Services
                             attributedExternalCount++;
                         }
 
+                        RecordObservation(identity, remoteAddress, remotePort, inbound, observedAt);
+
                         ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort, inbound);
                         if (finding is not null)
                         {
@@ -124,6 +134,20 @@ namespace Sentinel.App.Services
                 return ActiveConnectionSnapshot.Unavailable;
             }
 
+            int recentUniqueExternalConnections = 0;
+            int repeatingExternalConnections = 0;
+            foreach (ConnectionHistoryEntry entry in _history.Values)
+            {
+                if (observedAt - entry.LastSeen <= HistoryRetention)
+                {
+                    recentUniqueExternalConnections++;
+                    if (entry.ObservationCount >= 3)
+                    {
+                        repeatingExternalConnections++;
+                    }
+                }
+            }
+
             ConnectionFinding? primary = findings.Count > 0 ? findings[0] : null;
             return new ActiveConnectionSnapshot(
                 establishedCount,
@@ -138,7 +162,79 @@ namespace Sentinel.App.Services
                 true,
                 inboundExternalCount,
                 outboundExternalCount,
-                attributedUdpCount);
+                attributedUdpCount,
+                recentUniqueExternalConnections,
+                repeatingExternalConnections);
+        }
+
+        private void RecordObservation(
+            ProcessIdentity identity,
+            IPAddress remoteAddress,
+            int remotePort,
+            bool inbound,
+            DateTimeOffset observedAt)
+        {
+            ConnectionHistoryKey key = new(identity.ProcessId, remoteAddress.ToString(), remotePort, inbound);
+            if (_history.TryGetValue(key, out ConnectionHistoryEntry? existing))
+            {
+                existing.LastSeen = observedAt;
+                existing.ObservationCount++;
+                existing.ProcessName = identity.ProcessName;
+                existing.ExecutablePath = identity.ExecutablePath;
+                return;
+            }
+
+            if (_history.Count >= MaximumHistoryEntries)
+            {
+                RemoveOldestHistoryEntry();
+            }
+
+            _history[key] = new ConnectionHistoryEntry
+            {
+                FirstSeen = observedAt,
+                LastSeen = observedAt,
+                ObservationCount = 1,
+                ProcessName = identity.ProcessName,
+                ExecutablePath = identity.ExecutablePath
+            };
+        }
+
+        private void PruneHistory(DateTimeOffset now)
+        {
+            List<ConnectionHistoryKey>? staleKeys = null;
+            foreach ((ConnectionHistoryKey key, ConnectionHistoryEntry entry) in _history)
+            {
+                if (now - entry.LastSeen <= HistoryRetention)
+                {
+                    continue;
+                }
+
+                staleKeys ??= new List<ConnectionHistoryKey>();
+                staleKeys.Add(key);
+            }
+
+            if (staleKeys is null) return;
+            foreach (ConnectionHistoryKey key in staleKeys)
+            {
+                _history.Remove(key);
+            }
+        }
+
+        private void RemoveOldestHistoryEntry()
+        {
+            ConnectionHistoryKey? oldestKey = null;
+            DateTimeOffset oldestSeen = DateTimeOffset.MaxValue;
+            foreach ((ConnectionHistoryKey key, ConnectionHistoryEntry entry) in _history)
+            {
+                if (entry.LastSeen >= oldestSeen) continue;
+                oldestSeen = entry.LastSeen;
+                oldestKey = key;
+            }
+
+            if (oldestKey is not null)
+            {
+                _history.Remove(oldestKey);
+            }
         }
 
         private static string[] ReadNetstatLines()
@@ -186,7 +282,6 @@ namespace Sentinel.App.Services
                 return true;
             }
 
-            // A wildcard listener (0.0.0.0 / ::) can accept a connection on any local address.
             return listeningSockets.Contains(new LocalSocketKey(IPAddress.Any, localPort, processId)) ||
                    listeningSockets.Contains(new LocalSocketKey(IPAddress.IPv6Any, localPort, processId));
         }
@@ -269,8 +364,7 @@ namespace Sentinel.App.Services
                 }
             }
             catch { }
-        }
-
+       n
         private static string ShortenPath(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return string.Empty;
@@ -281,6 +375,16 @@ namespace Sentinel.App.Services
         private sealed record ProcessIdentity(int ProcessId, string ProcessName, string ExecutablePath);
         private sealed record ConnectionFinding(string ProcessName, string RemoteEndpoint, string Reason);
         private sealed record LocalSocketKey(IPAddress Address, int Port, int ProcessId);
+        private sealed record ConnectionHistoryKey(int ProcessId, string RemoteAddress, int RemotePort, bool Inbound);
+
+        private sealed class ConnectionHistoryEntry
+        {
+            public DateTimeOffset FirstSeen { get; set; }
+            public DateTimeOffset LastSeen { get; set; }
+            public int ObservationCount { get; set; }
+            public string ProcessName { get; set; } = "Unknown process";
+            public string ExecutablePath { get; set; } = string.Empty;
+        }
 
         public sealed record ActiveConnectionSnapshot(
             int EstablishedConnectionCount,
@@ -295,10 +399,12 @@ namespace Sentinel.App.Services
             bool CollectionAvailable = false,
             int InboundExternalConnectionCount = 0,
             int OutboundExternalConnectionCount = 0,
-            int AttributedUdpEndpointCount = 0)
+            int AttributedUdpEndpointCount = 0,
+            int RecentUniqueExternalConnectionCount = 0,
+            int RepeatingExternalConnectionCount = 0)
         {
             public static ActiveConnectionSnapshot Unavailable { get; } =
-                new(0, 0, 0, "Unavailable", "Unavailable", "Active connection evidence could not be collected.", 0, 0, 0, false, 0, 0, 0);
+                new(0, 0, 0, "Unavailable", "Unavailable", "Active connection evidence could not be collected.", 0, 0, 0, false, 0, 0, 0, 0, 0);
         }
     }
 }
