@@ -10,7 +10,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
-using System.IO;
 using System.Windows.Input;
 
 namespace Sentinel.App.Services
@@ -65,25 +64,20 @@ namespace Sentinel.App.Services
         {
             try
             {
-                string iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Shield.ico");
-                if (File.Exists(iconPath))
-                {
-                    return new BitmapImage(new Uri(iconPath, UriKind.Absolute));
-                }
+                return new BitmapImage(new Uri("ms-appx:///Assets/Shield.ico"));
             }
             catch
             {
                 // Branding must never prevent Sentinel from starting.
+                return new GeneratedIconSource
+                {
+                    Text = "S",
+                    FontSize = 34,
+                    FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Colors.White),
+                    Background = new SolidColorBrush(Colors.Crimson)
+                };
             }
-
-            return new GeneratedIconSource
-            {
-                Text = "S",
-                FontSize = 34,
-                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
-                Foreground = new SolidColorBrush(Colors.White),
-                Background = new SolidColorBrush(Colors.Crimson)
-            };
         }
 
         public void Dispose()
