@@ -7,7 +7,7 @@
 
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
 
-    <Grid Background="#07111F">
+    <Grid Background="#071426">
         <Grid.RowDefinitions>
             <RowDefinition Height="8"/>
             <RowDefinition Height="*"/>
@@ -15,35 +15,43 @@
 
         <Border Background="#2563EB"/>
 
-        <Grid Grid.Row="1" Padding="30">
-            <StackPanel Spacing="22" MaxWidth="620" HorizontalAlignment="Center">
-                <Border Background="#0B1E33" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="14" Padding="20">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="34,30" Spacing="22" MaxWidth="610" HorizontalAlignment="Center">
+                <Border Background="#0B2545" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="28,20">
+                    <StackPanel Orientation="Horizontal" Spacing="14">
                         <Image Source="Assets/Shield.png" Width="34" Height="34"/>
                         <StackPanel>
-                            <TextBlock Text="Sentinel AI Options" FontSize="26" FontWeight="SemiBold" Foreground="White"/>
-                            <TextBlock Text="Control how Sentinel starts and runs on this computer." FontSize="14" Foreground="#AFCBEE"/>
+                            <TextBlock Text="Sentinel AI Options" FontSize="27" FontWeight="SemiBold" Foreground="White"/>
+                            <TextBlock Text="Control how Sentinel starts and runs on this computer." FontSize="14" Foreground="#BFDBFE"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
 
-                <Border Background="#102A46" BorderBrush="#2F6FAF" BorderThickness="1" CornerRadius="14" Padding="24">
-                    <StackPanel Spacing="14">
-                        <TextBlock Text="Startup" FontSize="22" FontWeight="SemiBold" Foreground="White"/>
-                        <TextBlock Text="Sentinel is added to startup by default so protection begins when you sign in. You can turn this off and restore it later." Foreground="#D8E8F8" TextWrapping="Wrap"/>
-                        <ToggleSwitch x:Name="StartWithWindowsToggle"
-                                      Header="Start Sentinel when I sign in"
-                                      Foreground="White"
-                                      Toggled="StartWithWindowsToggle_Toggled"
-                                      AutomationProperties.Name="Start Sentinel when I sign in"/>
-                        <Border Background="#0A1A2C" CornerRadius="8" Padding="12">
-                            <TextBlock x:Name="StartupStatusText" Foreground="#9CC8F2" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="Startup" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Sentinel is added to startup by default so protection begins when you sign in. You can turn this off and restore it later." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Start Sentinel when I sign in" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                                <ToggleSwitch x:Name="StartWithWindowsToggle"
+                                              OnContent="On"
+                                              OffContent="Off"
+                                              Toggled="StartWithWindowsToggle_Toggled"
+                                              Foreground="White"
+                                              AutomationProperties.Name="Start Sentinel when I sign in"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="14">
+                            <TextBlock x:Name="StartupStatusText" Foreground="#BFDBFE" FontSize="14" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         </Border>
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="Changes take effect immediately and are preserved during Sentinel updates." Foreground="#8FB7DD" TextWrapping="Wrap"/>
+                <TextBlock Text="Changes take effect immediately and are preserved during Sentinel updates." Foreground="#93C5FD" FontSize="14" TextWrapping="Wrap"/>
             </StackPanel>
-        </Grid>
+        </ScrollViewer>
     </Grid>
 </Window>
