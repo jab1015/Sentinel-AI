@@ -36,6 +36,7 @@ namespace Sentinel.App.Services
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
         private readonly ConnectionIntelligenceEngine _connectionIntelligenceEngine = new();
+        private readonly SpywareCorrelationEngine _spywareCorrelationEngine = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
         private readonly GuidanceEngine _guidanceEngine = new();
         private readonly InvestigationEngine _investigationEngine = new();
@@ -103,6 +104,14 @@ namespace Sentinel.App.Services
             snapshot.ConnectionIntelligenceTitle = connectionIntelligence.Title;
             snapshot.ConnectionIntelligenceSummary = connectionIntelligence.Summary;
             snapshot.ConnectionIntelligenceReasonCode = connectionIntelligence.ReasonCode;
+
+            SpywareCorrelationEngine.SpywareCorrelationResult spyware = _spywareCorrelationEngine.Analyze(snapshot);
+            snapshot.SpywareCorrelationState = spyware.State.ToString();
+            snapshot.SpywareCorrelationConfidenceScore = spyware.ConfidenceScore;
+            snapshot.SpywareCorrelationHasCorroboratingEvidence = spyware.HasCorroboratingEvidence;
+            snapshot.SpywareCorrelationTitle = spyware.Title;
+            snapshot.SpywareCorrelationSummary = spyware.Summary;
+            snapshot.SpywareCorrelationReasonCode = spyware.ReasonCode;
 
             SuppressNonActionableStorageSpacesSmp(snapshot); SuppressTransientWindowsUpdateFileInUse(snapshot);
             RiskAssessmentEngine.RiskAssessment assessment = _riskAssessmentEngine.Assess(snapshot); snapshot.RiskScore = assessment.Score; snapshot.RiskLevel = assessment.Level; snapshot.RiskSummary = assessment.Summary; snapshot.Recommendation = assessment.Recommendation;
