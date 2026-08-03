@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Sentinel.App.Services;
 using System;
 using Windows.ApplicationModel;
+using Windows.Graphics;
 
 namespace Sentinel.App
 {
@@ -13,6 +14,7 @@ namespace Sentinel.App
         public OptionsWindow()
         {
             InitializeComponent();
+            AppWindow.Resize(new SizeInt32(760, 680));
             Activated += OptionsWindow_Activated;
         }
 
