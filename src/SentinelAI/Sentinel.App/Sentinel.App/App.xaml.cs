@@ -6,9 +6,6 @@ using System.Diagnostics;
 
 namespace Sentinel.App
 {
-    /// <summary>
-    /// Provides application-specific behavior to supplement the default Application class.
-    /// </summary>
     public partial class App : Application
     {
         private readonly DiagnosticLogService _diagnosticLog = new();
@@ -17,18 +14,12 @@ namespace Sentinel.App
         private SystemTrayService? _systemTrayService;
         private bool _isExplicitExit;
 
-        /// <summary>
-        /// Initializes the singleton application object.
-        /// </summary>
         public App()
         {
             InitializeComponent();
             UnhandledException += App_UnhandledException;
         }
 
-        /// <summary>
-        /// Invoked when the application is launched.
-        /// </summary>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             Stopwatch startupTimer = Stopwatch.StartNew();
@@ -36,15 +27,13 @@ namespace Sentinel.App
 
             try
             {
-                bool startupRegistered = _startupRegistrationService.EnsureRegistered();
-                _ = _diagnosticLog.InformationAsync(
-                    "WindowsStartup",
-                    startupRegistered
-                        ? "Sentinel AI is registered to start when the current user signs in to Windows."
-                        : "Windows startup registration was not available in the current execution context.");
+                WindowsStartupRegistrationService.StartupRegistrationResult startup =
+                    _startupRegistrationService.EnsureRegisteredAndVerify();
 
-                // Keep disk diagnostics and development-only verification off the critical
-                // path that creates and activates the first visible window.
+                _ = startup.Registered
+                    ? _diagnosticLog.InformationAsync("WindowsStartup", startup.Summary)
+                    : _diagnosticLog.WarningAsync("WindowsStartup", startup.Summary);
+
                 _window = new MainWindow();
                 _window.AppWindow.Closing += MainAppWindow_Closing;
                 _systemTrayService = new SystemTrayService(ShowMainWindow, ExitApplication);
@@ -75,14 +64,8 @@ namespace Sentinel.App
 
         private void MainAppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
         {
-            if (_isExplicitExit)
-            {
-                return;
-            }
+            if (_isExplicitExit) return;
 
-            // Closing the dashboard hides it instead of stopping Sentinel. Monitoring continues
-            // on the existing MainWindow timer while the application remains available in the
-            // Windows notification area.
             args.Cancel = true;
             sender.Hide();
             _ = _diagnosticLog.InformationAsync(
@@ -93,10 +76,7 @@ namespace Sentinel.App
         private void ShowMainWindow()
         {
             Window? window = _window;
-            if (window is null)
-            {
-                return;
-            }
+            if (window is null) return;
 
             window.DispatcherQueue.TryEnqueue(() =>
             {
