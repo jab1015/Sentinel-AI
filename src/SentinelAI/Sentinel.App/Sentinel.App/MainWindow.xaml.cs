@@ -17,6 +17,7 @@ namespace Sentinel.App
         private readonly RemediationApprovalCoordinator _approvalCoordinator = new();
         private readonly ApprovedServiceRestartCoordinator _approvedServiceRestartCoordinator = new();
         private readonly InvestigationHistoryService _investigationHistoryService = new();
+        private readonly AutomaticOptimizationCoordinator _automaticOptimizationCoordinator = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private bool _wasAttentionActive;
@@ -205,6 +206,11 @@ namespace Sentinel.App
                 RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0";
                 RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
+
+                // Automatic optimization is intentionally silent unless the user
+                // needs to act. The coordinator performs its own evidence, safety,
+                // verification, and execution gating and rate-limits changes.
+                _ = _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
             }
             finally { _isRefreshing = false; }
         }
