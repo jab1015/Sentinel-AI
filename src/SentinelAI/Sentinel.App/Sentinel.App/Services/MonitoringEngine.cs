@@ -35,6 +35,7 @@ namespace Sentinel.App.Services
         private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
+        private readonly ConnectionIntelligenceEngine _connectionIntelligenceEngine = new();
         private readonly RiskAssessmentEngine _riskAssessmentEngine = new();
         private readonly GuidanceEngine _guidanceEngine = new();
         private readonly InvestigationEngine _investigationEngine = new();
@@ -94,6 +95,14 @@ namespace Sentinel.App.Services
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled", FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled", DefenderStatus = _securitySnapshot.DefenderStatus, FirewallStatus = _securitySnapshot.FirewallStatus,
                 CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage
             };
+
+            ConnectionIntelligenceEngine.ConnectionIntelligenceResult connectionIntelligence = _connectionIntelligenceEngine.Analyze(snapshot);
+            snapshot.ConnectionIntelligenceState = connectionIntelligence.State.ToString();
+            snapshot.ConnectionIntelligenceConfidenceScore = connectionIntelligence.ConfidenceScore;
+            snapshot.ConnectionIntelligenceHasCorroboratingEvidence = connectionIntelligence.HasCorroboratingEvidence;
+            snapshot.ConnectionIntelligenceTitle = connectionIntelligence.Title;
+            snapshot.ConnectionIntelligenceSummary = connectionIntelligence.Summary;
+            snapshot.ConnectionIntelligenceReasonCode = connectionIntelligence.ReasonCode;
 
             SuppressNonActionableStorageSpacesSmp(snapshot); SuppressTransientWindowsUpdateFileInUse(snapshot);
             RiskAssessmentEngine.RiskAssessment assessment = _riskAssessmentEngine.Assess(snapshot); snapshot.RiskScore = assessment.Score; snapshot.RiskLevel = assessment.Level; snapshot.RiskSummary = assessment.Summary; snapshot.Recommendation = assessment.Recommendation;
