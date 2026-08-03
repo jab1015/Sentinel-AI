@@ -12,6 +12,7 @@ namespace Sentinel.App
         private readonly DiagnosticLogService _diagnosticLog = new();
         private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
         private Window? _window;
+        private OptionsWindow? _optionsWindow;
         private SystemTrayService? _systemTrayService;
         private bool _isExplicitExit;
 
@@ -42,7 +43,7 @@ namespace Sentinel.App
 
                 _window = new MainWindow();
                 _window.AppWindow.Closing += MainAppWindow_Closing;
-                _systemTrayService = new SystemTrayService(ShowMainWindow, ExitApplication);
+                _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);
 
                 if (launchedByWindowsStartup)
                 {
@@ -90,8 +91,6 @@ namespace Sentinel.App
             }
             catch (Exception)
             {
-                // Interactive/unpackaged development launches must remain usable even
-                // if rich activation metadata is unavailable in the current host.
                 return false;
             }
         }
@@ -119,6 +118,23 @@ namespace Sentinel.App
             });
         }
 
+        private void ShowOptionsWindow()
+        {
+            Window? window = _window;
+            if (window is null) return;
+
+            window.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_optionsWindow is null)
+                {
+                    _optionsWindow = new OptionsWindow();
+                    _optionsWindow.AppWindow.Closing += (_, _) => _optionsWindow = null;
+                }
+
+                _optionsWindow.Activate();
+            });
+        }
+
         private void ExitApplication()
         {
             Window? window = _window;
@@ -133,6 +149,8 @@ namespace Sentinel.App
             window.DispatcherQueue.TryEnqueue(() =>
             {
                 _isExplicitExit = true;
+                _optionsWindow?.Close();
+                _optionsWindow = null;
                 _systemTrayService?.Dispose();
                 _systemTrayService = null;
                 window.Close();
