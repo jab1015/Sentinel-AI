@@ -61,6 +61,8 @@ namespace Sentinel.App.Services
 
             foreach (NetworkInterface adapter in active)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 try
                 {
                     var gateway = adapter.GetIPProperties().GatewayAddresses
@@ -72,13 +74,23 @@ namespace Sentinel.App.Services
 
                     gatewayAddress = gateway.ToString();
                     using Ping ping = new();
-                    PingReply reply = await ping.SendPingAsync(gateway, TimeSpan.FromSeconds(2), cancellationToken)
+
+                    // Use the broadly supported timeout overload so this remains
+                    // compatible with the Windows 10 target framework surface.
+                    PingReply reply = await ping.SendPingAsync(gateway, 2000)
                         .ConfigureAwait(false);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     if (reply.Status == IPStatus.Success)
                     {
                         gatewayReachable = true;
                         break;
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch
                 {
