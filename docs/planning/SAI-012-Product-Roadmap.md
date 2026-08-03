@@ -1,13 +1,17 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 3.0  
-**Status:** Planned Implementation Complete  
+**Version:** 4.0  
+**Status:** Active Development  
 **Last Updated:** 2026-08-02  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-**Planned product implementation: 100%.**
+Phases 1–7 are complete. Product scope is explicitly reopened because clean-machine testing confirmed that the original Sentinel product goal requires continuous intrusion and spyware-oriented protection that is not yet fully implemented.
+
+**Current active phase: Phase 8 — Continuous Intrusion & Spyware Protection.**
+
+No new installer will be treated as release-ready until Phase 8 and Windows automatic-start verification are complete.
 
 ## Completed Major Foundations
 
@@ -15,42 +19,34 @@
 - Phase 6 Ask Sentinel / AI Assistance — 6 of 6 complete
 - Phase 7 Production Hardening & Commercial Release — 12 of 12 complete
 - Structured production diagnostic logging
-- Fresh-clone and release-configuration verification
-- Automated development regression safety coverage
-- Startup performance profiling and launch-path optimization
-- One-hour and eight-hour stability testing
-- Windows compatibility verification
-- Installer/uninstaller release configuration
-- Code-signing and application-update release boundaries
-- Accessibility and UX review
-- Privacy, user, and troubleshooting documentation
-- Final release acceptance verification
+- Investigation and safe-remediation foundations
+- System tray/background operation foundation
+- Installer/uninstaller packaging foundation
+- Stability and compatibility verification foundation
 
-## Phase 7 — Production Hardening & Commercial Release
+## Phase 8 — Continuous Intrusion & Spyware Protection
 
-**Status: Complete — 12 of 12 complete**
+**Status: Active — 0 of 8 complete**
 
-1. [x] Structured logging and diagnostics foundation.
-2. [x] Fresh-clone and release-configuration verification foundation.
-3. [x] Automated regression coverage.
-4. [x] Performance profiling and optimization.
-5. [x] One-hour and eight-hour stability testing.
-6. [x] Windows 10 and Windows 11 compatibility verification.
-7. [x] Installer/uninstaller.
-8. [x] Code signing release boundary.
-9. [x] Application updates release boundary.
-10. [x] Accessibility and UX review.
-11. [x] Privacy, user, and troubleshooting documentation.
-12. [x] Release acceptance testing.
+1. [ ] Continuous network connection monitor for inbound/outbound TCP and relevant UDP activity, including process ownership and endpoint evidence.
+2. [ ] Connection intelligence and anomaly classification that distinguishes ordinary traffic from meaningful intrusion indicators without alarming users about unfamiliar traffic alone.
+3. [ ] Spyware/process behavior correlation using executable path, publisher/signature evidence, persistence, background behavior, process relationships, network behavior, and available Windows security evidence.
+4. [ ] Safe response and containment integration using supported Windows Firewall/Defender mechanisms where evidence and policy permit; actions must be verified, logged, explainable, and preferably reversible.
+5. [ ] Plain-English protection UX: only meaningful findings are surfaced; Sentinel states what happened, what Sentinel did, whether risk remains, and exactly what the user must do when assistance is required.
+6. [ ] Reliable Windows sign-in startup, single-instance behavior, tray persistence, and continuous monitoring through normal window close, reboot, sleep/wake, and network reconnection.
+7. [ ] Protection-health/self-monitoring so Sentinel can verify that its network monitor and required Windows protection layers are operating and can clearly report degraded protection.
+8. [ ] Intrusion-protection acceptance testing covering benign traffic, suspicious simulations, listeners, unsigned/unknown test processes, VPN/VM scenarios, network loss/recovery, sleep/wake, reboot/startup, false positives, resource use, and long-duration operation.
 
-## Current Release Operations
+## Product Acceptance Target
 
-Planned implementation is complete. The next operational step for installation on independent computers is to generate the Release | x64 Windows package from the packaging project and apply an approved trusted production signing identity before public distribution. Installation and uninstall instructions are defined in SAI-028; signing requirements are defined in SAI-029.
+Sentinel must run continuously with Windows, monitor meaningful incoming and outgoing network activity, correlate connections to responsible processes, investigate suspicious intrusion/spyware indicators, take safe verified action when permitted, and disturb the user only when a meaningful security condition exists or user assistance is required.
 
-## Progress Baseline
+Sentinel may use Microsoft Defender and Windows Firewall as trusted protection/enforcement layers; Sentinel is responsible for the intelligence, correlation, investigation, orchestration, verification, and user-facing explanation. Sentinel must not claim that every intrusion or spyware program can be detected.
 
-**100% is the completed planned-implementation baseline as of 2026-08-02.** Release operations, distribution, maintenance, and post-release work are tracked without reducing this completed baseline unless planned scope is explicitly reopened.
+## Release Gate
+
+Do not create or approve another production installer merely because packaging succeeds. Release packaging resumes only after Phase 8 is complete and clean-machine verification demonstrates continuous protection and automatic Windows startup.
 
 ## Product Rule
 
-Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, preserve fail-safe safety behavior through automated regression checks, and keep release performance measurable without delaying the user's first visible experience.
+Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, keep Ask Sentinel grounded in verified evidence, continuously protect while running in the background, and clearly distinguish verified threats from ordinary Windows/network activity.
