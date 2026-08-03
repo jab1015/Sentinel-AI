@@ -33,20 +33,19 @@ namespace Sentinel.App.Services
             MenuFlyoutItem openItem = new()
             {
                 Text = "Open Sentinel AI",
-                Width = 180
+                Width = 180,
+                Command = new RelayCommand(showApplication)
             };
             MenuFlyoutItem optionsItem = new()
             {
-                Text = "Options"
+                Text = "Options",
+                Command = new RelayCommand(showOptions)
             };
             MenuFlyoutItem exitItem = new()
             {
-                Text = "Exit Sentinel AI"
+                Text = "Exit Sentinel AI",
+                Command = new RelayCommand(exitApplication)
             };
-
-            openItem.Click += (_, _) => showApplication();
-            optionsItem.Click += (_, _) => showOptions();
-            exitItem.Click += (_, _) => exitApplication();
 
             contextMenu.Items.Add(openItem);
             contextMenu.Items.Add(optionsItem);
