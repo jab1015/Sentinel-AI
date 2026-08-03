@@ -50,7 +50,60 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="Changes take effect immediately and are preserved during Sentinel updates." Foreground="#93C5FD" FontSize="14" TextWrapping="Wrap"/>
+                <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="Computer optimization" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Sentinel can learn this computer's normal performance and apply only verified optimizations when they are warranted." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Automatically optimize my computer" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                                <ToggleSwitch x:Name="AutomaticOptimizationToggle"
+                                              OnContent="On"
+                                              OffContent="Off"
+                                              Toggled="OptimizationSetting_Changed"
+                                              Foreground="White"
+                                              AutomationProperties.Name="Automatically optimize my computer"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Optimization mode" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                                <ComboBox x:Name="OptimizationModeComboBox"
+                                          SelectionChanged="OptimizationModeComboBox_SelectionChanged"
+                                          HorizontalAlignment="Stretch"
+                                          AutomationProperties.Name="Optimization mode">
+                                    <ComboBoxItem Content="Conservative" Tag="Conservative"/>
+                                    <ComboBoxItem Content="Balanced" Tag="Balanced"/>
+                                    <ComboBoxItem Content="Advanced" Tag="Advanced"/>
+                                </ComboBox>
+                                <TextBlock Text="Conservative is the default and limits automatic changes to low-risk actions supported by verified local evidence." FontSize="13" Foreground="#BFDBFE" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="10">
+                                <CheckBox x:Name="VerifyEveryChangeCheckBox"
+                                          Content="Verify every optimization after it runs"
+                                          Checked="OptimizationSetting_Changed"
+                                          Unchecked="OptimizationSetting_Changed"
+                                          Foreground="White"/>
+                                <CheckBox x:Name="RollbackCheckBox"
+                                          Content="Roll back unsuccessful changes when possible"
+                                          Checked="OptimizationSetting_Changed"
+                                          Unchecked="OptimizationSetting_Changed"
+                                          Foreground="White"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="14">
+                            <TextBlock x:Name="OptimizationStatusText" Foreground="#BFDBFE" FontSize="14" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="Changes take effect immediately and are preserved during Sentinel updates." Foreground="#93C5FD" FontSize="14" TextWrapping="Wrap" Margin="0,0,0,20"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>
