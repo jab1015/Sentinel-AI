@@ -16,8 +16,8 @@
   <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>Sentinel.App (Package)</DisplayName>
-    <PublisherDisplayName>Tech-1</PublisherDisplayName>
+    <DisplayName>Sentinel AI</DisplayName>
+    <PublisherDisplayName>Modern Methods</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
 
@@ -35,8 +35,8 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Sentinel.App (Package)"
-        Description="Sentinel.App (Package)"
+        DisplayName="Sentinel AI"
+        Description="Sentinel AI"
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
         Square44x44Logo="Images\Square44x44Logo.png">
