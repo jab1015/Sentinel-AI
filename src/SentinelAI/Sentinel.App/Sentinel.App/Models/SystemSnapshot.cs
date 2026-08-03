@@ -1,10 +1,5 @@
-﻿/*
- * Sentinel AI
- * Copyright (c) 2026 Modern Methods.
- */
-
+﻿/* Sentinel AI - Copyright (c) 2026 Modern Methods. */
 using System;
-
 namespace Sentinel.App.Models
 {
     public class SystemSnapshot
@@ -75,6 +70,12 @@ namespace Sentinel.App.Models
         public string ConnectionIntelligenceTitle { get; set; } = "Analyzing network activity";
         public string ConnectionIntelligenceSummary { get; set; } = "Sentinel is correlating current network activity with local system evidence.";
         public string ConnectionIntelligenceReasonCode { get; set; } = "network-initializing";
+        public string SpywareCorrelationState { get; set; } = "Starting";
+        public int SpywareCorrelationConfidenceScore { get; set; }
+        public bool SpywareCorrelationHasCorroboratingEvidence { get; set; }
+        public string SpywareCorrelationTitle { get; set; } = "Analyzing spyware indicators";
+        public string SpywareCorrelationSummary { get; set; } = "Sentinel is correlating process, persistence, execution, and network evidence.";
+        public string SpywareCorrelationReasonCode { get; set; } = "spyware-initializing";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
