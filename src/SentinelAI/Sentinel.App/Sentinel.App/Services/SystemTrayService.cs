@@ -4,10 +4,13 @@
  */
 
 using H.NotifyIcon;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
+using System.IO;
 using System.Windows.Input;
 
 namespace Sentinel.App.Services
@@ -47,7 +50,7 @@ namespace Sentinel.App.Services
             _trayIcon = new TaskbarIcon
             {
                 ToolTipText = "Sentinel AI — monitoring your computer",
-                IconSource = new BitmapImage(new Uri("ms-appx:///Assets/Shield.png")),
+                IconSource = CreateTrayIconSource(),
                 ContextFlyout = contextMenu,
                 ContextMenuMode = ContextMenuMode.SecondWindow,
                 LeftClickCommand = new RelayCommand(showApplication),
@@ -56,6 +59,31 @@ namespace Sentinel.App.Services
             };
 
             _trayIcon.ForceCreate(enablesEfficiencyMode: false);
+        }
+
+        private static ImageSource CreateTrayIconSource()
+        {
+            try
+            {
+                string shieldPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Shield.png");
+                if (File.Exists(shieldPath))
+                {
+                    return new BitmapImage(new Uri(shieldPath, UriKind.Absolute));
+                }
+            }
+            catch
+            {
+                // Branding must never prevent Sentinel from starting.
+            }
+
+            return new GeneratedIconSource
+            {
+                Text = "🛡︎",
+                FontSize = 38,
+                FontWeight = Microsoft.UI.Text.FontWeights.Bold,
+                Foreground = new SolidColorBrush(Colors.White),
+                Background = new SolidColorBrush(Colors.Crimson)
+            };
         }
 
         public void Dispose()
