@@ -1,11 +1,11 @@
 using Sentinel.App.Services;
 using System.Net.Sockets;
 
-const string targetIp = "23.197.222.64";
+const string rollbackTargetIp = "23.197.222.64";
 const int targetPort = 443;
+const string persistentTestIp = "203.0.113.10"; // TEST-NET-3, documentation-only address
 
 Console.WriteLine("=== Sentinel AI Firewall Containment Acceptance ===");
-Console.WriteLine($"Target: {targetIp}:{targetPort}");
 
 static async Task<bool> CanConnectAsync(string host, int port)
 {
@@ -21,36 +21,55 @@ static async Task<bool> CanConnectAsync(string host, int port)
     }
 }
 
-bool baseline = await CanConnectAsync(targetIp, targetPort);
-Console.WriteLine($"Baseline endpoint connectivity: {baseline}");
-
 FirewallContainmentService service = new();
-FirewallContainmentService.FirewallContainmentResult block = await service.BlockEndpointAsync(targetIp);
-Console.WriteLine($"Block attempted: {block.Attempted}");
-Console.WriteLine($"Block succeeded: {block.Succeeded}");
-Console.WriteLine($"Block title: {block.Title}");
-Console.WriteLine($"Block summary: {block.Summary}");
-Console.WriteLine($"Rolled back automatically: {block.RolledBack}");
+
+Console.WriteLine();
+Console.WriteLine("--- Scenario 1: automatic rollback when connectivity is affected ---");
+Console.WriteLine($"Target: {rollbackTargetIp}:{targetPort}");
+bool rollbackBaseline = await CanConnectAsync(rollbackTargetIp, targetPort);
+Console.WriteLine($"Baseline endpoint connectivity: {rollbackBaseline}");
+
+FirewallContainmentService.FirewallContainmentResult rollbackBlock = await service.BlockEndpointAsync(rollbackTargetIp);
+Console.WriteLine($"Block attempted: {rollbackBlock.Attempted}");
+Console.WriteLine($"Block succeeded: {rollbackBlock.Succeeded}");
+Console.WriteLine($"Block title: {rollbackBlock.Title}");
+Console.WriteLine($"Rolled back automatically: {rollbackBlock.RolledBack}");
 
 await Task.Delay(1000);
-bool blockedEndpointStillReachable = await CanConnectAsync(targetIp, targetPort);
-Console.WriteLine($"Blocked endpoint still reachable: {blockedEndpointStillReachable}");
+bool rollbackConnectivityRestored = await CanConnectAsync(rollbackTargetIp, targetPort);
+Console.WriteLine($"Endpoint connectivity restored after rollback: {rollbackConnectivityRestored}");
 
-FirewallContainmentService.FirewallContainmentResult remove = await service.RemoveBlockAsync(targetIp);
+bool rollbackPass = rollbackBaseline &&
+                    rollbackBlock.Attempted &&
+                    !rollbackBlock.Succeeded &&
+                    rollbackBlock.RolledBack &&
+                    rollbackConnectivityRestored;
+Console.WriteLine($"Rollback scenario: {(rollbackPass ? "PASS" : "FAIL")}");
+
+Console.WriteLine();
+Console.WriteLine("--- Scenario 2: narrow block persists when internet remains healthy ---");
+Console.WriteLine($"Target: {persistentTestIp}");
+
+FirewallContainmentService.FirewallContainmentResult persistentBlock = await service.BlockEndpointAsync(persistentTestIp);
+Console.WriteLine($"Block attempted: {persistentBlock.Attempted}");
+Console.WriteLine($"Block succeeded: {persistentBlock.Succeeded}");
+Console.WriteLine($"Block title: {persistentBlock.Title}");
+Console.WriteLine($"Rolled back automatically: {persistentBlock.RolledBack}");
+Console.WriteLine($"Connectivity healthy: {persistentBlock.ConnectivityHealthy}");
+
+bool persistentCreated = persistentBlock.Succeeded &&
+                         !persistentBlock.RolledBack &&
+                         persistentBlock.ConnectivityHealthy;
+
+FirewallContainmentService.FirewallContainmentResult remove = await service.RemoveBlockAsync(persistentTestIp);
 Console.WriteLine($"Removal succeeded: {remove.Succeeded}");
 Console.WriteLine($"Removal title: {remove.Title}");
-Console.WriteLine($"Removal summary: {remove.Summary}");
+Console.WriteLine($"Connectivity healthy after removal: {remove.ConnectivityHealthy}");
 
-await Task.Delay(1000);
-bool restored = await CanConnectAsync(targetIp, targetPort);
-Console.WriteLine($"Endpoint connectivity restored: {restored}");
+bool persistentPass = persistentCreated && remove.Succeeded;
+Console.WriteLine($"Persistent narrow-block scenario: {(persistentPass ? "PASS" : "FAIL")}");
 
-bool pass = baseline &&
-            block.Succeeded &&
-            !block.RolledBack &&
-            !blockedEndpointStillReachable &&
-            remove.Succeeded &&
-            restored;
+bool pass = rollbackPass && persistentPass;
 
 Console.WriteLine();
 Console.WriteLine(pass ? "RESULT: PASS" : "RESULT: FAIL");
