@@ -69,6 +69,12 @@ namespace Sentinel.App.Models
         public int RepeatingExternalConnectionCount { get; set; }
         public bool NetworkConnectionMonitoringAvailable { get; set; }
         public string NetworkConnectionMonitoringStatus { get; set; } = "Starting";
+        public string ConnectionIntelligenceState { get; set; } = "Starting";
+        public int ConnectionIntelligenceConfidenceScore { get; set; }
+        public bool ConnectionIntelligenceHasCorroboratingEvidence { get; set; }
+        public string ConnectionIntelligenceTitle { get; set; } = "Analyzing network activity";
+        public string ConnectionIntelligenceSummary { get; set; } = "Sentinel is correlating current network activity with local system evidence.";
+        public string ConnectionIntelligenceReasonCode { get; set; } = "network-initializing";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
