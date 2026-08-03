@@ -12,6 +12,7 @@ namespace Sentinel.App
     public partial class App : Application
     {
         private readonly DiagnosticLogService _diagnosticLog = new();
+        private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
         private Window? _window;
         private SystemTrayService? _systemTrayService;
         private bool _isExplicitExit;
@@ -35,6 +36,13 @@ namespace Sentinel.App
 
             try
             {
+                bool startupRegistered = _startupRegistrationService.EnsureRegistered();
+                _ = _diagnosticLog.InformationAsync(
+                    "WindowsStartup",
+                    startupRegistered
+                        ? "Sentinel AI is registered to start when the current user signs in to Windows."
+                        : "Windows startup registration was not available in the current execution context.");
+
                 // Keep disk diagnostics and development-only verification off the critical
                 // path that creates and activates the first visible window.
                 _window = new MainWindow();
