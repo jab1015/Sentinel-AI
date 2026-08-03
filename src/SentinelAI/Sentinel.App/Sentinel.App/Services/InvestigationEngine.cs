@@ -69,14 +69,14 @@ namespace Sentinel.App.Services
                 Contains(snapshot.LatestEventSource, "Service Control Manager") &&
                 Contains(snapshot.LatestEventMessage, "terminated unexpectedly");
 
-            // Windows records many application/runtime errors that are historical,
-            // self-recovered, or unrelated to the current machine state. Event counts
-            // remain evidence, but they do not by themselves justify telling a user
-            // that something requires action. ActionRequired requires a verified
-            // current condition, a correlated signal, or an explicit service failure.
+            // Raw Windows critical/error events remain part of Sentinel's internal evidence,
+            // history, Ask Sentinel context, and technical diagnostics. They do not by
+            // themselves justify interrupting or alarming the user. A user-facing alert
+            // requires a verified current condition, correlated signals, or a targeted
+            // condition that Sentinel can explain and act on.
             bool actionableSystemEvidence =
                 !storageSpacesSmp &&
-                (snapshot.FlaggedServiceCount > 0 || snapshot.CriticalEventCount > 0);
+                snapshot.FlaggedServiceCount > 0;
 
             if (securityProtectionDisabled)
             {
