@@ -11,21 +11,24 @@ using Sentinel.App.Models;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Connects Sentinel's short-lived approval workflow to the concrete Windows
-    /// service restart implementation. The exact action and target are rechecked
+    /// Connects Sentinel's short-lived approval workflow to concrete Windows
+    /// remediation implementations. The exact action and target are rechecked
     /// before execution and success requires independent post-action verification.
     /// </summary>
     public sealed class ApprovedServiceRestartCoordinator
     {
         private readonly ApprovedRemediationExecutor _approvedExecutor;
         private readonly ServiceRemediationService _serviceRemediation;
+        private readonly FirewallContainmentService _firewallContainment;
 
         public ApprovedServiceRestartCoordinator(
             ApprovedRemediationExecutor? approvedExecutor = null,
-            ServiceRemediationService? serviceRemediation = null)
+            ServiceRemediationService? serviceRemediation = null,
+            FirewallContainmentService? firewallContainment = null)
         {
             _approvedExecutor = approvedExecutor ?? new ApprovedRemediationExecutor();
             _serviceRemediation = serviceRemediation ?? new ServiceRemediationService();
+            _firewallContainment = firewallContainment ?? new FirewallContainmentService();
         }
 
         public async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteAsync(
@@ -39,12 +42,37 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
 
-            if (!string.Equals(request.Action, "restart-service", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(request.Action, "restart-service", StringComparison.OrdinalIgnoreCase))
             {
-                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
-                    "This approval is not for a Windows service restart. Sentinel made no system change.");
+                return await ExecuteServiceRestartAsync(
+                    currentSnapshot,
+                    request,
+                    validation,
+                    canRequestElevation,
+                    cancellationToken).ConfigureAwait(false);
             }
 
+            if (string.Equals(request.Action, "block-outbound-endpoint", StringComparison.OrdinalIgnoreCase))
+            {
+                return await ExecuteNetworkBlockAsync(
+                    currentSnapshot,
+                    request,
+                    validation,
+                    canRequestElevation,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                "This approved remediation type does not yet have a verified execution workflow. Sentinel made no system change.");
+        }
+
+        private async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteServiceRestartAsync(
+            SystemSnapshot currentSnapshot,
+            RemediationApprovalCoordinator.RemediationApprovalRequest request,
+            RemediationApprovalCoordinator.ApprovalValidationResult validation,
+            bool canRequestElevation,
+            CancellationToken cancellationToken)
+        {
             string serviceName = request.Target.Trim();
             ServiceRemediationService.ServiceRemediationResult? executionResult = null;
 
@@ -81,6 +109,41 @@ namespace Sentinel.App.Services
                     return await _serviceRemediation.IsRunningAsync(serviceName, cancellationToken)
                         .ConfigureAwait(false);
                 }).ConfigureAwait(false);
+        }
+
+        private async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteNetworkBlockAsync(
+            SystemSnapshot currentSnapshot,
+            RemediationApprovalCoordinator.RemediationApprovalRequest request,
+            RemediationApprovalCoordinator.ApprovalValidationResult validation,
+            bool canRequestElevation,
+            CancellationToken cancellationToken)
+        {
+            if (!canRequestElevation)
+            {
+                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                    "Blocking this network destination requires administrator permission that Sentinel cannot currently request.");
+            }
+
+            string remoteEndpoint = request.Target.Trim();
+            FirewallContainmentService.FirewallContainmentResult? executionResult = null;
+
+            return await _approvedExecutor.ExecuteAsync(
+                currentSnapshot,
+                request,
+                validation,
+                executeAsync: async () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    executionResult = await _firewallContainment.BlockEndpointAsync(remoteEndpoint)
+                        .ConfigureAwait(false);
+
+                    if (!executionResult.Succeeded)
+                    {
+                        throw new InvalidOperationException(executionResult.Summary);
+                    }
+                },
+                verifyAsync: () => Task.FromResult(executionResult is { Succeeded: true }))
+                .ConfigureAwait(false);
         }
 
         private static bool IsProtectedWindowsService(string serviceName) =>
