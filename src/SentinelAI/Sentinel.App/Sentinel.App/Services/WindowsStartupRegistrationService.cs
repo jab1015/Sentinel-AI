@@ -10,8 +10,8 @@ using Windows.ApplicationModel;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Registers the packaged Sentinel application for per-user Windows sign-in startup.
-    /// The registration uses the package family name/AUMID so it survives package version updates.
+    /// Registers and verifies packaged Sentinel for per-user Windows sign-in startup.
+    /// The package family name/AUMID command survives package version updates.
     /// </summary>
     public sealed class WindowsStartupRegistrationService
     {
@@ -19,44 +19,48 @@ namespace Sentinel.App.Services
         private const string ValueName = "Sentinel AI";
         private const string ApplicationId = "App";
 
-        public bool EnsureRegistered()
+        public StartupRegistrationResult EnsureRegisteredAndVerify()
         {
             try
             {
                 string familyName = Package.Current.Id.FamilyName;
                 if (string.IsNullOrWhiteSpace(familyName))
-                {
-                    return false;
-                }
+                    return new(false, false, "The installed package identity is unavailable.");
 
-                string command = $"explorer.exe shell:AppsFolder\\{familyName}!{ApplicationId}";
+                string expectedCommand = $"explorer.exe shell:AppsFolder\\{familyName}!{ApplicationId}";
                 using RegistryKey? runKey = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
                 if (runKey is null)
-                {
-                    return false;
-                }
+                    return new(false, false, "Windows startup registration could not be opened.");
 
                 string? existing = runKey.GetValue(ValueName) as string;
-                if (!string.Equals(existing, command, StringComparison.OrdinalIgnoreCase))
-                {
-                    runKey.SetValue(ValueName, command, RegistryValueKind.String);
-                }
+                bool changed = !string.Equals(existing, expectedCommand, StringComparison.OrdinalIgnoreCase);
+                if (changed)
+                    runKey.SetValue(ValueName, expectedCommand, RegistryValueKind.String);
 
-                return true;
+                string? verified = runKey.GetValue(ValueName) as string;
+                bool registered = string.Equals(verified, expectedCommand, StringComparison.OrdinalIgnoreCase);
+                return registered
+                    ? new(true, changed, changed
+                        ? "Sentinel AI startup registration was repaired and verified."
+                        : "Sentinel AI startup registration is present and verified.")
+                    : new(false, changed, "Windows did not retain Sentinel AI startup registration.");
             }
             catch (InvalidOperationException)
             {
-                // Package.Current is unavailable when the app is run unpackaged during development.
-                return false;
+                return new(false, false, "Startup registration is unavailable while Sentinel is running without installed package identity.");
             }
             catch (UnauthorizedAccessException)
             {
-                return false;
+                return new(false, false, "Windows denied access to the current user's startup registration.");
             }
             catch (System.Security.SecurityException)
             {
-                return false;
+                return new(false, false, "Windows security policy prevented startup registration.");
             }
         }
+
+        public bool EnsureRegistered() => EnsureRegisteredAndVerify().Registered;
+
+        public sealed record StartupRegistrationResult(bool Registered, bool Repaired, string Summary);
     }
 }
