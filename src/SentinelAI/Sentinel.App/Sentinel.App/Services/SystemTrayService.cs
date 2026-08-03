@@ -6,6 +6,7 @@
 using H.NotifyIcon;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Windows.Input;
 
@@ -46,10 +47,7 @@ namespace Sentinel.App.Services
             _trayIcon = new TaskbarIcon
             {
                 ToolTipText = "Sentinel AI — monitoring your computer",
-                IconSource = new BitmapIconSource
-                {
-                    UriSource = new Uri("ms-appx:///Assets/Shield.png")
-                },
+                IconSource = new BitmapImage(new Uri("ms-appx:///Assets/Shield.png")),
                 ContextFlyout = contextMenu,
                 ContextMenuMode = ContextMenuMode.SecondWindow,
                 LeftClickCommand = new RelayCommand(showApplication),
