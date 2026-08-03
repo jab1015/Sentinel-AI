@@ -46,7 +46,7 @@
       <Extensions>
         <desktop:Extension
           Category="windows.startupTask"
-          Executable="Sentinel.App\Sentinel.App.exe"
+          Executable="Sentinel.App.exe"
           EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask
             TaskId="SentinelStartupTask"
