@@ -20,15 +20,18 @@ namespace Sentinel.App.Services
         private readonly ApprovedRemediationExecutor _approvedExecutor;
         private readonly ServiceRemediationService _serviceRemediation;
         private readonly FirewallContainmentService _firewallContainment;
+        private readonly ProcessContainmentService _processContainment;
 
         public ApprovedServiceRestartCoordinator(
             ApprovedRemediationExecutor? approvedExecutor = null,
             ServiceRemediationService? serviceRemediation = null,
-            FirewallContainmentService? firewallContainment = null)
+            FirewallContainmentService? firewallContainment = null,
+            ProcessContainmentService? processContainment = null)
         {
             _approvedExecutor = approvedExecutor ?? new ApprovedRemediationExecutor();
             _serviceRemediation = serviceRemediation ?? new ServiceRemediationService();
             _firewallContainment = firewallContainment ?? new FirewallContainmentService();
+            _processContainment = processContainment ?? new ProcessContainmentService();
         }
 
         public async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteAsync(
@@ -55,6 +58,16 @@ namespace Sentinel.App.Services
             if (string.Equals(request.Action, "block-outbound-endpoint", StringComparison.OrdinalIgnoreCase))
             {
                 return await ExecuteNetworkBlockAsync(
+                    currentSnapshot,
+                    request,
+                    validation,
+                    canRequestElevation,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (string.Equals(request.Action, "contain-process", StringComparison.OrdinalIgnoreCase))
+            {
+                return await ExecuteProcessContainmentAsync(
                     currentSnapshot,
                     request,
                     validation,
@@ -135,6 +148,41 @@ namespace Sentinel.App.Services
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     executionResult = await _firewallContainment.BlockEndpointAsync(remoteEndpoint)
+                        .ConfigureAwait(false);
+
+                    if (!executionResult.Succeeded)
+                    {
+                        throw new InvalidOperationException(executionResult.Summary);
+                    }
+                },
+                verifyAsync: () => Task.FromResult(executionResult is { Succeeded: true }))
+                .ConfigureAwait(false);
+        }
+
+        private async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteProcessContainmentAsync(
+            SystemSnapshot currentSnapshot,
+            RemediationApprovalCoordinator.RemediationApprovalRequest request,
+            RemediationApprovalCoordinator.ApprovalValidationResult validation,
+            bool canRequestElevation,
+            CancellationToken cancellationToken)
+        {
+            if (!canRequestElevation)
+            {
+                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                    "Containing this process requires administrator permission that Sentinel cannot currently request.");
+            }
+
+            string processName = request.Target.Trim();
+            ProcessContainmentService.ProcessContainmentResult? executionResult = null;
+
+            return await _approvedExecutor.ExecuteAsync(
+                currentSnapshot,
+                request,
+                validation,
+                executeAsync: async () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    executionResult = await _processContainment.ContainAsync(processName)
                         .ConfigureAwait(false);
 
                     if (!executionResult.Succeeded)
