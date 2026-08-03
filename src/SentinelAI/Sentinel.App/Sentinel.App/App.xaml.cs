@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
+using Windows.ApplicationModel.Activation;
 
 namespace Sentinel.App
 {
@@ -23,7 +24,7 @@ namespace Sentinel.App
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             Stopwatch startupTimer = Stopwatch.StartNew();
-            bool launchedByWindowsStartup = IsWindowsStartupLaunch(args.Arguments);
+            bool launchedByWindowsStartup = IsWindowsStartupLaunch();
             _ = _diagnosticLog.InformationAsync(
                 "ApplicationLaunch",
                 launchedByWindowsStartup
@@ -80,10 +81,17 @@ namespace Sentinel.App
             }
         }
 
-        private static bool IsWindowsStartupLaunch(string? arguments)
+        private static bool IsWindowsStartupLaunch()
         {
-            return !string.IsNullOrWhiteSpace(arguments) &&
-                   arguments.Contains("SentinelStartupTask", StringComparison.OrdinalIgnoreCase);
+            try
+            {
+                IActivatedEventArgs activation = AppInstance.GetActivatedEventArgs();
+                return activation.Kind == ActivationKind.StartupTask;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         private void MainAppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
