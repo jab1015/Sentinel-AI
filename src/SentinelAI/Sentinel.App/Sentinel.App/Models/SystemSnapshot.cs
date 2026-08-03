@@ -59,6 +59,11 @@ namespace Sentinel.App.Models
         public string PrimaryFlaggedConnectionProcessName { get; set; } = "None";
         public string PrimaryFlaggedConnectionRemoteEndpoint { get; set; } = "None";
         public string PrimaryFlaggedConnectionReason { get; set; } = "No unusual active TCP connections were detected.";
+        public int ListeningTcpEndpointCount { get; set; }
+        public int UdpEndpointCount { get; set; }
+        public int AttributedExternalConnectionCount { get; set; }
+        public bool NetworkConnectionMonitoringAvailable { get; set; }
+        public string NetworkConnectionMonitoringStatus { get; set; } = "Starting";
         public bool DefenderEnabled { get; set; }
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
@@ -89,13 +94,11 @@ namespace Sentinel.App.Models
         public string InvestigationSummary { get; set; } = "Sentinel is reviewing available evidence.";
         public bool InvestigationRequiresAttention { get; set; }
         public string InvestigationReasonCode { get; set; } = "initializing";
-
         public bool RemediationAvailable { get; set; }
         public bool RemediationRequiresUserApproval { get; set; }
         public string RemediationAction { get; set; } = "None";
         public string RemediationTarget { get; set; } = "None";
         public string RemediationSummary { get; set; } = "No remediation is required.";
-
         public bool AutonomousProtectionCanExecute { get; set; }
         public bool AutonomousProtectionRequiresUserApproval { get; set; }
         public string AutonomousProtectionAction { get; set; } = "None";
@@ -106,13 +109,11 @@ namespace Sentinel.App.Models
         public DateTimeOffset? AutonomousProtectionCompletedAt { get; set; }
         public string AutonomousProtectionOutcomeTitle { get; set; } = string.Empty;
         public string AutonomousProtectionOutcomeSummary { get; set; } = string.Empty;
-
         public bool RemediationAttempted { get; set; }
         public bool RemediationSucceeded { get; set; }
         public DateTimeOffset? RemediationCompletedAt { get; set; }
         public string RemediationOutcomeTitle { get; set; } = string.Empty;
         public string RemediationOutcomeSummary { get; set; } = string.Empty;
-
         public int InvestigationRecurrenceCount { get; set; }
         public bool InvestigationIsRecurring { get; set; }
         public bool InvestigationShouldEscalate { get; set; }
