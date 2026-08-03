@@ -307,7 +307,7 @@ namespace Sentinel.App
         private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e)
         {
             var result = await _engine.VerifyCurrentGuidanceAsync();
-            ContentDialog dialog = new() { Title = result.Title, Content = result.Message, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot };
+            ContentDialog dialog = new() { Title = result.Title, Content = result.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot };
             await dialog.ShowAsync();
             await UpdateDashboardAsync();
         }
