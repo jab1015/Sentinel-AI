@@ -27,7 +27,9 @@ namespace Sentinel.App.Services
                 if (string.IsNullOrWhiteSpace(familyName))
                     return new(false, false, "The installed package identity is unavailable.");
 
-                string expectedCommand = $"explorer.exe shell:AppsFolder\\{familyName}!{ApplicationId}";
+                string appUserModelId = $"{familyName}!{ApplicationId}";
+                string expectedCommand = $"explorer.exe \"shell:AppsFolder\\{appUserModelId}\"";
+
                 using RegistryKey? runKey = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
                 if (runKey is null)
                     return new(false, false, "Windows startup registration could not be opened.");
@@ -41,7 +43,7 @@ namespace Sentinel.App.Services
                 bool registered = string.Equals(verified, expectedCommand, StringComparison.OrdinalIgnoreCase);
                 return registered
                     ? new(true, changed, changed
-                        ? "Sentinel AI startup registration was repaired and verified."
+                        ? "Sentinel AI startup registration was repaired with the Windows packaged-app launch command and verified."
                         : "Sentinel AI startup registration is present and verified.")
                     : new(false, changed, "Windows did not retain Sentinel AI startup registration.");
             }
