@@ -40,6 +40,21 @@ namespace Sentinel.App.Services
                 recommendation = "A Windows service has stopped unexpectedly. Review the named service and check whether the failure repeats before changing its startup settings.";
             }
 
+            if (snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 45;
+                recommendation = "Sentinel correlated multiple independent spyware-like behaviors. Investigate the identified process and its persistence and network activity before allowing it to continue.";
+            }
+            else if (snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 25;
+                recommendation = "Sentinel correlated multiple unusual behaviors that require review. Verify the responsible process and related persistence or network evidence before taking containment action.";
+            }
+            else if (snapshot.SpywareCorrelationState.Equals("Observe", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 5;
+            }
+
             if (snapshot.MemoryUsagePercent >= 90)
             {
                 score += 10;
@@ -78,15 +93,19 @@ namespace Sentinel.App.Services
                 _ => "Low"
             };
 
-            string summary = level switch
-            {
-                "High" => "Important security or reliability conditions need attention.",
-                "Elevated" => "One or more conditions should be reviewed soon.",
-                "Moderate" => "The computer is generally protected, with a few items worth reviewing.",
-                _ => repeatedServiceFailure
-                    ? "Core protections are active, but a repeated Windows service failure should be reviewed."
-                    : "Core protections are active and no major warning conditions were detected."
-            };
+            string summary = snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase)
+                ? "Multiple independent behaviors correlate into a high-confidence spyware-like concern that requires investigation."
+                : snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase)
+                    ? "Multiple independent unusual behaviors overlap and should be investigated."
+                    : level switch
+                    {
+                        "High" => "Important security or reliability conditions need attention.",
+                        "Elevated" => "One or more conditions should be reviewed soon.",
+                        "Moderate" => "The computer is generally protected, with a few items worth reviewing.",
+                        _ => repeatedServiceFailure
+                            ? "Core protections are active, but a repeated Windows service failure should be reviewed."
+                            : "Core protections are active and no major warning conditions were detected."
+                    };
 
             return new RiskAssessment(score, level, summary, recommendation);
         }
