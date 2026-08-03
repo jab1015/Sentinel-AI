@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 3.0
+Version: 4.0
 
-Status: Planned Implementation Complete
+Status: Active Development
 
 Last Updated: 2026-08-02
 
@@ -16,7 +16,13 @@ This document is the authoritative master engineering plan for Sentinel AI.
 
 # Current Status
 
-Overall planned product implementation: **100%**.
+Phases 1–7 are complete. Product completion has been explicitly reopened after clean-machine/VM testing demonstrated that the original Sentinel acceptance target requires continuous intrusion and spyware-oriented monitoring plus reliable Windows automatic startup.
+
+Active work: **Phase 8 — Continuous Intrusion & Spyware Protection: 0 of 8 complete.**
+
+Current milestone: **8.1 — Continuous Network Connection Monitor.**
+
+No new release installer is to be created or approved until Phase 8 acceptance is complete.
 
 Completed:
 
@@ -28,40 +34,34 @@ Completed:
 - Phase 6 — Ask Sentinel / AI Assistance: 6 of 6
 - Phase 7 — Production Hardening & Commercial Release: 12 of 12
 
-## Phase 7 — Production Hardening & Commercial Release
+# Phase 8 — Continuous Intrusion & Spyware Protection
 
-1. [x] Structured logging and diagnostics foundation.
-2. [x] Fresh-clone and release-configuration verification foundation.
-3. [x] Automated regression coverage.
-4. [x] Performance profiling and optimization.
-5. [x] One-hour and eight-hour stability testing.
-6. [x] Windows 10 and Windows 11 compatibility verification.
-7. [x] Installer/uninstaller.
-8. [x] Code-signing release boundary.
-9. [x] Application-update release boundary.
-10. [x] Accessibility and UX review.
-11. [x] Privacy, user, and troubleshooting documentation.
-12. [x] Release acceptance testing.
+1. [ ] Continuous network connection monitor for inbound/outbound TCP and relevant UDP activity with process, executable, local endpoint, remote endpoint, port/protocol, state, and available trust evidence.
+2. [ ] Connection intelligence/anomaly classification using corroborated evidence and false-positive controls; unfamiliar traffic alone is never sufficient for a threat claim.
+3. [ ] Spyware/process behavior correlation across executable trust/location, persistence, parent/child relationships, unexpected background behavior, network behavior, and available Defender/security evidence.
+4. [ ] Safe response and containment using supported Windows Firewall/Defender mechanisms where appropriate, with verification, audit logging, clear rationale, and reversible actions where feasible.
+5. [ ] Plain-English protection experience that surfaces only meaningful conditions and tells the user what happened, what Sentinel did, whether risk remains, and exact required steps when Sentinel needs assistance.
+6. [ ] Reliable Windows sign-in startup and continuous background operation: single instance, tray persistence, window-close behavior, reboot, sleep/wake, and network reconnection.
+7. [ ] Protection health/self-monitoring that verifies Sentinel's network monitor and required Windows protection layers remain operational and reports degraded protection accurately.
+8. [ ] Acceptance testing for benign/suspicious traffic, listeners, unsigned/unknown test processes, VPN/VM scenarios, network interruption/recovery, sleep/wake, reboot/startup, false positives, resource use, and long-duration operation.
 
-Final runtime evidence includes successful Release | x64 builds, responsive startup with no currently observed lag, personalized greeting persistence, live technical evidence, evidence-grounded Ask Sentinel behavior, one-hour and eight-hour stability passes, accessibility review, and final release acceptance verification.
+# Original Product Acceptance Target
 
-# Release Operations
+Sentinel AI is not complete merely because it can inspect system state, display Windows security status, package successfully, or react to historical Windows events. Sentinel must operate continuously and provide an intelligent protective layer focused on meaningful intrusion and spyware indicators.
 
-The planned engineering implementation is complete. Commercial distribution is now a release-operations activity rather than an incomplete development phase.
+Sentinel may rely on Microsoft Defender and Windows Firewall as mature antivirus/firewall enforcement layers. Sentinel's responsibility is continuous observation, evidence correlation, investigation, decision support, safe orchestration, verification, and clear user communication. Sentinel must not claim universal detection of every intrusion or spyware technique.
 
-To deploy Sentinel to another standard 64-bit Windows computer, generate the Release | x64 Windows application package from `Sentinel.App (Package)`, sign the package with the approved trusted production publisher identity, distribute the complete generated package output, install it through Windows App Installer, and perform the clean-computer acceptance checks documented in SAI-028 and SAI-033.
+# Release Gate
 
-Production certificate secrets must remain outside source control. Public distribution must not proceed with an unsigned or untrusted development package.
+Installer work is paused. Packaging already demonstrated that Sentinel can be packaged and installed, but the next production installer must not be generated or approved until Phase 8 is complete and clean-machine verification confirms continuous protection and automatic Windows startup.
 
 # Progress Governance
 
-**100% is the synchronized completed planned-implementation baseline as of 2026-08-02.** SAI-012 Product Roadmap, SAI-013 Implementation Tracker, SAI-025 Master Development Plan, and README must remain synchronized.
-
-Future release operations, maintenance, distribution, and post-release capabilities must not reduce this completed implementation baseline unless completed planned scope is explicitly reopened or a verified defect requires reopening it, with the reason documented.
+The completed Phase 1–7 history remains valid and must not be erased. However, the previous 100% product-complete statement is superseded because required original product scope was absent from the documented plan. Until Phase 8 passes, report Phase 8 progress explicitly as `n of 8` and do not describe Sentinel as product-complete or release-ready.
 
 # Definition of Success
 
-A successful Sentinel release builds without errors, runs successfully, meets acceptance criteria, preserves remediation safety boundaries, never reports unverified remediation as successful, never presents unsupported AI claims as verified facts, can be reproduced from source control using documented release configuration, and is distributed through a trusted signed Windows package.
+A successful Sentinel release builds without errors, starts reliably with Windows, remains active in the tray, continuously monitors meaningful inbound/outbound activity, correlates suspicious activity to responsible processes when evidence permits, investigates spyware/intrusion indicators, safely handles verified conditions when authorized, clearly instructs the user when assistance is required, avoids alarming users about routine activity, verifies remediation outcomes, and preserves evidence-grounded AI behavior.
 
 ---
 
