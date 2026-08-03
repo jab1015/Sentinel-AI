@@ -1,10 +1,9 @@
 ﻿using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
-using Windows.ApplicationModel;
-using Windows.ApplicationModel.Activation;
 
 namespace Sentinel.App
 {
@@ -86,11 +85,13 @@ namespace Sentinel.App
         {
             try
             {
-                IActivatedEventArgs activation = AppInstance.GetActivatedEventArgs();
-                return activation.Kind == ActivationKind.StartupTask;
+                AppActivationArguments? activation = AppInstance.GetCurrent().GetActivatedEventArgs();
+                return activation is not null && activation.Kind == ExtendedActivationKind.StartupTask;
             }
-            catch (InvalidOperationException)
+            catch (Exception)
             {
+                // Interactive/unpackaged development launches must remain usable even
+                // if rich activation metadata is unavailable in the current host.
                 return false;
             }
         }
