@@ -49,8 +49,6 @@ namespace Sentinel.App.Services
 
                 PruneHistory(observedAt);
 
-                // First pass: record listening sockets so established connections can be
-                // direction-classified without guessing from port numbers alone.
                 foreach (string line in lines)
                 {
                     string[] columns = SplitColumns(line);
@@ -167,12 +165,7 @@ namespace Sentinel.App.Services
                 repeatingExternalConnections);
         }
 
-        private void RecordObservation(
-            ProcessIdentity identity,
-            IPAddress remoteAddress,
-            int remotePort,
-            bool inbound,
-            DateTimeOffset observedAt)
+        private void RecordObservation(ProcessIdentity identity, IPAddress remoteAddress, int remotePort, bool inbound, DateTimeOffset observedAt)
         {
             ConnectionHistoryKey key = new(identity.ProcessId, remoteAddress.ToString(), remotePort, inbound);
             if (_history.TryGetValue(key, out ConnectionHistoryEntry? existing))
@@ -204,11 +197,7 @@ namespace Sentinel.App.Services
             List<ConnectionHistoryKey>? staleKeys = null;
             foreach ((ConnectionHistoryKey key, ConnectionHistoryEntry entry) in _history)
             {
-                if (now - entry.LastSeen <= HistoryRetention)
-                {
-                    continue;
-                }
-
+                if (now - entry.LastSeen <= HistoryRetention) continue;
                 staleKeys ??= new List<ConnectionHistoryKey>();
                 staleKeys.Add(key);
             }
@@ -268,39 +257,23 @@ namespace Sentinel.App.Services
             return output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
         }
 
-        private static string[] SplitColumns(string line) =>
-            line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        private static string[] SplitColumns(string line) => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
 
-        private static bool IsAcceptedInbound(
-            HashSet<LocalSocketKey> listeningSockets,
-            IPAddress localAddress,
-            int localPort,
-            int processId)
+        private static bool IsAcceptedInbound(HashSet<LocalSocketKey> listeningSockets, IPAddress localAddress, int localPort, int processId)
         {
-            if (listeningSockets.Contains(new LocalSocketKey(localAddress, localPort, processId)))
-            {
-                return true;
-            }
-
+            if (listeningSockets.Contains(new LocalSocketKey(localAddress, localPort, processId))) return true;
             return listeningSockets.Contains(new LocalSocketKey(IPAddress.Any, localPort, processId)) ||
                    listeningSockets.Contains(new LocalSocketKey(IPAddress.IPv6Any, localPort, processId));
         }
 
-        private static ConnectionFinding? Assess(
-            ProcessIdentity identity,
-            IPAddress remoteAddress,
-            int remotePort,
-            bool inbound)
+        private static ConnectionFinding? Assess(ProcessIdentity identity, IPAddress remoteAddress, int remotePort, bool inbound)
         {
             bool uncommonRemotePort = remotePort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
             bool systemProcess = identity.ProcessName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
                                  identity.ProcessName.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
                                  identity.ProcessName.Equals("services", StringComparison.OrdinalIgnoreCase);
 
-            if (!uncommonRemotePort || systemProcess)
-            {
-                return null;
-            }
+            if (!uncommonRemotePort || systemProcess) return null;
 
             string endpoint = $"{remoteAddress}:{remotePort}";
             string executableContext = string.IsNullOrWhiteSpace(identity.ExecutablePath)
@@ -308,9 +281,7 @@ namespace Sentinel.App.Services
                 : $"Executable: {ShortenPath(identity.ExecutablePath)}.";
             string direction = inbound ? "inbound" : "outbound";
 
-            return new ConnectionFinding(
-                identity.ProcessName,
-                endpoint,
+            return new ConnectionFinding(identity.ProcessName, endpoint,
                 $"{identity.ProcessName} (PID {identity.ProcessId}) owns an {direction} established connection involving {endpoint} on uncommon remote port {remotePort}. {executableContext} This is attribution evidence only; Sentinel requires correlation before recommending or blocking network activity.");
         }
 
@@ -322,8 +293,7 @@ namespace Sentinel.App.Services
             if (separator <= 0 || separator >= value.Length - 1) return false;
             string addressText = value[..separator].Trim('[', ']');
             string portText = value[(separator + 1)..];
-            return IPAddress.TryParse(addressText, out address) &&
-                   int.TryParse(portText, NumberStyles.Integer, CultureInfo.InvariantCulture, out port);
+            return IPAddress.TryParse(addressText, out address) && int.TryParse(portText, NumberStyles.Integer, CultureInfo.InvariantCulture, out port);
         }
 
         private static bool IsLocalOrPrivate(IPAddress address)
@@ -364,7 +334,8 @@ namespace Sentinel.App.Services
                 }
             }
             catch { }
-       n
+        }
+
         private static string ShortenPath(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return string.Empty;
