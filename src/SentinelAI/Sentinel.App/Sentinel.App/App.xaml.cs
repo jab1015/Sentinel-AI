@@ -23,7 +23,12 @@ namespace Sentinel.App
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             Stopwatch startupTimer = Stopwatch.StartNew();
-            _ = _diagnosticLog.InformationAsync("ApplicationLaunch", "Sentinel AI launch started.");
+            bool launchedByWindowsStartup = IsWindowsStartupLaunch(args.Arguments);
+            _ = _diagnosticLog.InformationAsync(
+                "ApplicationLaunch",
+                launchedByWindowsStartup
+                    ? "Sentinel AI Windows startup launch started."
+                    : "Sentinel AI interactive launch started.");
 
             try
             {
@@ -37,12 +42,25 @@ namespace Sentinel.App
                 _window = new MainWindow();
                 _window.AppWindow.Closing += MainAppWindow_Closing;
                 _systemTrayService = new SystemTrayService(ShowMainWindow, ExitApplication);
-                _window.Activate();
+
+                if (launchedByWindowsStartup)
+                {
+                    _window.AppWindow.Hide();
+                    _ = _diagnosticLog.InformationAsync(
+                        "WindowsStartup",
+                        "Sentinel AI started with Windows and is monitoring from the system tray.");
+                }
+                else
+                {
+                    _window.Activate();
+                }
 
                 startupTimer.Stop();
                 _ = _diagnosticLog.InformationAsync(
                     "StartupPerformance",
-                    $"Main window activated in {startupTimer.ElapsedMilliseconds} ms.");
+                    launchedByWindowsStartup
+                        ? $"Background startup completed in {startupTimer.ElapsedMilliseconds} ms."
+                        : $"Main window activated in {startupTimer.ElapsedMilliseconds} ms.");
 
 #if DEBUG
                 DevelopmentRegressionChecks.Run();
@@ -56,10 +74,16 @@ namespace Sentinel.App
                 _systemTrayService = null;
                 _ = _diagnosticLog.ErrorAsync(
                     "ApplicationLaunchFailure",
-                    $"Sentinel AI could not activate the main window after {startupTimer.ElapsedMilliseconds} ms.",
+                    $"Sentinel AI could not complete startup after {startupTimer.ElapsedMilliseconds} ms.",
                     ex);
                 throw;
             }
+        }
+
+        private static bool IsWindowsStartupLaunch(string? arguments)
+        {
+            return !string.IsNullOrWhiteSpace(arguments) &&
+                   arguments.Contains("SentinelStartupTask", StringComparison.OrdinalIgnoreCase);
         }
 
         private void MainAppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
