@@ -208,8 +208,6 @@ namespace Sentinel.App
                 RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
 
-                // Both coordinators are silent unless action is required. Each owns
-                // its own safety, verification, concurrency, and rate-limit policy.
                 _ = _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
                 _ = _integratedMaintenanceCoordinator.EvaluateAndRunAsync();
             }
@@ -280,6 +278,12 @@ namespace Sentinel.App
         {
             if (_guidanceActionId == "open-task-manager") { Process.Start(new ProcessStartInfo("taskmgr.exe") { UseShellExecute = true }); return; }
             if (_guidanceActionId == "approve-remediation") { await ReviewApprovedRemediationAsync(); return; }
+            if (_guidanceActionId == "review-driver-repair")
+            {
+                AskSentinelQuestionBox.Text = "Do I have any driver conflicts?";
+                await SubmitAskSentinelQuestionAsync();
+                return;
+            }
             if (_guidanceActionId == "open-windows-update") Process.Start(new ProcessStartInfo("ms-settings:windowsupdate") { UseShellExecute = true });
         }
 
