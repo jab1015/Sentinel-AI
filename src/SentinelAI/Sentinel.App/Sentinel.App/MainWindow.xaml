@@ -13,12 +13,15 @@
     <Grid Background="#111827">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Sentinel AI dashboard">
             <StackPanel Margin="36" Spacing="20" MaxWidth="1100" HorizontalAlignment="Center">
-                <StackPanel Spacing="6">
+                <StackPanel Spacing="8">
                     <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <Image Source="Assets/Shield.png" Width="34" Height="34" Stretch="Uniform" AutomationProperties.Name="Sentinel AI shield"/>
                         <TextBlock Text="Sentinel AI" FontSize="30" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" AutomationProperties.HeadingLevel="Level1"/>
                     </StackPanel>
                     <TextBlock Text="Your Windows Investigation Assistant" FontSize="16" Foreground="#9CA3AF"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Button x:Name="OpenQuarantineButton" Content="Quarantine" Click="OpenQuarantineButton_Click" AutomationProperties.Name="Open Quarantine Manager"/>
+                    </StackPanel>
                 </StackPanel>
 
                 <Border Background="#1F2937" CornerRadius="14" Padding="30">
