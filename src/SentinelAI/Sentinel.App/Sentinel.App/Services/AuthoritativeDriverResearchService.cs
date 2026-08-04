@@ -27,6 +27,8 @@ namespace Sentinel.App.Services
         {
             DeviceContext context = ReadDeviceContext(deviceName);
 
+            // Dell exposes a machine-readable catalog that Sentinel can safely resolve
+            // without scraping the interactive support site.
             if ((context.Manufacturer ?? string.Empty).Contains("Dell", StringComparison.OrdinalIgnoreCase))
             {
                 DellPackageMatch? exactDell = TryResolveDellCatalogPackage(context, deviceName);
@@ -35,11 +37,14 @@ namespace Sentinel.App.Services
                     return new DriverResearchResult(
                         true, true, 97, "Dell Driver Catalog", exactDell.DownloadUri,
                         context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                        $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and matched the affected device to Dell's machine-readable official driver catalog. Candidate package: {exactDell.Title}. Version: {exactDell.Version}. Release: {exactDell.ReleaseDate}. Sentinel has resolved the Dell-hosted package URL; the next safety step is to download it, verify its Windows digital signature and hardware compatibility, and only then offer automatic installation.",
+                        $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and matched the affected device to Dell's official machine-readable driver catalog. Candidate package: {exactDell.Title}. Version: {exactDell.Version}. Release: {exactDell.ReleaseDate}. Sentinel resolved the Dell-hosted package URL. The next safety step is to download the package, verify its Windows digital signature and hardware compatibility, and only then offer automatic installation.",
                         false);
                 }
             }
 
+            // For other manufacturers, Sentinel prefers the OEM's official support system.
+            // Exact package automation is enabled only when Sentinel can independently
+            // verify a machine-readable package match. Otherwise it remains research-only.
             OemSource oem = BuildOemSource(context, deviceName);
             if (!string.IsNullOrWhiteSpace(oem.Uri))
             {
@@ -50,8 +55,11 @@ namespace Sentinel.App.Services
                     string reachability = vendor.Reached
                         ? "Sentinel verified the manufacturer's official support endpoint directly."
                         : "Sentinel identified the manufacturer's official support endpoint, but that interactive site blocks automated access.";
-                    return new DriverResearchResult(true, true, confidence, oem.Name, oem.Uri, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                        $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)}. {reachability} Windows Update did not offer an automatic repair. Sentinel has not yet verified an exact signed package, so no installation is allowed.", true);
+                    return new DriverResearchResult(
+                        true, true, confidence, oem.Name, oem.Uri,
+                        context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                        $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)}. {reachability} Windows Update did not offer an automatic repair. Sentinel has not yet verified an exact signed package, so no installation is allowed. Sentinel will continue using hardware ID, model identity, Microsoft Update Catalog, and OEM-specific sources to resolve a safe package when possible.",
+                        true);
                 }
             }
 
@@ -59,17 +67,30 @@ namespace Sentinel.App.Services
             string catalogUri = "https://www.catalog.update.microsoft.com/Search.aspx?q=" + Uri.EscapeDataString(catalogQuery);
             WebProbe catalog = Probe(catalogUri);
             if (catalog.Reached && CatalogAppearsToHaveResults(catalog.Body))
-                return new DriverResearchResult(true, true, 90, "Microsoft Update Catalog", catalogUri, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                    "Sentinel found candidate driver information in Microsoft's official Update Catalog. The exact package must still be matched to this computer's hardware ID and signature before Sentinel can install it.", false);
+            {
+                return new DriverResearchResult(
+                    true, true, 90, "Microsoft Update Catalog", catalogUri,
+                    context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                    "Sentinel found candidate driver information in Microsoft's official Update Catalog. The exact package must still be matched to this computer's hardware ID and signature before Sentinel can install it.",
+                    false);
+            }
 
             string microsoftGuidance = "https://learn.microsoft.com/windows-hardware/drivers/install/cm-prob-failed-start";
             WebProbe guidance = Probe(microsoftGuidance);
             if (guidance.Reached)
-                return new DriverResearchResult(true, true, 75, "Microsoft Learn", microsoftGuidance, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                    "Sentinel verified Microsoft's official guidance for Device Manager Code 10. The device failed to start and the driver requires repair. No exact automatically installable package has been verified yet.", true);
+            {
+                return new DriverResearchResult(
+                    true, true, 75, "Microsoft Learn", microsoftGuidance,
+                    context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                    "Sentinel verified Microsoft's official guidance for Device Manager Code 10. The device failed to start and the driver requires repair. No exact automatically installable package has been verified yet.",
+                    true);
+            }
 
-            return new DriverResearchResult(false, false, 0, string.Empty, string.Empty, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                "Sentinel could not reach an authoritative Microsoft or manufacturer source. No change was made, and Sentinel will not guess at a repair.", true);
+            return new DriverResearchResult(
+                false, false, 0, string.Empty, string.Empty,
+                context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                "Sentinel could not reach an authoritative Microsoft or manufacturer source. No change was made, and Sentinel will not guess at a repair.",
+                true);
         }
 
         private static DellPackageMatch? TryResolveDellCatalogPackage(DeviceContext context, string deviceName)
@@ -169,30 +190,90 @@ namespace Sentinel.App.Services
         {
             string manufacturer = context.Manufacturer ?? string.Empty;
             string query = string.Join(" ", new[] { context.Model, deviceName }.Where(s => !string.IsNullOrWhiteSpace(s)));
-            if (manufacturer.Contains("Dell", StringComparison.OrdinalIgnoreCase)) return new("Dell Support", "https://www.dell.com/support/home/en-us?app=drivers", true);
-            if (manufacturer.Contains("HP", StringComparison.OrdinalIgnoreCase) || manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase)) return new("HP Support", "https://support.hp.com/us-en/drivers", true);
-            if (manufacturer.Contains("Lenovo", StringComparison.OrdinalIgnoreCase)) return new("Lenovo Support", "https://pcsupport.lenovo.com/us/en/", true);
-            if (manufacturer.Contains("ASUS", StringComparison.OrdinalIgnoreCase)) return new("ASUS Support", "https://www.asus.com/support/download-center/", true);
-            if (manufacturer.Contains("Acer", StringComparison.OrdinalIgnoreCase)) return new("Acer Support", "https://www.acer.com/us-en/support/drivers-and-manuals", true);
+
+            if (ContainsAny(manufacturer, "Dell")) return new("Dell Support", "https://www.dell.com/support/home/en-us?app=drivers", true);
+            if (ContainsAny(manufacturer, "HP", "Hewlett")) return new("HP Support", "https://support.hp.com/us-en/drivers", true);
+            if (ContainsAny(manufacturer, "Lenovo")) return new("Lenovo Support", "https://pcsupport.lenovo.com/us/en/", true);
+            if (ContainsAny(manufacturer, "ASUS", "ASUSTeK")) return new("ASUS Support", "https://www.asus.com/support/download-center/", true);
+            if (ContainsAny(manufacturer, "Acer")) return new("Acer Support", "https://www.acer.com/us-en/support/drivers-and-manuals", true);
+            if (ContainsAny(manufacturer, "Microsoft")) return new("Microsoft Surface Support", "https://support.microsoft.com/surface/download-drivers-and-firmware-for-surface-09bb2e09-2a4b-cb69-0951-078a7739e120", true);
+            if (ContainsAny(manufacturer, "MSI", "Micro-Star")) return new("MSI Support", "https://www.msi.com/support/download", true);
+            if (ContainsAny(manufacturer, "Gigabyte", "GIGABYTE")) return new("GIGABYTE Support", "https://www.gigabyte.com/Support", true);
+            if (ContainsAny(manufacturer, "Samsung")) return new("Samsung Support", "https://www.samsung.com/us/support/downloads/", true);
+            if (ContainsAny(manufacturer, "TOSHIBA", "Dynabook")) return new("Dynabook Support", "https://support.dynabook.com/support/modelHome", true);
+            if (ContainsAny(manufacturer, "Framework")) return new("Framework Support", "https://knowledgebase.frame.work/en_us/framework-laptop-bios-and-driver-releases-S1dMQt6F", true);
+            if (ContainsAny(manufacturer, "Razer")) return new("Razer Support", "https://mysupport.razer.com/app/answers/detail/a_id/4166", true);
+            if (ContainsAny(manufacturer, "LG Electronics", "LG")) return new("LG Support", "https://www.lg.com/us/support/software-firmware-drivers", true);
+            if (ContainsAny(manufacturer, "Huawei")) return new("Huawei Support", "https://consumer.huawei.com/en/support/", true);
+            if (ContainsAny(manufacturer, "Intel")) return new("Intel Download Center", "https://www.intel.com/content/www/us/en/search.html#sort=relevancy&f:@tabfilter=[Downloads]&q=" + Uri.EscapeDataString(query), true);
+
             if (string.IsNullOrWhiteSpace(manufacturer)) return new(string.Empty, string.Empty, false);
-            return new("Intel Download Center", "https://www.intel.com/content/www/us/en/search.html#sort=relevancy&f:@tabfilter=[Downloads]&q=" + Uri.EscapeDataString(query), true);
+
+            // Unknown OEMs still use Microsoft Update Catalog before Sentinel considers
+            // component-vendor sources. Sentinel will never infer an installer solely from
+            // a search result or a non-authoritative download site.
+            return new(string.Empty, string.Empty, false);
         }
+
+        private static bool ContainsAny(string value, params string[] tokens) =>
+            tokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
 
         private static WebProbe Probe(string uri)
         {
-            try { using HttpClient client = new() { Timeout = NetworkTimeout }; client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0"); using HttpResponseMessage response = client.GetAsync(uri).GetAwaiter().GetResult(); string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(); return new(response.IsSuccessStatusCode, body); }
+            try
+            {
+                using HttpClient client = new() { Timeout = NetworkTimeout };
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
+                using HttpResponseMessage response = client.GetAsync(uri).GetAwaiter().GetResult();
+                string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                return new(response.IsSuccessStatusCode, body);
+            }
             catch { return new(false, string.Empty); }
         }
 
-        private static bool CatalogAppearsToHaveResults(string body) => !string.IsNullOrWhiteSpace(body) && !body.Contains("We did not find any results", StringComparison.OrdinalIgnoreCase) && (body.Contains("goToDetails", StringComparison.OrdinalIgnoreCase) || body.Contains("updateid", StringComparison.OrdinalIgnoreCase) || body.Contains("ScopedViewInline", StringComparison.OrdinalIgnoreCase));
+        private static bool CatalogAppearsToHaveResults(string body) =>
+            !string.IsNullOrWhiteSpace(body) &&
+            !body.Contains("We did not find any results", StringComparison.OrdinalIgnoreCase) &&
+            (body.Contains("goToDetails", StringComparison.OrdinalIgnoreCase) ||
+             body.Contains("updateid", StringComparison.OrdinalIgnoreCase) ||
+             body.Contains("ScopedViewInline", StringComparison.OrdinalIgnoreCase));
 
         private static ProcessResult RunPowerShell(string command, TimeSpan timeout)
         {
-            try { string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command)); using Process process = new(); process.StartInfo = new ProcessStartInfo { FileName = "powershell.exe", Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}", UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true }; if (!process.Start()) return new(false, string.Empty); string output = process.StandardOutput.ReadToEnd(); _ = process.StandardError.ReadToEnd(); if (!process.WaitForExit((int)timeout.TotalMilliseconds)) { process.Kill(true); return new(false, output); } return new(process.ExitCode == 0, output.Trim()); }
+            try
+            {
+                string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+                using Process process = new();
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                if (!process.Start()) return new(false, string.Empty);
+                string output = process.StandardOutput.ReadToEnd();
+                _ = process.StandardError.ReadToEnd();
+                if (!process.WaitForExit((int)timeout.TotalMilliseconds))
+                {
+                    process.Kill(true);
+                    return new(false, output);
+                }
+                return new(process.ExitCode == 0, output.Trim());
+            }
             catch { return new(false, string.Empty); }
         }
 
-        private static string GetValue(string output, string name) { foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)) if (line.TrimStart().StartsWith(name + "=", StringComparison.OrdinalIgnoreCase)) return line.Trim()[(name.Length + 1)..].Trim(); return string.Empty; }
+        private static string GetValue(string output, string name)
+        {
+            foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                if (line.TrimStart().StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
+                    return line.Trim()[(name.Length + 1)..].Trim();
+            return string.Empty;
+        }
+
         private static string EscapePowerShellLiteral(string value) => (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
         private static string Display(string value) => string.IsNullOrWhiteSpace(value) ? "this computer" : value.Trim();
         private static string Normalize(string value) => (value ?? string.Empty).Replace("(R)", string.Empty, StringComparison.OrdinalIgnoreCase).Replace("(TM)", string.Empty, StringComparison.OrdinalIgnoreCase).Trim();
