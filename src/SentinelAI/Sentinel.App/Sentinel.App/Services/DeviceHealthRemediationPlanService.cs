@@ -22,29 +22,35 @@ namespace Sentinel.App.Services
         {
             DeviceHealthAssessment assessment = _assessmentService.Assess();
 
-            if (!assessment.ProblemsDetected || assessment.ProblemDevices.Count == 0)
+            if (!assessment.DeviceHealthVerified ||
+                !assessment.RepairInvestigationWarranted ||
+                assessment.Problems.Count == 0)
             {
                 return DeviceHealthRemediationPlan.NoAction(assessment, assessment.Summary);
             }
 
             var candidates = new List<DeviceHealthRemediationCandidate>();
 
-            foreach (DeviceHealthProblem device in assessment.ProblemDevices.Take(5))
+            foreach (DeviceProblemEvidence device in assessment.Problems.Take(5))
             {
+                string deviceName = string.IsNullOrWhiteSpace(device.DeviceDescription)
+                    ? device.InstanceId
+                    : device.DeviceDescription;
+
                 candidates.Add(new DeviceHealthRemediationCandidate(
                     DeviceHealthRemediationAction.RecommendWindowsUpdateDriverCheck,
                     device.InstanceId,
-                    device.FriendlyName,
+                    deviceName,
                     device.ProblemCode,
                     "Check Windows Update for a verified driver repair",
-                    $"Windows reports a Plug and Play problem for {device.FriendlyName} (problem code {device.ProblemCode}). The safest first repair path is a Windows-provided driver update when available.",
+                    $"Windows reports a Plug and Play problem for {deviceName} (problem code {device.ProblemCode}). The safest first repair path is a Windows-provided driver update when available.",
                     AutomaticEligible: false,
                     Destructive: false));
 
                 candidates.Add(new DeviceHealthRemediationCandidate(
                     DeviceHealthRemediationAction.ReinstallOrRollbackDriver,
                     device.InstanceId,
-                    device.FriendlyName,
+                    deviceName,
                     device.ProblemCode,
                     "Reinstall or roll back the device driver",
                     "Driver replacement can affect hardware availability and requires explicit user approval plus device-specific evidence.",
@@ -56,7 +62,7 @@ namespace Sentinel.App.Services
                 assessment,
                 true,
                 candidates,
-                $"Sentinel verified {assessment.ProblemDevices.Count} device problem(s). Safe remediation guidance is available, but automatic driver replacement remains blocked.");
+                $"Sentinel verified {assessment.Problems.Count} device problem(s). Safe remediation guidance is available, but automatic driver replacement remains blocked.");
         }
     }
 
