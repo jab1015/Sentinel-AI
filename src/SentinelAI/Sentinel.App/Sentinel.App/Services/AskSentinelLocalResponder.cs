@@ -24,7 +24,7 @@ namespace Sentinel.App.Services
                 return BuildLocalHealthVerification(snapshot);
             }
 
-            if (Has(q, "windows update", "updates", "update status")) return _windowsHealth.GetWindowsUpdateStatus();
+            if (IsWindowsUpdateQuestion(q)) return _windowsHealth.GetWindowsUpdateStatus();
             if (Has(q, "pending restart", "restart required", "reboot required", "need to restart")) return _windowsHealth.GetPendingRestartStatus();
             if (Has(q, "tpm", "trusted platform module")) return _windowsHealth.GetTpmStatus();
             if (Has(q, "secure boot")) return _windowsHealth.GetSecureBootStatus();
@@ -106,6 +106,23 @@ namespace Sentinel.App.Services
                    $"Startup apps: {snapshot.StartupEntryCount} entries, {snapshot.FlaggedStartupEntryCount} flagged. " +
                    $"Running services: {snapshot.RunningServiceCount} of {snapshot.InstalledServiceCount}. " +
                    $"Top processes: {snapshot.ProcessCount} running; highest memory is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB.";
+        }
+
+        private static bool IsWindowsUpdateQuestion(string value)
+        {
+            return Has(
+                value,
+                "windows update",
+                "windows updates",
+                "update status",
+                "check for updates",
+                "latest update",
+                "latest updates",
+                "up to date",
+                "fully updated",
+                "updates installed",
+                "missing updates",
+                "available updates");
         }
 
         private static bool Has(string value, params string[] terms)
