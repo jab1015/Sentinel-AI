@@ -16,15 +16,22 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class WindowsHealthEvidenceProvider
     {
-        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(12);
 
         public string GetWindowsUpdateStatus()
         {
             string value = RunPowerShell(
                 "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
-                "$latest=Get-HotFix -ErrorAction SilentlyContinue | Sort-Object InstalledOn -Descending | Select-Object -First 1; " +
+                "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
+                "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
                 "if ($null -eq $latest) { \"Service=$($service.Status);LatestInstalledUpdate=Unavailable\" } " +
-                "else { \"Service=$($service.Status);LatestInstalledUpdate=$($latest.HotFixID);InstalledOn=$($latest.InstalledOn.ToString('yyyy-MM-dd'))\" }");
+                "else { \"Service=$($service.Status);LatestInstalledUpdate=$($latest.HotFixID);InstalledOn=$($latest.InstalledOn)\" }");
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunPowerShell(
+                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; \"Service=$($service.Status)\"");
+            }
 
             bool? restart = TryGetRestartPending();
             string restartText = restart switch
@@ -35,7 +42,7 @@ namespace Sentinel.App.Services
             };
 
             return string.IsNullOrWhiteSpace(value)
-                ? $"Sentinel could not verify Windows Update status. {restartText}"
+                ? $"Sentinel could not verify Windows Update service status. {restartText}"
                 : $"Verified Windows Update status: {value.Replace(';', ',')}. {restartText}";
         }
 
@@ -56,8 +63,15 @@ namespace Sentinel.App.Services
                 "$t=Get-Tpm -ErrorAction Stop; " +
                 "\"Present=$($t.TpmPresent);Ready=$($t.TpmReady);Enabled=$($t.TpmEnabled);Activated=$($t.TpmActivated)\"");
 
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunPowerShell(
+                    "$t=Get-CimInstance -Namespace root/CIMV2/Security/MicrosoftTpm -ClassName Win32_Tpm -ErrorAction Stop; " +
+                    "\"Present=True;Enabled=$($t.IsEnabled_InitialValue);Activated=$($t.IsActivated_InitialValue);Owned=$($t.IsOwned_InitialValue)\"");
+            }
+
             return string.IsNullOrWhiteSpace(value)
-                ? "Sentinel could not verify TPM status on this computer."
+                ? "Sentinel could not verify TPM status because Windows did not expose TPM evidence to this process."
                 : $"Verified TPM status: {value.Replace(';', ',')}.";
         }
 
@@ -66,8 +80,15 @@ namespace Sentinel.App.Services
             string value = RunPowerShell(
                 "if (Confirm-SecureBootUEFI -ErrorAction Stop) { 'Enabled' } else { 'Disabled' }");
 
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunPowerShell(
+                    "$v=(Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State' -Name UEFISecureBootEnabled -ErrorAction Stop).UEFISecureBootEnabled; " +
+                    "if ($v -eq 1) {'Enabled'} elseif ($v -eq 0) {'Disabled'} else {'Unknown'}");
+            }
+
             return string.IsNullOrWhiteSpace(value)
-                ? "Sentinel could not verify Secure Boot status. This can occur when Windows is not running in UEFI mode or access is unavailable."
+                ? "Sentinel could not verify Secure Boot status because Windows did not expose UEFI Secure Boot evidence to this process."
                 : $"Verified Secure Boot status: {value}.";
         }
 
@@ -77,9 +98,22 @@ namespace Sentinel.App.Services
                 "$v=Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop; " +
                 "\"Protection=$($v.ProtectionStatus);Volume=$($v.VolumeStatus);Encryption=$($v.EncryptionPercentage)%\"");
 
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunPowerShell(
+                    "$v=Get-CimInstance -Namespace root/CIMV2/Security/MicrosoftVolumeEncryption -ClassName Win32_EncryptableVolume -Filter \"DriveLetter='$env:SystemDrive'\" -ErrorAction Stop; " +
+                    "$p=$v.GetProtectionStatus().ProtectionStatus; $c=$v.GetConversionStatus(); " +
+                    "\"ProtectionStatus=$p;ConversionStatus=$($c.ConversionStatus);Encryption=$($c.EncryptionPercentage)%\"");
+            }
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunProcess("manage-bde.exe", "-status " + Environment.SystemDirectory[..2]);
+            }
+
             return string.IsNullOrWhiteSpace(value)
-                ? "Sentinel could not verify BitLocker or device-encryption status for the Windows drive."
-                : $"Verified Windows drive encryption status: {value.Replace(';', ',')}.";
+                ? "Sentinel could not verify BitLocker or device-encryption status because Windows did not expose drive-encryption evidence to this process."
+                : $"Verified Windows drive encryption status: {Normalize(value)}.";
         }
 
         private static bool? TryGetRestartPending()
@@ -113,17 +147,23 @@ namespace Sentinel.App.Services
 
         private static string RunPowerShell(string command)
         {
+            string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+            return RunProcess(
+                "powershell.exe",
+                $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}");
+        }
+
+        private static string RunProcess(string fileName, string arguments)
+        {
             try
             {
-                string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
                 using Process process = new();
                 var output = new StringBuilder();
-                var error = new StringBuilder();
 
                 process.StartInfo = new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
+                    FileName = fileName,
+                    Arguments = arguments,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -135,14 +175,6 @@ namespace Sentinel.App.Services
                     if (!string.IsNullOrWhiteSpace(e.Data))
                     {
                         output.AppendLine(e.Data);
-                    }
-                };
-
-                process.ErrorDataReceived += (_, e) =>
-                {
-                    if (!string.IsNullOrWhiteSpace(e.Data))
-                    {
-                        error.AppendLine(e.Data);
                     }
                 };
 
@@ -161,7 +193,7 @@ namespace Sentinel.App.Services
                 }
 
                 process.WaitForExit();
-                return process.ExitCode == 0 && error.Length == 0
+                return process.ExitCode == 0
                     ? output.ToString().Trim()
                     : string.Empty;
             }
@@ -169,6 +201,24 @@ namespace Sentinel.App.Services
             {
                 return string.Empty;
             }
+        }
+
+        private static string Normalize(string value)
+        {
+            string normalized = value
+                .Replace("\r", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal)
+                .Replace(';', ',')
+                .Trim();
+
+            while (normalized.Contains("  ", StringComparison.Ordinal))
+            {
+                normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
+            }
+
+            return normalized.Length <= 500
+                ? normalized
+                : normalized[..497] + "...";
         }
     }
 }
