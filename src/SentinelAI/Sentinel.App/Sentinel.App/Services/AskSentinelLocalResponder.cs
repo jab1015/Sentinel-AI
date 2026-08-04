@@ -9,8 +9,8 @@ using Sentinel.App.Models;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Provides immediate, strictly evidence-grounded answers for the initial Ask Sentinel
-    /// interaction surface. Unsupported questions fail closed instead of inferring facts.
+    /// Provides immediate, strictly evidence-grounded answers for Ask Sentinel.
+    /// Unsupported questions fail closed instead of inferring facts.
     /// </summary>
     public sealed class AskSentinelLocalResponder
     {
@@ -24,11 +24,36 @@ namespace Sentinel.App.Services
 
             string normalized = question.Trim().ToLowerInvariant();
 
-            if (ContainsAny(normalized, "healthy", "health", "status", "anything wrong", "problem", "attention"))
+            if (ContainsAny(normalized, "windows update", "updates", "update status"))
+            {
+                return "Sentinel does not yet have verified Windows Update evidence for this question.";
+            }
+
+            if (ContainsAny(normalized, "pending restart", "restart required", "reboot required", "need to restart"))
+            {
+                return "Sentinel does not yet have verified pending-restart evidence for this question.";
+            }
+
+            if (ContainsAny(normalized, "tpm", "trusted platform module"))
+            {
+                return "Sentinel does not yet have verified TPM evidence for this question.";
+            }
+
+            if (ContainsAny(normalized, "secure boot"))
+            {
+                return "Sentinel does not yet have verified Secure Boot evidence for this question.";
+            }
+
+            if (ContainsAny(normalized, "bitlocker", "device encryption", "drive encryption"))
+            {
+                return "Sentinel does not yet have verified BitLocker or device-encryption evidence for this question.";
+            }
+
+            if (ContainsAny(normalized, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
             {
                 return snapshot.InvestigationRequiresAttention
                     ? $"Sentinel currently has a verified condition that requires attention. {Safe(snapshot.InvestigationSummary, snapshot.GuidanceWhatHappened)}"
-                    : "Sentinel's current verified evidence does not show a condition that requires your attention.";
+                    : $"Sentinel's current verified evidence does not show a condition that requires your attention. CPU is {snapshot.CpuUsagePercent:0.0}%, memory is {snapshot.MemoryUsagePercent:0.0}%, disk use is {snapshot.DiskUsagePercent:0.0}%, Defender is {snapshot.DefenderStatus}, and Firewall is {snapshot.FirewallStatus}.";
             }
 
             if (ContainsAny(normalized, "memory", "ram"))
@@ -46,11 +71,46 @@ namespace Sentinel.App.Services
                 return $"Current verified CPU usage is {snapshot.CpuUsagePercent:0.0}%.";
             }
 
-            if (ContainsAny(normalized, "disk", "storage", "drive"))
+            if (ContainsAny(normalized, "disk", "storage", "drive space"))
             {
                 return snapshot.DiskTotalGB > 0
                     ? $"Current verified disk usage is {snapshot.DiskUsagePercent:0.0}%, with {snapshot.DiskFreeGB:0.00} GB free of {snapshot.DiskTotalGB:0.00} GB."
                     : "Sentinel does not currently have verified disk-capacity evidence for this question.";
+            }
+
+            if (ContainsAny(normalized, "network", "internet", "connection", "download", "upload"))
+            {
+                if (!snapshot.NetworkConnectionMonitoringAvailable)
+                {
+                    return $"Network connection monitoring is currently {snapshot.NetworkConnectionMonitoringStatus}. Sentinel cannot verify active network health from the current evidence.";
+                }
+
+                string flagged = snapshot.FlaggedConnectionCount > 0
+                    ? $" Sentinel has flagged {snapshot.FlaggedConnectionCount} connection condition(s); the primary finding is {snapshot.PrimaryFlaggedConnectionProcessName} to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}: {snapshot.PrimaryFlaggedConnectionReason}"
+                    : " Sentinel has not flagged an active TCP connection condition.";
+
+                return $"Network monitoring is active. Sentinel sees {snapshot.EstablishedConnectionCount} established TCP connection(s), including {snapshot.ExternalConnectionCount} external connection(s). Current measured throughput is {snapshot.DownloadMbps:0.00} Mbps down and {snapshot.UploadMbps:0.00} Mbps up.{flagged}";
+            }
+
+            if (ContainsAny(normalized, "startup app", "startup apps", "starts with windows", "startup program", "startup entry"))
+            {
+                return snapshot.FlaggedStartupEntryCount > 0
+                    ? $"Sentinel verified {snapshot.StartupEntryCount} startup entries and flagged {snapshot.FlaggedStartupEntryCount} for review. Primary finding: {snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}"
+                    : $"Sentinel verified {snapshot.StartupEntryCount} startup entries and found no unusual startup persistence entry.";
+            }
+
+            if (ContainsAny(normalized, "running service", "running services", "windows service", "services"))
+            {
+                return snapshot.FlaggedServiceCount > 0
+                    ? $"Sentinel verified {snapshot.RunningServiceCount} running services out of {snapshot.InstalledServiceCount} installed services and flagged {snapshot.FlaggedServiceCount} for review. Primary finding: {snapshot.PrimaryFlaggedServiceName}: {snapshot.PrimaryFlaggedServiceReason}"
+                    : $"Sentinel verified {snapshot.RunningServiceCount} running services out of {snapshot.InstalledServiceCount} installed services and found no service warning condition.";
+            }
+
+            if (ContainsAny(normalized, "top process", "top processes", "highest memory", "most memory", "running process", "running processes"))
+            {
+                return snapshot.HighestMemoryProcessGB > 0
+                    ? $"Sentinel currently sees {snapshot.ProcessCount} running processes. The highest-memory process is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB."
+                    : $"Sentinel currently sees {snapshot.ProcessCount} running processes, but does not yet have a verified top-memory process result.";
             }
 
             if (ContainsAny(normalized, "defender", "antivirus", "virus protection"))
