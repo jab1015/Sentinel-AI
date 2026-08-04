@@ -8,30 +8,62 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 # Project Status
 
-**Status:** Planned Implementation Complete  
+**Status:** Release Candidate Remediation  
 **Production Branch:** `main`  
-**Phase 7:** **Complete — 12 of 12**  
-**Overall Planned Implementation:** **100%**  
-**Current Work Category:** Release operations and distribution
+**Overall Estimated Progress:** **approximately 91%**  
+**Release Ready:** **No**
 
-The application builds successfully, launches promptly with no currently observed lag, monitors continuously, investigates with verified evidence, supports safely governed remediation, includes grounded Ask Sentinel assistance, and has passed one-hour, eight-hour, compatibility, accessibility, and final release acceptance verification.
+Core monitoring, protection, containment, optimization, maintenance, packaging, startup-to-tray, stability, clean install/uninstall, network recovery, and sleep/wake foundations are implemented and verified.
+
+Final runtime testing identified four incomplete or unverified release-candidate areas:
+
+1. Ask Sentinel Local evidence coverage
+2. Quarantine Manager UI
+3. Activity Center UI and repair visibility
+4. Investigation Engine runtime integration and verification
+
+Final Acceptance Test 8 remains open.
 
 ---
 
-# Phase 7 — Production Hardening & Commercial Release
+# Release Candidate Finalization
 
-1. [x] Structured logging and diagnostics foundation.
-2. [x] Fresh-clone and release-configuration verification foundation.
-3. [x] Automated regression coverage.
-4. [x] Performance profiling and optimization.
-5. [x] One-hour and eight-hour stability testing.
-6. [x] Windows 10 and Windows 11 compatibility verification.
-7. [x] Installer/uninstaller.
-8. [x] Code-signing release boundary.
-9. [x] Application-update release boundary.
-10. [x] Accessibility and UX review.
-11. [x] Privacy, user, and troubleshooting documentation.
-12. [x] Release acceptance testing.
+## 1 of 4 — Ask Sentinel Local
+
+The UI works, but local evidence coverage is incomplete. Remaining providers include Windows Update, pending restart, TPM, Secure Boot, BitLocker/device encryption, and broader Windows health questions.
+
+Ask Sentinel remains local-only and does not perform live web searches.
+
+## 2 of 4 — Quarantine Manager UI
+
+The quarantine/restore backend and acceptance harness pass, but the installed product still needs a visible Quarantine Manager with item history, evidence summary, restore, permanent removal, verification state, and activity linkage.
+
+## 3 of 4 — Activity Center
+
+The product still needs a visible 30-day history for automatic repairs, optimizations, investigations, quarantine/restore actions, rollbacks, verification results, and user-required actions. Sentinel must clearly tell the user when it successfully fixes something.
+
+## 4 of 4 — Investigation Engine Runtime Integration
+
+The internal investigation workflow must be demonstrated end-to-end: local evidence collection, confidence scoring, authoritative web research when local evidence is insufficient, safe repair decisions, verification, Activity Center logging, and stored findings available to Ask Sentinel.
+
+The web-research capability exists only to help Sentinel resolve problems automatically. It is not a general Ask Sentinel internet-search feature.
+
+---
+
+# Verified Foundations
+
+- Continuous system and security monitoring
+- Inbound/outbound connection monitoring
+- Spyware/process correlation
+- Process containment acceptance
+- Firewall block/removal acceptance
+- Quarantine/restore backend acceptance
+- Optimization and maintenance foundations
+- One-hour and eight-hour stability testing
+- Clean install and uninstall
+- Windows startup-to-tray
+- Network disconnect/recovery
+- Sleep/wake recovery
 
 ---
 
@@ -39,11 +71,9 @@ The application builds successfully, launches promptly with no currently observe
 
 Sentinel is deployed through its Windows packaging project. For another standard 64-bit Windows computer, create a **Release | x64** package from **Sentinel.App (Package)** in Visual Studio and distribute the complete generated package output, not a standalone EXE from the build folder.
 
-Public/commercial installation requires the package to be signed with the approved trusted production publisher identity. Once signed, the target user opens the generated `.msix`/`.msixbundle` with Windows App Installer, confirms the publisher, selects Install, and launches Sentinel AI from the Start menu.
+Public/commercial installation requires the package to be signed with the approved trusted production publisher identity. Private certificate material and credentials must never be committed to this repository.
 
 Detailed packaging, installation, clean-computer verification, and uninstall instructions are maintained in `docs/SAI-028_Installer_Uninstaller_Plan.md`.
-
-Production signing requirements are maintained in `docs/SAI-029_Code_Signing_Plan.md`. Private certificate material and credentials must never be committed to this repository.
 
 ---
 
@@ -69,18 +99,17 @@ Production signing requirements are maintained in `docs/SAI-029_Code_Signing_Pla
 - Least-risk remediation
 - Verify system-changing outcomes
 - Never claim success without verification
-- Never invent system state, history, remediation, threats, actions, or outcomes in AI assistance
+- Never invent system state, history, remediation, threats, actions, or outcomes
 - Keep healthy users undisturbed
-- Preserve working features during maintenance
-- Keep release readiness reproducible from source control
-- Protect critical safety invariants with automated regression checks
-- Keep startup performance observable without blocking first-window presentation
+- Tell users when Sentinel successfully fixes something
+- Keep Ask Sentinel grounded in verified local evidence
+- Use authoritative web research only for internal problem resolution when local evidence is insufficient
 
 ---
 
-# Progress Baseline
+# Release Gate
 
-**100% is the authoritative completed planned-implementation baseline as of 2026-08-02.** Future maintenance, release operations, distribution work, and verified defects do not reduce this completed implementation baseline unless planned implementation scope is explicitly reopened and documented.
+Sentinel AI must not be described as complete, commercially ready, or 100% finished until all four Release Candidate Finalization items pass runtime validation and Final Acceptance Test 8 passes.
 
 ---
 
