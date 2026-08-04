@@ -41,6 +41,10 @@
                             <Button Grid.Column="1" x:Name="AskSentinelButton" Content="Ask" MinWidth="92" Click="AskSentinelButton_Click" AutomationProperties.Name="Ask Sentinel"/>
                         </Grid>
                         <TextBlock x:Name="AskSentinelStatusText" Text="Sentinel answers only from verified local evidence." FontSize="13" Foreground="#9CA3AF" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                        <StackPanel x:Name="AskSentinelProgressPanel" Orientation="Horizontal" Spacing="10" Visibility="Collapsed" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite">
+                            <ProgressRing x:Name="AskSentinelProgressRing" Width="20" Height="20" IsActive="False"/>
+                            <TextBlock x:Name="AskSentinelProgressText" Text="Collecting verified local evidence…" FontSize="14" Foreground="#D1D5DB" VerticalAlignment="Center"/>
+                        </StackPanel>
                         <Border x:Name="AskSentinelAnswerBorder" Background="#111827" CornerRadius="8" Padding="16" Visibility="Collapsed"><StackPanel Spacing="6"><TextBlock Text="Sentinel" FontSize="14" FontWeight="SemiBold" Foreground="#9CA3AF"/><TextBlock x:Name="AskSentinelAnswerText" FontSize="16" Foreground="White" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/></StackPanel></Border>
                     </StackPanel>
                 </Border>
