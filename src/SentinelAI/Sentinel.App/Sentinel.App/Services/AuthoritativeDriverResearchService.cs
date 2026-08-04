@@ -12,10 +12,6 @@ using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Performs read-only research against authoritative Microsoft and OEM sources
-    /// when Windows Update cannot provide an automatic driver repair.
-    /// </summary>
     public sealed class AuthoritativeDriverResearchService
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(20);
@@ -34,8 +30,7 @@ namespace Sentinel.App.Services
                 if (vendor.Reached)
                 {
                     int confidence = !string.IsNullOrWhiteSpace(context.Model) && !string.IsNullOrWhiteSpace(context.SerialNumber) ? 92 : 84;
-                    return new DriverResearchResult(true, true, confidence, oem.Name, oem.Uri,
-                        context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                    return new DriverResearchResult(true, true, confidence, oem.Name, oem.Uri, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
                         $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and verified the manufacturer's official driver-support path for the affected device. Windows Update did not offer an automatic repair. Sentinel must still identify and validate the exact signed package before automatic installation can be enabled.", true);
                 }
             }
@@ -44,11 +39,8 @@ namespace Sentinel.App.Services
             string catalogUri = "https://www.catalog.update.microsoft.com/Search.aspx?q=" + Uri.EscapeDataString(catalogQuery);
             WebProbe catalog = Probe(catalogUri);
             if (catalog.Reached && CatalogAppearsToHaveResults(catalog.Body))
-            {
-                return new DriverResearchResult(true, true, 90, "Microsoft Update Catalog", catalogUri,
-                    context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                return new DriverResearchResult(true, true, 90, "Microsoft Update Catalog", catalogUri, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
                     "Sentinel found candidate driver information in Microsoft's official Update Catalog. The exact catalog package must still be matched to this computer's hardware ID and signature before Sentinel can install it.", false);
-            }
 
             string microsoftGuidance = "https://learn.microsoft.com/windows-hardware/drivers/install/cm-prob-failed-start";
             WebProbe guidance = Probe(microsoftGuidance);
@@ -56,14 +48,12 @@ namespace Sentinel.App.Services
             {
                 string identityNote = string.IsNullOrWhiteSpace(context.Manufacturer)
                     ? " Sentinel could not read the computer manufacturer identity during this investigation, so it did not guess at an OEM package."
-                    : string.Empty;
-                return new DriverResearchResult(true, true, 75, "Microsoft Learn", microsoftGuidance,
-                    context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+                    : $" Sentinel identified the computer as {Display(context.Manufacturer)} {Display(context.Model)}, but its OEM support endpoint could not be verified from this process.";
+                return new DriverResearchResult(true, true, 75, "Microsoft Learn", microsoftGuidance, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
                     "Sentinel verified Microsoft's official guidance for Device Manager Code 10. The device failed to start and the driver requires repair. No exact automatically installable package has been verified yet." + identityNote, true);
             }
 
-            return new DriverResearchResult(false, false, 0, string.Empty, string.Empty,
-                context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
+            return new DriverResearchResult(false, false, 0, string.Empty, string.Empty, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
                 "Sentinel could not reach an authoritative Microsoft or manufacturer source. No change was made, and Sentinel will not guess at a repair.", true);
         }
 
@@ -71,31 +61,30 @@ namespace Sentinel.App.Services
         {
             string safeName = EscapePowerShellLiteral(deviceName);
             string command =
-                "$ErrorActionPreference='SilentlyContinue'; " +
-                "$name='" + safeName + "'; " +
+                "$ErrorActionPreference='SilentlyContinue'; $name='" + safeName + "'; " +
                 "$dev=Get-CimInstance Win32_PnPEntity | Where-Object {$_.Name -eq $name -or $_.Name -like ('*'+$name+'*')} | Select-Object -First 1; " +
                 "$hw=''; if($dev){$p=Get-PnpDeviceProperty -InstanceId $dev.PNPDeviceID -KeyName 'DEVPKEY_Device_HardwareIds'; if($p -and $p.Data){$hw=@($p.Data)[0]} elseif($dev.PNPDeviceID){$hw=$dev.PNPDeviceID}}; " +
                 "$cs=Get-CimInstance Win32_ComputerSystem; $bios=Get-CimInstance Win32_BIOS; " +
-                "Write-Output ('MANUFACTURER=' + [string]$cs.Manufacturer); " +
-                "Write-Output ('MODEL=' + [string]$cs.Model); " +
-                "Write-Output ('SERIAL=' + [string]$bios.SerialNumber); " +
-                "Write-Output ('HARDWAREID=' + [string]$hw);";
+                "$m=[string]$cs.Manufacturer; $model=[string]$cs.Model; $serial=[string]$bios.SerialNumber; " +
+                "$cv=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'; " +
+                "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$cv.RegisteredOrganization}; " +
+                "$si=Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation'; " +
+                "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$si.SystemManufacturer}; " +
+                "if([string]::IsNullOrWhiteSpace($model)){$model=[string]$si.SystemProductName}; " +
+                "if([string]::IsNullOrWhiteSpace($serial)){$serial=[string]$si.SystemSerialNumber}; " +
+                "Write-Output ('MANUFACTURER=' + $m); Write-Output ('MODEL=' + $model); Write-Output ('SERIAL=' + $serial); Write-Output ('HARDWAREID=' + [string]$hw);";
 
             ProcessResult result = RunPowerShell(command, CommandTimeout);
-            return new DeviceContext(GetValue(result.Output, "MANUFACTURER"), GetValue(result.Output, "MODEL"),
-                GetValue(result.Output, "SERIAL"), GetValue(result.Output, "HARDWAREID"));
+            return new DeviceContext(GetValue(result.Output, "MANUFACTURER"), GetValue(result.Output, "MODEL"), GetValue(result.Output, "SERIAL"), GetValue(result.Output, "HARDWAREID"));
         }
 
         private static OemSource BuildOemSource(DeviceContext context, string deviceName)
         {
             string manufacturer = context.Manufacturer ?? string.Empty;
             string query = string.Join(" ", new[] { context.Model, deviceName }.Where(s => !string.IsNullOrWhiteSpace(s)));
-
             if (manufacturer.Contains("Dell", StringComparison.OrdinalIgnoreCase))
             {
-                string uri = string.IsNullOrWhiteSpace(context.SerialNumber)
-                    ? "https://www.dell.com/support/home/en-us?app=drivers"
-                    : "https://www.dell.com/support/home/en-us/product-support/servicetag/" + Uri.EscapeDataString(context.SerialNumber.Trim()) + "/drivers";
+                string uri = string.IsNullOrWhiteSpace(context.SerialNumber) ? "https://www.dell.com/support/home/en-us?app=drivers" : "https://www.dell.com/support/home/en-us/product-support/servicetag/" + Uri.EscapeDataString(context.SerialNumber.Trim()) + "/drivers";
                 return new("Dell Support", uri);
             }
             if (manufacturer.Contains("HP", StringComparison.OrdinalIgnoreCase) || manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase)) return new("HP Support", "https://support.hp.com/us-en/drivers");
@@ -103,51 +92,24 @@ namespace Sentinel.App.Services
             if (manufacturer.Contains("ASUS", StringComparison.OrdinalIgnoreCase)) return new("ASUS Support", "https://www.asus.com/support/download-center/");
             if (manufacturer.Contains("Acer", StringComparison.OrdinalIgnoreCase)) return new("Acer Support", "https://www.acer.com/us-en/support/drivers-and-manuals");
             if (string.IsNullOrWhiteSpace(manufacturer)) return new(string.Empty, string.Empty);
-
             return new("Intel Download Center", "https://www.intel.com/content/www/us/en/search.html#sort=relevancy&f:@tabfilter=[Downloads]&q=" + Uri.EscapeDataString(query));
         }
 
         private static WebProbe Probe(string uri)
         {
-            try
-            {
-                using HttpClient client = new() { Timeout = NetworkTimeout };
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
-                using HttpResponseMessage response = client.GetAsync(uri).GetAwaiter().GetResult();
-                string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-                return new(response.IsSuccessStatusCode, body);
-            }
+            try { using HttpClient client = new() { Timeout = NetworkTimeout }; client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0"); using HttpResponseMessage response = client.GetAsync(uri).GetAwaiter().GetResult(); string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(); return new(response.IsSuccessStatusCode, body); }
             catch { return new(false, string.Empty); }
         }
 
-        private static bool CatalogAppearsToHaveResults(string body)
-        {
-            if (string.IsNullOrWhiteSpace(body) || body.Contains("We did not find any results", StringComparison.OrdinalIgnoreCase)) return false;
-            return body.Contains("goToDetails", StringComparison.OrdinalIgnoreCase) || body.Contains("updateid", StringComparison.OrdinalIgnoreCase) || body.Contains("ScopedViewInline", StringComparison.OrdinalIgnoreCase);
-        }
+        private static bool CatalogAppearsToHaveResults(string body) => !string.IsNullOrWhiteSpace(body) && !body.Contains("We did not find any results", StringComparison.OrdinalIgnoreCase) && (body.Contains("goToDetails", StringComparison.OrdinalIgnoreCase) || body.Contains("updateid", StringComparison.OrdinalIgnoreCase) || body.Contains("ScopedViewInline", StringComparison.OrdinalIgnoreCase));
 
         private static ProcessResult RunPowerShell(string command, TimeSpan timeout)
         {
-            try
-            {
-                string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo { FileName = "powershell.exe", Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}", UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
-                if (!process.Start()) return new(false, string.Empty);
-                string output = process.StandardOutput.ReadToEnd(); _ = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit((int)timeout.TotalMilliseconds)) { process.Kill(true); return new(false, output); }
-                return new(process.ExitCode == 0, output.Trim());
-            }
+            try { string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command)); using Process process = new(); process.StartInfo = new ProcessStartInfo { FileName = "powershell.exe", Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}", UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true }; if (!process.Start()) return new(false, string.Empty); string output = process.StandardOutput.ReadToEnd(); _ = process.StandardError.ReadToEnd(); if (!process.WaitForExit((int)timeout.TotalMilliseconds)) { process.Kill(true); return new(false, output); } return new(process.ExitCode == 0, output.Trim()); }
             catch { return new(false, string.Empty); }
         }
 
-        private static string GetValue(string output, string name)
-        {
-            foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-                if (line.TrimStart().StartsWith(name + "=", StringComparison.OrdinalIgnoreCase)) return line.Trim()[(name.Length + 1)..].Trim();
-            return string.Empty;
-        }
-
+        private static string GetValue(string output, string name) { foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)) if (line.TrimStart().StartsWith(name + "=", StringComparison.OrdinalIgnoreCase)) return line.Trim()[(name.Length + 1)..].Trim(); return string.Empty; }
         private static string EscapePowerShellLiteral(string value) => (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
         private static string Display(string value) => string.IsNullOrWhiteSpace(value) ? "this computer" : value.Trim();
 
