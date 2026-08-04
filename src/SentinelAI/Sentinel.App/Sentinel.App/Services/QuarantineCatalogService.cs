@@ -57,6 +57,14 @@ namespace Sentinel.App.Services
         public async Task AddAsync(
             QuarantineService.QuarantineRecord record,
             CancellationToken cancellationToken = default)
+            => await AddAsync(record, reasonCode: string.Empty, evidenceConfidencePercent: 0, cancellationToken)
+                .ConfigureAwait(false);
+
+        public async Task AddAsync(
+            QuarantineService.QuarantineRecord record,
+            string reasonCode,
+            int evidenceConfidencePercent,
+            CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(record);
 
@@ -72,7 +80,9 @@ namespace Sentinel.App.Services
                     record.QuarantinePath,
                     record.Sha256,
                     record.QuarantinedAtUtc,
-                    File.Exists(record.QuarantinePath)));
+                    File.Exists(record.QuarantinePath),
+                    reasonCode ?? string.Empty,
+                    Math.Clamp(evidenceConfidencePercent, 0, 100)));
 
                 await WriteUnsafeAsync(entries, cancellationToken).ConfigureAwait(false);
             }
@@ -200,7 +210,9 @@ namespace Sentinel.App.Services
             string QuarantinePath,
             string Sha256,
             DateTimeOffset QuarantinedAtUtc,
-            bool IsPresent)
+            bool IsPresent,
+            string ReasonCode = "",
+            int EvidenceConfidencePercent = 0)
         {
             public string FileName => Path.GetFileName(OriginalPath);
         }
