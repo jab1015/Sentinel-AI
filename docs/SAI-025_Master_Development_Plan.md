@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.1
+Version: 4.2
 
 Status: Active Development
 
@@ -16,20 +16,20 @@ This document is the authoritative master engineering plan for Sentinel AI.
 
 # Current Status
 
-Phases 1–7 are complete. Phase 8 — Continuous Intrusion & Spyware Protection is **6 of 8 complete**.
+Phases 1–7 are complete. Phase 8 — Continuous Intrusion & Spyware Protection is **7 of 8 complete**.
 
-Current milestone: **8.4 — Safe Verified Containment / Remediation.**
+Current milestone: **8.8 — Final Product Acceptance.**
 
-Completed Phase 8 capabilities include continuous inbound/outbound Windows connection monitoring, connection intelligence, spyware/process correlation, plain-English protection UX, verified Windows startup-to-tray behavior, and protection-health monitoring.
+Completed Phase 8 capabilities include continuous inbound/outbound Windows connection monitoring, connection intelligence, spyware/process correlation, safe verified containment/remediation, plain-English protection UX, verified Windows startup-to-tray behavior, and protection-health monitoring.
 
-Remaining release blockers are production containment execution and final end-to-end acceptance/branding.
+The only remaining release blocker is final end-to-end product acceptance and customer-facing installer verification.
 
 # Phase 8 — Continuous Intrusion & Spyware Protection
 
 1. [x] Continuous network connection monitor for inbound/outbound TCP and relevant UDP activity with process, executable, local endpoint, remote endpoint, port/protocol, state, and available trust evidence.
 2. [x] Connection intelligence/anomaly classification using corroborated evidence and false-positive controls; unfamiliar traffic alone is never sufficient for a threat claim.
 3. [x] Spyware/process behavior correlation across executable trust/location, persistence, parent/child relationships, unexpected background behavior, network behavior, and available Defender/security evidence.
-4. [ ] Safe verified containment: implement and verify supported outbound endpoint blocking, process containment, quarantine/Defender handoff where supported, approval/elevation handling, audit logging, outcome verification, and reversal/restore paths where feasible.
+4. [x] Safe verified containment: supported outbound endpoint blocking, process containment, quarantine/restore, approval/elevation handling, audit/history coverage, outcome verification, and reversal paths. Phase 8.4 acceptance harness passed process containment, firewall block/removal, and quarantine/restore on 2026-08-03.
 5. [x] Plain-English protection experience that surfaces only meaningful conditions and tells the user what happened, what Sentinel did, whether risk remains, and exact required steps when Sentinel needs assistance.
 6. [x] Reliable Windows sign-in startup and continuous background operation. Clean-VM reboot verification confirmed automatic tray-only startup.
 7. [x] Protection health/self-monitoring that verifies Sentinel's network monitor and required Windows protection layers remain operational and reports degraded protection accurately.
@@ -47,7 +47,7 @@ The production package must present the product only as **Sentinel AI**. Develop
 
 # Release Gate
 
-The product is not release-ready until Phase 8 items 4 and 8 are complete. Final approval requires verified containment behavior and a clean-VM production acceptance pass.
+The product is not release-ready until Phase 8 item 8 is complete. Final approval requires a clean-VM production acceptance pass of the production installer plus confirmation that runtime protection remains healthy through normal Windows lifecycle events.
 
 # Definition of Success
 
