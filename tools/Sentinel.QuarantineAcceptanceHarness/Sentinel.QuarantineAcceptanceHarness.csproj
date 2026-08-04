@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -10,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RemediationPolicy.cs" Link="RemediationPolicy.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\QuarantineService.cs" Link="QuarantineService.cs" />
   </ItemGroup>
-
 </Project>
