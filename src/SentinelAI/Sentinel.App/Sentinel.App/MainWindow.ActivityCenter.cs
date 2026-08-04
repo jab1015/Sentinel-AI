@@ -11,10 +11,22 @@ namespace Sentinel.App
     {
         private readonly MaintenanceReportService _maintenanceReportService = new();
         private DispatcherTimer? _activityCenterTimer;
+        private long _activityVisibilityCallbackToken;
 
         private void ActivityCenter_Loaded(object sender, RoutedEventArgs e)
         {
             RefreshActivityCenter();
+
+            if (_activityVisibilityCallbackToken == 0)
+            {
+                _activityVisibilityCallbackToken = InvestigationHistoryBorder.RegisterPropertyChangedCallback(
+                    UIElement.VisibilityProperty,
+                    (_, _) =>
+                    {
+                        if (InvestigationHistoryBorder.Visibility != Visibility.Visible)
+                            InvestigationHistoryBorder.Visibility = Visibility.Visible;
+                    });
+            }
 
             if (_activityCenterTimer is not null)
                 return;
