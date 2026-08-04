@@ -76,6 +76,9 @@ namespace Sentinel.App
 
             string summary = item.Summary ?? string.Empty;
 
+            if (item.Category.Equals("Investigation", StringComparison.OrdinalIgnoreCase))
+                return "Sentinel investigated an issue";
+
             if (summary.Contains("permanently deleted", StringComparison.OrdinalIgnoreCase))
                 return "Quarantined file permanently deleted";
 
