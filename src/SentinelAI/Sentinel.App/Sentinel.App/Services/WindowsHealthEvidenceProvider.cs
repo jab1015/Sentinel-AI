@@ -49,16 +49,7 @@ namespace Sentinel.App.Services
             }
 
             bool? restart = TryGetRestartPending();
-            string restartText = restart switch
-            {
-                true => "A Windows restart is pending.",
-                false => "No verified local restart indicator is currently present.",
-                null => "Sentinel could not verify whether Windows requires a restart."
-            };
-
-            return string.IsNullOrWhiteSpace(value)
-                ? $"Sentinel could not verify Windows Update status. {restartText}"
-                : $"Verified Windows Update evidence: {Normalize(value)}. {restartText}";
+            return BuildWindowsUpdateAnswer(value, restart);
         }
 
         public string GetPendingRestartStatus()
@@ -129,6 +120,52 @@ namespace Sentinel.App.Services
             return string.IsNullOrWhiteSpace(value)
                 ? "Sentinel could not verify BitLocker or device-encryption status because Windows did not expose drive-encryption evidence to this process."
                 : $"Verified Windows drive encryption status: {Normalize(value)}.";
+        }
+
+        private static string BuildWindowsUpdateAnswer(string value, bool? restart)
+        {
+            string restartText = restart switch
+            {
+                true => "A Windows restart is pending.",
+                false => "No verified local restart indicator is currently present.",
+                null => "Sentinel could not verify whether Windows requires a restart."
+            };
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return $"Sentinel could not verify Windows Update status. {restartText}";
+            }
+
+            string normalized = Normalize(value);
+            int? pendingCount = TryGetIntegerField(value, "PendingUpdates");
+
+            if (pendingCount is > 0)
+            {
+                string noun = pendingCount == 1 ? "update" : "updates";
+                return $"Windows is not fully up to date. Sentinel verified {pendingCount} pending {noun}. {normalized}. {restartText}";
+            }
+
+            if (pendingCount == 0)
+            {
+                return $"Windows is up to date based on the current local update scan. {normalized}. {restartText}";
+            }
+
+            return $"Sentinel verified Windows Update service and installation evidence, but Windows did not expose a conclusive pending-update count. {normalized}. {restartText}";
+        }
+
+        private static int? TryGetIntegerField(string value, string fieldName)
+        {
+            string marker = fieldName + "=";
+            int start = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                return null;
+            }
+
+            start += marker.Length;
+            int end = value.IndexOf(';', start);
+            string raw = (end >= 0 ? value[start..end] : value[start..]).Trim();
+            return int.TryParse(raw, out int result) ? result : null;
         }
 
         private static bool? TryGetRestartPending()
