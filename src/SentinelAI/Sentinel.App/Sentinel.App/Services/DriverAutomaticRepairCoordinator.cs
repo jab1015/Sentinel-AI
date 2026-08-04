@@ -6,29 +6,62 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Prepares and executes user-approved driver repairs through the signed
-    /// Windows Update channel. It never restarts Windows automatically.
+    /// Prepares and executes user-approved driver repairs. Windows Update is
+    /// preferred; authoritative Microsoft/OEM research is used when it cannot
+    /// provide a compatible package. Sentinel never restarts Windows without
+    /// separate user approval.
     /// </summary>
     public sealed class DriverAutomaticRepairCoordinator
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
+        private readonly AuthoritativeDriverResearchService _researchService = new();
 
-        public Task<DriverRepairPlan> PrepareAsync(string deviceName)
+        public async Task<DriverRepairPlan> PrepareAsync(string deviceName)
         {
-            return Task.Run(() => Prepare(deviceName));
+            DriverRepairPlan windowsUpdatePlan = await Task.Run(() => PrepareWindowsUpdate(deviceName));
+            if (windowsUpdatePlan.Available)
+            {
+                return windowsUpdatePlan;
+            }
+
+            AuthoritativeDriverResearchService.DriverResearchResult research =
+                await _researchService.ResearchAsync(deviceName);
+
+            if (!research.Completed)
+            {
+                return DriverRepairPlan.Unavailable(
+                    deviceName,
+                    research.Summary,
+                    researchPerformed: true);
+            }
+
+            return DriverRepairPlan.Researched(
+                deviceName,
+                research.SourceName,
+                research.SourceUri,
+                research.ConfidencePercent,
+                research.Summary,
+                research.UserActionRequired);
         }
 
         public Task<DriverRepairResult> ExecuteAsync(DriverRepairPlan plan)
         {
             ArgumentNullException.ThrowIfNull(plan);
+            if (!plan.Available || !plan.AutomaticInstallationVerified)
+            {
+                return Task.FromResult(new DriverRepairResult(
+                    false,
+                    false,
+                    "Automatic installation is not verified",
+                    "Sentinel did not install anything because this repair plan is research guidance, not a verified automatic installation package."));
+            }
+
             return Task.Run(() => Execute(plan));
         }
 
-        private static DriverRepairPlan Prepare(string deviceName)
+        private static DriverRepairPlan PrepareWindowsUpdate(string deviceName)
         {
-            string safeDevice = EscapePowerShellLiteral(deviceName);
             string command =
-                "$device='" + safeDevice + "'; " +
                 "$session=New-Object -ComObject Microsoft.Update.Session; " +
                 "$searcher=$session.CreateUpdateSearcher(); " +
                 "$result=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Driver'\"); " +
@@ -42,7 +75,7 @@ namespace Sentinel.App.Services
             {
                 return DriverRepairPlan.Unavailable(
                     deviceName,
-                    "Sentinel could not complete a Windows Update driver search. No change was made.");
+                    "Sentinel could not complete the Windows Update driver search. It will continue with authoritative Microsoft and manufacturer research.");
             }
 
             bool available = GetValue(result.Output, "AVAILABLE").Equals("True", StringComparison.OrdinalIgnoreCase);
@@ -50,17 +83,22 @@ namespace Sentinel.App.Services
             {
                 return DriverRepairPlan.Unavailable(
                     deviceName,
-                    "Windows Update did not offer a compatible driver repair for this device. Sentinel will continue investigating other authoritative sources.");
+                    "Windows Update did not offer a compatible driver repair. Sentinel will continue with authoritative Microsoft and manufacturer research.");
             }
 
             string title = GetValue(result.Output, "TITLE");
             return new DriverRepairPlan(
                 true,
+                true,
+                false,
+                false,
                 deviceName,
                 title,
                 "Windows Update",
+                string.Empty,
+                100,
                 "Microsoft-signed Windows Update driver package",
-                "Sentinel will download and install the selected signed driver through Windows Update. It will not restart the computer without your separate approval.");
+                "Sentinel found a compatible signed driver through Windows Update. It can download and install this package after your approval. It will not restart the computer without separate approval.");
         }
 
         private static DriverRepairResult Execute(DriverRepairPlan plan)
@@ -135,7 +173,7 @@ namespace Sentinel.App.Services
 
         private static string GetValue(string output, string name)
         {
-            foreach (string line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 if (line.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
                 {
@@ -145,18 +183,34 @@ namespace Sentinel.App.Services
             return string.Empty;
         }
 
-        private static string EscapePowerShellLiteral(string value) => (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
+        private static string EscapePowerShellLiteral(string value) =>
+            (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
 
         public sealed record DriverRepairPlan(
             bool Available,
+            bool AutomaticInstallationVerified,
+            bool ResearchPerformed,
+            bool UserActionRequired,
             string DeviceName,
             string PackageTitle,
             string Source,
+            string SourceUri,
+            int ConfidencePercent,
             string TrustStatement,
             string Summary)
         {
-            public static DriverRepairPlan Unavailable(string deviceName, string summary) =>
-                new(false, deviceName, string.Empty, string.Empty, string.Empty, summary);
+            public static DriverRepairPlan Unavailable(string deviceName, string summary, bool researchPerformed = false) =>
+                new(false, false, researchPerformed, false, deviceName, string.Empty, string.Empty, string.Empty, 0, string.Empty, summary);
+
+            public static DriverRepairPlan Researched(
+                string deviceName,
+                string source,
+                string sourceUri,
+                int confidencePercent,
+                string summary,
+                bool userActionRequired) =>
+                new(false, false, true, userActionRequired, deviceName, string.Empty, source, sourceUri, confidencePercent,
+                    "Authoritative Microsoft or computer-manufacturer source", summary);
         }
 
         public sealed record DriverRepairResult(
