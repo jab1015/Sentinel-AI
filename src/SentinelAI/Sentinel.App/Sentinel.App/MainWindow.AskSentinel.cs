@@ -21,10 +21,7 @@ namespace Sentinel.App
         private Button? _notNowButton;
         private string _driverRepairDeviceName = string.Empty;
 
-        private async void AskSentinelButton_Click(object sender, RoutedEventArgs e)
-        {
-            await SubmitAskSentinelQuestionAsync();
-        }
+        private async void AskSentinelButton_Click(object sender, RoutedEventArgs e) => await SubmitAskSentinelQuestionAsync();
 
         private async void AskSentinelQuestionBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
@@ -36,7 +33,6 @@ namespace Sentinel.App
         private async Task SubmitAskSentinelQuestionAsync()
         {
             if (_askSentinelBusy) return;
-
             string question = AskSentinelQuestionBox.Text.Trim();
             if (string.IsNullOrWhiteSpace(question))
             {
@@ -64,9 +60,7 @@ namespace Sentinel.App
                 var snapshot = _engine.CurrentSnapshot;
                 var history = await _investigationHistoryService.ReadRecentAsync(100);
                 AskSentinelProgressText.Text = "Preparing a verified answer…";
-                AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
-                    _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
-
+                AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() => _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
                 AskSentinelAnswerText.Text = response.Answer;
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 UpdateAskSentinelRepairActions(response.Answer);
@@ -96,11 +90,8 @@ namespace Sentinel.App
 
         private void UpdateAskSentinelRepairActions(string answer)
         {
-            bool driverRepairRelevant = answer.Contains("driver needs attention", StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("a driver needs attention", StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("driver health needs attention", StringComparison.OrdinalIgnoreCase);
-            if (!driverRepairRelevant) { HideAskSentinelRepairActions(); return; }
-
+            bool relevant = answer.Contains("driver needs attention", StringComparison.OrdinalIgnoreCase) || answer.Contains("a driver needs attention", StringComparison.OrdinalIgnoreCase) || answer.Contains("driver health needs attention", StringComparison.OrdinalIgnoreCase);
+            if (!relevant) { HideAskSentinelRepairActions(); return; }
             _driverRepairDeviceName = ExtractDriverDeviceName(answer);
             EnsureAskSentinelRepairPanel();
             if (_askSentinelRepairPanel is null || _automaticRepairButton is null) return;
@@ -112,9 +103,7 @@ namespace Sentinel.App
 
         private void EnsureAskSentinelRepairPanel()
         {
-            if (_askSentinelRepairPanel is not null) return;
-            if (AskSentinelAnswerBorder.Child is not StackPanel answerStack) return;
-
+            if (_askSentinelRepairPanel is not null || AskSentinelAnswerBorder.Child is not StackPanel answerStack) return;
             _reviewRepairButton = new Button { Content = "Review Repair", MinWidth = 128 };
             _reviewRepairButton.Click += ReviewAskSentinelRepair_Click;
             _automaticRepairButton = new Button { Content = "Prepare Automatic Repair", MinWidth = 178 };
@@ -152,16 +141,15 @@ namespace Sentinel.App
             try
             {
                 DriverAutomaticRepairCoordinator.DriverRepairPlan plan = await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
+                string fingerprint = $"driver:{_driverRepairDeviceName.Trim().ToLowerInvariant()}";
 
                 if (!plan.Available)
                 {
                     if (plan.ResearchPerformed && !string.IsNullOrWhiteSpace(plan.Source))
                     {
-                        _askSentinelOutcomeRecorder.RecordInvestigation(
-                            "Driver repair investigation",
-                            $"Sentinel investigated {_driverRepairDeviceName} and found no verified automatically installable repair. {plan.Source} is the authoritative next source.",
-                            true,
-                            $"Source: {plan.Source}; Confidence: {plan.ConfidencePercent}%; Trust: {plan.TrustStatement}; {plan.Summary}");
+                        string conclusion = $"Sentinel found no verified automatically installable repair for {_driverRepairDeviceName}. {plan.Source} is the authoritative next source. Confidence {plan.ConfidencePercent}%. {plan.Summary}";
+                        await _investigationHistoryService.RecordAsync(fingerprint, "Driver repair investigation", conclusion, "Attention", plan.UserActionRequired, false);
+                        _askSentinelOutcomeRecorder.RecordInvestigation("Driver repair investigation", $"Sentinel investigated {_driverRepairDeviceName} and found no verified automatically installable repair. {plan.Source} is the authoritative next source.", true, $"Source: {plan.Source}; Confidence: {plan.ConfidencePercent}%; Trust: {plan.TrustStatement}; {plan.Summary}");
                         UpdateMaintenanceReport();
 
                         string confidence = plan.ConfidencePercent > 0 ? $"Confidence: {plan.ConfidencePercent}%\n" : string.Empty;
@@ -185,6 +173,7 @@ namespace Sentinel.App
                         return;
                     }
 
+                    await _investigationHistoryService.RecordAsync(fingerprint, "Driver repair investigation", $"Sentinel could not verify a safe automatic repair for {_driverRepairDeviceName}. No change was made. {plan.Summary}", "Attention", true, false);
                     _askSentinelOutcomeRecorder.RecordInvestigation("Driver repair investigation", $"Sentinel investigated {_driverRepairDeviceName} but could not verify a safe automatic repair. No change was made.", true, plan.Summary);
                     UpdateMaintenanceReport();
                     ContentDialog unavailable = new() { Title = "Sentinel could not verify a safe repair", Content = plan.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot };
@@ -204,6 +193,7 @@ namespace Sentinel.App
 
                 AskSentinelProgressText.Text = "Downloading and installing the approved signed driver…";
                 DriverAutomaticRepairCoordinator.DriverRepairResult result = await _driverRepairCoordinator.ExecuteAsync(plan);
+                await _investigationHistoryService.RecordAsync(fingerprint, "Driver repair", result.Summary, result.Success ? "Resolved" : "Attention", !result.Success, result.Success);
                 _askSentinelOutcomeRecorder.RecordVerificationResult("Driver repair", result.Summary, result.Success, $"Device: {plan.DeviceName}; Package: {plan.PackageTitle}; Source: {plan.Source}; Restart required: {result.RestartRequired}");
                 UpdateMaintenanceReport();
 
