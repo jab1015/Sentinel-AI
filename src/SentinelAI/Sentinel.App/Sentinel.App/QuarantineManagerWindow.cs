@@ -35,12 +35,12 @@ namespace Sentinel.App
             ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             StackPanel page = new() { Margin = new Thickness(32), Spacing = 18, MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Center };
 
-            TextBlock title = new() { Text = "Quarantine", FontSize = 30, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White) };
+            TextBlock title = new() { Text = "Quarantine", FontSize = 30, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) };
             TextBlock intro = new() { Text = "Files Sentinel isolated for your protection appear here. You can restore a verified item or permanently delete it after approval.", FontSize = 15, TextWrapping = TextWrapping.Wrap, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 209, 213, 219)) };
 
             Border listCard = new() { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 31, 41, 55)), CornerRadius = new CornerRadius(14), Padding = new Thickness(22) };
             StackPanel listPanel = new() { Spacing = 12 };
-            listPanel.Children.Add(new TextBlock { Text = "Quarantined items", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White) });
+            listPanel.Children.Add(new TextBlock { Text = "Quarantined items", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) });
 
             _emptyText.Text = "No quarantined items. Sentinel has nothing isolated right now.";
             _emptyText.FontSize = 15;
@@ -56,7 +56,7 @@ namespace Sentinel.App
 
             Border detailCard = new() { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 31, 41, 55)), CornerRadius = new CornerRadius(14), Padding = new Thickness(22) };
             StackPanel detailPanel = new() { Spacing = 12 };
-            detailPanel.Children.Add(new TextBlock { Text = "Investigation summary", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White) });
+            detailPanel.Children.Add(new TextBlock { Text = "Investigation summary", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) });
             _summaryText.Text = "Select a quarantined item to review what Sentinel verified.";
             _summaryText.FontSize = 15;
             _summaryText.TextWrapping = TextWrapping.Wrap;
