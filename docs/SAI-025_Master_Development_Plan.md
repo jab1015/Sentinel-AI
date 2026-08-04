@@ -1,10 +1,10 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.2
+Version: 4.3
 
-Status: Active Development
+Status: Active — Release Candidate Remediation
 
-Last Updated: 2026-08-03
+Last Updated: 2026-08-04
 
 Copyright (c) 2026 Modern Methods.
 
@@ -16,42 +16,71 @@ This document is the authoritative master engineering plan for Sentinel AI.
 
 # Current Status
 
-Phases 1–7 are complete. Phase 8 — Continuous Intrusion & Spyware Protection is **7 of 8 complete**.
+Core monitoring, protection, remediation, optimization, maintenance, packaging, stability, and containment foundations are implemented. Phase 8 containment acceptance passed for process containment, firewall block/removal, and quarantine/restore.
 
-Current milestone: **8.8 — Final Product Acceptance.**
+The product is **not release-ready** because final runtime testing exposed four incomplete or unverified release-candidate areas:
 
-Completed Phase 8 capabilities include continuous inbound/outbound Windows connection monitoring, connection intelligence, spyware/process correlation, safe verified containment/remediation, plain-English protection UX, verified Windows startup-to-tray behavior, and protection-health monitoring.
+1. Ask Sentinel Local evidence coverage
+2. Quarantine Manager UI
+3. Activity Center UI and outcome visibility
+4. Investigation Engine runtime integration and verification
 
-The only remaining release blocker is final end-to-end product acceptance and customer-facing installer verification.
+Final Acceptance Test 8 remains open.
 
-# Phase 8 — Continuous Intrusion & Spyware Protection
+# Current Progress
 
-1. [x] Continuous network connection monitor for inbound/outbound TCP and relevant UDP activity with process, executable, local endpoint, remote endpoint, port/protocol, state, and available trust evidence.
-2. [x] Connection intelligence/anomaly classification using corroborated evidence and false-positive controls; unfamiliar traffic alone is never sufficient for a threat claim.
-3. [x] Spyware/process behavior correlation across executable trust/location, persistence, parent/child relationships, unexpected background behavior, network behavior, and available Defender/security evidence.
-4. [x] Safe verified containment: supported outbound endpoint blocking, process containment, quarantine/restore, approval/elevation handling, audit/history coverage, outcome verification, and reversal paths. Phase 8.4 acceptance harness passed process containment, firewall block/removal, and quarantine/restore on 2026-08-03.
-5. [x] Plain-English protection experience that surfaces only meaningful conditions and tells the user what happened, what Sentinel did, whether risk remains, and exact required steps when Sentinel needs assistance.
-6. [x] Reliable Windows sign-in startup and continuous background operation. Clean-VM reboot verification confirmed automatic tray-only startup.
-7. [x] Protection health/self-monitoring that verifies Sentinel's network monitor and required Windows protection layers remain operational and reports degraded protection accurately.
-8. [ ] Final acceptance testing for benign/suspicious traffic, containment, listeners, persistence/process correlation, VPN/VM scenarios, network interruption/recovery, sleep/wake, reboot/startup, false positives, resource use, long-duration operation, clean install/uninstall, and final customer-facing installer branding/assets.
+- Planning and architecture: **Complete**
+- Core platform and monitoring: **Complete**
+- Protection and containment foundation: **Complete**
+- Optimization and maintenance foundation: **Complete**
+- Stability and packaging foundation: **Complete**
+- Release Candidate Finalization: **0 of 4 runtime-verified**
+- Overall estimated progress: **approximately 91%**
 
-# Original Product Acceptance Target
+# Release Candidate Finalization
 
-Sentinel AI is not complete merely because it can inspect system state, display Windows security status, package successfully, or react to historical Windows events. Sentinel must operate continuously and provide an intelligent protective layer focused on meaningful intrusion and spyware indicators.
+## 1 of 4 — Ask Sentinel Local
 
-Sentinel may rely on Microsoft Defender and Windows Firewall as mature antivirus/firewall enforcement layers. Sentinel's responsibility is continuous observation, evidence correlation, investigation, decision support, safe orchestration, verification, and clear user communication. Sentinel must not claim universal detection of every intrusion or spyware technique.
+Complete the missing local evidence providers and verify useful answers for Windows Update, pending restart, TPM, Secure Boot, BitLocker/device encryption, Defender, Firewall, uptime, CPU, memory, disk, services, startup applications, networking, and top processes.
 
-# Final Installer Branding Requirements
+Ask Sentinel remains local-only. It does not perform live web searches.
 
-The production package must present the product only as **Sentinel AI**. Developer-facing `(Package)` naming or file extensions must not appear in the installer or installed application identity. Sentinel shield artwork must replace default package assets across package/install visuals, Start menu, Apps list, taskbar/window identity, and system tray where supported.
+## 2 of 4 — Quarantine Manager UI
+
+Expose the verified quarantine backend through a user-visible interface with item history, reason/evidence summary, restore confirmation, permanent removal, verification status, and activity-history linkage.
+
+## 3 of 4 — Activity Center
+
+Provide a visible 30-day history of automatic repairs, optimizations, investigations, quarantine/restore actions, rollbacks, verification results, and user-required actions. When Sentinel fixes something, the user must receive a concise plain-English confirmation.
+
+## 4 of 4 — Investigation Engine Runtime Integration
+
+Verify the internal investigation workflow end-to-end:
+
+- Collect local evidence
+- Score confidence
+- Use authoritative web research only when local evidence is insufficient
+- Correlate research with the actual computer evidence
+- Select a safe action or continue monitoring
+- Verify any repair
+- Record the result in Activity Center
+- Store verified findings so Ask Sentinel can explain them later
+
+The web-research capability exists only to help Sentinel resolve problems automatically. Ask Sentinel itself remains local and read-only.
+
+# Final Acceptance
+
+After all four items pass runtime verification:
+
+1. Re-run Final Acceptance Test 8.
+2. Confirm no clipping, crashes, debug breaks, freezes, or material lag.
+3. Confirm Ask Sentinel, Quarantine Manager, Activity Center, and Investigation Engine work in the installed product.
+4. Update all planning/progress documents to completed status.
+5. Produce the final signed release package and release notes.
 
 # Release Gate
 
-The product is not release-ready until Phase 8 item 8 is complete. Final approval requires a clean-VM production acceptance pass of the production installer plus confirmation that runtime protection remains healthy through normal Windows lifecycle events.
-
-# Definition of Success
-
-A successful Sentinel release builds without errors, starts reliably with Windows in the system tray, continuously monitors meaningful inbound/outbound activity, correlates suspicious activity to responsible processes when evidence permits, investigates spyware/intrusion indicators, safely contains verified threats when authorized, clearly instructs the user when assistance is required, avoids alarming users about routine activity, verifies remediation outcomes, uses customer-ready Sentinel AI branding, and preserves evidence-grounded AI behavior.
+Sentinel AI must not be described as product-complete, commercially ready, or 100% finished until the four Release Candidate Finalization items and Final Acceptance Test 8 pass.
 
 ---
 
