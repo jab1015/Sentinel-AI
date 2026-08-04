@@ -21,8 +21,10 @@ namespace Sentinel.App.Services
     {
         private static readonly TimeSpan MinimumEvaluationInterval = TimeSpan.FromMinutes(30);
         private static readonly TimeSpan MinimumChangeInterval = TimeSpan.FromHours(12);
+        private static readonly TimeSpan RuntimeVerificationInterval = TimeSpan.FromHours(24);
 
         private readonly OptimizationSettingsService _settingsService = new();
+        private readonly OptimizationRuntimeVerificationService _runtimeVerificationService = new();
         private readonly WindowsServiceRepairPlanService _servicePlanService = new();
         private readonly WindowsServiceRepairSafetyService _serviceSafetyService = new();
         private readonly WindowsServiceRepairExecutor _serviceExecutor = new();
@@ -30,6 +32,7 @@ namespace Sentinel.App.Services
         private readonly StorageOptimizationExecutor _storageExecutor = new();
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _statePath;
+        private readonly string _verificationPath;
 
         public IntegratedMaintenanceCoordinator()
         {
@@ -40,6 +43,7 @@ namespace Sentinel.App.Services
 
             Directory.CreateDirectory(directory);
             _statePath = Path.Combine(directory, "integrated-maintenance-state.json");
+            _verificationPath = Path.Combine(directory, "optimization-runtime-verification.json");
         }
 
         public async Task<IntegratedMaintenanceResult> EvaluateAndRunAsync(
@@ -62,6 +66,35 @@ namespace Sentinel.App.Services
 
                 SaveState(state with { LastEvaluationUtc = now });
 
+                RuntimeVerificationState verificationState = LoadVerificationState();
+                bool verificationRequired =
+                    !verificationState.LastVerifiedUtc.HasValue ||
+                    now - verificationState.LastVerifiedUtc.Value >= RuntimeVerificationInterval ||
+                    !verificationState.Passed;
+
+                if (verificationRequired)
+                {
+                    OptimizationRuntimeVerificationResult verification =
+                        await _runtimeVerificationService.VerifyAsync(cancellationToken)
+                            .ConfigureAwait(false);
+
+                    SaveVerificationState(new RuntimeVerificationState(
+                        now,
+                        verification.Passed,
+                        verification.Summary));
+
+                    if (!verification.Passed)
+                    {
+                        return IntegratedMaintenanceResult.NotRun(
+                            "Sentinel blocked automatic maintenance because runtime verification did not pass. No system change was made.");
+                    }
+                }
+                else if (!verificationState.Passed)
+                {
+                    return IntegratedMaintenanceResult.NotRun(
+                        "Sentinel blocked automatic maintenance because the last runtime verification did not pass.");
+                }
+
                 OptimizationSettings settings = _settingsService.Load();
                 if (!settings.AutomaticOptimizationEnabled)
                 {
@@ -79,7 +112,6 @@ namespace Sentinel.App.Services
                         "Sentinel recently made a verified system change and is waiting before making another.");
                 }
 
-                // 1. Core/security service repair gets highest priority.
                 WindowsServiceRepairPlan servicePlan = _servicePlanService.BuildPlan();
                 WindowsServiceRepairSafetyAssessment serviceSafety =
                     _serviceSafetyService.Evaluate(servicePlan, settings);
@@ -106,7 +138,6 @@ namespace Sentinel.App.Services
                     }
                 }
 
-                // 2. Only the low-risk DNS cache repair can pass the current network gate.
                 NetworkRepairExecutionResult networkResult =
                     await _networkExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                         .ConfigureAwait(false);
@@ -126,7 +157,6 @@ namespace Sentinel.App.Services
                         networkResult.Summary);
                 }
 
-                // 3. Native drive optimization is last because it can be longer-running.
                 StorageOptimizationExecutionResult storageResult =
                     await _storageExecutor.EvaluateAndExecuteAsync(cancellationToken)
                         .ConfigureAwait(false);
@@ -186,6 +216,22 @@ namespace Sentinel.App.Services
             }
         }
 
+        private RuntimeVerificationState LoadVerificationState()
+        {
+            try
+            {
+                if (!File.Exists(_verificationPath))
+                    return RuntimeVerificationState.Empty;
+
+                string json = File.ReadAllText(_verificationPath);
+                return JsonSerializer.Deserialize<RuntimeVerificationState>(json) ?? RuntimeVerificationState.Empty;
+            }
+            catch
+            {
+                return RuntimeVerificationState.Empty;
+            }
+        }
+
         private void SaveState(MaintenanceState state)
         {
             try
@@ -202,6 +248,22 @@ namespace Sentinel.App.Services
             }
         }
 
+        private void SaveVerificationState(RuntimeVerificationState state)
+        {
+            try
+            {
+                string json = JsonSerializer.Serialize(state, new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+                File.WriteAllText(_verificationPath, json);
+            }
+            catch
+            {
+                // Verification-state persistence must never cause Sentinel itself to fail.
+            }
+        }
+
         private sealed record MaintenanceState(
             DateTimeOffset? LastEvaluationUtc,
             DateTimeOffset? LastChangeUtc,
@@ -210,6 +272,15 @@ namespace Sentinel.App.Services
         {
             public static MaintenanceState Empty { get; } =
                 new(null, null, string.Empty, string.Empty);
+        }
+
+        private sealed record RuntimeVerificationState(
+            DateTimeOffset? LastVerifiedUtc,
+            bool Passed,
+            string Summary)
+        {
+            public static RuntimeVerificationState Empty { get; } =
+                new(null, false, string.Empty);
         }
     }
 
