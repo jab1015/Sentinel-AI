@@ -5,6 +5,7 @@ Console.WriteLine("=== Sentinel AI Quarantine Acceptance ===");
 string root = Path.Combine(Path.GetTempPath(), "SentinelAI-QuarantineAcceptance", Guid.NewGuid().ToString("N"));
 string quarantineDirectory = Path.Combine(root, "quarantine");
 string sourceDirectory = Path.Combine(root, "source");
+string catalogPath = Path.Combine(root, "catalog.json");
 string sourcePath = Path.Combine(sourceDirectory, "sentinel-quarantine-test.txt");
 string deleteSourcePath = Path.Combine(sourceDirectory, "sentinel-quarantine-delete-test.txt");
 
@@ -13,6 +14,7 @@ await File.WriteAllTextAsync(sourcePath, "Sentinel AI quarantine acceptance test
 await File.WriteAllTextAsync(deleteSourcePath, "Sentinel AI permanent deletion acceptance test.");
 
 QuarantineService service = new(quarantineDirectory: quarantineDirectory);
+QuarantineCatalogService catalog = new(catalogPath);
 
 try
 {
@@ -28,7 +30,7 @@ try
     Console.WriteLine($"Approval gate: {(approvalGatePass ? "PASS" : "FAIL")}");
 
     Console.WriteLine();
-    Console.WriteLine("--- Scenario 2: verified quarantine ---");
+    Console.WriteLine("--- Scenario 2: verified quarantine and catalog registration ---");
     QuarantineService.QuarantineResult quarantined = await service.QuarantineAsync(
         sourcePath,
         hasVerifiedEvidence: true,
@@ -38,10 +40,31 @@ try
     bool quarantinePass = quarantined.Succeeded && quarantined.Verified && quarantined.Record is not null && !File.Exists(sourcePath) && File.Exists(quarantined.Record.QuarantinePath);
     Console.WriteLine($"Verified quarantine: {(quarantinePass ? "PASS" : "FAIL")}");
 
+    bool catalogAddPass = false;
+    bool catalogReconcilePass = false;
+
+    if (quarantined.Record is not null)
+    {
+        await catalog.AddAsync(quarantined.Record);
+        IReadOnlyList<QuarantineCatalogService.QuarantineCatalogEntry> entries = await catalog.GetEntriesAsync();
+        catalogAddPass = entries.Count == 1 && entries[0].IsPresent && entries[0].Sha256 == quarantined.Record.Sha256;
+        Console.WriteLine($"Catalog registration: {(catalogAddPass ? "PASS" : "FAIL")}");
+
+        IReadOnlyList<QuarantineCatalogService.QuarantineCatalogEntry> reconciled = await catalog.ReconcileAsync();
+        catalogReconcilePass = reconciled.Count == 1 && reconciled[0].IsPresent;
+        Console.WriteLine($"Catalog reconcile: {(catalogReconcilePass ? "PASS" : "FAIL")}");
+    }
+    else
+    {
+        Console.WriteLine("Catalog registration: FAIL");
+        Console.WriteLine("Catalog reconcile: FAIL");
+    }
+
     Console.WriteLine();
     Console.WriteLine("--- Scenario 3: restore requires approval ---");
     bool restoreApprovalPass = false;
     bool restorePass = false;
+    bool restoreCatalogPass = false;
 
     if (quarantined.Record is not null)
     {
@@ -54,11 +77,16 @@ try
         QuarantineService.QuarantineResult restored = await service.RestoreAsync(quarantined.Record, userApproved: true);
         restorePass = restored.Succeeded && restored.Verified && File.Exists(sourcePath) && !File.Exists(quarantined.Record.QuarantinePath);
         Console.WriteLine($"Verified restore: {(restorePass ? "PASS" : "FAIL")}");
+
+        await catalog.RemoveAsync(quarantined.Record.QuarantinePath);
+        restoreCatalogPass = (await catalog.GetEntriesAsync()).Count == 0;
+        Console.WriteLine($"Catalog removal after restore: {(restoreCatalogPass ? "PASS" : "FAIL")}");
     }
     else
     {
         Console.WriteLine("Restore approval gate: FAIL");
         Console.WriteLine("Verified restore: FAIL");
+        Console.WriteLine("Catalog removal after restore: FAIL");
     }
 
     Console.WriteLine();
@@ -69,11 +97,17 @@ try
         isWindowsProtectedComponent: false,
         userApproved: true);
 
+    bool deleteCatalogAddPass = false;
     bool deleteApprovalPass = false;
     bool deletePass = false;
+    bool deleteCatalogPass = false;
 
     if (deleteQuarantined.Record is not null)
     {
+        await catalog.AddAsync(deleteQuarantined.Record);
+        deleteCatalogAddPass = (await catalog.GetEntriesAsync()).Count == 1;
+        Console.WriteLine($"Delete test catalog registration: {(deleteCatalogAddPass ? "PASS" : "FAIL")}");
+
         QuarantineService.QuarantineResult deleteDenied = await service.DeletePermanentlyAsync(deleteQuarantined.Record, userApproved: false);
         deleteApprovalPass = !deleteDenied.Succeeded && deleteDenied.RequiresUserApproval && File.Exists(deleteQuarantined.Record.QuarantinePath);
         Console.WriteLine($"Delete approval gate: {(deleteApprovalPass ? "PASS" : "FAIL")}");
@@ -83,14 +117,20 @@ try
         QuarantineService.QuarantineResult deleted = await service.DeletePermanentlyAsync(deleteQuarantined.Record, userApproved: true);
         deletePass = deleted.Succeeded && deleted.Verified && !File.Exists(deleteQuarantined.Record.QuarantinePath) && !File.Exists(deleteSourcePath);
         Console.WriteLine($"Verified permanent deletion: {(deletePass ? "PASS" : "FAIL")}");
+
+        await catalog.RemoveAsync(deleteQuarantined.Record.QuarantinePath);
+        deleteCatalogPass = (await catalog.GetEntriesAsync()).Count == 0;
+        Console.WriteLine($"Catalog removal after delete: {(deleteCatalogPass ? "PASS" : "FAIL")}");
     }
     else
     {
+        Console.WriteLine("Delete test catalog registration: FAIL");
         Console.WriteLine("Delete approval gate: FAIL");
         Console.WriteLine("Verified permanent deletion: FAIL");
+        Console.WriteLine("Catalog removal after delete: FAIL");
     }
 
-    bool pass = approvalGatePass && quarantinePass && restoreApprovalPass && restorePass && deleteApprovalPass && deletePass;
+    bool pass = approvalGatePass && quarantinePass && catalogAddPass && catalogReconcilePass && restoreApprovalPass && restorePass && restoreCatalogPass && deleteCatalogAddPass && deleteApprovalPass && deletePass && deleteCatalogPass;
 
     Console.WriteLine();
     Console.WriteLine(pass ? "RESULT: PASS" : "RESULT: FAIL");
