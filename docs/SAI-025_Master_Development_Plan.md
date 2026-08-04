@@ -1,6 +1,6 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.3
+Version: 4.4
 
 Status: Active — Release Candidate Remediation
 
@@ -20,7 +20,7 @@ Core monitoring, protection, remediation, optimization, maintenance, packaging, 
 
 The product is **not release-ready** because final runtime testing exposed four incomplete or unverified release-candidate areas:
 
-1. Ask Sentinel Local evidence coverage
+1. Ask Sentinel Local final acceptance
 2. Quarantine Manager UI
 3. Activity Center UI and outcome visibility
 4. Investigation Engine runtime integration and verification
@@ -34,16 +34,49 @@ Final Acceptance Test 8 remains open.
 - Protection and containment foundation: **Complete**
 - Optimization and maintenance foundation: **Complete**
 - Stability and packaging foundation: **Complete**
-- Release Candidate Finalization: **0 of 4 runtime-verified**
-- Overall estimated progress: **approximately 91%**
+- Release Candidate Finalization: **0 of 4 fully runtime-verified**
+- Overall estimated progress: **approximately 93%**
 
 # Release Candidate Finalization
 
 ## 1 of 4 — Ask Sentinel Local
 
-Complete the missing local evidence providers and verify useful answers for Windows Update, pending restart, TPM, Secure Boot, BitLocker/device encryption, Defender, Firewall, uptime, CPU, memory, disk, services, startup applications, networking, and top processes.
+**Status: Substantially implemented; final runtime acceptance open**
 
-Ask Sentinel remains local-only. It does not perform live web searches.
+Runtime verification now covers the required Windows health evidence areas:
+
+- Windows Update
+- Pending restart
+- TPM
+- Secure Boot verified-unavailable handling
+- BitLocker/device-encryption verified-unavailable handling
+- Defender
+- Firewall
+- CPU
+- Memory
+- Disk
+- Network
+- Startup applications
+- Running services
+- Top processes
+
+Additional runtime-verified improvements:
+
+- Evidence collection progress indicator
+- Natural-language Windows Update question handling
+- Local driver-health evidence
+- Plain-English driver-health response
+- Repair preparation controls
+- Safe Windows Update repair search with no change when no compatible package is available
+
+Implemented and awaiting runtime verification:
+
+- Authoritative Microsoft/OEM driver-research fallback
+- Confidence percentage for research results
+- Correlation with exact local manufacturer/model/serial/hardware ID evidence
+- Safe user-action-required handoff to the official source when automatic installation is not verified
+
+Ask Sentinel itself remains grounded in local evidence and stored verified investigation history. It does not provide general web search.
 
 ## 2 of 4 — Quarantine Manager UI
 
@@ -61,12 +94,13 @@ Verify the internal investigation workflow end-to-end:
 - Score confidence
 - Use authoritative web research only when local evidence is insufficient
 - Correlate research with the actual computer evidence
-- Select a safe action or continue monitoring
+- Select a safe automatic action when a verified installable repair exists
+- Require explicit user action when automatic execution cannot be proven safe
 - Verify any repair
 - Record the result in Activity Center
 - Store verified findings so Ask Sentinel can explain them later
 
-The web-research capability exists only to help Sentinel resolve problems automatically. Ask Sentinel itself remains local and read-only.
+The driver repair acceptance case now uses this architecture: Windows Update first; if no compatible package is available, Sentinel performs read-only research against authoritative Microsoft and OEM sources. No researched package is installed automatically unless Sentinel has separately verified it as automatically installable.
 
 # Final Acceptance
 
