@@ -21,6 +21,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan StartupRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ScheduledTaskRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ActiveConnectionRefreshInterval = TimeSpan.FromSeconds(5);
+        private static readonly TimeSpan DriverHealthRefreshInterval = TimeSpan.FromMinutes(1);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -35,6 +36,7 @@ namespace Sentinel.App.Services
         private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
+        private readonly DriverHealthEvidenceProvider _driverHealthEvidenceProvider = new();
         private readonly ConnectionIntelligenceEngine _connectionIntelligenceEngine = new();
         private readonly SpywareCorrelationEngine _spywareCorrelationEngine = new();
         private readonly ProtectionHealthEngine _protectionHealthEngine = new();
@@ -57,6 +59,7 @@ namespace Sentinel.App.Services
         private StartupPersistenceMonitor.StartupPersistenceSnapshot _startupSnapshot = new(0, 0, "None", "Startup persistence analysis is loading.");
         private ScheduledTaskMonitor.ScheduledTaskSnapshot _scheduledTaskSnapshot = new(0, 0, "None", "Scheduled-task analysis is loading.");
         private ActiveConnectionMonitor.ActiveConnectionSnapshot _activeConnectionSnapshot = new(0, 0, 0, "None", "None", "Active connection analysis is loading.");
+        private DriverHealthEvidenceProvider.DriverHealthSnapshot _driverHealthSnapshot = DriverHealthEvidenceProvider.DriverHealthSnapshot.Unavailable();
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
         private DateTime _lastMemoryInvestigationRefresh = DateTime.MinValue;
@@ -68,6 +71,7 @@ namespace Sentinel.App.Services
         private DateTime _lastStartupRefresh = DateTime.MinValue;
         private DateTime _lastScheduledTaskRefresh = DateTime.MinValue;
         private DateTime _lastActiveConnectionRefresh = DateTime.MinValue;
+        private DateTime _lastDriverHealthRefresh = DateTime.MinValue;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -76,7 +80,18 @@ namespace Sentinel.App.Services
         {
             DateTime now = DateTime.Now;
             double memoryUsagePercent = _systemMonitor.GetMemoryPercent();
-            await Task.WhenAll(RefreshProcessDataIfDueAsync(now), RefreshMemoryInvestigationDataIfDueAsync(now, memoryUsagePercent), RefreshProcessLineageDataIfDueAsync(now), RefreshCommandLineDataIfDueAsync(now), RefreshServiceDataIfDueAsync(now), RefreshSecurityDataIfDueAsync(now), RefreshEventLogDataIfDueAsync(now), RefreshStartupDataIfDueAsync(now), RefreshScheduledTaskDataIfDueAsync(now), RefreshActiveConnectionDataIfDueAsync(now));
+            await Task.WhenAll(
+                RefreshProcessDataIfDueAsync(now),
+                RefreshMemoryInvestigationDataIfDueAsync(now, memoryUsagePercent),
+                RefreshProcessLineageDataIfDueAsync(now),
+                RefreshCommandLineDataIfDueAsync(now),
+                RefreshServiceDataIfDueAsync(now),
+                RefreshSecurityDataIfDueAsync(now),
+                RefreshEventLogDataIfDueAsync(now),
+                RefreshStartupDataIfDueAsync(now),
+                RefreshScheduledTaskDataIfDueAsync(now),
+                RefreshActiveConnectionDataIfDueAsync(now),
+                RefreshDriverHealthDataIfDueAsync(now));
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot = _networkMonitor.GetThroughput();
             SystemSnapshot snapshot = new()
@@ -122,38 +137,167 @@ namespace Sentinel.App.Services
             snapshot.ProtectionHealthRecommendedAction = protectionHealth.RecommendedAction;
             snapshot.ProtectionHealthReasonCode = protectionHealth.ReasonCode;
 
-            SuppressNonActionableStorageSpacesSmp(snapshot); SuppressTransientWindowsUpdateFileInUse(snapshot);
-            RiskAssessmentEngine.RiskAssessment assessment = _riskAssessmentEngine.Assess(snapshot); snapshot.RiskScore = assessment.Score; snapshot.RiskLevel = assessment.Level; snapshot.RiskSummary = assessment.Summary; snapshot.Recommendation = assessment.Recommendation;
-            GuidanceEngine.GuidanceResult guidance = _guidanceEngine.Analyze(snapshot); snapshot.GuidanceTitle = guidance.Title; snapshot.GuidanceSeverity = guidance.Severity; snapshot.GuidanceConfidencePercent = guidance.ConfidencePercent; snapshot.GuidanceConfidenceLabel = guidance.ConfidenceLabel; snapshot.GuidanceEvidence = guidance.Evidence; snapshot.GuidanceWhatHappened = guidance.WhatHappened; snapshot.GuidanceWhyItMatters = guidance.WhyItMatters; snapshot.GuidanceRecommendedAction = guidance.RecommendedAction; snapshot.GuidanceFixAvailability = guidance.FixAvailability; snapshot.GuidanceFixDetails = guidance.FixDetails; snapshot.GuidanceActionId = guidance.ActionId; snapshot.GuidanceActionLabel = guidance.ActionLabel;
-            InvestigationEngine.InvestigationResult investigation = _investigationEngine.Investigate(snapshot); snapshot.InvestigationState = investigation.State.ToString(); snapshot.InvestigationConclusion = investigation.Conclusion; snapshot.InvestigationSummary = investigation.Summary; snapshot.InvestigationRequiresAttention = investigation.RequiresAttention; snapshot.InvestigationReasonCode = investigation.ReasonCode;
-            InvestigationRecurrenceTracker.RecurrenceResult recurrence = _recurrenceTracker.Record(investigation.ReasonCode, investigation.RequiresAttention, DateTimeOffset.Now); snapshot.InvestigationRecurrenceCount = recurrence.Count; snapshot.InvestigationIsRecurring = recurrence.IsRecurring; snapshot.InvestigationShouldEscalate = recurrence.ShouldEscalate;
-            RemediationRecommendationEngine.RemediationRecommendation remediation = _remediationRecommendationEngine.Evaluate(snapshot); snapshot.RemediationAvailable = remediation.Available; snapshot.RemediationRequiresUserApproval = remediation.RequiresUserApproval; snapshot.RemediationAction = remediation.Action; snapshot.RemediationTarget = remediation.Target; snapshot.RemediationSummary = remediation.Summary;
-            AutonomousProtectionCoordinator.AutonomousProtectionDecision protection = _autonomousProtectionCoordinator.Evaluate(snapshot); snapshot.AutonomousProtectionCanExecute = protection.CanExecuteAutomatically; snapshot.AutonomousProtectionRequiresUserApproval = protection.RequiresUserApproval; snapshot.AutonomousProtectionAction = protection.Action; snapshot.AutonomousProtectionTarget = protection.Target; snapshot.AutonomousProtectionSummary = protection.Summary;
+            SuppressNonActionableStorageSpacesSmp(snapshot);
+            SuppressTransientWindowsUpdateFileInUse(snapshot);
+
+            RiskAssessmentEngine.RiskAssessment assessment = _riskAssessmentEngine.Assess(snapshot);
+            snapshot.RiskScore = assessment.Score;
+            snapshot.RiskLevel = assessment.Level;
+            snapshot.RiskSummary = assessment.Summary;
+            snapshot.Recommendation = assessment.Recommendation;
+
+            GuidanceEngine.GuidanceResult guidance = _guidanceEngine.Analyze(snapshot);
+            snapshot.GuidanceTitle = guidance.Title;
+            snapshot.GuidanceSeverity = guidance.Severity;
+            snapshot.GuidanceConfidencePercent = guidance.ConfidencePercent;
+            snapshot.GuidanceConfidenceLabel = guidance.ConfidenceLabel;
+            snapshot.GuidanceEvidence = guidance.Evidence;
+            snapshot.GuidanceWhatHappened = guidance.WhatHappened;
+            snapshot.GuidanceWhyItMatters = guidance.WhyItMatters;
+            snapshot.GuidanceRecommendedAction = guidance.RecommendedAction;
+            snapshot.GuidanceFixAvailability = guidance.FixAvailability;
+            snapshot.GuidanceFixDetails = guidance.FixDetails;
+            snapshot.GuidanceActionId = guidance.ActionId;
+            snapshot.GuidanceActionLabel = guidance.ActionLabel;
+
+            InvestigationEngine.InvestigationResult investigation = _investigationEngine.Investigate(snapshot);
+            snapshot.InvestigationState = investigation.State.ToString();
+            snapshot.InvestigationConclusion = investigation.Conclusion;
+            snapshot.InvestigationSummary = investigation.Summary;
+            snapshot.InvestigationRequiresAttention = investigation.RequiresAttention;
+            snapshot.InvestigationReasonCode = investigation.ReasonCode;
+
+            ApplyProactiveDriverFinding(snapshot);
+
+            InvestigationRecurrenceTracker.RecurrenceResult recurrence = _recurrenceTracker.Record(snapshot.InvestigationReasonCode, snapshot.InvestigationRequiresAttention, DateTimeOffset.Now);
+            snapshot.InvestigationRecurrenceCount = recurrence.Count;
+            snapshot.InvestigationIsRecurring = recurrence.IsRecurring;
+            snapshot.InvestigationShouldEscalate = recurrence.ShouldEscalate;
+
+            RemediationRecommendationEngine.RemediationRecommendation remediation = _remediationRecommendationEngine.Evaluate(snapshot);
+            snapshot.RemediationAvailable = remediation.Available;
+            snapshot.RemediationRequiresUserApproval = remediation.RequiresUserApproval;
+            snapshot.RemediationAction = remediation.Action;
+            snapshot.RemediationTarget = remediation.Target;
+            snapshot.RemediationSummary = remediation.Summary;
+
+            AutonomousProtectionCoordinator.AutonomousProtectionDecision protection = _autonomousProtectionCoordinator.Evaluate(snapshot);
+            snapshot.AutonomousProtectionCanExecute = protection.CanExecuteAutomatically;
+            snapshot.AutonomousProtectionRequiresUserApproval = protection.RequiresUserApproval;
+            snapshot.AutonomousProtectionAction = protection.Action;
+            snapshot.AutonomousProtectionTarget = protection.Target;
+            snapshot.AutonomousProtectionSummary = protection.Summary;
 
             if (protection.CanExecuteAutomatically && !protection.RequiresUserApproval)
             {
                 AutonomousProtectionExecutor.AutonomousProtectionExecutionResult execution = await _autonomousProtectionExecutor.ExecuteAsync(snapshot, protection, RefreshSecurityStateForProtectionAsync, RetryTransientOperationForProtectionAsync);
-                snapshot.AutonomousProtectionAttempted = execution.Attempted; snapshot.AutonomousProtectionSucceeded = execution.Succeeded; snapshot.AutonomousProtectionCompletedAt = execution.CompletedAt; snapshot.AutonomousProtectionOutcomeTitle = execution.Title; snapshot.AutonomousProtectionOutcomeSummary = execution.Summary;
+                snapshot.AutonomousProtectionAttempted = execution.Attempted;
+                snapshot.AutonomousProtectionSucceeded = execution.Succeeded;
+                snapshot.AutonomousProtectionCompletedAt = execution.CompletedAt;
+                snapshot.AutonomousProtectionOutcomeTitle = execution.Title;
+                snapshot.AutonomousProtectionOutcomeSummary = execution.Summary;
             }
 
-            CurrentSnapshot = snapshot; SnapshotUpdated?.Invoke(this, CurrentSnapshot);
+            CurrentSnapshot = snapshot;
+            SnapshotUpdated?.Invoke(this, CurrentSnapshot);
         }
 
-        private async Task RefreshSecurityStateForProtectionAsync() { _securitySnapshot = await Task.Run(_securityMonitor.GetStatus); _lastSecurityRefresh = DateTime.Now; }
-        private async Task RetryTransientOperationForProtectionAsync() { _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus); _lastEventLogRefresh = DateTime.Now; }
+        private void ApplyProactiveDriverFinding(SystemSnapshot snapshot)
+        {
+            if (!_driverHealthSnapshot.Available || !_driverHealthSnapshot.RequiresAttention || snapshot.InvestigationRequiresAttention)
+                return;
+
+            string device = string.IsNullOrWhiteSpace(_driverHealthSnapshot.PrimaryDeviceName)
+                ? "a Windows device"
+                : _driverHealthSnapshot.PrimaryDeviceName;
+            string problem = string.IsNullOrWhiteSpace(_driverHealthSnapshot.PrimaryProblem)
+                ? device
+                : _driverHealthSnapshot.PrimaryProblem;
+
+            snapshot.InvestigationState = "NeedsAttention";
+            snapshot.InvestigationConclusion = "A driver needs attention.";
+            snapshot.InvestigationSummary = $"Windows reports a problem with {problem}. Sentinel detected this automatically; you did not need to ask.";
+            snapshot.InvestigationRequiresAttention = true;
+            snapshot.InvestigationReasonCode = $"driver:{device.ToLowerInvariant()}";
+
+            snapshot.GuidanceTitle = "A driver needs attention";
+            snapshot.GuidanceSeverity = "Attention";
+            snapshot.GuidanceConfidencePercent = 100;
+            snapshot.GuidanceConfidenceLabel = "Verified by Windows";
+            snapshot.GuidanceEvidence = $"Sentinel checked {_driverHealthSnapshot.DevicesChecked} devices. Windows currently reports {_driverHealthSnapshot.ProblemDeviceCount} problem device(s).";
+            snapshot.GuidanceWhatHappened = $"Windows reports that {problem} may not be working correctly.";
+            snapshot.GuidanceWhyItMatters = "A device with a driver error may not work correctly even if the rest of the computer appears healthy.";
+            snapshot.GuidanceRecommendedAction = "Sentinel should investigate the correct signed driver and prepare a safe repair. Installation and any restart require your approval.";
+            snapshot.GuidanceFixAvailability = "Investigation available";
+            snapshot.GuidanceFixDetails = "Sentinel can check Windows Update first, then authoritative manufacturer sources if Windows Update cannot provide a verified repair.";
+            snapshot.GuidanceActionId = "review-driver-repair";
+            snapshot.GuidanceActionLabel = "Review driver repair";
+
+            snapshot.RiskScore = Math.Max(snapshot.RiskScore, 20);
+            snapshot.RiskLevel = "Low";
+            snapshot.RiskSummary = $"A driver problem is active for {device}.";
+            snapshot.Recommendation = "Let Sentinel investigate and prepare the safest verified repair path.";
+        }
+
+        private async Task RefreshSecurityStateForProtectionAsync()
+        {
+            _securitySnapshot = await Task.Run(_securityMonitor.GetStatus);
+            _lastSecurityRefresh = DateTime.Now;
+        }
+
+        private async Task RetryTransientOperationForProtectionAsync()
+        {
+            _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus);
+            _lastEventLogRefresh = DateTime.Now;
+        }
 
         public async Task<VerificationResult> VerifyCurrentGuidanceAsync()
         {
             SystemSnapshot snapshot = CurrentSnapshot;
-            if (!Contains(snapshot.LatestEventSource, "Service Control Manager") || !Contains(snapshot.LatestEventMessage, "terminated unexpectedly")) { await RefreshAsync(); return new VerificationResult("Check complete", "Sentinel AI refreshed the current monitoring data. No targeted service verification was available for this finding.", false); }
-            string serviceName = ExtractServiceDisplayName(snapshot.LatestEventMessage); ServiceMonitor.ServiceStatusSnapshot status = await Task.Run(() => _serviceMonitor.GetServiceStatus(serviceName)); _lastServiceRefresh = DateTime.MinValue; _lastEventLogRefresh = DateTime.MinValue; await RefreshAsync();
+            if (!Contains(snapshot.LatestEventSource, "Service Control Manager") || !Contains(snapshot.LatestEventMessage, "terminated unexpectedly"))
+            {
+                await RefreshAsync();
+                return new VerificationResult("Check complete", "Sentinel AI refreshed the current monitoring data. No targeted service verification was available for this finding.", false);
+            }
+
+            string serviceName = ExtractServiceDisplayName(snapshot.LatestEventMessage);
+            ServiceMonitor.ServiceStatusSnapshot status = await Task.Run(() => _serviceMonitor.GetServiceStatus(serviceName));
+            _lastServiceRefresh = DateTime.MinValue;
+            _lastEventLogRefresh = DateTime.MinValue;
+            await RefreshAsync();
             if (!status.Found) return new VerificationResult("Unable to verify", status.Summary, false);
             if (status.IsRunning) return new VerificationResult("Service is running", $"{status.Summary} Sentinel AI will continue watching for another unexpected termination before marking the issue fully resolved.", true);
             return new VerificationResult("Service is still not running", $"{status.Summary} Do not change its startup type until you confirm whether the Windows feature that uses it is needed on this computer.", false);
         }
 
-        private static void SuppressNonActionableStorageSpacesSmp(SystemSnapshot snapshot) { bool eventMatch = Contains(snapshot.LatestEventSource, "Service Control Manager") && Contains(snapshot.LatestEventMessage, "Microsoft Storage Spaces SMP"); if (!eventMatch) return; bool serviceMatch = Contains(snapshot.PrimaryFlaggedServiceName, "Storage Spaces") || Contains(snapshot.PrimaryFlaggedServiceName, "SMP"); snapshot.CriticalEventCount = 0; snapshot.ErrorEventCount = 0; snapshot.LatestEventTime = null; snapshot.LatestEventSource = "None"; snapshot.LatestEventMessage = "No actionable Windows events were detected."; if (serviceMatch) { snapshot.FlaggedServiceCount = 0; snapshot.PrimaryFlaggedServiceName = "None"; snapshot.PrimaryFlaggedServiceReason = "No actionable service conditions were detected."; } }
-        private static void SuppressTransientWindowsUpdateFileInUse(SystemSnapshot snapshot) { bool match = Contains(snapshot.LatestEventSource, "WindowsUpdateClient") && Contains(snapshot.LatestEventMessage, "0x80073D02"); if (!match) return; snapshot.CriticalEventCount = 0; snapshot.ErrorEventCount = 0; snapshot.LatestEventTime = null; snapshot.LatestEventSource = "None"; snapshot.LatestEventMessage = "A temporary Windows Update file-in-use condition was detected. Windows can retry automatically; Sentinel will continue monitoring for recurrence."; }
+        private static void SuppressNonActionableStorageSpacesSmp(SystemSnapshot snapshot)
+        {
+            bool eventMatch = Contains(snapshot.LatestEventSource, "Service Control Manager") && Contains(snapshot.LatestEventMessage, "Microsoft Storage Spaces SMP");
+            if (!eventMatch) return;
+            bool serviceMatch = Contains(snapshot.PrimaryFlaggedServiceName, "Storage Spaces") || Contains(snapshot.PrimaryFlaggedServiceName, "SMP");
+            snapshot.CriticalEventCount = 0;
+            snapshot.ErrorEventCount = 0;
+            snapshot.LatestEventTime = null;
+            snapshot.LatestEventSource = "None";
+            snapshot.LatestEventMessage = "No actionable Windows events were detected.";
+            if (serviceMatch)
+            {
+                snapshot.FlaggedServiceCount = 0;
+                snapshot.PrimaryFlaggedServiceName = "None";
+                snapshot.PrimaryFlaggedServiceReason = "No actionable service conditions were detected.";
+            }
+        }
+
+        private static void SuppressTransientWindowsUpdateFileInUse(SystemSnapshot snapshot)
+        {
+            bool match = Contains(snapshot.LatestEventSource, "WindowsUpdateClient") && Contains(snapshot.LatestEventMessage, "0x80073D02");
+            if (!match) return;
+            snapshot.CriticalEventCount = 0;
+            snapshot.ErrorEventCount = 0;
+            snapshot.LatestEventTime = null;
+            snapshot.LatestEventSource = "None";
+            snapshot.LatestEventMessage = "A temporary Windows Update file-in-use condition was detected. Windows can retry automatically; Sentinel will continue monitoring for recurrence.";
+        }
 
         private async Task RefreshProcessDataIfDueAsync(DateTime now) { if (now - _lastProcessRefresh < ProcessRefreshInterval) return; _lastProcessRefresh = now; _processSnapshot = await Task.Run(_processMonitor.GetIntelligence); }
         private async Task RefreshMemoryInvestigationDataIfDueAsync(DateTime now, double memoryUsagePercent) { if (now - _lastMemoryInvestigationRefresh < MemoryInvestigationRefreshInterval) return; _lastMemoryInvestigationRefresh = now; _memoryInvestigationSnapshot = await Task.Run(() => _memoryInvestigationMonitor.GetSnapshot(memoryUsagePercent)); }
@@ -165,6 +309,7 @@ namespace Sentinel.App.Services
         private async Task RefreshStartupDataIfDueAsync(DateTime now) { if (now - _lastStartupRefresh < StartupRefreshInterval) return; _lastStartupRefresh = now; _startupSnapshot = await Task.Run(_startupPersistenceMonitor.GetSnapshot); }
         private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now) { if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return; _lastScheduledTaskRefresh = now; _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot); }
         private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now) { if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return; _lastActiveConnectionRefresh = now; _activeConnectionSnapshot = await Task.Run(_activeConnectionMonitor.GetSnapshot); }
+        private async Task RefreshDriverHealthDataIfDueAsync(DateTime now) { if (now - _lastDriverHealthRefresh < DriverHealthRefreshInterval) return; _lastDriverHealthRefresh = now; _driverHealthSnapshot = await Task.Run(_driverHealthEvidenceProvider.GetSnapshot); }
 
         private static bool Contains(string? value, string expected) => !string.IsNullOrWhiteSpace(value) && value.Contains(expected, StringComparison.OrdinalIgnoreCase);
         private static string ExtractServiceDisplayName(string message) { const string prefix = "The "; const string marker = " service terminated unexpectedly"; int start = message.IndexOf(prefix, StringComparison.OrdinalIgnoreCase); int end = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase); if (start < 0 || end <= start + prefix.Length) return string.Empty; return message.Substring(start + prefix.Length, end - (start + prefix.Length)).Trim(); }
