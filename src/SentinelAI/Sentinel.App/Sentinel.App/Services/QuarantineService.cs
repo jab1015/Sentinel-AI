@@ -12,9 +12,10 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Provides the verified foundation for quarantine and restore operations.
-    /// Every system-changing action is gated by RemediationPolicy and explicit
-    /// user approval, and success is reported only after filesystem verification.
+    /// Provides the verified foundation for quarantine, restore, and permanent
+    /// deletion operations. Every system-changing action is gated by
+    /// RemediationPolicy and explicit user approval, and success is reported only
+    /// after filesystem verification.
     /// </summary>
     public sealed class QuarantineService
     {
@@ -122,6 +123,69 @@ namespace Sentinel.App.Services
             }
 
             return RestoreVerifiedAsync(record, cancellationToken);
+        }
+
+        public async Task<QuarantineResult> DeletePermanentlyAsync(
+            QuarantineRecord record,
+            bool userApproved,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(record);
+
+            var decision = _policy.Evaluate(new RemediationPolicy.RemediationRequest(
+                RemediationPolicy.RemediationAction.DeleteQuarantinedFile,
+                RemediationPolicy.RemediationRisk.Moderate,
+                HasVerifiedEvidence: File.Exists(record.QuarantinePath),
+                IsWindowsProtectedComponent: false,
+                RequiresElevation: false,
+                CanRequestElevation: false));
+
+            if (!decision.Allowed)
+            {
+                return Failed(decision.Explanation);
+            }
+
+            if (decision.RequiresUserApproval && !userApproved)
+            {
+                return new QuarantineResult(false, true, false, record, record.Sha256, decision.Explanation);
+            }
+
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!File.Exists(record.QuarantinePath))
+                {
+                    return Failed("The quarantined file is no longer available to delete.");
+                }
+
+                string currentHash = await ComputeSha256Async(record.QuarantinePath, cancellationToken).ConfigureAwait(false);
+                if (!string.Equals(currentHash, record.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Failed("The quarantined file no longer matches its verified record, so Sentinel will not delete it.");
+                }
+
+                File.Delete(record.QuarantinePath);
+                bool verified = !File.Exists(record.QuarantinePath);
+
+                return verified
+                    ? new QuarantineResult(
+                        true,
+                        false,
+                        true,
+                        record,
+                        record.Sha256,
+                        "Sentinel permanently deleted the approved quarantined file and verified that the isolated copy no longer exists.")
+                    : Failed("Sentinel attempted the permanent deletion but could not verify the result.");
+            }
+            catch (OperationCanceledException)
+            {
+                return Failed("The permanent deletion was canceled before Sentinel could verify the result.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                return Failed("Sentinel could not safely delete the quarantined file. No success was reported.");
+            }
         }
 
         private static async Task<QuarantineResult> RestoreVerifiedAsync(
