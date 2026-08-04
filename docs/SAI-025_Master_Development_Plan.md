@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.4
+Version: 4.5
 
-Status: Active — Release Candidate Remediation
+Status: Active — Sentinel Discovery Expansion
 
 Last Updated: 2026-08-04
 
@@ -14,18 +14,27 @@ Copyright (c) 2026 Modern Methods.
 
 This document is the authoritative master engineering plan for Sentinel AI.
 
+# Product-Wide Sentinel Discovery Rule
+
+Sentinel must not depend on a nontechnical user knowing which technical question to ask.
+
+Every technical condition that Sentinel can safely and reliably verify must participate in continuous Sentinel Discovery. Meaningful findings must flow through the common lifecycle:
+
+**Discover → Analyze → Investigate → Confidence/Trust → Determine Action → Repair/Protect when safe → Request approval when required → Verify result → Roll back when applicable → Record in Activity Center → Feed verified result to Ask Sentinel.**
+
+Ask Sentinel is the explanation and follow-up interface. It is not the primary discovery mechanism.
+
+Supported technical areas must be incorporated into this rule wherever Sentinel has sufficient verified evidence, including drivers/devices, Windows Update and restart state, services, processes, startup items, scheduled tasks, CPU/memory/disk health, Defender/firewall, network connections and suspicious activity, persistence/spyware indicators, Windows security configuration, system/event-log failures, quarantine state, and other implemented Windows health/security evidence.
+
+Sentinel must never invent a diagnosis or silently perform an action whose safety has not been verified. When an automatic repair cannot be proven safe, Sentinel must still make the finding actionable by explaining it simply, performing authoritative investigation when appropriate, and presenting the correct user-approved next step.
+
 # Current Status
 
-Core monitoring, protection, remediation, optimization, maintenance, packaging, stability, and containment foundations are implemented. Phase 8 containment acceptance passed for process containment, firewall block/removal, and quarantine/restore.
+The Release Candidate Finalization foundations are implemented and runtime verification has confirmed Ask Sentinel history integration, Quarantine Manager, Activity Center persistence, Investigation Engine history reuse, and proactive driver discovery.
 
-The product is **not release-ready** because final runtime testing exposed four incomplete or unverified release-candidate areas:
+The proactive driver workflow is the reference implementation for the product-wide Sentinel Discovery rule. Runtime evidence confirms that Sentinel can discover a Windows-reported driver/device problem without the user asking about drivers, change the dashboard from healthy to attention-required, show an Investigation Summary, and expose the verified driver-repair workflow.
 
-1. Ask Sentinel Local final acceptance
-2. Quarantine Manager UI
-3. Activity Center UI and outcome visibility
-4. Investigation Engine runtime integration and verification
-
-Final Acceptance Test 8 remains open.
+The product remains at **99%** while Sentinel Discovery is expanded across the remaining supported technical monitors and the final acceptance suite is rerun.
 
 # Current Progress
 
@@ -34,87 +43,115 @@ Final Acceptance Test 8 remains open.
 - Protection and containment foundation: **Complete**
 - Optimization and maintenance foundation: **Complete**
 - Stability and packaging foundation: **Complete**
-- Release Candidate Finalization: **0 of 4 fully runtime-verified**
-- Overall estimated progress: **approximately 93%**
+- Release Candidate Finalization foundations: **Complete**
+- Investigation Engine runtime integration: **Functionally verified**
+- Sentinel Discovery Expansion: **1 of 4 complete**
+- Overall estimated progress: **99%**
 
-# Release Candidate Finalization
+# Sentinel Discovery Expansion
 
-## 1 of 4 — Ask Sentinel Local
+## 1 of 4 — Driver Reference Workflow
 
-**Status: Substantially implemented; final runtime acceptance open**
+**Status: COMPLETE — runtime verified**
 
-Runtime verification now covers the required Windows health evidence areas:
+Verified behavior:
 
-- Windows Update
-- Pending restart
-- TPM
-- Secure Boot verified-unavailable handling
-- BitLocker/device-encryption verified-unavailable handling
-- Defender
-- Firewall
-- CPU
-- Memory
-- Disk
-- Network
-- Startup applications
-- Running services
-- Top processes
+- Driver/device health is checked proactively.
+- A Windows-reported device/driver problem changes the dashboard from healthy to attention-required.
+- The user does not have to ask Ask Sentinel to discover the condition.
+- The dashboard provides a clear Review driver repair action.
+- Investigation Summary explains what was found, why it matters, what was investigated, and what happens next.
+- Repair investigation uses Windows Update first and authoritative manufacturer research when required.
+- Automatic installation is not permitted unless the exact repair is verified safe and installable.
+- Installation and restart remain approval-gated.
+- Investigation outcomes are persisted to Recent Activity/history.
+- Ask Sentinel can reuse the verified historical finding later.
+- Historical answers reconcile the prior finding against current system evidence.
 
-Additional runtime-verified improvements:
+The driver workflow is now the reference pattern for all remaining Discovery categories.
 
-- Evidence collection progress indicator
-- Natural-language Windows Update question handling
-- Local driver-health evidence
-- Plain-English driver-health response
-- Repair preparation controls
-- Safe Windows Update repair search with no change when no compatible package is available
+## 2 of 4 — Technical Monitor Discovery Integration
 
-Implemented and awaiting runtime verification:
+**Status: NEXT**
 
-- Authoritative Microsoft/OEM driver-research fallback
-- Confidence percentage for research results
-- Correlation with exact local manufacturer/model/serial/hardware ID evidence
-- Safe user-action-required handoff to the official source when automatic installation is not verified
+Inventory every implemented technical monitor and evidence collector. Identify any area that currently collects evidence but does not proactively create an actionable finding when a meaningful verified condition exists.
 
-Ask Sentinel itself remains grounded in local evidence and stored verified investigation history. It does not provide general web search.
+Connect supported findings to the common Discovery/Investigation/Action pipeline. Priority areas include:
 
-## 2 of 4 — Quarantine Manager UI
+- Windows Update and pending restart
+- Defender and firewall
+- suspicious processes and persistence indicators
+- startup applications and services
+- scheduled tasks where supported
+- CPU, memory, and disk health conditions
+- incoming/outgoing connections and suspicious network activity
+- system and application event-log failures
+- security configuration evidence
+- quarantine and containment state
 
-Expose the verified quarantine backend through a user-visible interface with item history, reason/evidence summary, restore confirmation, permanent removal, verification status, and activity-history linkage.
+Normal/healthy evidence should remain quiet and should not overwhelm the user.
 
-## 3 of 4 — Activity Center
+## 3 of 4 — Actionability and Safe Remediation
 
-Provide a visible 30-day history of automatic repairs, optimizations, investigations, quarantine/restore actions, rollbacks, verification results, and user-required actions. When Sentinel fixes something, the user must receive a concise plain-English confirmation.
+**Status: PENDING**
 
-## 4 of 4 — Investigation Engine Runtime Integration
+For every supported Discovery category, classify the verified finding into one of these outcomes:
 
-Verify the internal investigation workflow end-to-end:
+1. Safe automatic protection/maintenance action is available.
+2. A repair can be prepared but requires user approval.
+3. Authoritative investigation is required before an action can be selected.
+4. User action is required because Sentinel cannot safely perform the repair.
+5. Observation only; no action is justified.
 
-- Collect local evidence
-- Score confidence
-- Use authoritative web research only when local evidence is insufficient
-- Correlate research with the actual computer evidence
-- Select a safe automatic action when a verified installable repair exists
-- Require explicit user action when automatic execution cannot be proven safe
-- Verify any repair
-- Record the result in Activity Center
-- Store verified findings so Ask Sentinel can explain them later
+Any executed action must be verified. Reversible actions must support rollback where technically applicable. Results must be written to Activity Center and made available to Ask Sentinel.
 
-The driver repair acceptance case now uses this architecture: Windows Update first; if no compatible package is available, Sentinel performs read-only research against authoritative Microsoft and OEM sources. No researched package is installed automatically unless Sentinel has separately verified it as automatically installable.
+## 4 of 4 — Product-Wide Runtime Acceptance
+
+**Status: PENDING**
+
+Runtime-test representative conditions from each supported Discovery category and confirm:
+
+- proactive detection without a user question
+- no false healthy state when a verified actionable condition exists
+- plain-English primary UX
+- technical evidence available through progressive disclosure
+- correct confidence/trust handling
+- safe action selection
+- approval gates
+- repair/protection verification
+- rollback where applicable
+- Activity Center persistence
+- Ask Sentinel reuse of verified findings
+- quiet behavior for normal conditions
+
+After this passes, rerun Final Acceptance Test 8 and synchronize all release documentation.
+
+# UX Requirement
+
+Primary user-facing messages must be concise and nontechnical. Detailed evidence such as device counts, unsigned-driver counts, event counts, hardware IDs, source-selection logic, and other diagnostic data belongs in Technical details unless it is necessary for the user's decision.
+
+Sentinel should tell the user what matters:
+
+- what it found
+- whether the user needs to do anything
+- what Sentinel can safely do
+- what approval is required
+- whether the problem was fixed
 
 # Final Acceptance
 
-After all four items pass runtime verification:
+After Sentinel Discovery Expansion 4 of 4 passes:
 
 1. Re-run Final Acceptance Test 8.
 2. Confirm no clipping, crashes, debug breaks, freezes, or material lag.
-3. Confirm Ask Sentinel, Quarantine Manager, Activity Center, and Investigation Engine work in the installed product.
-4. Update all planning/progress documents to completed status.
-5. Produce the final signed release package and release notes.
+3. Confirm proactive Discovery, Ask Sentinel, Quarantine Manager, Activity Center, and Investigation Engine work together in the installed product.
+4. Confirm normal conditions remain quiet while verified actionable conditions are surfaced proactively.
+5. Update all planning/progress documents to completed status.
+6. Produce the final signed release package and release notes.
 
 # Release Gate
 
-Sentinel AI must not be described as product-complete, commercially ready, or 100% finished until the four Release Candidate Finalization items and Final Acceptance Test 8 pass.
+Sentinel AI must not be described as product-complete, commercially ready, or 100% finished until the product-wide Sentinel Discovery rule is implemented across supported technical areas, Sentinel Discovery Expansion 4 of 4 passes, and Final Acceptance Test 8 passes.
 
 ---
 
