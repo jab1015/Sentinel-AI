@@ -11,11 +11,13 @@ namespace Sentinel.App
     public sealed partial class MainWindow
     {
         private readonly AskSentinelResponseOrchestrator _askSentinelResponseOrchestrator = new();
+        private readonly DriverAutomaticRepairCoordinator _driverRepairCoordinator = new();
         private bool _askSentinelBusy;
         private StackPanel? _askSentinelRepairPanel;
         private Button? _reviewRepairButton;
         private Button? _automaticRepairButton;
         private Button? _notNowButton;
+        private string _driverRepairDeviceName = string.Empty;
 
         private async void AskSentinelButton_Click(object sender, RoutedEventArgs e)
         {
@@ -112,16 +114,18 @@ namespace Sentinel.App
                 return;
             }
 
+            _driverRepairDeviceName = ExtractDriverDeviceName(answer);
             EnsureAskSentinelRepairPanel();
             if (_askSentinelRepairPanel is null || _automaticRepairButton is null)
             {
                 return;
             }
 
-            _automaticRepairButton.IsEnabled = false;
+            _automaticRepairButton.Content = "Prepare Automatic Repair";
+            _automaticRepairButton.IsEnabled = true;
             ToolTipService.SetToolTip(
                 _automaticRepairButton,
-                "Sentinel will enable automatic repair only after the Investigation Engine verifies a signed, compatible driver package and a reversible installation plan.");
+                "Sentinel will first search Windows Update for a compatible signed driver. Nothing is installed until you review and approve the verified repair plan.");
             _askSentinelRepairPanel.Visibility = Visibility.Visible;
         }
 
@@ -146,9 +150,8 @@ namespace Sentinel.App
 
             _automaticRepairButton = new Button
             {
-                Content = "Repair Automatically",
-                MinWidth = 154,
-                IsEnabled = false
+                Content = "Prepare Automatic Repair",
+                MinWidth = 178
             };
             _automaticRepairButton.Click += AutomaticAskSentinelRepair_Click;
 
@@ -178,8 +181,8 @@ namespace Sentinel.App
             {
                 Title = "Review driver repair",
                 Content =
-                    "Sentinel will not install a driver until it verifies a signed package from Windows Update or the computer manufacturer, confirms device compatibility, records a reversible repair plan, and determines whether a restart is required.\n\n" +
-                    "When the verified repair is ready, Sentinel will ask for approval before downloading or installing anything. It will then tell you when to save your work before any restart.",
+                    "Sentinel will search Windows Update for a compatible signed driver for the affected device. It will show you the exact package and source before downloading or installing anything.\n\n" +
+                    "If you approve the verified plan, Sentinel will download and install the package through Windows Update. It will never restart the computer automatically. If a restart is required, Sentinel will tell you to save your work and wait for your approval.",
                 CloseButtonText = "OK",
                 XamlRoot = ((FrameworkElement)Content).XamlRoot
             };
@@ -188,14 +191,89 @@ namespace Sentinel.App
 
         private async void AutomaticAskSentinelRepair_Click(object sender, RoutedEventArgs e)
         {
-            ContentDialog dialog = new()
+            if (_automaticRepairButton is null || _askSentinelBusy)
             {
-                Title = "Automatic repair is not yet verified",
-                Content = "Sentinel has not yet verified a compatible signed driver package and reversible installation plan for this device. No change was made.",
-                CloseButtonText = "OK",
-                XamlRoot = ((FrameworkElement)Content).XamlRoot
-            };
-            await dialog.ShowAsync();
+                return;
+            }
+
+            _askSentinelBusy = true;
+            _automaticRepairButton.IsEnabled = false;
+            AskSentinelProgressText.Text = "Searching Windows Update for a compatible signed driver…";
+            AskSentinelProgressPanel.Visibility = Visibility.Visible;
+            AskSentinelProgressRing.IsActive = true;
+
+            try
+            {
+                DriverAutomaticRepairCoordinator.DriverRepairPlan plan =
+                    await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
+
+                if (!plan.Available)
+                {
+                    ContentDialog unavailable = new()
+                    {
+                        Title = "Automatic repair is not available yet",
+                        Content = plan.Summary,
+                        CloseButtonText = "OK",
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
+                    await unavailable.ShowAsync();
+                    AskSentinelStatusText.Text = "No repair was performed. Sentinel will continue investigating and monitoring the device.";
+                    return;
+                }
+
+                ContentDialog approval = new()
+                {
+                    Title = "Approve driver repair",
+                    Content =
+                        $"Device: {plan.DeviceName}\n\n" +
+                        $"Package: {plan.PackageTitle}\n" +
+                        $"Source: {plan.Source}\n" +
+                        $"Trust: {plan.TrustStatement}\n\n" +
+                        plan.Summary,
+                    PrimaryButtonText = "Download and Install",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                };
+
+                ContentDialogResult approvalResult = await approval.ShowAsync();
+                if (approvalResult != ContentDialogResult.Primary)
+                {
+                    AskSentinelStatusText.Text = "Driver repair was not approved. No change was made.";
+                    return;
+                }
+
+                AskSentinelProgressText.Text = "Downloading and installing the approved signed driver…";
+                DriverAutomaticRepairCoordinator.DriverRepairResult result =
+                    await _driverRepairCoordinator.ExecuteAsync(plan);
+
+                ContentDialog outcome = new()
+                {
+                    Title = result.Title,
+                    Content = result.Summary,
+                    CloseButtonText = "OK",
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                };
+                await outcome.ShowAsync();
+
+                AskSentinelStatusText.Text = result.Success
+                    ? result.RestartRequired
+                        ? "The driver was installed. Save your work and restart when you are ready; Sentinel will verify the repair after startup."
+                        : "The driver was installed. Sentinel is refreshing local evidence to verify the repair."
+                    : "The repair did not complete. No restart was requested.";
+
+                if (result.Success && !result.RestartRequired)
+                {
+                    await UpdateDashboardAsync();
+                }
+            }
+            finally
+            {
+                AskSentinelProgressRing.IsActive = false;
+                AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
+                _askSentinelBusy = false;
+                _automaticRepairButton.IsEnabled = true;
+            }
         }
 
         private void NotNowAskSentinelRepair_Click(object sender, RoutedEventArgs e)
@@ -206,10 +284,26 @@ namespace Sentinel.App
 
         private void HideAskSentinelRepairActions()
         {
+            _driverRepairDeviceName = string.Empty;
             if (_askSentinelRepairPanel is not null)
             {
                 _askSentinelRepairPanel.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private static string ExtractDriverDeviceName(string answer)
+        {
+            string[] lines = answer.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < lines.Length - 1; i++)
+            {
+                if (lines[i].Trim().Equals("What I found", StringComparison.OrdinalIgnoreCase))
+                {
+                    string device = lines[i + 1].Trim();
+                    int codeIndex = device.LastIndexOf("(Code ", StringComparison.OrdinalIgnoreCase);
+                    return codeIndex > 0 ? device[..codeIndex].Trim() : device;
+                }
+            }
+            return "Affected Windows device";
         }
     }
 }
