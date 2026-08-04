@@ -1,60 +1,113 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 5.3  
-**Status:** Active  
-**Last Updated:** 2026-08-03  
+**Version:** 5.4  
+**Status:** Active — Release Candidate Remediation  
+**Last Updated:** 2026-08-04  
 **Production Branch:** `main`
 
 ## Project Summary
 
 - Phase 1 — Monitoring Foundation: **Complete**
 - Phase 2 — Investigation Experience: **Complete**
-- Phase 3 — Investigation Engine: **18 of 18 complete**
-- Phase 4 — Safe Remediation Foundation: **10 of 10 complete**
-- Phase 5 — Remediation Integration & Autonomous Protection: **Complete**
-- Phase 6 — Ask Sentinel / AI Assistance: **6 of 6 complete**
-- Phase 7 — Production Hardening & Commercial Release: **12 of 12 complete**
-- Phase 8 — Continuous Intrusion & Spyware Protection: **7 of 8 complete**
-- Current milestone: **8.8 Final Product Acceptance**
+- Phase 3 — Investigation Engine foundation: **Implemented; runtime integration not fully verified**
+- Phase 4 — Safe Remediation Foundation: **Complete**
+- Phase 5 — Remediation Integration & Autonomous Protection: **Core execution complete**
+- Phase 6 — Ask Sentinel / AI Assistance: **UI complete; local evidence coverage incomplete**
+- Phase 7 — Production Hardening & Commercial Release: **Core hardening complete**
+- Phase 8 — Continuous Intrusion & Spyware Protection: **7 of 8 complete; final acceptance blocked**
 
-## Phase 8 — Continuous Intrusion & Spyware Protection
+**Current milestone:** Release Candidate Finalization — **0 of 4 runtime-verified**
 
-**Status: Active — 7 of 8 complete**
+## Verified Complete
 
-1. [x] Continuous inbound/outbound network connection monitoring with process attribution, endpoint data, inbound/outbound direction, TCP listeners, UDP endpoints, monitoring-health state, and bounded connection history.
-2. [x] Evidence-based connection anomaly/intrusion classification with corroboration and false-positive controls.
-3. [x] Spyware/process behavior correlation across process, command-line, lineage, persistence, service, and network evidence.
-4. [x] Complete supported containment execution for verified threats: outbound endpoint blocking, process containment, quarantine handoff where supported, verification, audit logging, reversal/restore path, and approval/elevation handling. Phase 8.4 acceptance passed on 2026-08-03 across process containment, firewall block/removal, and quarantine/restore harnesses.
-5. [x] Plain-English outcome UX that reports what happened, what Sentinel did, whether risk remains, and exact user instructions only when needed.
-6. [x] Reliable Windows startup/background operation. Clean-VM verification confirmed Sentinel starts automatically at sign-in and remains tray-only after reboot.
-7. [x] Protection-health/self-monitoring for Sentinel network monitoring and required Windows protection layers.
-8. [ ] Final product acceptance: controlled benign/suspicious network tests, containment tests, false-positive checks, sleep/wake/network recovery, long-duration operation, clean install/uninstall, startup-to-tray, and final installer branding/assets.
+- Continuous inbound/outbound connection monitoring and process attribution
+- Evidence-based anomaly classification and spyware/process correlation
+- Verified process containment
+- Verified narrow outbound firewall blocking and reversal
+- Verified quarantine and restore backend execution
+- Windows startup-to-tray behavior
+- One-hour and eight-hour stability tests
+- Clean install and clean uninstall checks
+- Network disconnect/recovery and sleep/wake checks
 
-## Verified Current Capability
+## Release Candidate Finalization
 
-Sentinel continuously monitors Windows-reported inbound and outbound network connections and correlates network activity with local process and persistence evidence. It identifies spyware-like and intrusion-oriented behavior only when independent evidence corroborates the concern. Routine unfamiliar traffic alone is not treated as malicious.
+### 1 of 4 — Ask Sentinel Local
 
-Supported containment execution is now implemented and acceptance-verified for process containment, narrow outbound Windows Firewall blocking with verified removal/reversal, and quarantine/restore with approval gates and filesystem verification. Containment outcomes are recorded in maintenance/audit history.
+**Status: Incomplete**
 
-The remaining release blocker is final product acceptance item 8: controlled network and false-positive testing, sleep/wake/network recovery, long-duration operation, clean install/uninstall, startup-to-tray confirmation, and final installer branding/assets.
+Verified:
+- Ask Sentinel UI accepts questions.
+- Responses remain limited to verified local evidence.
 
-## Final Installer / Branding Gate
+Remaining:
+- Windows Update status provider
+- Pending restart status
+- TPM status
+- Secure Boot status
+- BitLocker/device-encryption status
+- Broader local health question coverage
+- Runtime verification that supported questions return useful answers
 
-The customer-facing package must display **Sentinel AI** only. No `(Package)`, project-name suffix, or developer-facing extension should appear. The Sentinel shield artwork must be used consistently for installer/package visuals, Start menu, Apps list, taskbar/window identity, and system tray where Windows supports the corresponding asset.
+### 2 of 4 — Quarantine Manager UI
+
+**Status: Incomplete**
+
+Verified:
+- Backend quarantine/restore service exists.
+- Quarantine/restore acceptance harness passed.
+
+Remaining:
+- User-visible navigation or entry point
+- Quarantined-item list
+- Reason/evidence summary
+- Restore action with confirmation
+- Permanent-delete action
+- Verification status and history integration
+
+### 3 of 4 — Activity Center
+
+**Status: Incomplete**
+
+Verified:
+- Maintenance/history recording foundations exist.
+- Recent Activity dashboard code has been added.
+
+Remaining:
+- Runtime-visible Activity Center confirmation
+- Automatic repair notifications
+- Optimization notifications
+- Investigation, quarantine, restore, and rollback entries
+- 30-day user-visible history
+
+### 4 of 4 — Investigation Engine Runtime Integration
+
+**Status: Incomplete / Unverified**
+
+Remaining:
+- Demonstrate automatic execution
+- Demonstrate local evidence collection
+- Demonstrate confidence scoring
+- Demonstrate internal authoritative web-research fallback when local evidence is insufficient
+- Demonstrate correlation of research with local evidence
+- Demonstrate safe automatic repair and verification
+- Demonstrate Activity Center logging
+- Demonstrate stored findings are available to Ask Sentinel
+
+## Final Acceptance
+
+Final Acceptance Test 8 remains **OPEN**. It cannot pass until all four Release Candidate Finalization items are demonstrated working in the product UI and runtime.
 
 ## Release Gate
 
-Do not describe Sentinel as product-complete or release-ready until item 8 passes. Final approval requires a clean VM acceptance pass of the production installer and the remaining final acceptance checks.
+Do not describe Sentinel AI as complete, release-ready, or 100% finished until:
 
-## Acceptance Principles
+1. Ask Sentinel Local passes runtime verification.
+2. Quarantine Manager is visible and functional.
+3. Activity Center is visible and records real outcomes.
+4. Investigation Engine passes end-to-end runtime validation.
+5. Final Acceptance Test 8 passes after those fixes.
 
-- Sentinel continuously monitors while Windows is running and the user is signed in.
-- Incoming/outgoing activity is correlated to responsible processes when Windows provides sufficient evidence.
-- Unfamiliar activity alone is not classified as malicious.
-- Threat/intrusion conclusions require corroborating evidence.
-- Verified containment must be safe, approval-aware, logged, and outcome-verified.
-- If Sentinel handled the condition, the user receives concise reassurance and remaining-risk status.
-- If user action is required, Sentinel gives exact plain-English instructions.
-- Routine Windows event/network noise remains internal evidence.
-- Sentinel may orchestrate Defender and Windows Firewall rather than replacing their mature protection engines.
-- Sentinel never promises detection of every possible intrusion or spyware technique.
+## Current Overall Estimate
+
+**Approximately 91% complete. Not release-ready.**
