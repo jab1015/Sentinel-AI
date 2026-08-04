@@ -20,16 +20,16 @@ namespace Sentinel.App.Services
 
         public MemoryPressureRemediationPlan BuildPlan()
         {
-            MemoryPressureHistoryAssessment history = _historyService.RecordAndAssess();
+            MemoryPressureTrend history = _historyService.RecordAndAssess();
 
-            if (!history.PersistentPressureVerified)
+            if (!history.RemediationPlanningWarranted)
             {
                 return MemoryPressureRemediationPlan.NoAction(history, history.Summary);
             }
 
-            MemoryProcessHistoryEvidence? candidate = history.PersistentProcessEvidence
-                .Where(item => !item.IsSentinel && !item.IsSystemLike)
-                .OrderByDescending(item => item.HighMemorySampleCount)
+            MemoryProcessTrend? candidate = history.ProcessTrends
+                .Where(item => item.RepeatedHighUsage)
+                .OrderByDescending(item => item.SampleCount)
                 .ThenByDescending(item => item.PeakWorkingSetBytes)
                 .FirstOrDefault();
 
@@ -40,11 +40,20 @@ namespace Sentinel.App.Services
                     "Sentinel verified persistent memory pressure but did not identify a safe user-process candidate. No automatic process action is warranted.");
             }
 
+            int processId = history.CurrentAssessment.LargestProcesses
+                .Where(item =>
+                    !item.IsSentinel &&
+                    !item.IsSystemLike &&
+                    item.ProcessName.Equals(candidate.ProcessName, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(item => item.WorkingSetBytes)
+                .Select(item => item.ProcessId)
+                .FirstOrDefault();
+
             var candidates = new List<MemoryPressureRemediationCandidate>
             {
                 new(
                     MemoryPressureRemediationAction.RequestUserApplicationClose,
-                    candidate.ProcessId,
+                    processId,
                     candidate.ProcessName,
                     "Recommend closing a persistent high-memory application",
                     $"{candidate.ProcessName} repeatedly used substantial memory during verified system pressure. Closing the application normally is the safest remediation.",
@@ -53,7 +62,7 @@ namespace Sentinel.App.Services
 
                 new(
                     MemoryPressureRemediationAction.TerminateProcess,
-                    candidate.ProcessId,
+                    processId,
                     candidate.ProcessName,
                     "Force-stop a persistent high-memory application",
                     "Force termination can cause unsaved-data loss and is never eligible for silent automatic optimization.",
@@ -70,13 +79,13 @@ namespace Sentinel.App.Services
     }
 
     public sealed record MemoryPressureRemediationPlan(
-        MemoryPressureHistoryAssessment History,
+        MemoryPressureTrend History,
         bool ActionWarranted,
         IReadOnlyList<MemoryPressureRemediationCandidate> Candidates,
         string Summary)
     {
         public static MemoryPressureRemediationPlan NoAction(
-            MemoryPressureHistoryAssessment history,
+            MemoryPressureTrend history,
             string summary) =>
             new(history, false, Array.Empty<MemoryPressureRemediationCandidate>(), summary);
     }
