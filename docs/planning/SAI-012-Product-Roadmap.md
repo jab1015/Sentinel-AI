@@ -1,6 +1,6 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 4.1  
+**Version:** 4.2  
 **Status:** Active — Release Candidate Remediation  
 **Last Updated:** 2026-08-04  
 **Production Branch:** `main`
@@ -11,9 +11,9 @@ Core Sentinel AI functionality is implemented, including monitoring, investigati
 
 Final runtime testing identified four release-candidate areas that remain incomplete or unverified. The product is therefore **not release-ready**.
 
-**Current active phase: Release Candidate Finalization — 0 of 4 runtime-verified.**
+**Current active phase: Release Candidate Finalization — 0 of 4 fully runtime-verified.**
 
-**Overall estimated progress: approximately 91%.**
+**Overall estimated progress: approximately 93%.**
 
 ## Completed Major Foundations
 
@@ -35,11 +35,15 @@ Final runtime testing identified four release-candidate areas that remain incomp
 
 ### 1 of 4 — Ask Sentinel Local
 
-**Status: Incomplete**
+**Status: Substantially implemented; final runtime acceptance open**
 
-Finish local evidence providers and runtime verification for Windows Update, pending restart, TPM, Secure Boot, BitLocker/device encryption, Defender, Firewall, uptime, CPU, memory, disk, startup applications, services, networking, and top processes.
+Runtime verification now demonstrates the required local evidence areas, including Windows Update, pending restart, TPM, Secure Boot verified-unavailable handling, BitLocker/device-encryption verified-unavailable handling, Defender, Firewall, CPU, memory, disk, network, startup applications, running services, and top processes.
 
-Ask Sentinel must remain grounded in verified local evidence and must not perform live web searches.
+Ask Sentinel also now demonstrates an evidence-collection progress indicator, natural-language Windows Update answers, local driver-health evidence, and plain-English driver-health guidance.
+
+Ask Sentinel remains grounded in verified local evidence and investigation history. It does not perform general live web searches.
+
+Current acceptance case: Intel Management Engine Interface Code 10. Windows Update correctly returned no compatible automatic package and made no system change. A new authoritative Microsoft/OEM research fallback and confidence result are implemented and awaiting runtime verification.
 
 ### 2 of 4 — Quarantine Manager UI
 
@@ -55,18 +59,21 @@ Add a visible 30-day activity history showing automatic repairs, optimizations, 
 
 ### 4 of 4 — Investigation Engine Runtime Integration
 
-**Status: Incomplete / Unverified**
+**Status: Partially implemented / runtime verification incomplete**
 
 Demonstrate end-to-end runtime operation:
 
 - Local evidence collection
 - Confidence scoring
 - Internal authoritative web research only when local evidence is insufficient
-- Correlation of research with local evidence
-- Safe automatic repair or continued monitoring
+- Correlation of research with exact local hardware evidence
+- Safe automatic repair when a verified installable package exists
+- Clear user-action-required handoff when automatic repair cannot be verified
 - Repair verification
 - Activity Center logging
 - Stored findings available to Ask Sentinel
+
+The driver repair workflow now prefers Windows Update and falls back to authoritative Microsoft/OEM research. The fallback is read-only until Sentinel proves an automatically installable package; otherwise the user is sent only to the verified official source.
 
 The web-research capability is only for Sentinel AI to resolve problems automatically. It is not a general Ask Sentinel web-search feature.
 
