@@ -33,7 +33,11 @@ namespace Sentinel.App
 
             if (report.RecentItems.Count == 0)
             {
-                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+                HistoryOutcomeIconText.Text = "✓";
+                HistoryTitleText.Text = "No action required";
+                HistorySummaryText.Text = "Sentinel has not needed to perform any maintenance recently. Your computer is being monitored normally.";
+                HistoryOutcomeText.Text = "Monitoring continues automatically";
+                InvestigationHistoryBorder.Visibility = Visibility.Visible;
                 return;
             }
 
