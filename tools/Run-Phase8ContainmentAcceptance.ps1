@@ -40,9 +40,10 @@ foreach ($test in $tests) {
 }
 
 if ($failed.Count -eq 0) {
-    Write-Host 'RESULT: PASS — Phase 8.4 containment execution and reversal harnesses passed.'
+    Write-Host 'RESULT: PASS - Phase 8.4 containment execution and reversal harnesses passed.'
     exit 0
 }
 
-Write-Host "RESULT: FAIL — $($failed.Count) acceptance area(s) failed: $($failed -join ', ')"
+$failedNames = $failed -join ', '
+Write-Host "RESULT: FAIL - $($failed.Count) acceptance area(s) failed: $failedNames"
 exit 1
