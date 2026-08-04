@@ -11,5 +11,6 @@
   <ItemGroup>
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RemediationPolicy.cs" Link="RemediationPolicy.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\QuarantineService.cs" Link="QuarantineService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\QuarantineCatalogService.cs" Link="QuarantineCatalogService.cs" />
   </ItemGroup>
 </Project>
