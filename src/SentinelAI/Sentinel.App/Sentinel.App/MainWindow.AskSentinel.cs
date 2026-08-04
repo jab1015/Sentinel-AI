@@ -53,8 +53,8 @@ namespace Sentinel.App
                 await _engine.RefreshAsync();
                 var snapshot = _engine.CurrentSnapshot;
                 var history = await _investigationHistoryService.ReadRecentAsync(100);
-                AskSentinelResponseOrchestrator.AskSentinelResponse response =
-                    _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history);
+                AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
+                    _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
 
                 AskSentinelAnswerText.Text = response.Answer;
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
