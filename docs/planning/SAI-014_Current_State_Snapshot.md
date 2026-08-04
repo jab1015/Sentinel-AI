@@ -1,10 +1,10 @@
 # SAI-014 — Current State Snapshot
 
-Version: 1.0
+Version: 2.0
 
-Status: Active
+Status: Active — Release Candidate Remediation
 
-Last Updated: 2026-08-01
+Last Updated: 2026-08-04
 
 ## Purpose
 
@@ -12,37 +12,53 @@ This document provides a single current-state reference to prevent progress repo
 
 ## Current Status
 
-Estimated overall product completion: **98%**
+Estimated overall product completion: **93%**
 
-Current phase:
+Current milestone:
 
-**Phase 7 — Production Hardening & Commercial Release**
+**Release Candidate Finalization**
 
-Current phase progress:
+Current milestone progress:
 
-**6 of 12 complete**
+**0 of 4 fully runtime-verified**
 
-## Completed Phase 7 Items
+Active item:
 
-1. [x] Structured logging and diagnostics foundation
-2. [x] Fresh-clone and release-configuration verification foundation
-3. [x] Automated regression coverage
-4. [x] Performance profiling and optimization
-5. [x] One-hour and eight-hour stability testing
-6. [x] Windows 10 and Windows 11 compatibility verification (Windows 11 runtime verified; Windows 10 requires separate environment validation)
+**1 of 4 — Ask Sentinel Local final acceptance / driver investigation handoff**
 
-## Active Work Item
+## Runtime-Verified Ask Sentinel Progress
 
-7. [ ] Installer / uninstaller
+- Evidence-collection progress indicator works.
+- `verify Ask Sentinel local` returned all 14 required evidence areas.
+- Windows Update natural-language question works.
+- Pending restart is verified.
+- TPM is verified.
+- Secure Boot and BitLocker/device-encryption correctly report verified-unavailable when Windows does not expose evidence to the process.
+- Defender and Firewall are verified.
+- CPU, memory, disk, network, startup apps, running services, and top processes are verified.
+- Driver-health evidence identifies the Intel Management Engine Interface Code 10 condition.
+- Driver response is presented in plain language.
+- Review Repair / Prepare Automatic Repair / Not Now controls are visible.
+- Windows Update repair search safely returned no compatible package and made no system change.
 
-## Completed Verification Evidence
+## Implemented — Awaiting Runtime Verification
 
-- Build succeeds
-- Application launches successfully
-- Ask Sentinel uses grounded local evidence
-- Restart verification completed
-- Eight-hour stability test PASS
+- Authoritative Microsoft/OEM driver-research fallback after Windows Update cannot provide a repair.
+- Research confidence percentage.
+- Correlation with local manufacturer/model/serial/hardware ID evidence.
+- Safe handoff to an official source when automatic installation cannot be verified.
+
+## Remaining Release Candidate Items
+
+1. [ ] Ask Sentinel Local — final runtime acceptance of authoritative fallback
+2. [ ] Quarantine Manager UI
+3. [ ] Activity Center
+4. [ ] Investigation Engine end-to-end runtime integration
+
+## Final Acceptance
+
+Final Acceptance Test 8 remains open.
 
 ## Progress Rule
 
-Progress must be calculated from completed tracker items and verified evidence. Do not reuse previous reported percentages or phase counts without recalculating from authoritative planning documents.
+Progress must be calculated from current verified evidence and the authoritative planning documents. Do not reuse obsolete Phase 7 counts or percentages.
