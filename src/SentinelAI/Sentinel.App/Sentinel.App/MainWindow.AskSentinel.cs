@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Sentinel.App.Services;
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Windows.System;
 
@@ -247,25 +248,58 @@ namespace Sentinel.App
                 DriverAutomaticRepairCoordinator.DriverRepairResult result =
                     await _driverRepairCoordinator.ExecuteAsync(plan);
 
-                ContentDialog outcome = new()
+                if (!result.Success)
+                {
+                    ContentDialog failed = new()
+                    {
+                        Title = result.Title,
+                        Content = result.Summary,
+                        CloseButtonText = "OK",
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
+                    await failed.ShowAsync();
+                    AskSentinelStatusText.Text = "The repair did not complete. No restart was requested.";
+                    return;
+                }
+
+                if (result.RestartRequired)
+                {
+                    AskSentinelStatusText.Text = "The driver was installed. Save your work before restarting; Sentinel will verify the repair after Windows starts again.";
+                    ContentDialog restartDialog = new()
+                    {
+                        Title = "Driver installed — restart required",
+                        Content =
+                            result.Summary +
+                            "\n\nPlease save any open work now. Sentinel will restart Windows only if you select Restart Now.",
+                        PrimaryButtonText = "Restart Now",
+                        SecondaryButtonText = "Restart Later",
+                        DefaultButton = ContentDialogButton.Secondary,
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
+
+                    ContentDialogResult restartChoice = await restartDialog.ShowAsync();
+                    if (restartChoice == ContentDialogResult.Primary)
+                    {
+                        AskSentinelStatusText.Text = "Restart approved. Sentinel will verify the driver after Windows starts again.";
+                        RestartWindowsNow();
+                    }
+                    else
+                    {
+                        AskSentinelStatusText.Text = "Restart postponed. Save your work and restart when convenient; Sentinel will verify the driver after startup.";
+                    }
+                    return;
+                }
+
+                ContentDialog complete = new()
                 {
                     Title = result.Title,
                     Content = result.Summary,
                     CloseButtonText = "OK",
                     XamlRoot = ((FrameworkElement)Content).XamlRoot
                 };
-                await outcome.ShowAsync();
-
-                AskSentinelStatusText.Text = result.Success
-                    ? result.RestartRequired
-                        ? "The driver was installed. Save your work and restart when you are ready; Sentinel will verify the repair after startup."
-                        : "The driver was installed. Sentinel is refreshing local evidence to verify the repair."
-                    : "The repair did not complete. No restart was requested.";
-
-                if (result.Success && !result.RestartRequired)
-                {
-                    await UpdateDashboardAsync();
-                }
+                await complete.ShowAsync();
+                AskSentinelStatusText.Text = "The driver was installed. Sentinel is refreshing local evidence to verify the repair.";
+                await UpdateDashboardAsync();
             }
             finally
             {
@@ -273,6 +307,25 @@ namespace Sentinel.App
                 AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
                 _askSentinelBusy = false;
                 _automaticRepairButton.IsEnabled = true;
+            }
+        }
+
+        private static void RestartWindowsNow()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "shutdown.exe",
+                    Arguments = "/r /t 0",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+            }
+            catch
+            {
+                // If Windows rejects the restart request, Sentinel leaves the
+                // computer running. The user can still restart manually.
             }
         }
 
