@@ -17,7 +17,7 @@ namespace Sentinel.App.Services
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(20);
 
-        public string GetDriverHealthStatus()
+        public DriverHealthSnapshot GetSnapshot()
         {
             string value = RunPowerShell(
                 "$devices=@(Get-CimInstance Win32_PnPEntity -ErrorAction Stop); " +
@@ -31,24 +31,52 @@ namespace Sentinel.App.Services
                 "\"Devices=$($devices.Count);ProblemDevices=$($problems.Count);UnsignedDrivers=$($unsigned.Count);RecentDriverEvents=$($recent.Count);Problems=$problemText;Events=$eventText\"");
 
             if (string.IsNullOrWhiteSpace(value))
+                return DriverHealthSnapshot.Unavailable();
+
+            DriverEvidence evidence = Parse(value);
+            string primaryProblem = string.Empty;
+            if (!string.IsNullOrWhiteSpace(evidence.Problems))
+            {
+                string[] problems = evidence.Problems.Split(" | ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (problems.Length > 0) primaryProblem = problems[0];
+            }
+
+            string deviceName = primaryProblem;
+            int codeIndex = deviceName.LastIndexOf("(Code ", StringComparison.OrdinalIgnoreCase);
+            if (codeIndex > 0) deviceName = deviceName[..codeIndex].Trim();
+
+            return new DriverHealthSnapshot(
+                Available: true,
+                DevicesChecked: evidence.Devices,
+                ProblemDeviceCount: evidence.ProblemDevices,
+                UnsignedDriverCount: evidence.UnsignedDrivers,
+                RecentDriverEventCount: evidence.RecentDriverEvents,
+                PrimaryProblem: primaryProblem,
+                PrimaryDeviceName: deviceName,
+                RequiresAttention: evidence.ProblemDevices > 0);
+        }
+
+        public string GetDriverHealthStatus()
+        {
+            DriverHealthSnapshot snapshot = GetSnapshot();
+            if (!snapshot.Available)
             {
                 return "Driver health\n\nSentinel could not verify driver health because Windows did not expose Plug-and-Play driver evidence to this process.\n\nRecommended action\nNo change will be made. Run Sentinel with normal Windows access and try again.";
             }
 
-            DriverEvidence evidence = Parse(value);
-            return BuildUserFacingResponse(evidence);
+            return BuildUserFacingResponse(snapshot);
         }
 
-        private static string BuildUserFacingResponse(DriverEvidence evidence)
+        private static string BuildUserFacingResponse(DriverHealthSnapshot evidence)
         {
             var response = new StringBuilder();
             response.AppendLine("Driver health");
             response.AppendLine();
 
-            if (evidence.ProblemDevices == 0)
+            if (!evidence.RequiresAttention)
             {
                 response.AppendLine("Your drivers look healthy.");
-                response.AppendLine($"Sentinel checked {evidence.Devices} devices and Windows reported no device-driver conflicts.");
+                response.AppendLine($"Sentinel checked {evidence.DevicesChecked} devices and Windows reported no device-driver conflicts.");
                 response.AppendLine();
                 response.AppendLine("Recommended action");
                 response.Append("No action is required. Sentinel will continue monitoring.");
@@ -56,23 +84,23 @@ namespace Sentinel.App.Services
             }
 
             response.AppendLine("A driver needs attention.");
-            response.AppendLine($"Sentinel checked {evidence.Devices} devices. Windows reported {evidence.ProblemDevices} device{(evidence.ProblemDevices == 1 ? string.Empty : "s")} that may not be working correctly.");
+            response.AppendLine($"Sentinel checked {evidence.DevicesChecked} devices. Windows reported {evidence.ProblemDeviceCount} device{(evidence.ProblemDeviceCount == 1 ? string.Empty : "s")} that may not be working correctly.");
             response.AppendLine();
             response.AppendLine("What I found");
-            response.AppendLine(string.IsNullOrWhiteSpace(evidence.Problems)
+            response.AppendLine(string.IsNullOrWhiteSpace(evidence.PrimaryProblem)
                 ? "Windows reported a driver problem, but did not provide a device name."
-                : evidence.Problems.Replace(" | ", "\n", StringComparison.Ordinal));
+                : evidence.PrimaryProblem);
             response.AppendLine();
             response.AppendLine("What this means");
-            response.AppendLine(evidence.RecentDriverEvents == 0
+            response.AppendLine(evidence.RecentDriverEventCount == 0
                 ? "No recent driver-related failures were found in the Windows System log. The device status still needs review."
-                : $"Windows recorded {evidence.RecentDriverEvents} recent driver-related event{(evidence.RecentDriverEvents == 1 ? string.Empty : "s")}, so Sentinel should investigate before making a change.");
+                : $"Windows recorded {evidence.RecentDriverEventCount} recent driver-related event{(evidence.RecentDriverEventCount == 1 ? string.Empty : "s")}, so Sentinel should investigate before making a change.");
             response.AppendLine();
             response.AppendLine("Recommended action");
             response.AppendLine("Sentinel should identify the correct signed replacement driver, verify its source and compatibility, and prepare a repair for your approval. If the repair requires a restart, Sentinel should wait until you confirm that your work is saved before restarting the computer.");
             response.AppendLine();
             response.Append("Technical evidence: ");
-            response.Append($"{evidence.Devices} devices checked; {evidence.ProblemDevices} problem device(s); {evidence.UnsignedDrivers} unsigned-driver record(s); {evidence.RecentDriverEvents} recent driver event(s).");
+            response.Append($"{evidence.DevicesChecked} devices checked; {evidence.ProblemDeviceCount} problem device(s); {evidence.UnsignedDriverCount} unsigned-driver record(s); {evidence.RecentDriverEventCount} recent driver event(s).");
             return response.ToString();
         }
 
@@ -138,6 +166,20 @@ namespace Sentinel.App.Services
             {
                 return string.Empty;
             }
+        }
+
+        public sealed record DriverHealthSnapshot(
+            bool Available,
+            int DevicesChecked,
+            int ProblemDeviceCount,
+            int UnsignedDriverCount,
+            int RecentDriverEventCount,
+            string PrimaryProblem,
+            string PrimaryDeviceName,
+            bool RequiresAttention)
+        {
+            public static DriverHealthSnapshot Unavailable() =>
+                new(false, 0, 0, 0, 0, string.Empty, string.Empty, false);
         }
 
         private sealed record DriverEvidence(
