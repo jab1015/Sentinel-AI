@@ -61,6 +61,40 @@ namespace Sentinel.App.Services
                 CombineTechnicalDetail(result.ExecutionOutput, result.ExecutionError));
         }
 
+        public void Record(SystemImageRepairExecutionResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+
+            Record(
+                "Windows Integrity",
+                result.Action.ToString(),
+                result.Summary,
+                result.Attempted,
+                result.WindowsReportedSuccess,
+                result.Verified,
+                rolledBack: false,
+                CombineTechnicalDetail(result.ExecutionOutput, result.ExecutionError));
+        }
+
+        public void Record(BootStartupOptimizationExecutionResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+
+            string action = string.IsNullOrWhiteSpace(result.StartupItemName)
+                ? "Startup optimization"
+                : $"Startup: {result.StartupItemName}";
+
+            Record(
+                "Startup",
+                action,
+                result.Summary,
+                result.Attempted,
+                result.Changed,
+                result.Verified,
+                result.RolledBack,
+                technicalDetail: string.Empty);
+        }
+
         private void Record(
             string category,
             string action,
