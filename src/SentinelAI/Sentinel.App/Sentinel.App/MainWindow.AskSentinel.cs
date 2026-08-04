@@ -46,13 +46,22 @@ namespace Sentinel.App
             _askSentinelBusy = true;
             AskSentinelButton.IsEnabled = false;
             AskSentinelQuestionBox.IsEnabled = false;
+            AskSentinelAnswerBorder.Visibility = Visibility.Collapsed;
             AskSentinelStatusText.Text = "Checking current verified evidence…";
+            AskSentinelProgressText.Text = "Collecting verified local evidence…";
+            AskSentinelProgressPanel.Visibility = Visibility.Visible;
+            AskSentinelProgressRing.IsActive = true;
 
             try
             {
+                await Task.Yield();
                 await _engine.RefreshAsync();
+
+                AskSentinelProgressText.Text = "Reviewing current evidence and investigation history…";
                 var snapshot = _engine.CurrentSnapshot;
                 var history = await _investigationHistoryService.ReadRecentAsync(100);
+
+                AskSentinelProgressText.Text = "Preparing a verified answer…";
                 AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
                     _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
 
@@ -72,6 +81,8 @@ namespace Sentinel.App
             }
             finally
             {
+                AskSentinelProgressRing.IsActive = false;
+                AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
                 _askSentinelBusy = false;
                 AskSentinelButton.IsEnabled = true;
                 AskSentinelQuestionBox.IsEnabled = true;
