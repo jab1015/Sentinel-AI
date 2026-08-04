@@ -25,10 +25,10 @@ namespace Sentinel.App.Services
             }
 
             if (IsWindowsUpdateQuestion(q)) return _windowsHealth.GetWindowsUpdateStatus();
-            if (Has(q, "pending restart", "restart required", "reboot required", "need to restart")) return _windowsHealth.GetPendingRestartStatus();
-            if (Has(q, "tpm", "trusted platform module")) return _windowsHealth.GetTpmStatus();
-            if (Has(q, "secure boot")) return _windowsHealth.GetSecureBootStatus();
-            if (Has(q, "bitlocker", "device encryption", "drive encryption")) return _windowsHealth.GetBitLockerStatus();
+            if (IsPendingRestartQuestion(q)) return _windowsHealth.GetPendingRestartStatus();
+            if (IsTpmQuestion(q)) return _windowsHealth.GetTpmStatus();
+            if (IsSecureBootQuestion(q)) return _windowsHealth.GetSecureBootStatus();
+            if (IsBitLockerQuestion(q)) return _windowsHealth.GetBitLockerStatus();
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
@@ -108,10 +108,8 @@ namespace Sentinel.App.Services
                    $"Top processes: {snapshot.ProcessCount} running; highest memory is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB.";
         }
 
-        private static bool IsWindowsUpdateQuestion(string value)
-        {
-            return Has(
-                value,
+        private static bool IsWindowsUpdateQuestion(string value) =>
+            Has(value,
                 "windows update",
                 "windows updates",
                 "update status",
@@ -122,8 +120,46 @@ namespace Sentinel.App.Services
                 "fully updated",
                 "updates installed",
                 "missing updates",
-                "available updates");
-        }
+                "available updates",
+                "need updates",
+                "need an update",
+                "current on updates");
+
+        private static bool IsPendingRestartQuestion(string value) =>
+            Has(value,
+                "pending restart",
+                "restart pending",
+                "restart required",
+                "reboot required",
+                "need to restart",
+                "need a restart",
+                "need to reboot",
+                "should i restart",
+                "should i reboot");
+
+        private static bool IsTpmQuestion(string value) =>
+            Has(value,
+                "tpm",
+                "trusted platform module",
+                "security processor",
+                "hardware security module");
+
+        private static bool IsSecureBootQuestion(string value) =>
+            Has(value,
+                "secure boot",
+                "secureboot",
+                "uefi security",
+                "boot security");
+
+        private static bool IsBitLockerQuestion(string value) =>
+            Has(value,
+                "bitlocker",
+                "bit locker",
+                "device encryption",
+                "drive encryption",
+                "disk encryption",
+                "encrypted drive",
+                "is my drive encrypted");
 
         private static bool Has(string value, params string[] terms)
         {
