@@ -57,7 +57,7 @@ namespace Sentinel.App.Services
             return new BootStartupOptimizationSafetyAssessment(
                 true,
                 settings.VerifyEveryChange,
-                settings.RollBackUnsuccessfulChanges,
+                settings.RollBackWhenPossible,
                 approved,
                 "One startup item passed Sentinel's measured boot-impact safety policy. Any change must be reversible and verified after execution.");
         }
