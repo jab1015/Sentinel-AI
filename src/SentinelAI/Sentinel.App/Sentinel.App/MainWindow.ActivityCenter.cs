@@ -42,15 +42,35 @@ namespace Sentinel.App
                 .First();
 
             HistoryOutcomeIconText.Text = latest.NeedsAttention ? "!" : "✓";
-            HistoryTitleText.Text = latest.NeedsAttention
-                ? "Sentinel needs your attention"
-                : latest.Outcome.Equals("Safely restored", StringComparison.OrdinalIgnoreCase)
-                    ? "Sentinel protected your computer"
-                    : "Sentinel fixed an issue";
-
+            HistoryTitleText.Text = GetUserVisibleTitle(latest);
             HistorySummaryText.Text = latest.Summary;
             HistoryOutcomeText.Text = $"{latest.Outcome} • {latest.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
             InvestigationHistoryBorder.Visibility = Visibility.Visible;
+        }
+
+        private static string GetUserVisibleTitle(MaintenanceReportItem item)
+        {
+            if (item.NeedsAttention)
+                return "Sentinel needs your attention";
+
+            string summary = item.Summary ?? string.Empty;
+
+            if (summary.Contains("permanently deleted", StringComparison.OrdinalIgnoreCase))
+                return "Quarantined file permanently deleted";
+
+            if (summary.Contains("restored the approved file", StringComparison.OrdinalIgnoreCase) ||
+                summary.Contains("restored", StringComparison.OrdinalIgnoreCase) &&
+                item.Category.Equals("Protection", StringComparison.OrdinalIgnoreCase))
+                return "Quarantined file restored";
+
+            if (summary.Contains("quarantined", StringComparison.OrdinalIgnoreCase) &&
+                item.Category.Equals("Protection", StringComparison.OrdinalIgnoreCase))
+                return "Suspicious file quarantined";
+
+            if (item.Outcome.Equals("Safely restored", StringComparison.OrdinalIgnoreCase))
+                return "Sentinel protected your computer";
+
+            return "Sentinel fixed an issue";
         }
     }
 }
