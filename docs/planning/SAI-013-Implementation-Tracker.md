@@ -1,6 +1,6 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 5.6  
+**Version:** 5.7  
 **Status:** Active — Release Candidate Finalization  
 **Last Updated:** 2026-08-04  
 **Production Branch:** `main`
@@ -16,7 +16,7 @@
 - Phase 7 — Production Hardening & Commercial Release: **Core hardening complete**
 - Phase 8 — Continuous Intrusion & Spyware Protection: **7 of 8 complete; final acceptance remains open**
 
-**Current milestone:** Release Candidate Finalization — **1 of 4 fully runtime-verified**
+**Current milestone:** Release Candidate Finalization — **2 of 4 runtime-verified at current acceptance scope**
 
 ## Verified Complete
 
@@ -39,6 +39,7 @@
 - Runtime confidence display for authoritative driver research
 - Quarantine Manager navigation and empty-state UI
 - Stable Recent Activity empty-state dashboard
+- Quarantine acceptance harness: approval gating, quarantine, catalog registration/reconciliation, restore, permanent deletion, and catalog cleanup all PASS
 
 ## Release Candidate Finalization
 
@@ -73,7 +74,7 @@ Acceptance evidence included Dell XPS 8700 / Intel Management Engine Interface C
 
 ### 2 of 4 — Quarantine Manager UI
 
-**Status: UI runtime verified; real-item action acceptance remains**
+**Status: COMPLETE — UI and backend action acceptance runtime verified**
 
 Runtime verified:
 - User-visible Quarantine navigation
@@ -81,6 +82,17 @@ Runtime verified:
 - Empty-state quarantined-item view
 - Restore and Delete Permanently controls remain disabled when no item is selected
 - Investigation summary empty state
+- Quarantine requires approval: PASS
+- Verified quarantine: PASS
+- Catalog registration: PASS
+- Catalog reconcile: PASS
+- Restore requires approval: PASS
+- Verified restore/reversal: PASS
+- Catalog removal after restore: PASS
+- Permanent delete requires approval: PASS
+- Verified permanent deletion: PASS
+- Catalog removal after delete: PASS
+- Acceptance harness final result: PASS
 
 Implemented:
 - Persistent quarantine catalog
@@ -89,13 +101,8 @@ Implemented:
 - Restore confirmation and verified restore path
 - Permanent-delete confirmation and verified deletion path
 - Activity/history recording for quarantine outcomes
-- Acceptance harness coverage for approval gates, quarantine, restore, deletion, and catalog persistence
 
-Remaining before phase acceptance:
-- Runtime demonstration with a safe disposable quarantined item
-- Runtime Restore confirmation and verification
-- Runtime Delete Permanently confirmation and verification
-- Confirm resulting Activity Center entries
+Activity Center presentation of real quarantine outcomes is tracked under item 3.
 
 ### 3 of 4 — Activity Center
 
@@ -147,16 +154,15 @@ Remaining:
 
 ## Final Acceptance
 
-Final Acceptance Test 8 remains **OPEN**. It cannot pass until Release Candidate Finalization items 2 through 4 complete their remaining runtime acceptance steps.
+Final Acceptance Test 8 remains **OPEN**. It cannot pass until Release Candidate Finalization items 3 and 4 complete their remaining runtime acceptance steps.
 
 ## Release Gate
 
 Do not describe Sentinel AI as complete, release-ready, or 100% finished until:
 
-1. Quarantine Manager real-item restore/delete workflow passes runtime acceptance.
-2. Activity Center records and displays real verified outcomes.
-3. Investigation Engine passes end-to-end automatic repair validation with a verified package.
-4. Final Acceptance Test 8 passes after those checks.
+1. Activity Center records and displays real verified outcomes.
+2. Investigation Engine passes end-to-end automatic repair validation with a verified package.
+3. Final Acceptance Test 8 passes after those checks.
 
 ## Current Overall Estimate
 
