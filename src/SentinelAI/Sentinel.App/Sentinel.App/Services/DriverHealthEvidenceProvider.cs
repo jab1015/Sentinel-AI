@@ -4,8 +4,8 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 
 namespace Sentinel.App.Services
@@ -32,64 +32,79 @@ namespace Sentinel.App.Services
 
             if (string.IsNullOrWhiteSpace(value))
             {
-                return "Sentinel could not verify driver health because Windows did not expose driver information to this process.";
+                return "Driver health\n\nSentinel could not verify driver health because Windows did not expose Plug-and-Play driver evidence to this process.\n\nRecommended action\nNo change will be made. Run Sentinel with normal Windows access and try again.";
             }
 
-            Dictionary<string, string> evidence = ParseEvidence(value);
-            int devices = ReadInt(evidence, "Devices");
-            int problemDevices = ReadInt(evidence, "ProblemDevices");
-            int unsignedDrivers = ReadInt(evidence, "UnsignedDrivers");
-            int recentEvents = ReadInt(evidence, "RecentDriverEvents");
-            string problems = ReadText(evidence, "Problems");
-
-            if (problemDevices == 0)
-            {
-                string signatureNote = unsignedDrivers > 0
-                    ? $" Windows also reported {unsignedDrivers} driver signature record(s) that require additional review before Sentinel can determine whether they matter."
-                    : string.Empty;
-                string eventNote = recentEvents > 0
-                    ? $" Sentinel found {recentEvents} recent driver-related Windows event(s), but no device currently reports a problem."
-                    : " No recent driver failures were found.";
-
-                return $"Your drivers appear healthy. Sentinel checked {devices} devices and none currently report a Device Manager problem.{eventNote}{signatureNote} No action is required right now.";
-            }
-
-            string deviceSummary = string.IsNullOrWhiteSpace(problems)
-                ? $"Windows reports {problemDevices} device(s) with a driver or device problem."
-                : problemDevices == 1
-                    ? $"Windows reports one device that needs attention: {problems}."
-                    : $"Windows reports {problemDevices} devices that need attention: {problems}.";
-
-            string eventSummary = recentEvents == 0
-                ? " No recent driver-related failures were found in the Windows System log."
-                : $" Sentinel also found {recentEvents} recent driver-related Windows event(s).";
-
-            string signatureSummary = unsignedDrivers == 0
-                ? string.Empty
-                : $" Windows reported {unsignedDrivers} driver signature record(s) that require additional review; Sentinel is not labeling them unsafe without more evidence.";
-
-            return $"Your driver health needs attention. Sentinel checked {devices} devices. {deviceSummary}{eventSummary}{signatureSummary} Recommended action: check Windows Update and your computer manufacturer's support page for an updated driver for the listed device. If the device is not used, no immediate action may be necessary.";
+            DriverEvidence evidence = Parse(value);
+            return BuildUserFacingResponse(evidence);
         }
 
-        private static Dictionary<string, string> ParseEvidence(string value)
+        private static string BuildUserFacingResponse(DriverEvidence evidence)
         {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string segment in value.Replace("\r", string.Empty, StringComparison.Ordinal)
-                         .Replace("\n", string.Empty, StringComparison.Ordinal)
-                         .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            var response = new StringBuilder();
+            response.AppendLine("Driver health");
+            response.AppendLine();
+
+            if (evidence.ProblemDevices == 0)
+            {
+                response.AppendLine("Your drivers look healthy.");
+                response.AppendLine($"Sentinel checked {evidence.Devices} devices and Windows reported no device-driver conflicts.");
+                response.AppendLine();
+                response.AppendLine("Recommended action");
+                response.Append("No action is required. Sentinel will continue monitoring.");
+                return response.ToString();
+            }
+
+            response.AppendLine("A driver needs attention.");
+            response.AppendLine($"Sentinel checked {evidence.Devices} devices. Windows reported {evidence.ProblemDevices} device{(evidence.ProblemDevices == 1 ? string.Empty : "s")} that may not be working correctly.");
+            response.AppendLine();
+            response.AppendLine("What I found");
+            response.AppendLine(string.IsNullOrWhiteSpace(evidence.Problems)
+                ? "Windows reported a driver problem, but did not provide a device name."
+                : evidence.Problems.Replace(" | ", "\n", StringComparison.Ordinal));
+            response.AppendLine();
+            response.AppendLine("What this means");
+            response.AppendLine(evidence.RecentDriverEvents == 0
+                ? "No recent driver-related failures were found in the Windows System log. The device status still needs review."
+                : $"Windows recorded {evidence.RecentDriverEvents} recent driver-related event{(evidence.RecentDriverEvents == 1 ? string.Empty : "s")}, so Sentinel should investigate before making a change.");
+            response.AppendLine();
+            response.AppendLine("Recommended action");
+            response.AppendLine("Sentinel should identify the correct signed replacement driver, verify its source and compatibility, and prepare a repair for your approval. If the repair requires a restart, Sentinel should wait until you confirm that your work is saved before restarting the computer.");
+            response.AppendLine();
+            response.Append("Technical evidence: ");
+            response.Append($"{evidence.Devices} devices checked; {evidence.ProblemDevices} problem device(s); {evidence.UnsignedDrivers} unsigned-driver record(s); {evidence.RecentDriverEvents} recent driver event(s).");
+            return response.ToString();
+        }
+
+        private static DriverEvidence Parse(string value)
+        {
+            int devices = 0;
+            int problemDevices = 0;
+            int unsignedDrivers = 0;
+            int recentDriverEvents = 0;
+            string problems = string.Empty;
+            string events = string.Empty;
+
+            foreach (string segment in value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 int separator = segment.IndexOf('=');
                 if (separator <= 0) continue;
-                result[segment[..separator].Trim()] = segment[(separator + 1)..].Trim();
+
+                string key = segment[..separator].Trim();
+                string itemValue = segment[(separator + 1)..].Trim();
+                switch (key)
+                {
+                    case "Devices": int.TryParse(itemValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out devices); break;
+                    case "ProblemDevices": int.TryParse(itemValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out problemDevices); break;
+                    case "UnsignedDrivers": int.TryParse(itemValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out unsignedDrivers); break;
+                    case "RecentDriverEvents": int.TryParse(itemValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out recentDriverEvents); break;
+                    case "Problems": problems = itemValue; break;
+                    case "Events": events = itemValue; break;
+                }
             }
-            return result;
+
+            return new DriverEvidence(devices, problemDevices, unsignedDrivers, recentDriverEvents, problems, events);
         }
-
-        private static int ReadInt(IReadOnlyDictionary<string, string> evidence, string key) =>
-            evidence.TryGetValue(key, out string? value) && int.TryParse(value, out int parsed) ? parsed : 0;
-
-        private static string ReadText(IReadOnlyDictionary<string, string> evidence, string key) =>
-            evidence.TryGetValue(key, out string? value) ? value.Trim() : string.Empty;
 
         private static string RunPowerShell(string command)
         {
@@ -124,5 +139,13 @@ namespace Sentinel.App.Services
                 return string.Empty;
             }
         }
+
+        private sealed record DriverEvidence(
+            int Devices,
+            int ProblemDevices,
+            int UnsignedDrivers,
+            int RecentDriverEvents,
+            string Problems,
+            string Events);
     }
 }
