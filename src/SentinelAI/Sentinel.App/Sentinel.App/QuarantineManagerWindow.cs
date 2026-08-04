@@ -140,11 +140,20 @@ namespace Sentinel.App
 
             QuarantineCatalogService.QuarantineCatalogEntry entry = selected.Entry;
             string shortenedHash = entry.Sha256.Length > 16 ? entry.Sha256[..16] + "…" : entry.Sha256;
+            string reason = string.IsNullOrWhiteSpace(entry.ReasonCode)
+                ? "Sentinel verified the file was isolated, but the original investigation reason was recorded by an earlier build."
+                : entry.ReasonCode;
+            string confidence = entry.EvidenceConfidencePercent > 0
+                ? $"{entry.EvidenceConfidencePercent}%"
+                : "Not retained by the earlier record";
+
             _summaryText.Text =
                 $"File: {entry.FileName}\n" +
                 $"Original location: {entry.OriginalPath}\n" +
-                $"Quarantined: {entry.QuarantinedAtUtc.ToLocalTime():MMM d, yyyy h:mm tt}\n" +
-                $"Verification: isolated copy present and catalog record matched\n" +
+                $"Quarantined: {entry.QuarantinedAtUtc.ToLocalTime():MMM d, yyyy h:mm tt}\n\n" +
+                $"Why Sentinel isolated it\n{reason}\n" +
+                $"Evidence confidence: {confidence}\n\n" +
+                "Verification\nThe isolated copy is present and its quarantine catalog record is intact.\n" +
                 $"SHA-256: {shortenedHash}\n\n" +
                 "Restore returns the verified file to its original location. Delete Permanently removes the isolated copy and cannot be undone.";
             _restoreButton.IsEnabled = true;
