@@ -10,11 +10,6 @@ using Sentinel.App.Models;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Coordinates Ask Sentinel responses through verified current evidence and,
-    /// when appropriate, persisted investigation history or safeguarded recommendation
-    /// logic. Every response passes a final fail-safe validation before presentation.
-    /// </summary>
     public sealed class AskSentinelResponseOrchestrator
     {
         private const string InsufficientEvidence =
@@ -25,9 +20,7 @@ namespace Sentinel.App.Services
         private readonly AskSentinelRecommendationAdvisor _recommendationAdvisor = new();
         private readonly AskSentinelResponseSafetyValidator _safetyValidator = new();
 
-        public AskSentinelResponse CreateResponse(
-            string question,
-            SystemSnapshot snapshot,
+        public AskSentinelResponse CreateResponse(string question, SystemSnapshot snapshot,
             IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry>? history = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(question);
@@ -46,35 +39,20 @@ namespace Sentinel.App.Services
             }
             else if (IsRecommendationQuestion(question))
             {
-                AskSentinelRecommendationAdvisor.RecommendationResult recommendation =
-                    _recommendationAdvisor.CreateRecommendation(snapshot);
+                var recommendation = _recommendationAdvisor.CreateRecommendation(snapshot);
                 answer = recommendation.Answer;
                 usedRecommendationGuard = true;
             }
-            else
-            {
-                answer = _localResponder.Answer(question, snapshot).Trim();
-            }
+            else answer = _localResponder.Answer(question, snapshot).Trim();
 
-            if (string.IsNullOrWhiteSpace(answer))
-                answer = InsufficientEvidence;
-
+            if (string.IsNullOrWhiteSpace(answer)) answer = InsufficientEvidence;
             bool insufficientEvidence = IsInsufficientEvidence(answer);
 
-            AskSentinelResponse preliminary = new(
-                Answer: answer,
-                EvidenceTimestamp: snapshot.Timestamp,
-                EvidenceCount: context.Evidence.Count,
-                RequiresAttention: context.RequiresAttention,
-                IsInsufficientEvidence: insufficientEvidence,
-                UsedInvestigationHistory: usedHistory,
-                UsedRecommendationGuard: usedRecommendationGuard,
-                PassedFinalSafetyValidation: false,
-                GroundingSummary: BuildGroundingSummary(context, usedHistory, usedRecommendationGuard, insufficientEvidence));
+            AskSentinelResponse preliminary = new(answer, snapshot.Timestamp, context.Evidence.Count,
+                context.RequiresAttention, insufficientEvidence, usedHistory, usedRecommendationGuard, false,
+                BuildGroundingSummary(context, usedHistory, usedRecommendationGuard, insufficientEvidence));
 
-            AskSentinelResponseSafetyValidator.ValidationResult validation =
-                _safetyValidator.Validate(preliminary, snapshot);
-
+            var validation = _safetyValidator.Validate(preliminary, snapshot);
             if (!validation.IsSafe)
             {
                 return preliminary with
@@ -91,29 +69,67 @@ namespace Sentinel.App.Services
             return preliminary with { PassedFinalSafetyValidation = true };
         }
 
-        private static string BuildGroundingSummary(
-            AskSentinelContextBuilder.AskSentinelContext context,
-            bool usedHistory,
-            bool usedRecommendationGuard,
-            bool insufficientEvidence)
+        private static string CreateHistoryAnswer(string question, SystemSnapshot snapshot,
+            IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry> history)
         {
-            if (usedHistory)
-                return "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
+            if (history.Count == 0)
+                return "I don't have a previous verified investigation that answers that question.";
 
-            if (usedRecommendationGuard)
-                return "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
+            var matching = FindQuestionTopicMatch(question, history);
+            if (matching is null)
+            {
+                string fingerprint = snapshot.InvestigationReasonCode?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(fingerprint) &&
+                    !fingerprint.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+                    !fingerprint.Equals("Healthy", StringComparison.OrdinalIgnoreCase))
+                    matching = history.FirstOrDefault(e => string.Equals(e.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase));
+            }
 
-            if (insufficientEvidence)
-                return $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
+            if (matching is null)
+                return "I have previous investigation history, but nothing that matches this question closely enough to rely on.";
 
-            return $"Answer grounded in {context.Evidence.Count} verified local evidence item(s) from the current Sentinel snapshot.";
+            string conclusion = string.IsNullOrWhiteSpace(matching.Conclusion)
+                ? "I did not record an additional conclusion."
+                : SimplifyConclusion(matching.Conclusion);
+
+            string currentState = matching.Resolved
+                ? "The recorded issue was later marked resolved."
+                : matching.RequiresAttention
+                    ? "At that time, the issue still needed attention."
+                    : "No action was required at that time.";
+
+            return $"Last time I checked:\n\n{conclusion}\n\n{currentState}\n\nChecked {matching.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}.";
         }
 
-        private static bool IsInsufficientEvidence(string answer) =>
-            answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase) ||
-            answer.Contains("does not currently have verified", StringComparison.OrdinalIgnoreCase) ||
-            answer.Contains("does not yet have enough verified", StringComparison.OrdinalIgnoreCase) ||
-            answer.Contains("does not have a verified prior investigation", StringComparison.OrdinalIgnoreCase);
+        private static string SimplifyConclusion(string conclusion)
+        {
+            string value = conclusion.Trim();
+            if (value.StartsWith("Sentinel ", StringComparison.OrdinalIgnoreCase))
+                value = "I " + value[9..];
+
+            value = value.Replace("Sentinel's", "my", StringComparison.OrdinalIgnoreCase)
+                         .Replace("Sentinel", "I", StringComparison.OrdinalIgnoreCase);
+            return value;
+        }
+
+        private static InvestigationHistoryService.InvestigationHistoryEntry? FindQuestionTopicMatch(string question,
+            IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry> history)
+        {
+            string q = question.ToLowerInvariant();
+            if (q.Contains("driver")) return history.FirstOrDefault(e => EntryContains(e, "driver"));
+            if (q.Contains("network") || q.Contains("internet") || q.Contains("connection"))
+                return history.FirstOrDefault(e => EntryContains(e, "network") || EntryContains(e, "internet") || EntryContains(e, "connection"));
+            if (q.Contains("firewall")) return history.FirstOrDefault(e => EntryContains(e, "firewall"));
+            if (q.Contains("process") || q.Contains("spyware"))
+                return history.FirstOrDefault(e => EntryContains(e, "process") || EntryContains(e, "spyware"));
+            if (q.Contains("update")) return history.FirstOrDefault(e => EntryContains(e, "update"));
+            return null;
+        }
+
+        private static bool EntryContains(InvestigationHistoryService.InvestigationHistoryEntry entry, string term) =>
+            entry.Fingerprint.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            entry.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            entry.Conclusion.Contains(term, StringComparison.OrdinalIgnoreCase);
 
         private static bool IsHistoryQuestion(string question)
         {
@@ -131,84 +147,23 @@ namespace Sentinel.App.Services
                    value.Contains("how should") || value.Contains("fix this") || value.Contains("do about");
         }
 
-        private static string CreateHistoryAnswer(
-            string question,
-            SystemSnapshot snapshot,
-            IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry> history)
+        private static bool IsInsufficientEvidence(string answer) =>
+            answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase) ||
+            answer.Contains("does not currently have verified", StringComparison.OrdinalIgnoreCase) ||
+            answer.Contains("does not yet have enough verified", StringComparison.OrdinalIgnoreCase) ||
+            answer.Contains("does not have a verified prior investigation", StringComparison.OrdinalIgnoreCase);
+
+        private static string BuildGroundingSummary(AskSentinelContextBuilder.AskSentinelContext context,
+            bool usedHistory, bool usedRecommendationGuard, bool insufficientEvidence)
         {
-            if (history.Count == 0)
-                return "Sentinel does not have a verified prior investigation in local history that supports an answer to that question.";
-
-            InvestigationHistoryService.InvestigationHistoryEntry? matching = FindQuestionTopicMatch(question, history);
-
-            if (matching is null)
-            {
-                string fingerprint = snapshot.InvestigationReasonCode?.Trim() ?? string.Empty;
-                if (!string.IsNullOrWhiteSpace(fingerprint) &&
-                    !fingerprint.Equals("None", StringComparison.OrdinalIgnoreCase) &&
-                    !fingerprint.Equals("Healthy", StringComparison.OrdinalIgnoreCase))
-                {
-                    matching = history.FirstOrDefault(entry =>
-                        string.Equals(entry.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase));
-                }
-            }
-
-            if (matching is not null)
-            {
-                string conclusion = string.IsNullOrWhiteSpace(matching.Conclusion)
-                    ? "No additional conclusion was recorded."
-                    : matching.Conclusion;
-
-                string outcome = matching.Resolved
-                    ? "That recorded occurrence was later marked resolved."
-                    : matching.RequiresAttention
-                        ? "That recorded occurrence required attention."
-                        : "That recorded occurrence did not require attention.";
-
-                return $"Sentinel found a verified prior investigation that matches your question. It was recorded {matching.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}. {conclusion} {outcome}";
-            }
-
-            return "Sentinel has verified investigation history, but none of the stored findings match the subject of that question closely enough to use safely.";
+            if (usedHistory) return "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
+            if (usedRecommendationGuard) return "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
+            if (insufficientEvidence) return $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
+            return $"Answer grounded in {context.Evidence.Count} verified local evidence item(s) from the current Sentinel snapshot.";
         }
 
-        private static InvestigationHistoryService.InvestigationHistoryEntry? FindQuestionTopicMatch(
-            string question,
-            IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry> history)
-        {
-            string q = question.ToLowerInvariant();
-
-            if (q.Contains("driver"))
-                return history.FirstOrDefault(entry => EntryContains(entry, "driver"));
-
-            if (q.Contains("network") || q.Contains("internet") || q.Contains("connection"))
-                return history.FirstOrDefault(entry => EntryContains(entry, "network") || EntryContains(entry, "internet") || EntryContains(entry, "connection"));
-
-            if (q.Contains("firewall"))
-                return history.FirstOrDefault(entry => EntryContains(entry, "firewall"));
-
-            if (q.Contains("process") || q.Contains("spyware"))
-                return history.FirstOrDefault(entry => EntryContains(entry, "process") || EntryContains(entry, "spyware"));
-
-            if (q.Contains("update"))
-                return history.FirstOrDefault(entry => EntryContains(entry, "update"));
-
-            return null;
-        }
-
-        private static bool EntryContains(InvestigationHistoryService.InvestigationHistoryEntry entry, string term) =>
-            entry.Fingerprint.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            entry.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            entry.Conclusion.Contains(term, StringComparison.OrdinalIgnoreCase);
-
-        public sealed record AskSentinelResponse(
-            string Answer,
-            DateTimeOffset EvidenceTimestamp,
-            int EvidenceCount,
-            bool RequiresAttention,
-            bool IsInsufficientEvidence,
-            bool UsedInvestigationHistory,
-            bool UsedRecommendationGuard,
-            bool PassedFinalSafetyValidation,
-            string GroundingSummary);
+        public sealed record AskSentinelResponse(string Answer, DateTimeOffset EvidenceTimestamp, int EvidenceCount,
+            bool RequiresAttention, bool IsInsufficientEvidence, bool UsedInvestigationHistory,
+            bool UsedRecommendationGuard, bool PassedFinalSafetyValidation, string GroundingSummary);
     }
 }
