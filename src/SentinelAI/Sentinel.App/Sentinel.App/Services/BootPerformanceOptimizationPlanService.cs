@@ -15,17 +15,17 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class BootPerformanceOptimizationPlanService
     {
-        private readonly BootPerformanceAssessmentService _assessmentService = new();
+        private readonly BootPerformanceHistoryService _historyService = new();
 
         public BootPerformanceOptimizationPlan BuildPlan()
         {
-            BootPerformanceAssessment assessment = _assessmentService.Assess();
+            BootPerformanceHistory history = _historyService.Assess();
 
-            if (!assessment.OptimizationInvestigationWarranted)
+            if (!history.SustainedRegressionDetected)
             {
                 return BootPerformanceOptimizationPlan.NoAction(
-                    assessment,
-                    assessment.Summary);
+                    history,
+                    history.Summary);
             }
 
             var candidates = new List<BootPerformanceOptimizationCandidate>();
@@ -47,7 +47,7 @@ namespace Sentinel.App.Services
                 ChangesSystemState: true));
 
             return new BootPerformanceOptimizationPlan(
-                assessment,
+                history,
                 true,
                 candidates,
                 "Sentinel verified sustained startup slowdown. Startup-impact correlation is warranted; automatic disabling remains blocked until a specific nonessential item is proven responsible.");
@@ -55,15 +55,15 @@ namespace Sentinel.App.Services
     }
 
     public sealed record BootPerformanceOptimizationPlan(
-        BootPerformanceAssessment Assessment,
+        BootPerformanceHistory History,
         bool ActionWarranted,
         IReadOnlyList<BootPerformanceOptimizationCandidate> Candidates,
         string Summary)
     {
         public static BootPerformanceOptimizationPlan NoAction(
-            BootPerformanceAssessment assessment,
+            BootPerformanceHistory history,
             string summary) =>
-            new(assessment, false, Array.Empty<BootPerformanceOptimizationCandidate>(), summary);
+            new(history, false, Array.Empty<BootPerformanceOptimizationCandidate>(), summary);
     }
 
     public sealed record BootPerformanceOptimizationCandidate(
