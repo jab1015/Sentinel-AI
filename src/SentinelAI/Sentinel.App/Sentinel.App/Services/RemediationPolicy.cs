@@ -81,6 +81,11 @@ namespace Sentinel.App.Services
                     "Restore the quarantined file",
                     "The file will be restored only after you approve the destination and Sentinel verifies the quarantine record."),
 
+                RemediationAction.DeleteQuarantinedFile => RequireApproval(
+                    request.Action,
+                    "Delete the quarantined file permanently",
+                    "The isolated file will be permanently deleted only after you approve the exact quarantine item. Sentinel will verify that the quarantined copy no longer exists before reporting success."),
+
                 RemediationAction.RestartService => RequireApproval(
                     request.Action,
                     "Restart the selected service",
@@ -143,6 +148,7 @@ namespace Sentinel.App.Services
             BlockNetworkEndpoint,
             QuarantineFile,
             RestoreQuarantinedFile,
+            DeleteQuarantinedFile,
             RestartService,
             RetryTransientOperation,
             RefreshSecurityState
