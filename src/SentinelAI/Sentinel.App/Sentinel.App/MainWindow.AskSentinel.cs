@@ -126,7 +126,7 @@ namespace Sentinel.App
             _automaticRepairButton.IsEnabled = true;
             ToolTipService.SetToolTip(
                 _automaticRepairButton,
-                "Sentinel will first search Windows Update for a compatible signed driver. Nothing is installed until you review and approve the verified repair plan.");
+                "Sentinel will search Windows Update first, then authoritative Microsoft and manufacturer sources if needed. Nothing is installed until a verified automatic repair is separately approved.");
             _askSentinelRepairPanel.Visibility = Visibility.Visible;
         }
 
@@ -182,8 +182,8 @@ namespace Sentinel.App
             {
                 Title = "Review driver repair",
                 Content =
-                    "Sentinel will search Windows Update for a compatible signed driver for the affected device. It will show you the exact package and source before downloading or installing anything.\n\n" +
-                    "If you approve the verified plan, Sentinel will download and install the package through Windows Update. It will never restart the computer automatically. If a restart is required, Sentinel will tell you to save your work and wait for your approval.",
+                    "Sentinel will search Windows Update for a compatible signed driver. If Windows Update cannot provide one, Sentinel will automatically research authoritative Microsoft and computer-manufacturer sources using the verified device and computer identity.\n\n" +
+                    "Sentinel will install only a package it can verify for automatic installation. If the authoritative research identifies a repair that still requires you to act, Sentinel will tell you exactly what is required instead of guessing. A restart always requires separate approval.",
                 CloseButtonText = "OK",
                 XamlRoot = ((FrameworkElement)Content).XamlRoot
             };
@@ -199,7 +199,7 @@ namespace Sentinel.App
 
             _askSentinelBusy = true;
             _automaticRepairButton.IsEnabled = false;
-            AskSentinelProgressText.Text = "Searching Windows Update for a compatible signed driver…";
+            AskSentinelProgressText.Text = "Checking Windows Update and authoritative driver sources…";
             AskSentinelProgressPanel.Visibility = Visibility.Visible;
             AskSentinelProgressRing.IsActive = true;
 
@@ -210,15 +210,51 @@ namespace Sentinel.App
 
                 if (!plan.Available)
                 {
+                    if (plan.ResearchPerformed && !string.IsNullOrWhiteSpace(plan.Source))
+                    {
+                        string confidence = plan.ConfidencePercent > 0
+                            ? $"Confidence: {plan.ConfidencePercent}%\n"
+                            : string.Empty;
+                        string action = plan.UserActionRequired
+                            ? "\n\nUser action is required because Sentinel has not verified an automatically installable package from this source."
+                            : string.Empty;
+
+                        ContentDialog researched = new()
+                        {
+                            Title = "Sentinel completed authoritative research",
+                            Content =
+                                $"Source: {plan.Source}\n" +
+                                confidence +
+                                $"Trust: {plan.TrustStatement}\n\n" +
+                                plan.Summary + action,
+                            PrimaryButtonText = string.IsNullOrWhiteSpace(plan.SourceUri) ? string.Empty : "Open Official Source",
+                            CloseButtonText = "Not Now",
+                            DefaultButton = ContentDialogButton.Close,
+                            XamlRoot = ((FrameworkElement)Content).XamlRoot
+                        };
+
+                        ContentDialogResult researchChoice = await researched.ShowAsync();
+                        if (researchChoice == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(plan.SourceUri))
+                        {
+                            OpenOfficialSource(plan.SourceUri);
+                            AskSentinelStatusText.Text = "Sentinel opened the verified official repair source. No driver was installed automatically.";
+                        }
+                        else
+                        {
+                            AskSentinelStatusText.Text = "Sentinel completed authoritative research. No unverified repair was performed.";
+                        }
+                        return;
+                    }
+
                     ContentDialog unavailable = new()
                     {
-                        Title = "Automatic repair is not available yet",
+                        Title = "Sentinel could not verify a safe repair",
                         Content = plan.Summary,
                         CloseButtonText = "OK",
                         XamlRoot = ((FrameworkElement)Content).XamlRoot
                     };
                     await unavailable.ShowAsync();
-                    AskSentinelStatusText.Text = "No repair was performed. Sentinel will continue investigating and monitoring the device.";
+                    AskSentinelStatusText.Text = "No repair was performed because Sentinel could not verify a safe repair source.";
                     return;
                 }
 
@@ -229,6 +265,7 @@ namespace Sentinel.App
                         $"Device: {plan.DeviceName}\n\n" +
                         $"Package: {plan.PackageTitle}\n" +
                         $"Source: {plan.Source}\n" +
+                        $"Confidence: {plan.ConfidencePercent}%\n" +
                         $"Trust: {plan.TrustStatement}\n\n" +
                         plan.Summary,
                     PrimaryButtonText = "Download and Install",
@@ -307,6 +344,27 @@ namespace Sentinel.App
                 AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
                 _askSentinelBusy = false;
                 _automaticRepairButton.IsEnabled = true;
+            }
+        }
+
+        private static void OpenOfficialSource(string sourceUri)
+        {
+            try
+            {
+                if (!Uri.TryCreate(sourceUri, UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttps)
+                {
+                    return;
+                }
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = uri.AbsoluteUri,
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // Opening the source is optional. A failure does not change the system.
             }
         }
 
