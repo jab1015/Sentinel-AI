@@ -88,18 +88,66 @@ namespace Sentinel.App.Services
             if (matching is null)
                 return "I have previous investigation history, but nothing that matches this question closely enough to rely on.";
 
-            string conclusion = string.IsNullOrWhiteSpace(matching.Conclusion)
-                ? "I did not record an additional conclusion."
-                : SimplifyConclusion(matching.Conclusion);
+            string finding = CreateFriendlyHistoryFinding(question, matching);
+            string currentState = CreateCurrentHistoryState(question, snapshot, matching);
 
-            string currentState = matching.Resolved
-                ? "The recorded issue was later marked resolved."
-                : matching.RequiresAttention
-                    ? "At that time, the issue still needed attention."
-                    : "No action was required at that time.";
-
-            return $"Last time I checked:\n\n{conclusion}\n\n{currentState}\n\nChecked {matching.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}.";
+            return $"Last time I checked:\n\n{finding}\n\nCurrent status: {currentState}\n\nChecked {matching.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}.";
         }
+
+        private static string CreateFriendlyHistoryFinding(string question,
+            InvestigationHistoryService.InvestigationHistoryEntry entry)
+        {
+            string q = question.ToLowerInvariant();
+            string conclusion = entry.Conclusion ?? string.Empty;
+
+            if (q.Contains("driver") || EntryContains(entry, "driver"))
+            {
+                string source = conclusion.Contains("Dell Support", StringComparison.OrdinalIgnoreCase)
+                    ? "Dell Support"
+                    : conclusion.Contains("Intel", StringComparison.OrdinalIgnoreCase)
+                        ? "the hardware manufacturer's support site"
+                        : "the computer manufacturer's support site";
+
+                return $"I found a problem with one of your computer's drivers. I couldn't verify a safe automatic repair, so I identified {source} as the correct next source.";
+            }
+
+            string simplified = SimplifyConclusion(conclusion);
+            return string.IsNullOrWhiteSpace(simplified)
+                ? "I completed the investigation but did not record an additional user-facing finding."
+                : simplified;
+        }
+
+        private static string CreateCurrentHistoryState(string question, SystemSnapshot snapshot,
+            InvestigationHistoryService.InvestigationHistoryEntry entry)
+        {
+            string q = question.ToLowerInvariant();
+
+            if (q.Contains("driver") || EntryContains(entry, "driver"))
+            {
+                bool currentDriverCondition =
+                    snapshot.InvestigationRequiresAttention &&
+                    (Contains(snapshot.InvestigationReasonCode, "driver") ||
+                     Contains(snapshot.InvestigationConclusion, "driver") ||
+                     Contains(snapshot.InvestigationSummary, "driver") ||
+                     Contains(snapshot.GuidanceTitle, "driver") ||
+                     Contains(snapshot.GuidanceWhatHappened, "driver"));
+
+                return currentDriverCondition
+                    ? "The driver problem is still being reported."
+                    : "The driver problem is not currently being reported.";
+            }
+
+            if (entry.Resolved)
+                return "The recorded issue was later marked resolved.";
+
+            if (snapshot.InvestigationRequiresAttention)
+                return "Sentinel is currently reporting an issue that needs attention.";
+
+            return "Sentinel is not currently reporting this issue.";
+        }
+
+        private static bool Contains(string? value, string term) =>
+            !string.IsNullOrWhiteSpace(value) && value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
         private static string SimplifyConclusion(string conclusion)
         {
