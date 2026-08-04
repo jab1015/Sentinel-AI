@@ -19,6 +19,11 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
             string q = question.Trim().ToLowerInvariant();
 
+            if (Has(q, "verify local health", "run local health verification", "verify ask sentinel local"))
+            {
+                return BuildLocalHealthVerification(snapshot);
+            }
+
             if (Has(q, "windows update", "updates", "update status")) return _windowsHealth.GetWindowsUpdateStatus();
             if (Has(q, "pending restart", "restart required", "reboot required", "need to restart")) return _windowsHealth.GetPendingRestartStatus();
             if (Has(q, "tpm", "trusted platform module")) return _windowsHealth.GetTpmStatus();
@@ -82,6 +87,25 @@ namespace Sentinel.App.Services
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.GuidanceRecommendedAction, snapshot.Recommendation) : "No action is required based on current verified evidence. Sentinel will continue monitoring.";
 
             return InsufficientEvidence;
+        }
+
+        private string BuildLocalHealthVerification(SystemSnapshot snapshot)
+        {
+            string update = _windowsHealth.GetWindowsUpdateStatus();
+            string restart = _windowsHealth.GetPendingRestartStatus();
+            string tpm = _windowsHealth.GetTpmStatus();
+            string secureBoot = _windowsHealth.GetSecureBootStatus();
+            string bitLocker = _windowsHealth.GetBitLockerStatus();
+
+            return "Ask Sentinel Local verification completed for 14 evidence areas. " +
+                   $"Windows Update: {update} Pending restart: {restart} TPM: {tpm} Secure Boot: {secureBoot} BitLocker: {bitLocker} " +
+                   $"Defender: {snapshot.DefenderStatus}. Firewall: {snapshot.FirewallStatus}. CPU: {snapshot.CpuUsagePercent:0.0}%. " +
+                   $"Memory: {snapshot.MemoryUsagePercent:0.0}% ({snapshot.MemoryUsedGB:0.00} GB of {snapshot.MemoryTotalGB:0.00} GB). " +
+                   $"Disk: {snapshot.DiskUsagePercent:0.0}% used, {snapshot.DiskFreeGB:0.00} GB free. " +
+                   $"Network: {snapshot.NetworkConnectionMonitoringStatus}, {snapshot.EstablishedConnectionCount} established connections. " +
+                   $"Startup apps: {snapshot.StartupEntryCount} entries, {snapshot.FlaggedStartupEntryCount} flagged. " +
+                   $"Running services: {snapshot.RunningServiceCount} of {snapshot.InstalledServiceCount}. " +
+                   $"Top processes: {snapshot.ProcessCount} running; highest memory is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB.";
         }
 
         private static bool Has(string value, params string[] terms)
