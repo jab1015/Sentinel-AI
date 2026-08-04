@@ -66,9 +66,12 @@ namespace Sentinel.App.Services
                 "$hw=''; if($dev){$p=Get-PnpDeviceProperty -InstanceId $dev.PNPDeviceID -KeyName 'DEVPKEY_Device_HardwareIds'; if($p -and $p.Data){$hw=@($p.Data)[0]} elseif($dev.PNPDeviceID){$hw=$dev.PNPDeviceID}}; " +
                 "$cs=Get-CimInstance Win32_ComputerSystem; $bios=Get-CimInstance Win32_BIOS; " +
                 "$m=[string]$cs.Manufacturer; $model=[string]$cs.Model; $serial=[string]$bios.SerialNumber; " +
-                "$cv=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'; " +
+                "$bs=[char]92; " +
+                "$cvPath='HKLM:'+$bs+'SOFTWARE'+$bs+'Microsoft'+$bs+'Windows NT'+$bs+'CurrentVersion'; " +
+                "$siPath='HKLM:'+$bs+'SYSTEM'+$bs+'CurrentControlSet'+$bs+'Control'+$bs+'SystemInformation'; " +
+                "$cv=Get-ItemProperty $cvPath; " +
                 "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$cv.RegisteredOrganization}; " +
-                "$si=Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\SystemInformation'; " +
+                "$si=Get-ItemProperty $siPath; " +
                 "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$si.SystemManufacturer}; " +
                 "if([string]::IsNullOrWhiteSpace($model)){$model=[string]$si.SystemProductName}; " +
                 "if([string]::IsNullOrWhiteSpace($serial)){$serial=[string]$si.SystemSerialNumber}; " +
