@@ -27,11 +27,14 @@ namespace Sentinel.App.Services
             if (!string.IsNullOrWhiteSpace(oem.Uri))
             {
                 WebProbe vendor = Probe(oem.Uri);
-                if (vendor.Reached)
+                if (vendor.Reached || oem.BrowserAuthoritative)
                 {
                     int confidence = !string.IsNullOrWhiteSpace(context.Model) && !string.IsNullOrWhiteSpace(context.SerialNumber) ? 92 : 84;
+                    string reachability = vendor.Reached
+                        ? "Sentinel verified the manufacturer's official support endpoint directly."
+                        : "Sentinel identified the manufacturer's official support endpoint. The site blocks automated verification from this process, so Sentinel will open the official OEM page rather than substituting a generic source.";
                     return new DriverResearchResult(true, true, confidence, oem.Name, oem.Uri, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                        $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and verified the manufacturer's official driver-support path for the affected device. Windows Update did not offer an automatic repair. Sentinel must still identify and validate the exact signed package before automatic installation can be enabled.", true);
+                        $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)}. {reachability} Windows Update did not offer an automatic repair. Sentinel must still identify and validate the exact signed package before automatic installation can be enabled.", true);
                 }
             }
 
@@ -45,13 +48,8 @@ namespace Sentinel.App.Services
             string microsoftGuidance = "https://learn.microsoft.com/windows-hardware/drivers/install/cm-prob-failed-start";
             WebProbe guidance = Probe(microsoftGuidance);
             if (guidance.Reached)
-            {
-                string identityNote = string.IsNullOrWhiteSpace(context.Manufacturer)
-                    ? " Sentinel could not read the computer manufacturer identity during this investigation, so it did not guess at an OEM package."
-                    : $" Sentinel identified the computer as {Display(context.Manufacturer)} {Display(context.Model)}, but its OEM support endpoint could not be verified from this process.";
                 return new DriverResearchResult(true, true, 75, "Microsoft Learn", microsoftGuidance, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                    "Sentinel verified Microsoft's official guidance for Device Manager Code 10. The device failed to start and the driver requires repair. No exact automatically installable package has been verified yet." + identityNote, true);
-            }
+                    "Sentinel verified Microsoft's official guidance for Device Manager Code 10. The device failed to start and the driver requires repair. No exact automatically installable package has been verified yet.", true);
 
             return new DriverResearchResult(false, false, 0, string.Empty, string.Empty, context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
                 "Sentinel could not reach an authoritative Microsoft or manufacturer source. No change was made, and Sentinel will not guess at a repair.", true);
@@ -66,17 +64,9 @@ namespace Sentinel.App.Services
                 "$hw=''; if($dev){$p=Get-PnpDeviceProperty -InstanceId $dev.PNPDeviceID -KeyName 'DEVPKEY_Device_HardwareIds'; if($p -and $p.Data){$hw=@($p.Data)[0]} elseif($dev.PNPDeviceID){$hw=$dev.PNPDeviceID}}; " +
                 "$cs=Get-CimInstance Win32_ComputerSystem; $bios=Get-CimInstance Win32_BIOS; " +
                 "$m=[string]$cs.Manufacturer; $model=[string]$cs.Model; $serial=[string]$bios.SerialNumber; " +
-                "$bs=[char]92; " +
-                "$cvPath='HKLM:'+$bs+'SOFTWARE'+$bs+'Microsoft'+$bs+'Windows NT'+$bs+'CurrentVersion'; " +
-                "$siPath='HKLM:'+$bs+'SYSTEM'+$bs+'CurrentControlSet'+$bs+'Control'+$bs+'SystemInformation'; " +
-                "$cv=Get-ItemProperty $cvPath; " +
-                "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$cv.RegisteredOrganization}; " +
-                "$si=Get-ItemProperty $siPath; " +
-                "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$si.SystemManufacturer}; " +
-                "if([string]::IsNullOrWhiteSpace($model)){$model=[string]$si.SystemProductName}; " +
-                "if([string]::IsNullOrWhiteSpace($serial)){$serial=[string]$si.SystemSerialNumber}; " +
+                "$bs=[char]92; $siPath='HKLM:'+$bs+'SYSTEM'+$bs+'CurrentControlSet'+$bs+'Control'+$bs+'SystemInformation'; $si=Get-ItemProperty $siPath; " +
+                "if([string]::IsNullOrWhiteSpace($m)){$m=[string]$si.SystemManufacturer}; if([string]::IsNullOrWhiteSpace($model)){$model=[string]$si.SystemProductName}; if([string]::IsNullOrWhiteSpace($serial)){$serial=[string]$si.SystemSerialNumber}; " +
                 "Write-Output ('MANUFACTURER=' + $m); Write-Output ('MODEL=' + $model); Write-Output ('SERIAL=' + $serial); Write-Output ('HARDWAREID=' + [string]$hw);";
-
             ProcessResult result = RunPowerShell(command, CommandTimeout);
             return new DeviceContext(GetValue(result.Output, "MANUFACTURER"), GetValue(result.Output, "MODEL"), GetValue(result.Output, "SERIAL"), GetValue(result.Output, "HARDWAREID"));
         }
@@ -88,14 +78,14 @@ namespace Sentinel.App.Services
             if (manufacturer.Contains("Dell", StringComparison.OrdinalIgnoreCase))
             {
                 string uri = string.IsNullOrWhiteSpace(context.SerialNumber) ? "https://www.dell.com/support/home/en-us?app=drivers" : "https://www.dell.com/support/home/en-us/product-support/servicetag/" + Uri.EscapeDataString(context.SerialNumber.Trim()) + "/drivers";
-                return new("Dell Support", uri);
+                return new("Dell Support", uri, true);
             }
-            if (manufacturer.Contains("HP", StringComparison.OrdinalIgnoreCase) || manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase)) return new("HP Support", "https://support.hp.com/us-en/drivers");
-            if (manufacturer.Contains("Lenovo", StringComparison.OrdinalIgnoreCase)) return new("Lenovo Support", "https://pcsupport.lenovo.com/us/en/");
-            if (manufacturer.Contains("ASUS", StringComparison.OrdinalIgnoreCase)) return new("ASUS Support", "https://www.asus.com/support/download-center/");
-            if (manufacturer.Contains("Acer", StringComparison.OrdinalIgnoreCase)) return new("Acer Support", "https://www.acer.com/us-en/support/drivers-and-manuals");
-            if (string.IsNullOrWhiteSpace(manufacturer)) return new(string.Empty, string.Empty);
-            return new("Intel Download Center", "https://www.intel.com/content/www/us/en/search.html#sort=relevancy&f:@tabfilter=[Downloads]&q=" + Uri.EscapeDataString(query));
+            if (manufacturer.Contains("HP", StringComparison.OrdinalIgnoreCase) || manufacturer.Contains("Hewlett", StringComparison.OrdinalIgnoreCase)) return new("HP Support", "https://support.hp.com/us-en/drivers", true);
+            if (manufacturer.Contains("Lenovo", StringComparison.OrdinalIgnoreCase)) return new("Lenovo Support", "https://pcsupport.lenovo.com/us/en/", true);
+            if (manufacturer.Contains("ASUS", StringComparison.OrdinalIgnoreCase)) return new("ASUS Support", "https://www.asus.com/support/download-center/", true);
+            if (manufacturer.Contains("Acer", StringComparison.OrdinalIgnoreCase)) return new("Acer Support", "https://www.acer.com/us-en/support/drivers-and-manuals", true);
+            if (string.IsNullOrWhiteSpace(manufacturer)) return new(string.Empty, string.Empty, false);
+            return new("Intel Download Center", "https://www.intel.com/content/www/us/en/search.html#sort=relevancy&f:@tabfilter=[Downloads]&q=" + Uri.EscapeDataString(query), true);
         }
 
         private static WebProbe Probe(string uri)
@@ -118,7 +108,7 @@ namespace Sentinel.App.Services
 
         public sealed record DriverResearchResult(bool Completed, bool AuthoritativeSourceReached, int ConfidencePercent, string SourceName, string SourceUri, string Manufacturer, string Model, string SerialNumber, string HardwareId, string Summary, bool UserActionRequired);
         private sealed record DeviceContext(string Manufacturer, string Model, string SerialNumber, string HardwareId);
-        private sealed record OemSource(string Name, string Uri);
+        private sealed record OemSource(string Name, string Uri, bool BrowserAuthoritative);
         private sealed record WebProbe(bool Reached, string Body);
         private sealed record ProcessResult(bool Success, string Output);
     }
