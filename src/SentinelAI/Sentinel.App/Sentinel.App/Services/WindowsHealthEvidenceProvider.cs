@@ -16,21 +16,36 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class WindowsHealthEvidenceProvider
     {
-        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(12);
+        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(20);
 
         public string GetWindowsUpdateStatus()
         {
             string value = RunPowerShell(
                 "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
+                "$session=New-Object -ComObject Microsoft.Update.Session; " +
+                "$searcher=$session.CreateUpdateSearcher(); " +
+                "$result=$searcher.Search(\"IsInstalled=0 and IsHidden=0\"); " +
                 "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
                 "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
-                "if ($null -eq $latest) { \"Service=$($service.Status);LatestInstalledUpdate=Unavailable\" } " +
-                "else { \"Service=$($service.Status);LatestInstalledUpdate=$($latest.HotFixID);InstalledOn=$($latest.InstalledOn)\" }");
+                "$latestText=if ($null -eq $latest) {'Unavailable'} else {\"$($latest.HotFixID) installed $($latest.InstalledOn)\"}; " +
+                "$preview=@($result.Updates | Select-Object -First 3 | ForEach-Object {$_.Title}) -join ' | '; " +
+                "if ($result.Updates.Count -eq 0) { \"Service=$($service.Status);PendingUpdates=0;LatestInstalledUpdate=$latestText\" } " +
+                "else { \"Service=$($service.Status);PendingUpdates=$($result.Updates.Count);Examples=$preview;LatestInstalledUpdate=$latestText\" }");
 
             if (string.IsNullOrWhiteSpace(value))
             {
                 value = RunPowerShell(
-                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; \"Service=$($service.Status)\"");
+                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
+                    "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
+                    "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
+                    "if ($null -eq $latest) { \"Service=$($service.Status);PendingUpdates=NotVerified;LatestInstalledUpdate=Unavailable\" } " +
+                    "else { \"Service=$($service.Status);PendingUpdates=NotVerified;LatestInstalledUpdate=$($latest.HotFixID);InstalledOn=$($latest.InstalledOn)\" }");
+            }
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunPowerShell(
+                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; \"Service=$($service.Status);PendingUpdates=NotVerified\"");
             }
 
             bool? restart = TryGetRestartPending();
@@ -42,8 +57,8 @@ namespace Sentinel.App.Services
             };
 
             return string.IsNullOrWhiteSpace(value)
-                ? $"Sentinel could not verify Windows Update service status. {restartText}"
-                : $"Verified Windows Update status: {value.Replace(';', ',')}. {restartText}";
+                ? $"Sentinel could not verify Windows Update status. {restartText}"
+                : $"Verified Windows Update evidence: {Normalize(value)}. {restartText}";
         }
 
         public string GetPendingRestartStatus()
