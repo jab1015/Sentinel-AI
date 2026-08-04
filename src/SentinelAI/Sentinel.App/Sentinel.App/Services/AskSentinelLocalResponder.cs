@@ -12,6 +12,7 @@ namespace Sentinel.App.Services
     {
         private const string InsufficientEvidence = "Sentinel does not yet have enough verified information to answer that question.";
         private readonly WindowsHealthEvidenceProvider _windowsHealth = new();
+        private readonly DriverHealthEvidenceProvider _driverHealth = new();
 
         public string Answer(string question, SystemSnapshot snapshot)
         {
@@ -29,6 +30,7 @@ namespace Sentinel.App.Services
             if (IsTpmQuestion(q)) return _windowsHealth.GetTpmStatus();
             if (IsSecureBootQuestion(q)) return _windowsHealth.GetSecureBootStatus();
             if (IsBitLockerQuestion(q)) return _windowsHealth.GetBitLockerStatus();
+            if (IsDriverHealthQuestion(q)) return _driverHealth.GetDriverHealthStatus();
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
@@ -109,57 +111,40 @@ namespace Sentinel.App.Services
         }
 
         private static bool IsWindowsUpdateQuestion(string value) =>
-            Has(value,
-                "windows update",
-                "windows updates",
-                "update status",
-                "check for updates",
-                "latest update",
-                "latest updates",
-                "up to date",
-                "fully updated",
-                "updates installed",
-                "missing updates",
-                "available updates",
-                "need updates",
-                "need an update",
-                "current on updates");
+            Has(value, "windows update", "windows updates", "update status", "check for updates", "latest update", "latest updates", "up to date", "fully updated", "updates installed", "missing updates", "available updates", "need updates", "need an update", "current on updates");
 
         private static bool IsPendingRestartQuestion(string value) =>
-            Has(value,
-                "pending restart",
-                "restart pending",
-                "restart required",
-                "reboot required",
-                "need to restart",
-                "need a restart",
-                "need to reboot",
-                "should i restart",
-                "should i reboot");
+            Has(value, "pending restart", "restart pending", "restart required", "reboot required", "need to restart", "need a restart", "need to reboot", "should i restart", "should i reboot");
 
         private static bool IsTpmQuestion(string value) =>
-            Has(value,
-                "tpm",
-                "trusted platform module",
-                "security processor",
-                "hardware security module");
+            Has(value, "tpm", "trusted platform module", "security processor", "hardware security module");
 
         private static bool IsSecureBootQuestion(string value) =>
-            Has(value,
-                "secure boot",
-                "secureboot",
-                "uefi security",
-                "boot security");
+            Has(value, "secure boot", "secureboot", "uefi security", "boot security");
 
         private static bool IsBitLockerQuestion(string value) =>
+            Has(value, "bitlocker", "bit locker", "device encryption", "drive encryption", "disk encryption", "encrypted drive", "is my drive encrypted");
+
+        private static bool IsDriverHealthQuestion(string value) =>
             Has(value,
-                "bitlocker",
-                "bit locker",
-                "device encryption",
-                "drive encryption",
-                "disk encryption",
-                "encrypted drive",
-                "is my drive encrypted");
+                "driver conflict",
+                "driver conflicts",
+                "driver problem",
+                "driver problems",
+                "driver failure",
+                "driver failures",
+                "driver error",
+                "driver errors",
+                "device manager issue",
+                "device manager problem",
+                "problem device",
+                "problem devices",
+                "unsigned driver",
+                "unsigned drivers",
+                "driver signature",
+                "driver signatures",
+                "drivers healthy",
+                "are my drivers healthy");
 
         private static bool Has(string value, params string[] terms)
         {
