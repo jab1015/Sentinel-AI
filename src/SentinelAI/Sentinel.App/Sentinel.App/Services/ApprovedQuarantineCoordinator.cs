@@ -71,7 +71,11 @@ namespace Sentinel.App.Services
                     if (!operation.Succeeded || !operation.Verified || operation.Record is null)
                         throw new InvalidOperationException(operation.Message);
 
-                    await _catalogService.AddAsync(operation.Record, token).ConfigureAwait(false);
+                    await _catalogService.AddAsync(
+                        operation.Record,
+                        request.ReasonCode,
+                        request.EvidenceConfidencePercent,
+                        token).ConfigureAwait(false);
                 },
                 () => Task.FromResult(operation?.Succeeded == true && operation.Verified && operation.Record is not null))
                 .ConfigureAwait(false);
