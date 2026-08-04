@@ -5,6 +5,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Win32;
 
 namespace Sentinel.App.Services
@@ -15,6 +16,8 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class WindowsHealthEvidenceProvider
     {
+        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(8);
+
         public string GetWindowsUpdateStatus()
         {
             string service = RunPowerShell("(Get-Service -Name wuauserv -ErrorAction Stop).Status.ToString()");
@@ -55,34 +58,52 @@ namespace Sentinel.App.Services
 
         private static bool IsRestartPending()
         {
-            return Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") is not null
-                || Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") is not null
-                || Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager")?.GetValue("PendingFileRenameOperations") is not null;
+            try
+            {
+                using RegistryKey? updateRestart = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired");
+                using RegistryKey? servicingRestart = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending");
+                using RegistryKey? sessionManager = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager");
+
+                return updateRestart is not null
+                    || servicingRestart is not null
+                    || sessionManager?.GetValue("PendingFileRenameOperations") is not null;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static string RunPowerShell(string command)
         {
             try
             {
+                string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
                 using Process process = new();
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = "powershell.exe",
-                    Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"{command.Replace("\"", "\\\"")}\"",
+                    Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
 
-                process.Start();
-                if (!process.WaitForExit(5000))
+                if (!process.Start())
+                {
+                    return string.Empty;
+                }
+
+                if (!process.WaitForExit((int)CommandTimeout.TotalMilliseconds))
                 {
                     process.Kill(true);
                     return string.Empty;
                 }
 
-                return process.ExitCode == 0 ? process.StandardOutput.ReadToEnd().Trim() : string.Empty;
+                return process.ExitCode == 0
+                    ? process.StandardOutput.ReadToEnd().Trim()
+                    : string.Empty;
             }
             catch
             {
