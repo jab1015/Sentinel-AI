@@ -39,6 +39,11 @@ namespace Sentinel.App
             _activityCenterTimer.Start();
         }
 
+        private void UpdateMaintenanceReport()
+        {
+            RefreshActivityCenter();
+        }
+
         private void RefreshActivityCenter()
         {
             MaintenanceReport report = _maintenanceReportService.BuildReport();
