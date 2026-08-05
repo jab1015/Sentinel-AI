@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 5.1
+Version: 5.2
 
-Status: Active — Discovery 2.0 and Adaptive Continuous Discovery Complete
+Status: Active — Discovery 2.0, Adaptive Continuous Discovery, and Event-Driven Discovery Complete
 
 Last Updated: 2026-08-05
 
@@ -18,7 +18,7 @@ This document is the authoritative master engineering plan for Sentinel AI.
 
 Sentinel AI version 1.0.20.0 remains complete for its planned implementation and runtime acceptance. Discovery Acceptance passed 8 of 8 scenarios, Quarantine Acceptance passed 6 of 6 scenarios, and the installed MSIX package passed startup-to-tray validation.
 
-Discovery 2.0 and Adaptive Continuous Discovery are post-1.0 product evolutions and do not invalidate the accepted 1.0 baseline.
+Discovery 2.0, Adaptive Continuous Discovery, and Event-Driven Discovery are post-1.0 product evolutions and do not invalidate the accepted 1.0 baseline.
 
 # Product-Wide Sentinel Discovery Rule
 
@@ -36,39 +36,9 @@ Ask Sentinel is the explanation and follow-up interface, not the primary discove
 
 A user cannot force Sentinel to ignore a critical, high-risk, actively exploitable, data-loss, malware, active-attack, or mortal hardware-failure condition.
 
-# Sentinel Discovery 2.0 — COMPLETE AND LIVE VALIDATED
+# Sentinel Discovery 2.0 — 5/5 COMPLETE AND LIVE VALIDATED
 
-## Phase 1 of 5 — Persistent Investigation Intelligence — COMPLETE
-
-Implemented durable persistent investigation memory, stable evidence fingerprints, investigation lifecycle states, repair-attempt history, risk classification, invalidation state, unchanged-evidence reuse, and notification suppression safeguards.
-
-Acceptance: **PASS — 6/6 original persistent-memory scenarios; subsequently expanded policy suite PASS — 10/10.**
-
-## Phase 2 of 5 — Verified Persistent Exceptions — COMPLETE
-
-Implemented presentation policy and suppression eligibility for verified exhausted noncritical findings. Critical and incomplete findings remain visible. Silent monitoring suppresses notifications only and preserves background monitoring. Resume Notifications restores notification behavior without disabling monitoring.
-
-Acceptance: **PASS — persistent investigation/presentation suite 10/10.**
-
-## Phase 3 of 5 — Live Persistent Exception Integration — COMPLETE
-
-Integrated persistent investigation memory with live driver findings and dashboard behavior. Exact matching prevents unrelated findings from inheriting an exception. Healthy state remains quiet. Live suppression preserves monitoring and supports notification restoration.
-
-Acceptance: **PASS — 5/5 live persistent exception scenarios plus live production-path validation.**
-
-## Phase 4 of 5 — Cross-Investigation Correlation — COMPLETE
-
-Implemented evidence correlation across related process/network, service/Event Log, driver/Event Log, and security-control observations. Unsupported relationships remain separate and Sentinel does not invent root cause. Critical evidence retains priority.
-
-Acceptance: **PASS — 7/7 cross-investigation correlation scenarios.**
-
-## Phase 5 of 5 — Trusted Knowledge Engine — COMPLETE
-
-Implemented promotion of completed verified investigations into reusable trusted knowledge with confidence gating, trust requirements, exact evidence compatibility, expiration/revalidation, material-change invalidation, and critical-evidence override.
-
-Acceptance: **PASS — 8/8 trusted knowledge scenarios.**
-
-# Discovery 2.0 Live Integration Validation — PASS
+Persistent Investigation Intelligence, Verified Persistent Exceptions, Live Persistent Exception Integration, Cross-Investigation Correlation, and Trusted Knowledge Engine are complete. Acceptance suites passed 6/6 persistent-memory scenarios, 10/10 expanded presentation-policy scenarios, 5/5 live persistent-exception scenarios, 7/7 correlation scenarios, and 8/8 Trusted Knowledge scenarios.
 
 Discovery 2.0 was validated end-to-end against a real persistent Intel(R) Management Engine Interface Code 10 condition. Sentinel completed authoritative investigation, determined no remaining verified safe repair path existed, classified the condition as Persistent Noncritical, aligned Ask Sentinel with the Investigation Summary, offered Monitor Silently only after eligibility was established, and returned the dashboard to a quiet healthy presentation while preserving background monitoring and investigation memory.
 
@@ -76,60 +46,69 @@ Discovery 2.0 was validated end-to-end against a real persistent Intel(R) Manage
 
 Adaptive Continuous Discovery makes Sentinel's continuous monitoring cadence responsive to current risk and system conditions rather than relying on one fixed polling interval.
 
-## Phase 1 of 4 — Adaptive Cadence Policy — COMPLETE
+- Phase 1 — Adaptive Cadence Policy: **COMPLETE — 7/7 PASS**
+- Phase 2 — Live Monitoring Loop Integration: **COMPLETE — BUILD PASS**
+- Phase 3 — Live Adaptive Scheduling Acceptance: **COMPLETE — 7/7 PASS**
+- Phase 4 — Adaptive Diagnostics and Final Acceptance: **COMPLETE — 6/6 PASS**
 
-Implemented Critical, High, Medium, and Low Discovery priorities; urgent recheck intervals; battery-aware throttling; idle-system deep-verification allowance; and a governing rule that adaptive scheduling never disables monitoring.
+Adaptive scheduling may change how frequently Sentinel rechecks evidence, but it never disables monitoring. Critical evidence always receives urgent priority, including when a prior noncritical condition is being monitored silently.
+
+# Event-Driven Discovery — 4/4 COMPLETE
+
+Event-Driven Discovery extends adaptive scheduling so material evidence changes can interrupt ordinary polling cadence and trigger immediate re-evaluation when warranted.
+
+## Phase 1 of 4 — Material Change Detection — COMPLETE
+
+Implemented evidence-oriented material-change classification for critical evidence appearance, security-posture changes, evidence-fingerprint changes, persistent-condition material changes, attention transitions, and operating-context changes.
+
+Unchanged evidence does not trigger event-driven rechecks. Security, critical, fingerprint, and materially changed silently monitored persistent conditions can force immediate re-evaluation. Attention clearing and operating-context changes remain material for scheduling without false urgency.
+
+Acceptance: **PASS — 8/8 scenarios.**
+
+## Phase 2 of 4 — Live State Coordinator — COMPLETE
+
+Implemented live state memory and comparison across Discovery snapshots. The coordinator tracks previous evidence fingerprint, Defender/Firewall posture, critical state, attention state, persistent suppression state, power source, and idle context.
+
+Specific security-posture classification takes precedence when security state changes, preventing a generic critical classification from hiding the more useful security event type.
+
+Acceptance: **PASS — 8/8 live coordinator scenarios.**
+
+## Phase 3 of 4 — Live Runtime Integration — COMPLETE
+
+Integrated live snapshots with event-driven evaluation so material changes can request an immediate confirmation refresh instead of waiting for the next adaptive interval. Confirmation snapshots settle without recursive refresh loops. Unchanged evidence remains on normal adaptive cadence.
+
+Silently monitored persistent conditions reopen when their evidence materially changes. Security posture changes interrupt ordinary cadence. Power/idle changes and attention clearing recalculate scheduling without unnecessary urgent refreshes.
+
+Build: **PASS.** Runtime acceptance: **PASS — 8/8 scenarios.**
+
+## Phase 4 of 4 — Event Diagnostics and Final Acceptance — COMPLETE
+
+Implemented low-noise Event-Driven Discovery diagnostics. Unchanged evidence produces no diagnostic noise. Material fingerprint changes explain immediate rechecks. Duplicate identical events are suppressed. Security posture changes receive specific labeling. Reopened silent persistent conditions explain the reopening path. Operating-context changes remain explicitly nonurgent. Diagnostics preserve the fact that monitoring remains enabled.
 
 Acceptance: **PASS — 7/7 scenarios.**
 
-Verified critical conditions receive immediate cadence, high-priority findings recheck quickly, medium findings use normal cadence, battery mode reduces noncritical polling, idle systems can permit deeper verification, quiet battery systems use lowest-impact cadence, and escalation overrides ordinary attention priority.
+# Event-Driven Discovery Operating Policy
 
-## Phase 2 of 4 — Live Monitoring Loop Integration — COMPLETE
-
-Integrated adaptive cadence decisions into the live dashboard/Discovery scheduling path. Critical conditions can tighten refreshes to approximately 2 seconds, active attention conditions use approximately 5 seconds, quiet systems back off, and silently monitored persistent findings do not force high-frequency polling by themselves.
-
-Critical and security evidence continues to override suppression and receives urgent scheduling.
-
-## Phase 3 of 4 — Live Adaptive Scheduling Acceptance — COMPLETE
-
-Implemented and executed live scheduler acceptance coverage.
-
-Acceptance: **PASS — 7/7 scenarios.**
-
-Verified quiet-system backoff to 30 seconds, active-attention 5-second cadence, critical 2-second cadence, low-impact scheduling for silently monitored persistent findings, critical override of persistent suppression, avoidance of unnecessary timer resets, and one-minute quiet-system cadence on battery while monitoring remains enabled.
-
-## Phase 4 of 4 — Adaptive Diagnostics and Final Acceptance — COMPLETE
-
-Implemented low-noise adaptive cadence diagnostics so meaningful scheduling transitions can be explained without flooding Activity history. Diagnostics record why Sentinel speeds up or slows down, preserve explicit monitoring-enabled state, explain silent persistent monitoring, and suppress duplicate unchanged-cadence events.
-
-Acceptance: **PASS — 6/6 scenarios.**
-
-Verified initial cadence event recording, duplicate-event suppression, 5-second attention transition explanation, 2-second critical transition explanation, continued-monitoring explanation for silent persistent conditions, and diagnostics that never imply monitoring has been disabled.
-
-# Adaptive Continuous Discovery Operating Policy
-
-Sentinel must adapt monitoring effort to risk while preserving continuous protection:
-
-- Critical verified evidence receives the fastest supported recheck cadence.
-- Active attention findings receive elevated cadence.
-- Moderate evidence receives normal cadence.
-- Quiet systems back off to reduce unnecessary work.
-- Battery operation reduces noncritical polling impact.
-- Idle systems may permit deeper background verification.
-- Silently monitored persistent noncritical conditions remain monitored without forcing high-frequency notification-oriented polling.
-- Critical evidence always overrides silent-monitoring cadence.
-- An adaptive cadence decision must never disable monitoring.
-- Diagnostic history should record meaningful cadence transitions, not repetitive unchanged state.
+- Ordinary unchanged evidence remains governed by Adaptive Continuous Discovery cadence.
+- Material evidence change invalidates the unchanged-state assumption.
+- New critical evidence and security-posture changes receive immediate re-evaluation.
+- Evidence-fingerprint changes force immediate confirmation.
+- A materially changed silently monitored persistent condition automatically reopens for investigation.
+- Attention appearance may force immediate re-evaluation; attention clearing recalculates scheduling without false urgency.
+- Power and idle context changes may alter cadence without forcing an urgent investigation.
+- Confirmation refreshes must settle without recursive refresh loops.
+- Event diagnostics must be low-noise and must never imply monitoring has stopped.
 
 # Current Progress
 
 - Version 1.0.20.0 baseline: **COMPLETE AND ACCEPTED**
 - Sentinel Discovery 2.0: **5/5 COMPLETE — END-TO-END LIVE VALIDATED**
-- Adaptive Continuous Discovery Phase 1 — Cadence Policy: **COMPLETE — 7/7 PASS**
-- Adaptive Continuous Discovery Phase 2 — Live Loop Integration: **COMPLETE — BUILD PASS**
-- Adaptive Continuous Discovery Phase 3 — Live Scheduling Acceptance: **COMPLETE — 7/7 PASS**
-- Adaptive Continuous Discovery Phase 4 — Diagnostics/Final Acceptance: **COMPLETE — 6/6 PASS**
 - Adaptive Continuous Discovery: **4/4 COMPLETE**
+- Event-Driven Discovery Phase 1 — Material Change Detection: **COMPLETE — 8/8 PASS**
+- Event-Driven Discovery Phase 2 — Live State Coordinator: **COMPLETE — 8/8 PASS**
+- Event-Driven Discovery Phase 3 — Live Runtime Integration: **COMPLETE — BUILD PASS + 8/8 PASS**
+- Event-Driven Discovery Phase 4 — Diagnostics/Final Acceptance: **COMPLETE — 7/7 PASS**
+- Event-Driven Discovery: **4/4 COMPLETE**
 
 ---
 
