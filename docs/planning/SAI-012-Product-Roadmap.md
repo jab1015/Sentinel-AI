@@ -1,86 +1,101 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 4.3  
-**Status:** Complete — Version 1.0.20.0 Production Acceptance Passed  
-**Last Updated:** 2026-08-04  
+**Version:** 4.4  
+**Status:** Active — Sentinel Discovery 2.0  
+**Last Updated:** 2026-08-05  
 **Production Branch:** `main`
 
-## Overall Progress
+## Version 1.0 Baseline
 
-Sentinel AI's planned implementation and runtime acceptance are **100% complete** for version **1.0.20.0**.
+Sentinel AI version 1.0.20.0 remains **100% complete for its planned implementation and runtime acceptance**.
 
-The completed product includes continuous monitoring, proactive Sentinel Discovery, investigation, safe remediation policy, optimization and maintenance foundations, continuous network/intrusion evidence, quarantine management, Activity Center history, Ask Sentinel grounded in verified evidence, packaging, startup-to-tray behavior, and production acceptance.
+The accepted baseline includes proactive Discovery, verified investigation, safe remediation policy, Ask Sentinel, Activity Center, Quarantine Manager, continuous tray operation, packaging, and Windows startup-to-tray behavior.
 
-## Release Candidate Finalization
+## Current Product Initiative — Discovery 2.0
 
-**4 of 4 COMPLETE**
+Discovery 2.0 extends Sentinel from proactive monitoring into a persistent, memory-based investigation platform.
 
-### 1 of 4 — Ask Sentinel Local
+### Phase 1 — Persistent Investigation Intelligence
 
-**COMPLETE — runtime verified**
+- Persist completed investigation records.
+- Create stable, evidence-based fingerprints.
+- Reuse unchanged verified conclusions.
+- Avoid repeating expensive investigations when no material evidence has changed.
+- Track investigation lifecycle states and invalidation conditions.
 
-Ask Sentinel uses verified local evidence and investigation history. It remains an explanation/follow-up interface rather than the primary discovery mechanism.
+### Phase 2 — Verified Persistent Exceptions
 
-### 2 of 4 — Quarantine Manager UI
+- Add exhaustive remediation proof.
+- Add noncritical/persistent risk classification.
+- Offer **Monitor silently** only after Sentinel proves no safe verified repair remains.
+- Prevent suppression of critical, high-risk, active-attack, malware, data-loss, or mortal hardware-failure conditions.
+- Continue monitoring while notifications are suppressed.
+- Automatically reactivate on material change.
 
-**COMPLETE — runtime verified**
+### Phase 3 — Cross-Investigation Correlation
 
-Visible Quarantine Manager, persistent catalog, approval-gated restore and permanent deletion, verification, and history integration are complete. Quarantine acceptance passed all six scenarios.
+- Group related observations into one root-cause investigation.
+- Assign confidence to relationships.
+- Keep low-confidence links internal.
+- Surface conflicting evidence without guessing.
+- Reduce duplicate warnings and technical noise.
 
-### 3 of 4 — Activity Center
+### Phase 4 — Adaptive Continuous Discovery
 
-**COMPLETE — runtime verified**
+- Move toward event-driven discovery.
+- Prioritize critical/high/medium/low investigation work.
+- Reduce background load while gaming, rendering, or on battery.
+- Run deeper work when idle.
+- Reopen investigations only when meaningful evidence changes.
 
-Recent Activity persists verified outcomes and remains stable across dashboard refresh. Real authoritative driver investigation history was displayed and reused by Ask Sentinel.
+### Phase 5 — Trusted Knowledge Engine
 
-### 4 of 4 — Investigation Engine Runtime Integration
+- Convert completed investigations into reusable verified knowledge.
+- Store evidence, outcomes, confidence, trust, risk, repair history, and expiration rules.
+- Revalidate knowledge after Windows, driver, BIOS/firmware, device, severity, or authoritative-source changes.
+- Never reuse a conclusion when its invalidation conditions have been met.
 
-**COMPLETE — runtime verified**
+## Governing Product Rule
 
-Discovery feeds actionable findings into Investigation. Authoritative research uses verified computer/device evidence, preserves confidence/trust, refuses unverified automatic repair, retains approval gates, records outcomes, and feeds verified findings back to Ask Sentinel.
+**Sentinel must never suppress a finding until it has completed a verified investigation, exhausted every applicable safe remediation, determined that the condition is noncritical, and verified that there is currently nothing more it can safely do. Suppression hides notifications only; it never stops monitoring. Any material change automatically reopens the investigation.**
 
-## Sentinel Discovery Expansion
+## Discovery 2.0 User Experience
 
-**COMPLETE — 4 of 4**
+For an eligible persistent noncritical condition, Sentinel should explain:
 
-Sentinel proactively evaluates implemented technical evidence instead of requiring nontechnical users to know what question to ask.
+- what it found;
+- what it investigated;
+- which repair paths were exhausted;
+- why no safe verified repair remains;
+- why the condition is not critical;
+- what will reactivate the notification.
 
-Product-wide Discovery Acceptance: **PASS — 8/8 scenarios**.
+Available user actions:
 
-## Final Production Acceptance
+- Keep reminding me
+- Monitor silently
+- Resume reminders
 
-**PASS**
+The user must never be offered a blanket **ignore all similar issues** option.
 
-Validated:
+## Acceptance Milestones
 
-- visible initial Discovery/gathering state;
-- proactive actionable findings;
-- Ask Sentinel consistency with current Discovery evidence;
-- authoritative driver investigation and safe refusal of an unverified repair;
-- persistent Recent Activity;
-- functional Quarantine Manager;
-- continuous system-tray operation;
-- production tray controls;
-- installed-package operation independent of Visual Studio.
+- Persistent investigation storage and exact fingerprinting
+- Exhaustive remediation ledger
+- Risk/suppression eligibility policy
+- Silent-monitoring UI
+- Automatic reactivation
+- Activity Center integration
+- Ask Sentinel integration
+- Correlation engine
+- Adaptive event-driven discovery
+- Trusted Knowledge Engine
+- Expanded Discovery 2.0 acceptance harness
 
-## Installed Release Validation
+## Parallel Release Work
 
-**PASS — 4 of 4**
+Public distribution signing remains a separate installer milestone. The self-signed Modern Methods certificate is suitable for controlled testing but does not eliminate certificate trust prompts on unrelated customer computers. Public-trust signing or Store distribution must be completed before broad customer release.
 
-Validated package: **Sentinel.App (Package) 1.0.20.0 x64 MSIX bundle**.
+---
 
-The package installed successfully on the VM, launched correctly, completed proactive Discovery, remained running in the system tray after the main window closed, and automatically started tray-only after Windows reboot/sign-in.
-
-## Release Gate
-
-**PASSED.**
-
-Sentinel AI version 1.0.20.0 is recorded as **100% complete for the planned implementation and runtime acceptance**.
-
-## Product Rule
-
-Sentinel investigates before acting, keeps healthy users undisturbed, proactively surfaces verified actionable conditions, verifies system-changing outcomes, remains transparent about uncertainty, clearly reports verified activity, and uses authoritative research only as an internal problem-resolution capability when local evidence is insufficient.
-
-## Future Roadmap
-
-Post-1.0 work may include broader hardware/environment compatibility validation, additional verified automatic-remediation cases, commercial signing/distribution improvements, telemetry/support improvements, and feature expansion. These are future-release items and do not reopen the completed 1.0.20.0 acceptance unless a release-blocking defect is discovered.
+End of Document
