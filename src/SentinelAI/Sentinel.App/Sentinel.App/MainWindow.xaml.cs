@@ -22,10 +22,12 @@ namespace Sentinel.App
         private readonly IntegratedMaintenanceCoordinator _integratedMaintenanceCoordinator = new();
         private readonly LivePersistentExceptionCoordinator _livePersistentExceptionCoordinator = new();
         private readonly AdaptiveDiscoveryCadenceService _adaptiveDiscoveryCadenceService = new();
+        private readonly LiveEventDrivenDiscoveryCoordinator _liveEventDrivenDiscoveryCoordinator = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private bool _wasAttentionActive;
         private bool _attentionNotificationActive;
+        private bool _eventDrivenFollowUpPending;
         private string _guidanceActionId = string.Empty;
         private string _lastRecordedFingerprint = string.Empty;
         private PersistentInvestigationRecord? _currentPersistentException;
@@ -109,6 +111,7 @@ namespace Sentinel.App
         {
             if (_isRefreshing) return;
             _isRefreshing = true;
+            bool forceEventDrivenFollowUp = false;
             try
             {
                 await _engine.RefreshAsync();
@@ -116,6 +119,12 @@ namespace Sentinel.App
                 LivePersistentExceptionCoordinator.LivePersistentExceptionResult persistentException =
                     await _livePersistentExceptionCoordinator.EvaluateAsync(snapshot);
                 _currentPersistentException = persistentException.Record;
+
+                LiveEventDrivenDiscoveryCoordinator.LiveEventDrivenDecision eventDrivenDecision =
+                    _liveEventDrivenDiscoveryCoordinator.Evaluate(
+                        snapshot,
+                        persistentException.SuppressNotification);
+                forceEventDrivenFollowUp = eventDrivenDecision.ForceImmediateRecheck;
 
                 AdaptiveDiscoveryCadenceService.AdaptiveDiscoveryDecision cadence =
                     _adaptiveDiscoveryCadenceService.Evaluate(
@@ -263,7 +272,36 @@ namespace Sentinel.App
                 _ = _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
                 _ = _integratedMaintenanceCoordinator.EvaluateAndRunAsync();
             }
-            finally { _isRefreshing = false; }
+            finally
+            {
+                _isRefreshing = false;
+            }
+
+            if (forceEventDrivenFollowUp)
+                ScheduleEventDrivenFollowUp();
+        }
+
+        private void ScheduleEventDrivenFollowUp()
+        {
+            if (_eventDrivenFollowUpPending) return;
+            _eventDrivenFollowUpPending = true;
+            _ = RunEventDrivenFollowUpAsync();
+        }
+
+        private async Task RunEventDrivenFollowUpAsync()
+        {
+            try
+            {
+                // Confirm a material live change without waiting for the normal
+                // adaptive interval. The coordinator's stored state prevents an
+                // unchanged confirmation pass from creating a refresh loop.
+                await Task.Delay(250);
+                await UpdateDashboardAsync();
+            }
+            finally
+            {
+                _eventDrivenFollowUpPending = false;
+            }
         }
 
         private void UpdateBackgroundAttentionState(Models.SystemSnapshot snapshot, bool requiresAttention)
