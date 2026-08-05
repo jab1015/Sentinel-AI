@@ -21,6 +21,7 @@ namespace Sentinel.App
         private readonly AutomaticOptimizationCoordinator _automaticOptimizationCoordinator = new();
         private readonly IntegratedMaintenanceCoordinator _integratedMaintenanceCoordinator = new();
         private readonly LivePersistentExceptionCoordinator _livePersistentExceptionCoordinator = new();
+        private readonly AdaptiveDiscoveryCadenceService _adaptiveDiscoveryCadenceService = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private bool _wasAttentionActive;
@@ -115,6 +116,13 @@ namespace Sentinel.App
                 LivePersistentExceptionCoordinator.LivePersistentExceptionResult persistentException =
                     await _livePersistentExceptionCoordinator.EvaluateAsync(snapshot);
                 _currentPersistentException = persistentException.Record;
+
+                AdaptiveDiscoveryCadenceService.AdaptiveDiscoveryDecision cadence =
+                    _adaptiveDiscoveryCadenceService.Evaluate(
+                        snapshot,
+                        suppressCurrentInvestigation: persistentException.SuppressNotification);
+                if (_timer.Interval != cadence.NextCheckInterval)
+                    _timer.Interval = cadence.NextCheckInterval;
 
                 CpuText.Text = $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
                 MemoryText.Text = $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
