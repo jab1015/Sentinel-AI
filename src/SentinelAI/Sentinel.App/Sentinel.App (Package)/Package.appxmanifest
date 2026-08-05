@@ -10,7 +10,7 @@
 
   <Identity
     Name="07414ecb-83de-4656-bf2d-b299d64ce5c5"
-    Publisher="CN=Tech-1"
+    Publisher="CN=Modern Methods"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
