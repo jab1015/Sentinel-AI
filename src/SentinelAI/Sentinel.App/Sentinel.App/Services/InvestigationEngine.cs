@@ -9,8 +9,10 @@ using Sentinel.App.Models;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Converts raw monitoring evidence into one user-facing investigation outcome.
-    /// Sentinel reports conclusions instead of individual Windows events.
+    /// Converts verified technical monitoring evidence into one prioritized
+    /// Sentinel Discovery outcome. Healthy evidence stays quiet; a user-facing
+    /// alert requires a verified actionable condition or sufficiently
+    /// corroborated evidence.
     /// </summary>
     public sealed class InvestigationEngine
     {
@@ -24,8 +26,14 @@ namespace Sentinel.App.Services
                 Contains(snapshot.PrimaryFlaggedServiceName, "Storage Spaces") ||
                 Contains(snapshot.PrimaryFlaggedServiceName, "SMP");
 
-            bool securityProtectionDisabled =
-                !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
+            bool securityProtectionDisabled = !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
+            bool protectionHealthDegraded =
+                !snapshot.ProtectionHealthFullyProtected &&
+                !Contains(snapshot.ProtectionHealthState, "Starting");
+
+            bool highMemoryPressure = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
+            bool criticallyLowDisk = snapshot.DiskTotalGB > 0 &&
+                (snapshot.DiskUsagePercent >= 95 || snapshot.DiskFreeGB <= 5);
 
             bool suspiciousProcess = snapshot.FlaggedProcessCount > 0;
             bool unusualProcessLineage = snapshot.FlaggedProcessRelationshipCount > 0;
@@ -34,74 +42,78 @@ namespace Sentinel.App.Services
             bool suspiciousScheduledTask = snapshot.FlaggedScheduledTaskCount > 0;
             bool unusualConnection = snapshot.FlaggedConnectionCount > 0;
 
-            bool connectionCorrelatesWithProcess =
-                unusualConnection &&
-                suspiciousProcess &&
+            bool highConfidenceNetworkFinding =
+                snapshot.ConnectionIntelligenceConfidenceScore >= 80 &&
+                snapshot.ConnectionIntelligenceHasCorroboratingEvidence &&
+                !Contains(snapshot.ConnectionIntelligenceState, "Normal") &&
+                !Contains(snapshot.ConnectionIntelligenceState, "Starting");
+
+            bool highConfidenceSpywareFinding =
+                snapshot.SpywareCorrelationConfidenceScore >= 80 &&
+                snapshot.SpywareCorrelationHasCorroboratingEvidence &&
+                !Contains(snapshot.SpywareCorrelationState, "Normal") &&
+                !Contains(snapshot.SpywareCorrelationState, "Starting");
+
+            bool connectionCorrelatesWithProcess = unusualConnection && suspiciousProcess &&
                 SameName(snapshot.PrimaryFlaggedConnectionProcessName, snapshot.PrimaryFlaggedProcessName);
-
-            bool lineageCorrelatesWithProcess =
-                unusualProcessLineage &&
-                suspiciousProcess &&
+            bool lineageCorrelatesWithProcess = unusualProcessLineage && suspiciousProcess &&
                 SameName(snapshot.PrimaryLineageChildProcessName, snapshot.PrimaryFlaggedProcessName);
-
-            bool lineageCorrelatesWithConnection =
-                unusualProcessLineage &&
-                unusualConnection &&
+            bool lineageCorrelatesWithConnection = unusualProcessLineage && unusualConnection &&
                 SameName(snapshot.PrimaryLineageChildProcessName, snapshot.PrimaryFlaggedConnectionProcessName);
-
-            bool commandLineCorrelatesWithProcess =
-                unusualCommandLine &&
-                suspiciousProcess &&
+            bool commandLineCorrelatesWithProcess = unusualCommandLine && suspiciousProcess &&
                 SameName(snapshot.PrimaryCommandLineProcessName, snapshot.PrimaryFlaggedProcessName);
-
-            bool commandLineCorrelatesWithLineage =
-                unusualCommandLine &&
-                unusualProcessLineage &&
+            bool commandLineCorrelatesWithLineage = unusualCommandLine && unusualProcessLineage &&
                 SameName(snapshot.PrimaryCommandLineProcessName, snapshot.PrimaryLineageChildProcessName);
-
-            bool commandLineCorrelatesWithConnection =
-                unusualCommandLine &&
-                unusualConnection &&
+            bool commandLineCorrelatesWithConnection = unusualCommandLine && unusualConnection &&
                 SameName(snapshot.PrimaryCommandLineProcessName, snapshot.PrimaryFlaggedConnectionProcessName);
 
-            bool serviceFailure =
-                !storageSpacesSmp &&
+            bool serviceFailure = !storageSpacesSmp &&
                 Contains(snapshot.LatestEventSource, "Service Control Manager") &&
                 Contains(snapshot.LatestEventMessage, "terminated unexpectedly");
+            bool actionableSystemEvidence = !storageSpacesSmp && snapshot.FlaggedServiceCount > 0;
 
-            // Raw Windows critical/error events remain part of Sentinel's internal evidence,
-            // history, Ask Sentinel context, and technical diagnostics. They do not by
-            // themselves justify interrupting or alarming the user. A user-facing alert
-            // requires a verified current condition, correlated signals, or a targeted
-            // condition that Sentinel can explain and act on.
-            bool actionableSystemEvidence =
-                !storageSpacesSmp &&
-                snapshot.FlaggedServiceCount > 0;
-
-            if (securityProtectionDisabled)
+            if (securityProtectionDisabled || protectionHealthDegraded)
             {
                 return new InvestigationResult(
                     InvestigationState.ActionRequired,
                     "Windows protection requires attention.",
-                    "Sentinel verified that a core Windows security protection is not enabled.",
+                    securityProtectionDisabled
+                        ? "Sentinel verified that a core Windows security protection is not enabled."
+                        : snapshot.ProtectionHealthSummary,
                     true,
                     "security-protection-disabled");
             }
 
-            if (commandLineCorrelatesWithProcess ||
-                commandLineCorrelatesWithLineage ||
-                commandLineCorrelatesWithConnection)
+            if (highConfidenceSpywareFinding)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "Sentinel found corroborated spyware indicators.",
+                    snapshot.SpywareCorrelationSummary,
+                    true,
+                    "corroborated-spyware-finding");
+            }
+
+            if (highConfidenceNetworkFinding)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "Sentinel found suspicious network activity.",
+                    snapshot.ConnectionIntelligenceSummary,
+                    true,
+                    "corroborated-network-finding");
+            }
+
+            if (commandLineCorrelatesWithProcess || commandLineCorrelatesWithLineage || commandLineCorrelatesWithConnection)
             {
                 return new InvestigationResult(
                     InvestigationState.ActionRequired,
                     "Correlated process behavior requires attention.",
                     $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason}",
                     true,
-                    commandLineCorrelatesWithConnection
-                        ? "correlated-command-network-finding"
-                        : commandLineCorrelatesWithLineage
-                            ? "correlated-command-lineage-finding"
-                            : "correlated-command-process-finding");
+                    commandLineCorrelatesWithConnection ? "correlated-command-network-finding" :
+                    commandLineCorrelatesWithLineage ? "correlated-command-lineage-finding" :
+                    "correlated-command-process-finding");
             }
 
             if (lineageCorrelatesWithProcess || lineageCorrelatesWithConnection)
@@ -111,9 +123,7 @@ namespace Sentinel.App.Services
                     "Related process activity requires attention.",
                     $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}. {snapshot.PrimaryLineageReason}",
                     true,
-                    lineageCorrelatesWithConnection
-                        ? "correlated-lineage-network-finding"
-                        : "correlated-lineage-process-finding");
+                    lineageCorrelatesWithConnection ? "correlated-lineage-network-finding" : "correlated-lineage-process-finding");
             }
 
             if (connectionCorrelatesWithProcess)
@@ -136,65 +146,46 @@ namespace Sentinel.App.Services
                     serviceFailure ? "service-failure" : "system-finding");
             }
 
-            if (unusualCommandLine)
+            if (highMemoryPressure)
             {
                 return new InvestigationResult(
-                    InvestigationState.Investigating,
-                    "Sentinel is investigating command activity.",
-                    $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason} No action is required unless another signal confirms a risk.",
-                    false,
-                    "command-line-under-review");
+                    InvestigationState.ActionRequired,
+                    "Memory use requires attention.",
+                    snapshot.MemoryConclusion,
+                    true,
+                    "high-memory-pressure");
             }
+
+            if (criticallyLowDisk)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "Your system drive is running low on space.",
+                    $"Only {snapshot.DiskFreeGB:0.0} GB is free. Sentinel should help identify safe cleanup options before Windows runs out of working space.",
+                    true,
+                    "critical-disk-space");
+            }
+
+            // Single uncorroborated indicators remain in Discovery without alarming
+            // the user. Sentinel continues collecting evidence and escalates when
+            // corroboration or a clearly actionable condition appears.
+            if (unusualCommandLine)
+                return Investigating("Sentinel is investigating command activity.", $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason}", "command-line-under-review");
 
             if (unusualProcessLineage)
-            {
-                return new InvestigationResult(
-                    InvestigationState.Investigating,
-                    "Sentinel is investigating related process activity.",
-                    $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}. No action is required unless another signal confirms a risk.",
-                    false,
-                    "process-lineage-under-review");
-            }
+                return Investigating("Sentinel is investigating related process activity.", $"{snapshot.PrimaryLineageParentProcessName} started {snapshot.PrimaryLineageChildProcessName}.", "process-lineage-under-review");
 
             if (suspiciousProcess)
-            {
-                return new InvestigationResult(
-                    InvestigationState.Investigating,
-                    "Sentinel is investigating a running process.",
-                    $"{snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason} No action is required unless another signal confirms a risk.",
-                    false,
-                    "process-evidence-under-review");
-            }
+                return Investigating("Sentinel is investigating a running process.", $"{snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason}", "process-evidence-under-review");
 
             if (suspiciousStartupPersistence)
-            {
-                return new InvestigationResult(
-                    InvestigationState.Investigating,
-                    "Sentinel is investigating a startup item.",
-                    $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason} No action is required unless another signal confirms a risk.",
-                    false,
-                    "startup-persistence-under-review");
-            }
+                return Investigating("Sentinel is investigating a startup item.", $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}", "startup-persistence-under-review");
 
             if (suspiciousScheduledTask)
-            {
-                return new InvestigationResult(
-                    InvestigationState.Investigating,
-                    "Sentinel is investigating a scheduled task.",
-                    $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason} No action is required unless another signal confirms a risk.",
-                    false,
-                    "scheduled-task-under-review");
-            }
+                return Investigating("Sentinel is investigating a scheduled task.", $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}", "scheduled-task-under-review");
 
             if (unusualConnection)
-            {
-                return new InvestigationResult(
-                    InvestigationState.Investigating,
-                    "Sentinel is investigating network activity.",
-                    $"{snapshot.PrimaryFlaggedConnectionProcessName} connected to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}. No action is required unless another signal confirms a risk.",
-                    false,
-                    "network-evidence-under-review");
-            }
+                return Investigating("Sentinel is investigating network activity.", $"{snapshot.PrimaryFlaggedConnectionProcessName} connected to {snapshot.PrimaryFlaggedConnectionRemoteEndpoint}.", "network-evidence-under-review");
 
             return new InvestigationResult(
                 InvestigationState.NoIssue,
@@ -204,14 +195,21 @@ namespace Sentinel.App.Services
                 "healthy");
         }
 
+        private static InvestigationResult Investigating(string conclusion, string evidence, string reasonCode) =>
+            new(
+                InvestigationState.Investigating,
+                conclusion,
+                evidence + " Sentinel is continuing to verify this quietly; no user action is required unless the evidence becomes actionable.",
+                false,
+                reasonCode);
+
         private static bool SameName(string? first, string? second) =>
             !string.IsNullOrWhiteSpace(first) &&
             !string.IsNullOrWhiteSpace(second) &&
             first.Equals(second, StringComparison.OrdinalIgnoreCase);
 
         private static bool Contains(string? value, string text) =>
-            !string.IsNullOrWhiteSpace(value) &&
-            value.Contains(text, StringComparison.OrdinalIgnoreCase);
+            !string.IsNullOrWhiteSpace(value) && value.Contains(text, StringComparison.OrdinalIgnoreCase);
 
         public enum InvestigationState
         {
