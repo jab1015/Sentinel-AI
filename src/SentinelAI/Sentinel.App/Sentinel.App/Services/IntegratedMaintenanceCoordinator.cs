@@ -30,6 +30,7 @@ namespace Sentinel.App.Services
         private readonly WindowsServiceRepairExecutor _serviceExecutor = new();
         private readonly NetworkRepairExecutor _networkExecutor = new();
         private readonly StorageOptimizationExecutor _storageExecutor = new();
+        private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _statePath;
         private readonly string _verificationPath;
@@ -121,6 +122,7 @@ namespace Sentinel.App.Services
                     WindowsServiceRepairExecutionResult serviceResult =
                         await _serviceExecutor.ExecuteAsync(serviceSafety, cancellationToken)
                             .ConfigureAwait(false);
+                    _outcomeRecorder.Record(serviceResult);
 
                     if (serviceResult.Attempted)
                     {
@@ -141,6 +143,7 @@ namespace Sentinel.App.Services
                 NetworkRepairExecutionResult networkResult =
                     await _networkExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                         .ConfigureAwait(false);
+                _outcomeRecorder.Record(networkResult);
 
                 if (networkResult.Attempted)
                 {
@@ -160,6 +163,7 @@ namespace Sentinel.App.Services
                 StorageOptimizationExecutionResult storageResult =
                     await _storageExecutor.EvaluateAndExecuteAsync(cancellationToken)
                         .ConfigureAwait(false);
+                _outcomeRecorder.Record(storageResult);
 
                 if (storageResult.Attempted)
                 {
@@ -244,7 +248,6 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                // State persistence must never cause Sentinel itself to fail.
             }
         }
 
@@ -260,7 +263,6 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                // Verification-state persistence must never cause Sentinel itself to fail.
             }
         }
 
