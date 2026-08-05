@@ -1,8 +1,8 @@
 # SAI-008 — Release Checklist
 
-Version: 1.3  
-Status: Complete — Version 1.0.20.0 Acceptance Passed  
-Last Updated: 2026-08-04
+Version: 1.4  
+Status: Complete — Version 1.0.20.0 Acceptance Passed; Discovery 2.0 Development Acceptance Passed  
+Last Updated: 2026-08-05
 
 Copyright (c) 2026 Modern Methods.
 
@@ -63,22 +63,44 @@ A task is complete only when applicable implementation, build, verification, doc
 ☑ Sentinel started automatically after sign-in  
 ☑ Sentinel started tray-only without forcing the main window open
 
-## Release Documentation
+# Discovery 2.0 Development Acceptance
 
-☑ SAI-025 Master Development Plan updated to 100% complete  
-☑ SAI-013 Implementation Tracker updated to complete  
-☑ SAI-012 Product Roadmap updated to completed  
-☑ SAI-008 Release Checklist updated with final acceptance evidence
+☑ Phase 1 — Persistent Investigation Intelligence complete  
+☑ Persistent investigation acceptance — 6/6 PASS  
+☑ Expanded persistent/presentation policy acceptance — 10/10 PASS  
+☑ Phase 2 — Verified Persistent Exceptions complete  
+☑ Incomplete and critical findings cannot be silenced  
+☑ Eligible exhausted noncritical conditions can enter silent monitoring  
+☑ Monitoring continues while notifications are suppressed  
+☑ Phase 3 — Live Persistent Exception Integration complete  
+☑ Live persistent exception acceptance — 5/5 PASS  
+☑ Unrelated findings do not inherit persistent exceptions  
+☑ Notifications can resume without disabling monitoring  
+☑ Phase 4 — Cross-Investigation Correlation complete  
+☑ Correlation acceptance — 7/7 PASS  
+☑ Unsupported root-cause relationships are not asserted  
+☑ Critical evidence retains priority  
+☑ Phase 5 — Trusted Knowledge Engine complete  
+☑ Trusted Knowledge acceptance — 8/8 PASS  
+☑ Incomplete, critical, and low-confidence conclusions cannot become reusable trusted knowledge  
+☑ Material evidence change invalidates prior reusable conclusions  
+☑ Expired knowledge requires revalidation  
+☑ Current critical evidence always requires direct investigation
+
+## Discovery 2.0 Documentation
+
+☑ SAI-025 Master Development Plan updated  
+☑ SAI-013 Implementation Tracker updated  
+☑ SAI-012 Product Roadmap updated  
+☑ SAI-008 Release Checklist updated with Discovery 2.0 acceptance evidence
 
 # Release Decision
 
-**PASS**
+**Version 1.0.20.0 baseline: PASS**
 
-Sentinel AI version **1.0.20.0** has passed the planned integrated runtime and installed-release acceptance scope.
+**Sentinel Discovery 2.0 development acceptance: PASS — 5/5 phases complete.**
 
-The release record may describe the planned implementation and runtime acceptance as **100% complete**.
-
-Future compatibility expansion, additional automatic-remediation cases, commercial distribution/signing improvements, and post-release maintenance are subsequent-release work unless a release-blocking defect is discovered.
+Discovery 2.0 completion does not by itself constitute a newly packaged public release. Public distribution signing remains separate release work. The self-signed Modern Methods certificate is suitable for controlled testing but does not eliminate certificate trust prompts on unrelated customer computers.
 
 ---
 
