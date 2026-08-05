@@ -10,44 +10,51 @@ using Microsoft.Win32;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Collects narrowly scoped Windows health evidence from local Windows interfaces.
-    /// Every result fails closed when Windows does not expose a verifiable value.
-    /// </summary>
     public sealed class WindowsHealthEvidenceProvider
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(20);
 
+        public WindowsHealthDiscoverySnapshot GetDiscoverySnapshot()
+        {
+            string updateRaw = GetWindowsUpdateRaw();
+            int? pendingUpdates = TryGetIntegerField(updateRaw, "PendingUpdates");
+            bool? restartPending = TryGetRestartPending();
+
+            string secureBootRaw = RunPowerShell(
+                "if (Confirm-SecureBootUEFI -ErrorAction Stop) { 'Enabled' } else { 'Disabled' }");
+            if (string.IsNullOrWhiteSpace(secureBootRaw))
+            {
+                secureBootRaw = RunPowerShell(
+                    "$v=(Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State' -Name UEFISecureBootEnabled -ErrorAction Stop).UEFISecureBootEnabled; " +
+                    "if ($v -eq 1) {'Enabled'} elseif ($v -eq 0) {'Disabled'} else {'Unknown'}");
+            }
+
+            bool? secureBootEnabled = secureBootRaw.Equals("Enabled", StringComparison.OrdinalIgnoreCase)
+                ? true
+                : secureBootRaw.Equals("Disabled", StringComparison.OrdinalIgnoreCase)
+                    ? false
+                    : null;
+
+            string tpmRaw = RunPowerShell(
+                "$t=Get-Tpm -ErrorAction Stop; " +
+                "\"Present=$($t.TpmPresent);Ready=$($t.TpmReady)\"");
+            bool? tpmPresent = TryGetBooleanField(tpmRaw, "Present");
+            bool? tpmReady = TryGetBooleanField(tpmRaw, "Ready");
+
+            return new WindowsHealthDiscoverySnapshot(
+                pendingUpdates,
+                restartPending,
+                secureBootEnabled,
+                tpmPresent,
+                tpmReady,
+                !string.IsNullOrWhiteSpace(updateRaw),
+                !string.IsNullOrWhiteSpace(secureBootRaw),
+                !string.IsNullOrWhiteSpace(tpmRaw));
+        }
+
         public string GetWindowsUpdateStatus()
         {
-            string value = RunPowerShell(
-                "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
-                "$session=New-Object -ComObject Microsoft.Update.Session; " +
-                "$searcher=$session.CreateUpdateSearcher(); " +
-                "$result=$searcher.Search(\"IsInstalled=0 and IsHidden=0\"); " +
-                "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
-                "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
-                "$latestText=if ($null -eq $latest) {'Unavailable'} else {\"$($latest.HotFixID) installed $($latest.InstalledOn)\"}; " +
-                "$preview=@($result.Updates | Select-Object -First 3 | ForEach-Object {$_.Title}) -join ' | '; " +
-                "if ($result.Updates.Count -eq 0) { \"Service=$($service.Status);PendingUpdates=0;LatestInstalledUpdate=$latestText\" } " +
-                "else { \"Service=$($service.Status);PendingUpdates=$($result.Updates.Count);Examples=$preview;LatestInstalledUpdate=$latestText\" }");
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                value = RunPowerShell(
-                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
-                    "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
-                    "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
-                    "if ($null -eq $latest) { \"Service=$($service.Status);PendingUpdates=NotVerified;LatestInstalledUpdate=Unavailable\" } " +
-                    "else { \"Service=$($service.Status);PendingUpdates=NotVerified;LatestInstalledUpdate=$($latest.HotFixID);InstalledOn=$($latest.InstalledOn)\" }");
-            }
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                value = RunPowerShell(
-                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; \"Service=$($service.Status);PendingUpdates=NotVerified\"");
-            }
-
+            string value = GetWindowsUpdateRaw();
             bool? restart = TryGetRestartPending();
             return BuildWindowsUpdateAnswer(value, restart);
         }
@@ -113,13 +120,41 @@ namespace Sentinel.App.Services
             }
 
             if (string.IsNullOrWhiteSpace(value))
-            {
                 value = RunProcess("manage-bde.exe", "-status " + Environment.SystemDirectory[..2]);
-            }
 
             return string.IsNullOrWhiteSpace(value)
                 ? "Sentinel could not verify BitLocker or device-encryption status because Windows did not expose drive-encryption evidence to this process."
                 : $"Verified Windows drive encryption status: {Normalize(value)}.";
+        }
+
+        private static string GetWindowsUpdateRaw()
+        {
+            string value = RunPowerShell(
+                "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
+                "$session=New-Object -ComObject Microsoft.Update.Session; " +
+                "$searcher=$session.CreateUpdateSearcher(); " +
+                "$result=$searcher.Search(\"IsInstalled=0 and IsHidden=0\"); " +
+                "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
+                "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
+                "$latestText=if ($null -eq $latest) {'Unavailable'} else {\"$($latest.HotFixID) installed $($latest.InstalledOn)\"}; " +
+                "$preview=@($result.Updates | Select-Object -First 3 | ForEach-Object {$_.Title}) -join ' | '; " +
+                "if ($result.Updates.Count -eq 0) { \"Service=$($service.Status);PendingUpdates=0;LatestInstalledUpdate=$latestText\" } " +
+                "else { \"Service=$($service.Status);PendingUpdates=$($result.Updates.Count);Examples=$preview;LatestInstalledUpdate=$latestText\" }");
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                value = RunPowerShell(
+                    "$service=Get-Service -Name wuauserv -ErrorAction Stop; " +
+                    "$latest=(Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue | " +
+                    "Where-Object {$_.InstalledOn} | Sort-Object {[datetime]$_.InstalledOn} -Descending | Select-Object -First 1); " +
+                    "if ($null -eq $latest) { \"Service=$($service.Status);PendingUpdates=NotVerified;LatestInstalledUpdate=Unavailable\" } " +
+                    "else { \"Service=$($service.Status);PendingUpdates=NotVerified;LatestInstalledUpdate=$($latest.HotFixID);InstalledOn=$($latest.InstalledOn)\" }");
+            }
+
+            if (string.IsNullOrWhiteSpace(value))
+                value = RunPowerShell("$service=Get-Service -Name wuauserv -ErrorAction Stop; \"Service=$($service.Status);PendingUpdates=NotVerified\"");
+
+            return value;
         }
 
         private static string BuildWindowsUpdateAnswer(string value, bool? restart)
@@ -132,9 +167,7 @@ namespace Sentinel.App.Services
             };
 
             if (string.IsNullOrWhiteSpace(value))
-            {
                 return $"Sentinel could not verify Windows Update status. {restartText}";
-            }
 
             string normalized = Normalize(value);
             int? pendingCount = TryGetIntegerField(value, "PendingUpdates");
@@ -146,9 +179,7 @@ namespace Sentinel.App.Services
             }
 
             if (pendingCount == 0)
-            {
                 return $"Windows is up to date based on the current local update scan. {normalized}. {restartText}";
-            }
 
             return $"Sentinel verified Windows Update service and installation evidence, but Windows did not expose a conclusive pending-update count. {normalized}. {restartText}";
         }
@@ -157,52 +188,42 @@ namespace Sentinel.App.Services
         {
             string marker = fieldName + "=";
             int start = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (start < 0)
-            {
-                return null;
-            }
-
+            if (start < 0) return null;
             start += marker.Length;
             int end = value.IndexOf(';', start);
             string raw = (end >= 0 ? value[start..end] : value[start..]).Trim();
             return int.TryParse(raw, out int result) ? result : null;
         }
 
+        private static bool? TryGetBooleanField(string value, string fieldName)
+        {
+            string marker = fieldName + "=";
+            int start = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0) return null;
+            start += marker.Length;
+            int end = value.IndexOf(';', start);
+            string raw = (end >= 0 ? value[start..end] : value[start..]).Trim();
+            return bool.TryParse(raw, out bool result) ? result : null;
+        }
+
         private static bool? TryGetRestartPending()
         {
             try
             {
-                using RegistryKey? updateRestart = Registry.LocalMachine.OpenSubKey(
-                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired");
-                using RegistryKey? servicingRestart = Registry.LocalMachine.OpenSubKey(
-                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending");
-                using RegistryKey? sessionManager = Registry.LocalMachine.OpenSubKey(
-                    @"SYSTEM\CurrentControlSet\Control\Session Manager");
-
-                return updateRestart is not null
-                    || servicingRestart is not null
-                    || sessionManager?.GetValue("PendingFileRenameOperations") is not null;
+                using RegistryKey? updateRestart = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired");
+                using RegistryKey? servicingRestart = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending");
+                using RegistryKey? sessionManager = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager");
+                return updateRestart is not null || servicingRestart is not null || sessionManager?.GetValue("PendingFileRenameOperations") is not null;
             }
-            catch (UnauthorizedAccessException)
-            {
-                return null;
-            }
-            catch (System.Security.SecurityException)
-            {
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
+            catch (UnauthorizedAccessException) { return null; }
+            catch (System.Security.SecurityException) { return null; }
+            catch { return null; }
         }
 
         private static string RunPowerShell(string command)
         {
             string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-            return RunProcess(
-                "powershell.exe",
-                $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}");
+            return RunProcess("powershell.exe", $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encodedCommand}");
         }
 
         private static string RunProcess(string fileName, string arguments)
@@ -211,7 +232,6 @@ namespace Sentinel.App.Services
             {
                 using Process process = new();
                 var output = new StringBuilder();
-
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = fileName,
@@ -221,56 +241,36 @@ namespace Sentinel.App.Services
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-
-                process.OutputDataReceived += (_, e) =>
-                {
-                    if (!string.IsNullOrWhiteSpace(e.Data))
-                    {
-                        output.AppendLine(e.Data);
-                    }
-                };
-
-                if (!process.Start())
-                {
-                    return string.Empty;
-                }
-
+                process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) output.AppendLine(e.Data); };
+                if (!process.Start()) return string.Empty;
                 process.BeginOutputReadLine();
                 process.BeginErrorReadLine();
-
                 if (!process.WaitForExit((int)CommandTimeout.TotalMilliseconds))
                 {
                     process.Kill(true);
                     return string.Empty;
                 }
-
                 process.WaitForExit();
-                return process.ExitCode == 0
-                    ? output.ToString().Trim()
-                    : string.Empty;
+                return process.ExitCode == 0 ? output.ToString().Trim() : string.Empty;
             }
-            catch
-            {
-                return string.Empty;
-            }
+            catch { return string.Empty; }
         }
 
         private static string Normalize(string value)
         {
-            string normalized = value
-                .Replace("\r", " ", StringComparison.Ordinal)
-                .Replace("\n", " ", StringComparison.Ordinal)
-                .Replace(';', ',')
-                .Trim();
-
-            while (normalized.Contains("  ", StringComparison.Ordinal))
-            {
-                normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
-            }
-
-            return normalized.Length <= 500
-                ? normalized
-                : normalized[..497] + "...";
+            string normalized = value.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal).Replace(';', ',').Trim();
+            while (normalized.Contains("  ", StringComparison.Ordinal)) normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
+            return normalized.Length <= 500 ? normalized : normalized[..497] + "...";
         }
+
+        public sealed record WindowsHealthDiscoverySnapshot(
+            int? PendingUpdateCount,
+            bool? RestartPending,
+            bool? SecureBootEnabled,
+            bool? TpmPresent,
+            bool? TpmReady,
+            bool UpdateEvidenceAvailable,
+            bool SecureBootEvidenceAvailable,
+            bool TpmEvidenceAvailable);
     }
 }
