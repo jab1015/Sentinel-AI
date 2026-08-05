@@ -40,13 +40,24 @@ namespace Sentinel.App
             _initialRefreshStarted = true;
             Activated -= MainWindow_Activated;
             await EnsurePreferredNameAsync();
+            ShowInitialDiscoveryState();
             await Task.Yield();
             _ = RunInitialRefreshAsync();
         }
 
+        private void ShowInitialDiscoveryState()
+        {
+            OverallStatusText.Text = "Sentinel is checking your computer.";
+            AttentionStatusText.Text = "Gathering current Windows, security, driver, process, service, network, and system-health information…";
+            MonitoringStatusText.Text = "I’ll show you the results as soon as this initial check is complete.";
+            GuidanceActionButton.Visibility = Visibility.Collapsed;
+            IssueSummaryBorder.Visibility = Visibility.Collapsed;
+            AppWindow.Title = "Sentinel AI — Checking your computer…";
+        }
+
         private async Task RunInitialRefreshAsync()
         {
-            await Task.Delay(500);
+            await Task.Delay(250);
             await UpdateDashboardAsync();
             _timer.Start();
         }
@@ -134,16 +145,10 @@ namespace Sentinel.App
 
                 bool hasServiceFailure = snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) && snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
                 bool isStorageSpacesSmpFinding = snapshot.LatestEventMessage.Contains("Storage Spaces SMP", StringComparison.OrdinalIgnoreCase) || snapshot.GuidanceTitle.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.GuidanceWhatHappened.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.PrimaryFlaggedServiceName.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.PrimaryFlaggedServiceName.Contains("SMP", StringComparison.OrdinalIgnoreCase);
-                bool resolvedProcessReview = snapshot.FlaggedProcessCount > 0 &&
-                    snapshot.GuidanceFixAvailability.Equals("No fix needed", StringComparison.OrdinalIgnoreCase) &&
-                    snapshot.GuidanceTitle.Contains("no security risk found", StringComparison.OrdinalIgnoreCase);
+                bool resolvedProcessReview = snapshot.FlaggedProcessCount > 0 && snapshot.GuidanceFixAvailability.Equals("No fix needed", StringComparison.OrdinalIgnoreCase) && snapshot.GuidanceTitle.Contains("no security risk found", StringComparison.OrdinalIgnoreCase);
                 bool memoryRequiresAttention = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
                 bool investigationRequiresAttention = snapshot.InvestigationRequiresAttention;
-                bool hasApprovalAction = snapshot.AutonomousProtectionRequiresUserApproval &&
-                    !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
-                    !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
-                    !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
+                bool hasApprovalAction = snapshot.AutonomousProtectionRequiresUserApproval && !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) && !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) && !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
                 bool requiresAttention = investigationRequiresAttention || hasApprovalAction || memoryRequiresAttention;
 
                 await UpdateInvestigationHistoryAsync(snapshot, investigationRequiresAttention);
@@ -174,9 +179,7 @@ namespace Sentinel.App
                         GuidanceActionButton.Content = snapshot.GuidanceActionLabel;
                         GuidanceActionButton.Visibility = investigationRequiresAttention && !string.IsNullOrWhiteSpace(_guidanceActionId) ? Visibility.Visible : Visibility.Collapsed;
                     }
-
                     IssueSummaryBorder.Visibility = (investigationRequiresAttention || hasApprovalAction) ? Visibility.Visible : Visibility.Collapsed;
-
                     if (investigationRequiresAttention || hasApprovalAction)
                     {
                         OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
@@ -207,7 +210,6 @@ namespace Sentinel.App
                 RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0";
                 RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
-
                 _ = _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
                 _ = _integratedMaintenanceCoordinator.EvaluateAndRunAsync();
             }
@@ -218,11 +220,8 @@ namespace Sentinel.App
         {
             if (!requiresAttention)
             {
-                if (_attentionNotificationActive)
-                {
-                    AppWindow.Title = "Sentinel AI";
-                    _attentionNotificationActive = false;
-                }
+                AppWindow.Title = "Sentinel AI";
+                _attentionNotificationActive = false;
                 return;
             }
             if (_attentionNotificationActive) return;
@@ -238,20 +237,13 @@ namespace Sentinel.App
             if (!requiresAttention)
             {
                 InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
-                if (_wasAttentionActive && !string.IsNullOrWhiteSpace(_lastRecordedFingerprint))
-                {
-                    await _investigationHistoryService.RecordAsync(_lastRecordedFingerprint, "Condition resolved", "Sentinel no longer detects the condition that previously required attention.", "Resolved", requiresAttention: false, resolved: true);
-                }
+                if (_wasAttentionActive && !string.IsNullOrWhiteSpace(_lastRecordedFingerprint)) await _investigationHistoryService.RecordAsync(_lastRecordedFingerprint, "Condition resolved", "Sentinel no longer detects the condition that previously required attention.", "Resolved", false, true);
                 _wasAttentionActive = false;
                 _lastRecordedFingerprint = string.Empty;
                 return;
             }
             _wasAttentionActive = true;
-            if (!validFingerprint)
-            {
-                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
-                return;
-            }
+            if (!validFingerprint) { InvestigationHistoryBorder.Visibility = Visibility.Collapsed; return; }
             if (!fingerprint.Equals(_lastRecordedFingerprint, StringComparison.OrdinalIgnoreCase))
             {
                 var recent = await _investigationHistoryService.ReadRecentAsync(50);
@@ -265,11 +257,7 @@ namespace Sentinel.App
                     InvestigationHistoryBorder.Visibility = Visibility.Visible;
                 }
                 else InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
-
-                await _investigationHistoryService.RecordAsync(fingerprint,
-                    string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) ? "Investigation" : snapshot.GuidanceTitle,
-                    string.IsNullOrWhiteSpace(snapshot.InvestigationSummary) ? snapshot.GuidanceWhatHappened : snapshot.InvestigationSummary,
-                    snapshot.GuidanceSeverity, requiresAttention: true, resolved: false);
+                await _investigationHistoryService.RecordAsync(fingerprint, string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) ? "Investigation" : snapshot.GuidanceTitle, string.IsNullOrWhiteSpace(snapshot.InvestigationSummary) ? snapshot.GuidanceWhatHappened : snapshot.InvestigationSummary, snapshot.GuidanceSeverity, true, false);
                 _lastRecordedFingerprint = fingerprint;
             }
         }
@@ -278,48 +266,21 @@ namespace Sentinel.App
         {
             switch (_guidanceActionId)
             {
-                case "open-task-manager":
-                    OpenShellTarget("taskmgr.exe");
-                    return;
-                case "approve-remediation":
-                    await ReviewApprovedRemediationAsync();
-                    return;
-                case "review-driver-repair":
-                    AskSentinelQuestionBox.Text = "Do I have any driver conflicts?";
-                    await SubmitAskSentinelQuestionAsync();
-                    return;
-                case "open-windows-update":
-                    OpenShellTarget("ms-settings:windowsupdate");
-                    return;
-                case "open-windows-security":
-                    OpenShellTarget("windowsdefender:");
-                    return;
-                case "open-firewall":
-                    OpenShellTarget("windowsdefender://network");
-                    return;
-                case "open-services":
-                    OpenShellTarget("services.msc");
-                    return;
-                case "open-storage":
-                    OpenShellTarget("ms-settings:storagesense");
-                    return;
-                case "check-again":
-                    await UpdateDashboardAsync();
-                    return;
+                case "open-task-manager": OpenShellTarget("taskmgr.exe"); return;
+                case "approve-remediation": await ReviewApprovedRemediationAsync(); return;
+                case "review-driver-repair": AskSentinelQuestionBox.Text = "Do I have any driver conflicts?"; await SubmitAskSentinelQuestionAsync(); return;
+                case "open-windows-update": OpenShellTarget("ms-settings:windowsupdate"); return;
+                case "open-windows-security": OpenShellTarget("windowsdefender:"); return;
+                case "open-firewall": OpenShellTarget("windowsdefender://network"); return;
+                case "open-services": OpenShellTarget("services.msc"); return;
+                case "open-storage": OpenShellTarget("ms-settings:storagesense"); return;
+                case "check-again": await UpdateDashboardAsync(); return;
             }
         }
 
         private static void OpenShellTarget(string target)
         {
-            try
-            {
-                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
-            }
-            catch
-            {
-                // Discovery actions are guidance only. A failed shell handoff must not
-                // change system state or cause Sentinel to report a successful repair.
-            }
+            try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); } catch { }
         }
 
         private async Task ReviewApprovedRemediationAsync()
@@ -327,24 +288,14 @@ namespace Sentinel.App
             var snapshot = _engine.CurrentSnapshot;
             RemediationApprovalCoordinator.RemediationApprovalRequest? request = _approvalCoordinator.CreateRequest(snapshot);
             if (request is null) return;
-            ContentDialog dialog = new()
-            {
-                Title = request.Title,
-                Content = $"{request.Summary}\n\nTarget: {request.Target}\n\nSentinel will revalidate the investigation immediately before acting. This approval is single-use and expires automatically.",
-                PrimaryButtonText = "Approve", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close,
-                XamlRoot = ((FrameworkElement)Content).XamlRoot
-            };
+            ContentDialog dialog = new() { Title = request.Title, Content = $"{request.Summary}\n\nTarget: {request.Target}\n\nSentinel will revalidate the investigation immediately before acting. This approval is single-use and expires automatically.", PrimaryButtonText = "Approve", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close, XamlRoot = ((FrameworkElement)Content).XamlRoot };
             ContentDialogResult result = await dialog.ShowAsync();
             if (result != ContentDialogResult.Primary) return;
             await _engine.RefreshAsync();
             var currentSnapshot = _engine.CurrentSnapshot;
-            RemediationApprovalCoordinator.ApprovalValidationResult validation = _approvalCoordinator.Validate(request, currentSnapshot, userApproved: true);
-            var execution = await _approvedServiceRestartCoordinator.ExecuteAsync(currentSnapshot, request, validation, canRequestElevation: true);
-            ContentDialog outcomeDialog = new()
-            {
-                Title = string.IsNullOrWhiteSpace(execution.Title) ? "Sentinel did not make a change" : execution.Title,
-                Content = execution.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot
-            };
+            RemediationApprovalCoordinator.ApprovalValidationResult validation = _approvalCoordinator.Validate(request, currentSnapshot, true);
+            var execution = await _approvedServiceRestartCoordinator.ExecuteAsync(currentSnapshot, request, validation, true);
+            ContentDialog outcomeDialog = new() { Title = string.IsNullOrWhiteSpace(execution.Title) ? "Sentinel did not make a change" : execution.Title, Content = execution.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot };
             await outcomeDialog.ShowAsync();
             await UpdateDashboardAsync();
         }
