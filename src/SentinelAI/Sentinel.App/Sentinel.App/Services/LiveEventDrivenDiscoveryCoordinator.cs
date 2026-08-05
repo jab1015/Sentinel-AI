@@ -55,6 +55,10 @@ namespace Sentinel.App.Services
                 current.DefenderEnabled != previous.DefenderEnabled ||
                 current.FirewallEnabled != previous.FirewallEnabled;
 
+            bool suppressedPersistentMaterialChange =
+                persistentConditionMateriallyChanged ||
+                (previous.PersistentNotificationSuppressed && fingerprintChanged);
+
             DiscoveryChangeDetectionService.ChangeDetectionInput input = new(
                 EvidenceFingerprintChanged: fingerprintChanged,
                 SecurityPostureChanged: securityPostureChanged,
@@ -63,7 +67,7 @@ namespace Sentinel.App.Services
                 AttentionRequired: current.AttentionRequired,
                 PreviousAttentionRequired: previous.AttentionRequired,
                 PersistentConditionWasSuppressed: previous.PersistentNotificationSuppressed,
-                PersistentConditionMateriallyChanged: persistentConditionMateriallyChanged,
+                PersistentConditionMateriallyChanged: suppressedPersistentMaterialChange,
                 PowerSourceChanged: current.OnBattery != previous.OnBattery,
                 IdleStateChanged: current.ApplicationIsIdle != previous.ApplicationIsIdle);
 
