@@ -15,7 +15,11 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class AdaptiveDiscoveryCadenceService
     {
-        public AdaptiveDiscoveryDecision Evaluate(SystemSnapshot snapshot, bool applicationIsIdle = false, bool onBattery = false)
+        public AdaptiveDiscoveryDecision Evaluate(
+            SystemSnapshot snapshot,
+            bool applicationIsIdle = false,
+            bool onBattery = false,
+            bool suppressCurrentInvestigation = false)
         {
             ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -28,7 +32,7 @@ namespace Sentinel.App.Services
                     "Critical verified evidence requires immediate continued investigation.");
             }
 
-            if (IsHigh(snapshot))
+            if (IsHigh(snapshot, suppressCurrentInvestigation))
             {
                 return new AdaptiveDiscoveryDecision(
                     DiscoveryPriority.High,
@@ -62,9 +66,11 @@ namespace Sentinel.App.Services
                 DiscoveryPriority.Low,
                 onBattery ? TimeSpan.FromMinutes(1) : TimeSpan.FromSeconds(30),
                 false,
-                onBattery
-                    ? "No verified condition requires attention; Sentinel reduces background cadence while on battery."
-                    : "No verified condition requires attention; Sentinel continues normal low-impact monitoring.");
+                suppressCurrentInvestigation
+                    ? "The active finding is a verified silently monitored persistent condition; Sentinel continues low-impact monitoring for material change."
+                    : onBattery
+                        ? "No verified condition requires attention; Sentinel reduces background cadence while on battery."
+                        : "No verified condition requires attention; Sentinel continues normal low-impact monitoring.");
         }
 
         private static bool IsCritical(SystemSnapshot snapshot)
@@ -81,9 +87,9 @@ namespace Sentinel.App.Services
             return false;
         }
 
-        private static bool IsHigh(SystemSnapshot snapshot)
+        private static bool IsHigh(SystemSnapshot snapshot, bool suppressCurrentInvestigation)
         {
-            if (snapshot.InvestigationRequiresAttention)
+            if (snapshot.InvestigationRequiresAttention && !suppressCurrentInvestigation)
                 return true;
 
             if (snapshot.AutonomousProtectionRequiresUserApproval || snapshot.FlaggedConnectionCount > 0)
