@@ -11,5 +11,6 @@
   <ItemGroup>
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Models\PersistentInvestigationRecord.cs" Link="PersistentInvestigationRecord.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\PersistentInvestigationMemoryService.cs" Link="PersistentInvestigationMemoryService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\PersistentExceptionPresentationService.cs" Link="PersistentExceptionPresentationService.cs" />
   </ItemGroup>
 </Project>
