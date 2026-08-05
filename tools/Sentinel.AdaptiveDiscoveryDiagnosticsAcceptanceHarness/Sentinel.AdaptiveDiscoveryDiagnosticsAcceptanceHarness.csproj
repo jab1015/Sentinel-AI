@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Models/SystemSnapshot.cs" Link="Models/SystemSnapshot.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Services/AdaptiveDiscoveryCadenceService.cs" Link="Services/AdaptiveDiscoveryCadenceService.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Services/LiveAdaptiveDiscoveryScheduler.cs" Link="Services/LiveAdaptiveDiscoveryScheduler.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Services/AdaptiveDiscoveryDiagnosticService.cs" Link="Services/AdaptiveDiscoveryDiagnosticService.cs" />
+  </ItemGroup>
+</Project>
