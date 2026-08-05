@@ -1,4 +1,6 @@
 using Sentinel.App.Services;
+using Kind = Sentinel.App.Services.FriendlyValueSummaryService.ValueActionKind;
+using ValueAction = Sentinel.App.Services.FriendlyValueSummaryService.VerifiedValueAction;
 
 Console.WriteLine("=== Sentinel AI Friendly Value Summary Acceptance ===\n");
 
@@ -10,27 +12,25 @@ void Check(string name, bool condition)
 }
 
 var service = new FriendlyValueSummaryService();
-using Kind = FriendlyValueSummaryService.ValueActionKind;
-using Action = FriendlyValueSummaryService.VerifiedValueAction;
 
 Console.WriteLine("--- Scenario 1: unverified work is never claimed ---");
 var unverified = service.CreateSummary(new[]
 {
-    new Action(Kind.DriveOptimization, Completed: true, Verified: false)
+    new ValueAction(Kind.DriveOptimization, Completed: true, Verified: false)
 });
 Check("Unverified action suppressed", unverified is null);
 
 Console.WriteLine("\n--- Scenario 2: incomplete work is never claimed ---");
 var incomplete = service.CreateSummary(new[]
 {
-    new Action(Kind.DiskCheck, Completed: false, Verified: true)
+    new ValueAction(Kind.DiskCheck, Completed: false, Verified: true)
 });
 Check("Incomplete action suppressed", incomplete is null);
 
 Console.WriteLine("\n--- Scenario 3: one verified maintenance action gets friendly language ---");
 var one = service.CreateSummary(new[]
 {
-    new Action(Kind.DriveOptimization, Completed: true, Verified: true)
+    new ValueAction(Kind.DriveOptimization, Completed: true, Verified: true)
 });
 Check("Single summary created", one is not null);
 Check("Single summary friendly title", one?.Title == "A little housekeeping is done.");
@@ -40,9 +40,9 @@ Check("Verification outcome stated", one?.Message.Contains("checked out successf
 Console.WriteLine("\n--- Scenario 4: multiple verified actions become one readable tune-up summary ---");
 var multiple = service.CreateSummary(new[]
 {
-    new Action(Kind.DriveOptimization, true, true),
-    new Action(Kind.DiskCheck, true, true),
-    new Action(Kind.TemporaryFileCleanup, true, true)
+    new ValueAction(Kind.DriveOptimization, true, true),
+    new ValueAction(Kind.DiskCheck, true, true),
+    new ValueAction(Kind.TemporaryFileCleanup, true, true)
 });
 Check("Multiple summary created", multiple is not null);
 Check("Tune-up title used", multiple?.Title == "I gave your computer a quick tune-up.");
@@ -53,7 +53,7 @@ Check("Cleanup included", multiple?.Message.Contains("temporary files", StringCo
 Console.WriteLine("\n--- Scenario 5: verified repair uses stronger value language without exaggeration ---");
 var repair = service.CreateSummary(new[]
 {
-    new Action(Kind.SystemFileRepair, true, true, ProblemFoundAndResolved: true)
+    new ValueAction(Kind.SystemFileRepair, true, true, ProblemFoundAndResolved: true)
 });
 Check("Repair summary created", repair is not null);
 Check("Repair title used", repair?.Title == "I found something and took care of it.");
@@ -63,9 +63,9 @@ Check("Post-work verification mentioned", repair?.Message.Contains("checked agai
 Console.WriteLine("\n--- Scenario 6: mixed verified and unverified actions only report verified work ---");
 var mixed = service.CreateSummary(new[]
 {
-    new Action(Kind.NetworkRepair, true, true),
-    new Action(Kind.DriverRepair, true, false),
-    new Action(Kind.StartupOptimization, false, true)
+    new ValueAction(Kind.NetworkRepair, true, true),
+    new ValueAction(Kind.DriverRepair, true, false),
+    new ValueAction(Kind.StartupOptimization, false, true)
 });
 Check("Mixed summary created", mixed is not null);
 Check("Verified network work included", mixed?.Message.Contains("network settings", StringComparison.OrdinalIgnoreCase) == true);
@@ -75,8 +75,8 @@ Check("Incomplete startup work excluded", mixed?.Message.Contains("startup", Str
 Console.WriteLine("\n--- Scenario 7: duplicate action types do not spam the user ---");
 var duplicate = service.CreateSummary(new[]
 {
-    new Action(Kind.DiskCheck, true, true),
-    new Action(Kind.DiskCheck, true, true)
+    new ValueAction(Kind.DiskCheck, true, true),
+    new ValueAction(Kind.DiskCheck, true, true)
 });
 Check("Duplicate action summary created", duplicate is not null);
 Check("Duplicate action collapsed", duplicate?.VerifiedActions.Count == 1);
@@ -84,8 +84,8 @@ Check("Duplicate action collapsed", duplicate?.VerifiedActions.Count == 1);
 Console.WriteLine("\n--- Scenario 8: friendly summaries remain nontechnical ---");
 var friendly = service.CreateSummary(new[]
 {
-    new Action(Kind.SecurityRepair, true, true, true),
-    new Action(Kind.TemporaryFileCleanup, true, true)
+    new ValueAction(Kind.SecurityRepair, true, true, true),
+    new ValueAction(Kind.TemporaryFileCleanup, true, true)
 });
 string friendlyText = $"{friendly?.Title} {friendly?.Message}";
 Check("No command-line jargon", !friendlyText.Contains("cmd", StringComparison.OrdinalIgnoreCase));
