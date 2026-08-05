@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Dispatching;
+using Sentinel.App.Models;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
@@ -19,12 +20,14 @@ namespace Sentinel.App
         private readonly InvestigationHistoryService _investigationHistoryService = new();
         private readonly AutomaticOptimizationCoordinator _automaticOptimizationCoordinator = new();
         private readonly IntegratedMaintenanceCoordinator _integratedMaintenanceCoordinator = new();
+        private readonly LivePersistentExceptionCoordinator _livePersistentExceptionCoordinator = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
         private bool _wasAttentionActive;
         private bool _attentionNotificationActive;
         private string _guidanceActionId = string.Empty;
         private string _lastRecordedFingerprint = string.Empty;
+        private PersistentInvestigationRecord? _currentPersistentException;
 
         public MainWindow()
         {
@@ -109,6 +112,9 @@ namespace Sentinel.App
             {
                 await _engine.RefreshAsync();
                 var snapshot = _engine.CurrentSnapshot;
+                LivePersistentExceptionCoordinator.LivePersistentExceptionResult persistentException =
+                    await _livePersistentExceptionCoordinator.EvaluateAsync(snapshot);
+                _currentPersistentException = persistentException.Record;
 
                 CpuText.Text = $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
                 MemoryText.Text = $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
@@ -143,18 +149,45 @@ namespace Sentinel.App
                 GuidanceFixDetailsText.Text = snapshot.GuidanceFixDetails;
                 _guidanceActionId = snapshot.GuidanceActionId;
 
+                if (persistentException.ShowKnownCondition && persistentException.Decision is not null)
+                {
+                    GuidanceTitleText.Text = persistentException.Decision.Title;
+                    GuidanceSeverityText.Text = "Known condition";
+                    GuidanceConfidenceText.Text = $"{persistentException.Record?.ConfidencePercent ?? 0}%";
+                    GuidanceConfidenceLabelText.Text = persistentException.Record?.TrustLevel ?? "Verified investigation memory";
+                    GuidanceEvidenceText.Text = persistentException.Record?.EvidenceSummary ?? persistentException.Decision.Summary;
+                    GuidanceWhatHappenedText.Text = persistentException.Decision.Summary;
+                    GuidanceWhyItMattersText.Text = "Sentinel verified that this exact noncritical condition has no remaining safe repair path at this time.";
+                    GuidanceActionText.Text = persistentException.SuppressNotification
+                        ? "Sentinel is monitoring this exact condition silently and will reopen it if material evidence changes."
+                        : "You may ask Sentinel to monitor this exact condition silently. Monitoring will continue either way.";
+                    GuidanceFixAvailabilityText.Text = "Verified persistent exception";
+                    GuidanceFixDetailsText.Text = "Notification suppression does not disable Discovery or background monitoring.";
+                    _guidanceActionId = persistentException.SuppressNotification ? "resume-persistent-notifications" : "monitor-persistent-silently";
+                }
+
                 bool hasServiceFailure = snapshot.LatestEventSource.Contains("Service Control Manager", StringComparison.OrdinalIgnoreCase) && snapshot.LatestEventMessage.Contains("terminated unexpectedly", StringComparison.OrdinalIgnoreCase);
                 bool isStorageSpacesSmpFinding = snapshot.LatestEventMessage.Contains("Storage Spaces SMP", StringComparison.OrdinalIgnoreCase) || snapshot.GuidanceTitle.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.GuidanceWhatHappened.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.PrimaryFlaggedServiceName.Contains("Storage Spaces", StringComparison.OrdinalIgnoreCase) || snapshot.PrimaryFlaggedServiceName.Contains("SMP", StringComparison.OrdinalIgnoreCase);
                 bool resolvedProcessReview = snapshot.FlaggedProcessCount > 0 && snapshot.GuidanceFixAvailability.Equals("No fix needed", StringComparison.OrdinalIgnoreCase) && snapshot.GuidanceTitle.Contains("no security risk found", StringComparison.OrdinalIgnoreCase);
                 bool memoryRequiresAttention = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
-                bool investigationRequiresAttention = snapshot.InvestigationRequiresAttention;
+                bool investigationRequiresAttention = snapshot.InvestigationRequiresAttention && !persistentException.SuppressNotification;
                 bool hasApprovalAction = snapshot.AutonomousProtectionRequiresUserApproval && !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) && !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) && !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
                 bool requiresAttention = investigationRequiresAttention || hasApprovalAction || memoryRequiresAttention;
 
                 await UpdateInvestigationHistoryAsync(snapshot, investigationRequiresAttention);
                 UpdateBackgroundAttentionState(snapshot, requiresAttention);
 
-                if (memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction)
+                if (persistentException.SuppressNotification)
+                {
+                    GuidanceActionButton.Visibility = Visibility.Collapsed;
+                    IssueSummaryBorder.Visibility = Visibility.Collapsed;
+                    OverallStatusText.Text = "Your computer is healthy.";
+                    AttentionStatusText.Text = "Nothing requires your attention right now.";
+                    MonitoringStatusText.Text = "Sentinel is also monitoring a known noncritical condition silently.";
+                    RiskSummaryText.Text = "A previously investigated noncritical condition is unchanged and remains under background monitoring.";
+                    RecommendationText.Text = "No action is required. Sentinel will notify you if the condition or available repair evidence changes.";
+                }
+                else if (memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction)
                 {
                     _guidanceActionId = "open-task-manager";
                     GuidanceActionButton.Content = "Review memory use";
@@ -168,7 +201,12 @@ namespace Sentinel.App
                 }
                 else
                 {
-                    if (hasApprovalAction)
+                    if (persistentException.ShowKnownCondition && persistentException.CanToggleNotifications)
+                    {
+                        GuidanceActionButton.Content = persistentException.Decision?.ActionLabel ?? "Monitor Silently";
+                        GuidanceActionButton.Visibility = Visibility.Visible;
+                    }
+                    else if (hasApprovalAction)
                     {
                         _guidanceActionId = "approve-remediation";
                         GuidanceActionButton.Content = "Review recommended fix";
@@ -182,11 +220,15 @@ namespace Sentinel.App
                     IssueSummaryBorder.Visibility = (investigationRequiresAttention || hasApprovalAction) ? Visibility.Visible : Visibility.Collapsed;
                     if (investigationRequiresAttention || hasApprovalAction)
                     {
-                        OverallStatusText.Text = "I analyzed your computer and found something that requires attention.";
-                        AttentionStatusText.Text = "I investigated the available evidence and summarized what matters below.";
+                        OverallStatusText.Text = persistentException.ShowKnownCondition
+                            ? "Sentinel recognizes a previously investigated condition."
+                            : "I analyzed your computer and found something that requires attention.";
+                        AttentionStatusText.Text = persistentException.ShowKnownCondition
+                            ? "The condition is unchanged and has no remaining verified safe repair path."
+                            : "I investigated the available evidence and summarized what matters below.";
                         MonitoringStatusText.Text = hasApprovalAction ? "I found a fix that requires your approval before Sentinel can make the change." : "I’ll continue monitoring this condition and your computer.";
-                        RiskSummaryText.Text = snapshot.RiskSummary;
-                        RecommendationText.Text = snapshot.Recommendation;
+                        RiskSummaryText.Text = persistentException.ShowKnownCondition ? "This is a verified persistent noncritical condition." : snapshot.RiskSummary;
+                        RecommendationText.Text = persistentException.ShowKnownCondition ? "Choose Monitor Silently to hide repeated reminders while Sentinel continues watching for meaningful changes." : snapshot.Recommendation;
                     }
                     else if (resolvedProcessReview)
                     {
@@ -275,7 +317,36 @@ namespace Sentinel.App
                 case "open-services": OpenShellTarget("services.msc"); return;
                 case "open-storage": OpenShellTarget("ms-settings:storagesense"); return;
                 case "check-again": await UpdateDashboardAsync(); return;
+                case "monitor-persistent-silently": await SetPersistentNotificationStateAsync(true); return;
+                case "resume-persistent-notifications": await SetPersistentNotificationStateAsync(false); return;
             }
+        }
+
+        private async Task SetPersistentNotificationStateAsync(bool suppress)
+        {
+            if (_currentPersistentException is null) return;
+
+            PersistentInvestigationMemoryService.SuppressionDecision result =
+                await _livePersistentExceptionCoordinator.SetSilentMonitoringAsync(_currentPersistentException, suppress);
+
+            _askSentinelOutcomeRecorder.RecordInvestigation(
+                suppress ? "Known condition monitoring" : "Known condition notifications resumed",
+                result.Message,
+                result.Allowed,
+                $"Investigation: {_currentPersistentException.InvestigationId}; Fingerprint: {_currentPersistentException.Fingerprint}; Monitoring continues: true");
+            UpdateMaintenanceReport();
+
+            ContentDialog dialog = new()
+            {
+                Title = result.Allowed
+                    ? suppress ? "Monitoring silently" : "Notifications resumed"
+                    : "Sentinel cannot change this notification",
+                Content = result.Message,
+                CloseButtonText = "OK",
+                XamlRoot = ((FrameworkElement)Content).XamlRoot
+            };
+            await dialog.ShowAsync();
+            await UpdateDashboardAsync();
         }
 
         private static void OpenShellTarget(string target)
