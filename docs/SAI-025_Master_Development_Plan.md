@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 5.0
+Version: 5.1
 
-Status: Active — Sentinel Discovery 2.0 Complete and Live Validated
+Status: Active — Discovery 2.0 and Adaptive Continuous Discovery Complete
 
 Last Updated: 2026-08-05
 
@@ -18,7 +18,7 @@ This document is the authoritative master engineering plan for Sentinel AI.
 
 Sentinel AI version 1.0.20.0 remains complete for its planned implementation and runtime acceptance. Discovery Acceptance passed 8 of 8 scenarios, Quarantine Acceptance passed 6 of 6 scenarios, and the installed MSIX package passed startup-to-tray validation.
 
-Discovery 2.0 is a post-1.0 product evolution and does not invalidate the accepted 1.0 baseline.
+Discovery 2.0 and Adaptive Continuous Discovery are post-1.0 product evolutions and do not invalidate the accepted 1.0 baseline.
 
 # Product-Wide Sentinel Discovery Rule
 
@@ -68,93 +68,68 @@ Implemented promotion of completed verified investigations into reusable trusted
 
 Acceptance: **PASS — 8/8 trusted knowledge scenarios.**
 
-# Live Integration Validation — PASS
+# Discovery 2.0 Live Integration Validation — PASS
 
-Discovery 2.0 was validated end-to-end against a real persistent Intel(R) Management Engine Interface Code 10 condition.
+Discovery 2.0 was validated end-to-end against a real persistent Intel(R) Management Engine Interface Code 10 condition. Sentinel completed authoritative investigation, determined no remaining verified safe repair path existed, classified the condition as Persistent Noncritical, aligned Ask Sentinel with the Investigation Summary, offered Monitor Silently only after eligibility was established, and returned the dashboard to a quiet healthy presentation while preserving background monitoring and investigation memory.
 
-The first live validation exposed an integration gap: component acceptance passed, but the real driver workflow remained in a repair/manual state and the dashboard continued presenting the condition as requiring attention. Sentinel was corrected so authoritative driver investigation can close the repair ledger when no verified installable repair remains and classify the exact condition as Persistent Noncritical when appropriate.
+# Adaptive Continuous Discovery — 4/4 COMPLETE
 
-Final live validation confirmed:
+Adaptive Continuous Discovery makes Sentinel's continuous monitoring cadence responsive to current risk and system conditions rather than relying on one fixed polling interval.
 
-- Sentinel completed the available Windows Update and authoritative manufacturer-source investigation.
-- Sentinel found no remaining verified safe installable repair path for the exact Intel(R) Management Engine Interface Code 10 condition.
-- The condition was classified as a verified persistent noncritical condition rather than falsely reported as repaired or healthy.
-- The dashboard recognized the condition as previously investigated.
-- Ask Sentinel reused the persistent investigation conclusion and reported the same result as the Investigation Summary.
-- Ask Sentinel surfaced confidence of 92% and authoritative Microsoft/computer-manufacturer trust.
-- Monitor Silently became available only after the verified investigation reached the eligible persistent-noncritical state.
-- After Monitor Silently was selected, the primary dashboard returned to **Your computer is healthy / Nothing requires your attention right now** while explicitly stating that Sentinel is monitoring a known noncritical condition silently.
-- The condition remained in Sentinel's investigation memory and monitoring pipeline.
-- Notification suppression did not disable Discovery or background monitoring.
-- The design requires material evidence change to invalidate the prior conclusion and reopen investigation.
+## Phase 1 of 4 — Adaptive Cadence Policy — COMPLETE
 
-This live validation is the release-quality proof that the Discovery 2.0 persistent-exception workflow functions through the actual Sentinel UI and investigation path, not only through isolated acceptance harnesses.
+Implemented Critical, High, Medium, and Low Discovery priorities; urgent recheck intervals; battery-aware throttling; idle-system deep-verification allowance; and a governing rule that adaptive scheduling never disables monitoring.
 
-# Exhaustive Remediation Rule
+Acceptance: **PASS — 7/7 scenarios.**
 
-Before a noncritical finding can be offered for silent monitoring, Sentinel must evaluate all applicable safe repair paths, such as:
+Verified critical conditions receive immediate cadence, high-priority findings recheck quickly, medium findings use normal cadence, battery mode reduces noncritical polling, idle systems can permit deeper verification, quiet battery systems use lowest-impact cadence, and escalation overrides ordinary attention priority.
 
-- Windows Update
-- Microsoft Update Catalog
-- Computer-manufacturer support
-- Verified component-manufacturer support
-- Driver reinstall or rollback
-- Device reset
-- Service/dependency repair
-- Verified configuration repair
-- SFC/DISM when applicable
-- BIOS/firmware verification
-- Hardware verification
+## Phase 2 of 4 — Live Monitoring Loop Integration — COMPLETE
 
-Each path must be recorded as succeeded, failed, unavailable, not applicable, user declined, or awaiting approval.
+Integrated adaptive cadence decisions into the live dashboard/Discovery scheduling path. Critical conditions can tighten refreshes to approximately 2 seconds, active attention conditions use approximately 5 seconds, quiet systems back off, and silently monitored persistent findings do not force high-frequency polling by themselves.
 
-# Investigation Lifecycle
+Critical and security evidence continues to override suppression and receives urgent scheduling.
 
-Every investigation must end in one defined state:
+## Phase 3 of 4 — Live Adaptive Scheduling Acceptance — COMPLETE
 
-- Resolved
-- Requires User Approval
-- Requires Manual Repair
-- Persistent Noncritical
-- Critical
-- Investigation Incomplete
+Implemented and executed live scheduler acceptance coverage.
 
-A persistent noncritical state is not equivalent to healthy. It means Sentinel has verified the condition, exhausted safe remediation, determined the remaining risk is acceptable for silent monitoring, and will continue watching for change.
+Acceptance: **PASS — 7/7 scenarios.**
 
-# Discovery 2.0 Acceptance Record
+Verified quiet-system backoff to 30 seconds, active-attention 5-second cadence, critical 2-second cadence, low-impact scheduling for silently monitored persistent findings, critical override of persistent suppression, avoidance of unnecessary timer resets, and one-minute quiet-system cadence on battery while monitoring remains enabled.
 
-Discovery 2.0 acceptance and live validation have verified:
+## Phase 4 of 4 — Adaptive Diagnostics and Final Acceptance — COMPLETE
 
-- unchanged investigations can reuse verified memory;
-- suppression is rejected for incomplete investigations;
-- critical findings cannot be suppressed;
-- exhausted noncritical findings can enter silent monitoring;
-- monitoring continues while notifications are suppressed;
-- exact matching prevents unrelated findings from reusing exceptions;
-- material evidence changes invalidate prior conclusions;
-- notifications can be resumed without disabling monitoring;
-- healthy state remains quiet;
-- related evidence is correlated without unsupported root-cause claims;
-- unrelated evidence remains independent;
-- critical evidence retains investigation priority;
-- completed verified investigations can become trusted knowledge;
-- low-confidence, incomplete, and critical conclusions are blocked from trusted reuse;
-- expired or materially changed knowledge requires fresh investigation/revalidation;
-- the real driver-investigation path can reach Persistent Noncritical after verified remediation exhaustion;
-- Ask Sentinel and the dashboard present the same persistent-investigation conclusion;
-- Monitor Silently returns the dashboard to a quiet healthy presentation while preserving explicit silent-monitoring status.
+Implemented low-noise adaptive cadence diagnostics so meaningful scheduling transitions can be explained without flooding Activity history. Diagnostics record why Sentinel speeds up or slows down, preserve explicit monitoring-enabled state, explain silent persistent monitoring, and suppress duplicate unchanged-cadence events.
+
+Acceptance: **PASS — 6/6 scenarios.**
+
+Verified initial cadence event recording, duplicate-event suppression, 5-second attention transition explanation, 2-second critical transition explanation, continued-monitoring explanation for silent persistent conditions, and diagnostics that never imply monitoring has been disabled.
+
+# Adaptive Continuous Discovery Operating Policy
+
+Sentinel must adapt monitoring effort to risk while preserving continuous protection:
+
+- Critical verified evidence receives the fastest supported recheck cadence.
+- Active attention findings receive elevated cadence.
+- Moderate evidence receives normal cadence.
+- Quiet systems back off to reduce unnecessary work.
+- Battery operation reduces noncritical polling impact.
+- Idle systems may permit deeper background verification.
+- Silently monitored persistent noncritical conditions remain monitored without forcing high-frequency notification-oriented polling.
+- Critical evidence always overrides silent-monitoring cadence.
+- An adaptive cadence decision must never disable monitoring.
+- Diagnostic history should record meaningful cadence transitions, not repetitive unchanged state.
 
 # Current Progress
 
-- Version 1.0.20.0 baseline: **Complete and accepted**
-- Discovery 2.0 planning: **Complete**
-- Phase 1 — Persistent Investigation Intelligence: **COMPLETE — PASS**
-- Phase 2 — Verified Persistent Exceptions: **COMPLETE — PASS**
-- Phase 3 — Live Persistent Exception Integration: **COMPLETE — PASS + LIVE VALIDATION**
-- Phase 4 — Cross-Investigation Correlation: **COMPLETE — PASS**
-- Phase 5 — Trusted Knowledge Engine: **COMPLETE — PASS**
-- Live persistent-condition workflow: **PASS**
+- Version 1.0.20.0 baseline: **COMPLETE AND ACCEPTED**
 - Sentinel Discovery 2.0: **5/5 COMPLETE — END-TO-END LIVE VALIDATED**
+- Adaptive Continuous Discovery Phase 1 — Cadence Policy: **COMPLETE — 7/7 PASS**
+- Adaptive Continuous Discovery Phase 2 — Live Loop Integration: **COMPLETE — BUILD PASS**
+- Adaptive Continuous Discovery Phase 3 — Live Scheduling Acceptance: **COMPLETE — 7/7 PASS**
+- Adaptive Continuous Discovery Phase 4 — Diagnostics/Final Acceptance: **COMPLETE — 6/6 PASS**
+- Adaptive Continuous Discovery: **4/4 COMPLETE**
 
 ---
 
