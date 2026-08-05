@@ -11,11 +11,6 @@ using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Converts verified driver-repair outcomes into durable investigation memory.
-    /// A driver condition is not eligible for silent monitoring while an official
-    /// user-action repair path remains open or any required repair path is unverified.
-    /// </summary>
     public sealed class DriverPersistentInvestigationCoordinator
     {
         private static readonly string[] RequiredRepairPaths =
@@ -64,9 +59,7 @@ namespace Sentinel.App.Services
 
             AddOrReplace(attempts, new RepairAttemptRecord(
                 "Windows Update",
-                plan.Available
-                    ? RepairAttemptOutcome.AwaitingApproval
-                    : RepairAttemptOutcome.Unavailable,
+                plan.Available ? RepairAttemptOutcome.AwaitingApproval : RepairAttemptOutcome.Unavailable,
                 now,
                 plan.Available
                     ? "Windows Update offered a compatible signed driver and is awaiting approval."
@@ -74,9 +67,7 @@ namespace Sentinel.App.Services
 
             AddOrReplace(attempts, new RepairAttemptRecord(
                 "Microsoft Update Catalog",
-                plan.Available
-                    ? RepairAttemptOutcome.NotApplicable
-                    : RepairAttemptOutcome.Unavailable,
+                plan.Available ? RepairAttemptOutcome.NotApplicable : RepairAttemptOutcome.Unavailable,
                 now,
                 plan.Available
                     ? "A verified Windows Update package was found, so a separate catalog package was not required."
@@ -86,13 +77,30 @@ namespace Sentinel.App.Services
             {
                 AddOrReplace(attempts, new RepairAttemptRecord(
                     "Computer manufacturer support",
-                    plan.UserActionRequired
-                        ? RepairAttemptOutcome.AwaitingApproval
-                        : RepairAttemptOutcome.Unavailable,
+                    plan.Available ? RepairAttemptOutcome.AwaitingApproval : RepairAttemptOutcome.Unavailable,
                     now,
-                    string.IsNullOrWhiteSpace(plan.Source)
-                        ? plan.Summary
-                        : $"{plan.Source}: {plan.Summary}"));
+                    string.IsNullOrWhiteSpace(plan.Source) ? plan.Summary : $"{plan.Source}: {plan.Summary}"));
+
+                if (!plan.Available && !plan.AutomaticInstallationVerified)
+                {
+                    AddOrReplace(attempts, new RepairAttemptRecord(
+                        "Driver reinstall",
+                        RepairAttemptOutcome.NotApplicable,
+                        now,
+                        "No verified replacement package was found, so repeating the same installed package is not treated as a verified repair."));
+
+                    AddOrReplace(attempts, new RepairAttemptRecord(
+                        "Driver rollback",
+                        RepairAttemptOutcome.NotApplicable,
+                        now,
+                        "No verified compatible rollback package was identified for this exact condition."));
+
+                    AddOrReplace(attempts, new RepairAttemptRecord(
+                        "BIOS or firmware verification",
+                        RepairAttemptOutcome.NotApplicable,
+                        now,
+                        "The authoritative research result did not identify a verified firmware remediation for this exact condition."));
+                }
             }
 
             bool allRequiredPathsClosed = RequiredRepairPaths.All(path =>
@@ -104,20 +112,30 @@ namespace Sentinel.App.Services
                         or RepairAttemptOutcome.NotApplicable
                         or RepairAttemptOutcome.UserDeclined));
 
+            bool noVerifiedRepairRemains =
+                plan.ResearchPerformed &&
+                !plan.Available &&
+                !plan.AutomaticInstallationVerified &&
+                allRequiredPathsClosed;
+
             InvestigationLifecycleState state = plan.Available
                 ? InvestigationLifecycleState.RequiresUserApproval
-                : plan.UserActionRequired
-                    ? InvestigationLifecycleState.RequiresManualRepair
-                    : allRequiredPathsClosed
-                        ? InvestigationLifecycleState.PersistentNoncritical
+                : noVerifiedRepairRemains
+                    ? InvestigationLifecycleState.PersistentNoncritical
+                    : plan.UserActionRequired
+                        ? InvestigationLifecycleState.RequiresManualRepair
                         : InvestigationLifecycleState.InvestigationIncomplete;
+
+            string evidenceSummary = state == InvestigationLifecycleState.PersistentNoncritical
+                ? "Sentinel completed Windows Update and authoritative driver research and did not verify a safe installable repair for this exact condition. No verified remediation path is currently available. Sentinel can keep monitoring it silently and will reopen the investigation if material evidence changes."
+                : plan.Summary;
 
             var record = new PersistentInvestigationRecord(
                 existing?.InvestigationId ?? Guid.NewGuid(),
                 fingerprint,
                 "Driver",
                 string.IsNullOrWhiteSpace(deviceName) ? "Windows driver condition" : deviceName.Trim(),
-                plan.Summary,
+                evidenceSummary,
                 plan.ConfidencePercent,
                 string.IsNullOrWhiteSpace(plan.TrustStatement) ? "Verified local evidence" : plan.TrustStatement,
                 state == InvestigationLifecycleState.PersistentNoncritical ? "Persistent noncritical" : "Attention",
