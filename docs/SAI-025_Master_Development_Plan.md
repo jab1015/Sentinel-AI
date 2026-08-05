@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.9
+Version: 5.0
 
-Status: Active — Sentinel Discovery 2.0 Complete
+Status: Active — Sentinel Discovery 2.0 Complete and Live Validated
 
 Last Updated: 2026-08-05
 
@@ -36,7 +36,7 @@ Ask Sentinel is the explanation and follow-up interface, not the primary discove
 
 A user cannot force Sentinel to ignore a critical, high-risk, actively exploitable, data-loss, malware, active-attack, or mortal hardware-failure condition.
 
-# Sentinel Discovery 2.0 — COMPLETE
+# Sentinel Discovery 2.0 — COMPLETE AND LIVE VALIDATED
 
 ## Phase 1 of 5 — Persistent Investigation Intelligence — COMPLETE
 
@@ -54,7 +54,7 @@ Acceptance: **PASS — persistent investigation/presentation suite 10/10.**
 
 Integrated persistent investigation memory with live driver findings and dashboard behavior. Exact matching prevents unrelated findings from inheriting an exception. Healthy state remains quiet. Live suppression preserves monitoring and supports notification restoration.
 
-Acceptance: **PASS — 5/5 live persistent exception scenarios.**
+Acceptance: **PASS — 5/5 live persistent exception scenarios plus live production-path validation.**
 
 ## Phase 4 of 5 — Cross-Investigation Correlation — COMPLETE
 
@@ -67,6 +67,28 @@ Acceptance: **PASS — 7/7 cross-investigation correlation scenarios.**
 Implemented promotion of completed verified investigations into reusable trusted knowledge with confidence gating, trust requirements, exact evidence compatibility, expiration/revalidation, material-change invalidation, and critical-evidence override.
 
 Acceptance: **PASS — 8/8 trusted knowledge scenarios.**
+
+# Live Integration Validation — PASS
+
+Discovery 2.0 was validated end-to-end against a real persistent Intel(R) Management Engine Interface Code 10 condition.
+
+The first live validation exposed an integration gap: component acceptance passed, but the real driver workflow remained in a repair/manual state and the dashboard continued presenting the condition as requiring attention. Sentinel was corrected so authoritative driver investigation can close the repair ledger when no verified installable repair remains and classify the exact condition as Persistent Noncritical when appropriate.
+
+Final live validation confirmed:
+
+- Sentinel completed the available Windows Update and authoritative manufacturer-source investigation.
+- Sentinel found no remaining verified safe installable repair path for the exact Intel(R) Management Engine Interface Code 10 condition.
+- The condition was classified as a verified persistent noncritical condition rather than falsely reported as repaired or healthy.
+- The dashboard recognized the condition as previously investigated.
+- Ask Sentinel reused the persistent investigation conclusion and reported the same result as the Investigation Summary.
+- Ask Sentinel surfaced confidence of 92% and authoritative Microsoft/computer-manufacturer trust.
+- Monitor Silently became available only after the verified investigation reached the eligible persistent-noncritical state.
+- After Monitor Silently was selected, the primary dashboard returned to **Your computer is healthy / Nothing requires your attention right now** while explicitly stating that Sentinel is monitoring a known noncritical condition silently.
+- The condition remained in Sentinel's investigation memory and monitoring pipeline.
+- Notification suppression did not disable Discovery or background monitoring.
+- The design requires material evidence change to invalidate the prior conclusion and reopen investigation.
+
+This live validation is the release-quality proof that the Discovery 2.0 persistent-exception workflow functions through the actual Sentinel UI and investigation path, not only through isolated acceptance harnesses.
 
 # Exhaustive Remediation Rule
 
@@ -101,7 +123,7 @@ A persistent noncritical state is not equivalent to healthy. It means Sentinel h
 
 # Discovery 2.0 Acceptance Record
 
-Discovery 2.0 acceptance has verified:
+Discovery 2.0 acceptance and live validation have verified:
 
 - unchanged investigations can reuse verified memory;
 - suppression is rejected for incomplete investigations;
@@ -117,7 +139,10 @@ Discovery 2.0 acceptance has verified:
 - critical evidence retains investigation priority;
 - completed verified investigations can become trusted knowledge;
 - low-confidence, incomplete, and critical conclusions are blocked from trusted reuse;
-- expired or materially changed knowledge requires fresh investigation/revalidation.
+- expired or materially changed knowledge requires fresh investigation/revalidation;
+- the real driver-investigation path can reach Persistent Noncritical after verified remediation exhaustion;
+- Ask Sentinel and the dashboard present the same persistent-investigation conclusion;
+- Monitor Silently returns the dashboard to a quiet healthy presentation while preserving explicit silent-monitoring status.
 
 # Current Progress
 
@@ -125,10 +150,11 @@ Discovery 2.0 acceptance has verified:
 - Discovery 2.0 planning: **Complete**
 - Phase 1 — Persistent Investigation Intelligence: **COMPLETE — PASS**
 - Phase 2 — Verified Persistent Exceptions: **COMPLETE — PASS**
-- Phase 3 — Live Persistent Exception Integration: **COMPLETE — PASS**
+- Phase 3 — Live Persistent Exception Integration: **COMPLETE — PASS + LIVE VALIDATION**
 - Phase 4 — Cross-Investigation Correlation: **COMPLETE — PASS**
 - Phase 5 — Trusted Knowledge Engine: **COMPLETE — PASS**
-- Sentinel Discovery 2.0: **5/5 COMPLETE**
+- Live persistent-condition workflow: **PASS**
+- Sentinel Discovery 2.0: **5/5 COMPLETE — END-TO-END LIVE VALIDATED**
 
 ---
 
