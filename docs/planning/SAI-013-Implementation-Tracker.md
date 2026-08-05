@@ -1,7 +1,7 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 6.2  
-**Status:** Active — Discovery 2.0 and Adaptive Continuous Discovery Complete  
+**Version:** 6.3  
+**Status:** Active — Discovery 2.0, Adaptive Continuous Discovery, and Event-Driven Discovery Complete  
 **Last Updated:** 2026-08-05  
 **Production Branch:** `main`
 
@@ -16,132 +16,92 @@ Sentinel AI version 1.0.20.0 remains complete and accepted for its original plan
 
 ## Completed Milestone — Discovery 2.0
 
-### Phase 1 of 5 — Persistent Investigation Intelligence
-**Status: COMPLETE — PASS**
-
-- [x] Persistent investigation-memory model and durable storage.
-- [x] Stable evidence fingerprint/invalidation state.
-- [x] Root cause, evidence, confidence/trust, risk, repair attempts, outcome, and last verification.
-- [x] Investigation lifecycle states and explicit invalidation conditions.
-- [x] Reuse unchanged verified conclusions.
-- [x] Prevent suppression of incomplete and critical investigations.
-- [x] Preserve monitoring during notification suppression.
-
-Acceptance: **6/6 PASS; expanded presentation-policy suite 10/10 PASS.**
-
-### Phase 2 of 5 — Verified Persistent Exceptions
-**Status: COMPLETE — PASS**
-
-- [x] Exhausted-remediation requirement.
-- [x] Critical/noncritical suppression policy.
-- [x] Monitor Silently / Resume Notifications.
-- [x] Monitoring remains active during suppression.
-- [x] Material evidence change invalidates prior conclusion.
-
-Acceptance: **10/10 PASS.**
-
-### Phase 3 of 5 — Live Persistent Exception Integration
-**Status: COMPLETE — PASS + LIVE VALIDATED**
-
-- [x] Live driver finding matching.
-- [x] Persistent exception presentation.
-- [x] Ask Sentinel persistent-memory integration.
-- [x] Real driver lifecycle reaches Persistent Noncritical only after remediation exhaustion.
-- [x] Monitor Silently validated through actual dashboard.
-
-Harness: **5/5 PASS.** Live Intel(R) Management Engine Interface Code 10 workflow: **PASS.**
-
-### Phase 4 of 5 — Cross-Investigation Correlation
-**Status: COMPLETE — PASS**
-
-- [x] Process/network correlation.
-- [x] Service/Event Log correlation.
-- [x] Driver/Event Log correlation.
-- [x] Independent unrelated investigations preserved.
-- [x] Critical evidence priority preserved.
-- [x] Unsupported root-cause claims prevented.
-
-Acceptance: **7/7 PASS.**
-
-### Phase 5 of 5 — Trusted Knowledge Engine
-**Status: COMPLETE — PASS**
-
-- [x] Trusted knowledge model and promotion.
-- [x] Confidence/trust gating.
-- [x] Incomplete, critical, and low-confidence promotion blocked.
-- [x] Exact current-evidence matching.
-- [x] Material-change invalidation and expiration/revalidation.
-- [x] Current critical evidence forces direct investigation.
-
-Acceptance: **8/8 PASS.**
+- Phase 1 — Persistent Investigation Intelligence: **COMPLETE — PASS**
+- Phase 2 — Verified Persistent Exceptions: **COMPLETE — PASS**
+- Phase 3 — Live Persistent Exception Integration: **COMPLETE — PASS + LIVE VALIDATED**
+- Phase 4 — Cross-Investigation Correlation: **COMPLETE — 7/7 PASS**
+- Phase 5 — Trusted Knowledge Engine: **COMPLETE — 8/8 PASS**
 
 **Discovery 2.0: 5/5 COMPLETE — END-TO-END LIVE VALIDATED.**
 
 ## Completed Milestone — Adaptive Continuous Discovery
 
-### Phase 1 of 4 — Adaptive Cadence Policy
+- Phase 1 — Adaptive Cadence Policy: **COMPLETE — 7/7 PASS**
+- Phase 2 — Live Monitoring Loop Integration: **COMPLETE — BUILD PASS**
+- Phase 3 — Live Adaptive Scheduling Acceptance: **COMPLETE — 7/7 PASS**
+- Phase 4 — Diagnostics and Final Acceptance: **COMPLETE — 6/6 PASS**
+
+**Adaptive Continuous Discovery: 4/4 COMPLETE.**
+
+## Completed Milestone — Event-Driven Discovery
+
+### Phase 1 of 4 — Material Change Detection
 **Status: COMPLETE — PASS**
 
-- [x] Add Critical / High / Medium / Low Discovery priority model.
-- [x] Add risk-sensitive recommended intervals.
-- [x] Add battery-aware noncritical throttling.
-- [x] Add idle-system deeper-verification allowance.
-- [x] Preserve monitoring under every cadence decision.
-- [x] Add adaptive policy acceptance harness.
+- [x] Detect new critical evidence.
+- [x] Detect Defender/Firewall security-posture changes.
+- [x] Detect evidence-fingerprint changes.
+- [x] Detect material change to silently monitored persistent conditions.
+- [x] Detect attention-state transitions.
+- [x] Detect power/idle operating-context changes.
+- [x] Keep unchanged evidence quiet.
+- [x] Distinguish urgent recheck from cadence-only recalculation.
 
-Acceptance: **7/7 PASS.**
+Acceptance: **8/8 PASS.**
 
-### Phase 2 of 4 — Live Monitoring Loop Integration
-**Status: COMPLETE — BUILD PASS**
-
-- [x] Wire adaptive cadence into live monitoring/dashboard scheduling.
-- [x] Allow critical conditions to tighten to approximately 2 seconds.
-- [x] Keep active-attention cadence at approximately 5 seconds.
-- [x] Back off quiet-system cadence.
-- [x] Prevent silently monitored persistent findings from forcing high-frequency polling.
-- [x] Preserve critical/security override.
-
-Build: **PASS.**
-
-### Phase 3 of 4 — Live Adaptive Scheduling Acceptance
+### Phase 2 of 4 — Live State Coordinator
 **Status: COMPLETE — PASS**
 
-- [x] Add LiveAdaptiveDiscoveryScheduler.
-- [x] Verify quiet-system 30-second cadence.
-- [x] Verify attention 5-second cadence.
-- [x] Verify critical 2-second cadence.
-- [x] Verify silent persistent condition remains low-impact and monitored.
-- [x] Verify critical override of suppression.
-- [x] Avoid unnecessary timer reset when interval is unchanged.
-- [x] Verify quiet battery cadence of one minute while monitoring remains enabled.
+- [x] Persist previous live Discovery state for comparison.
+- [x] Compare evidence fingerprint across observations.
+- [x] Compare Defender and Firewall posture.
+- [x] Compare critical and attention state.
+- [x] Compare persistent suppression/material-change state.
+- [x] Compare power and idle context.
+- [x] Preserve specific security classification when security posture changes.
+- [x] Avoid false event on initial state and unchanged snapshots.
 
-Acceptance: **7/7 PASS.**
+Acceptance: **8/8 PASS.**
+
+### Phase 3 of 4 — Live Runtime Integration
+**Status: COMPLETE — BUILD PASS + ACCEPTANCE PASS**
+
+- [x] Feed live snapshots into Event-Driven Discovery evaluation.
+- [x] Request immediate confirmation refresh for urgent material changes.
+- [x] Preserve Adaptive Continuous Discovery cadence for unchanged evidence.
+- [x] Prevent recursive confirmation-refresh loops.
+- [x] Reopen silently monitored persistent conditions on material evidence change.
+- [x] Interrupt ordinary cadence for security-posture transitions.
+- [x] Recalculate nonurgent power/idle changes without unnecessary immediate refresh.
+- [x] Recalculate attention clearing without false urgency.
+
+Build: **PASS.** Runtime acceptance: **8/8 PASS.**
 
 ### Phase 4 of 4 — Diagnostics and Final Acceptance
 **Status: COMPLETE — PASS**
 
-- [x] Add low-noise adaptive cadence diagnostic service.
-- [x] Record meaningful initial/changed cadence events.
-- [x] Suppress duplicate unchanged-cadence diagnostics.
-- [x] Explain faster attention and critical transitions.
-- [x] Explain continued monitoring for silent persistent conditions.
+- [x] Suppress diagnostics for unchanged evidence.
+- [x] Explain immediate recheck on fingerprint change.
+- [x] Suppress duplicate identical event diagnostics.
+- [x] Preserve specific security-event title.
+- [x] Explain reopening of silently monitored persistent conditions.
+- [x] Explain nonurgent operating-context recalculation.
 - [x] Ensure diagnostics never imply monitoring is disabled.
-- [x] Add final diagnostics acceptance harness.
 
-Acceptance: **6/6 PASS.**
+Acceptance: **7/7 PASS.**
 
-## Adaptive Continuous Discovery Completion Summary
+## Event-Driven Discovery Completion Summary
 
-- Phase 1 — **COMPLETE — 7/7 PASS**
-- Phase 2 — **COMPLETE — BUILD PASS**
-- Phase 3 — **COMPLETE — 7/7 PASS**
-- Phase 4 — **COMPLETE — 6/6 PASS**
+- Phase 1 — **COMPLETE — 8/8 PASS**
+- Phase 2 — **COMPLETE — 8/8 PASS**
+- Phase 3 — **COMPLETE — BUILD PASS + 8/8 PASS**
+- Phase 4 — **COMPLETE — 7/7 PASS**
 
-**Adaptive Continuous Discovery: 4/4 COMPLETE.**
+**Event-Driven Discovery: 4/4 COMPLETE.**
 
-## Governing Runtime Rule
+## Governing Runtime Rules
 
-Adaptive scheduling may change how frequently Sentinel rechecks evidence, but it must never disable monitoring. Critical evidence always receives urgent priority, including when a prior noncritical condition is being monitored silently.
+Adaptive scheduling may change how frequently Sentinel rechecks evidence, but it must never disable monitoring. Event-Driven Discovery may interrupt that cadence when material evidence changes. Critical/security evidence and materially changed persistent conditions receive immediate re-evaluation. Unchanged evidence remains quiet and confirmation refreshes must not create recursive loops.
 
 ## Parallel Release Installer Status
 
