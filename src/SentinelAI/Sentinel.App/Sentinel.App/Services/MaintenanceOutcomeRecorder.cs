@@ -17,6 +17,26 @@ namespace Sentinel.App.Services
             Record("Network", result.Action.ToString(), result.Summary, result.Attempted, result.WindowsReportedSuccess, result.Verified, false, CombineTechnicalDetail(result.ExecutionOutput, result.ExecutionError));
         }
 
+        public void Record(StorageOptimizationExecutionResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+            string action = result.Action == StorageOptimizationAction.Retrim ? "Drive retrim" : "Drive defragmentation";
+            Record("Optimization", action, result.Summary, result.Attempted, result.WindowsReportedSuccess, result.Verified, false, CombineTechnicalDetail(result.ExecutionOutput, result.ExecutionError));
+        }
+
+        public void Record(WindowsServiceRepairExecutionResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+            string action = string.IsNullOrWhiteSpace(result.DisplayName) ? "Windows service repair" : $"Restore {result.DisplayName}";
+            Record("Automatic Repair", action, result.Summary, result.Attempted, result.WindowsReportedSuccess, result.Verified, false, CombineTechnicalDetail(result.CommandOutput, result.CommandError));
+        }
+
+        public void Record(OptimizationExecutionResult result)
+        {
+            ArgumentNullException.ThrowIfNull(result);
+            Record("Optimization", "Temporary file cleanup", result.Summary, result.Attempted, result.Succeeded, result.VerificationPassed, false, result.DiagnosticSummary);
+        }
+
         public void Record(PowerPlanOptimizationExecutionResult result)
         {
             ArgumentNullException.ThrowIfNull(result);
