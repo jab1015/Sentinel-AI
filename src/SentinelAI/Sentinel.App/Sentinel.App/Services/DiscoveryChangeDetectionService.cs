@@ -19,19 +19,23 @@ namespace Sentinel.App.Services
         {
             ArgumentNullException.ThrowIfNull(input);
 
-            if (input.CriticalEvidencePresent && !input.PreviousCriticalEvidencePresent)
-            {
-                return Changed(
-                    ChangeKind.CriticalEvidenceAppeared,
-                    "New critical evidence appeared and requires immediate Discovery re-evaluation.",
-                    forceImmediateRecheck: true);
-            }
-
+            // Preserve the most specific evidence classification first. A Defender
+            // or Firewall transition can also make the overall state critical, but
+            // the event kind should remain SecurityPostureChanged so downstream
+            // diagnostics and investigation routing know exactly what changed.
             if (input.SecurityPostureChanged)
             {
                 return Changed(
                     ChangeKind.SecurityPostureChanged,
                     "Security posture changed and must be re-evaluated immediately.",
+                    forceImmediateRecheck: true);
+            }
+
+            if (input.CriticalEvidencePresent && !input.PreviousCriticalEvidencePresent)
+            {
+                return Changed(
+                    ChangeKind.CriticalEvidenceAppeared,
+                    "New critical evidence appeared and requires immediate Discovery re-evaluation.",
                     forceImmediateRecheck: true);
             }
 
