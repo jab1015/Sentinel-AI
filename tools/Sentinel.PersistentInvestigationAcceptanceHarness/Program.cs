@@ -8,6 +8,7 @@ string root = Path.Combine(Path.GetTempPath(), "SentinelAI-PersistentInvestigati
 Directory.CreateDirectory(root);
 string store = Path.Combine(root, "investigations.json");
 var service = new PersistentInvestigationMemoryService(store);
+var presentation = new PersistentExceptionPresentationService();
 
 int failures = 0;
 
@@ -106,6 +107,31 @@ Console.WriteLine("--- Scenario 6: notifications can be resumed without disablin
 var resumed = await service.SetSilentMonitoringAsync(persistent.Fingerprint, false, string.Empty);
 Check("Resume accepted", resumed.Allowed);
 Check("Notifications restored", resumed.Record?.NotificationsSuppressed == false);
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 7: incomplete finding remains active in presentation policy ---");
+var incompletePresentation = presentation.Evaluate(incomplete);
+Check("Incomplete finding remains active", incompletePresentation.ShowAsActiveFinding && !incompletePresentation.SuppressNotification);
+Check("Monitoring remains enabled", incompletePresentation.ContinueMonitoring);
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 8: completed condition offers silent monitoring before suppression ---");
+var knownPresentation = presentation.Evaluate(persistent);
+Check("Known condition shown", knownPresentation.ShowKnownCondition && !knownPresentation.ShowAsActiveFinding);
+Check("Silent monitoring action offered", knownPresentation.ActionLabel == "Monitor Silently");
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 9: suppressed condition is hidden but still monitored ---");
+var suppressedPresentation = presentation.Evaluate(accepted.Record);
+Check("Notification hidden", suppressedPresentation.SuppressNotification && !suppressedPresentation.ShowAsActiveFinding);
+Check("Background monitoring continues", suppressedPresentation.ContinueMonitoring);
+Check("Resume action offered", suppressedPresentation.ActionLabel == "Resume Notifications");
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 10: critical presentation can never be hidden ---");
+var criticalPresentation = presentation.Evaluate(critical);
+Check("Critical condition remains active", criticalPresentation.ShowAsActiveFinding);
+Check("Critical notification not suppressed", !criticalPresentation.SuppressNotification);
 Console.WriteLine();
 
 try { Directory.Delete(root, recursive: true); } catch { }
