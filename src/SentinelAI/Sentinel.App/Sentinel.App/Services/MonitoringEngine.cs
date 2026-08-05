@@ -22,6 +22,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan ScheduledTaskRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ActiveConnectionRefreshInterval = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan DriverHealthRefreshInterval = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan WindowsHealthRefreshInterval = TimeSpan.FromMinutes(5);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -37,6 +38,7 @@ namespace Sentinel.App.Services
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
         private readonly DriverHealthEvidenceProvider _driverHealthEvidenceProvider = new();
+        private readonly WindowsHealthEvidenceProvider _windowsHealthEvidenceProvider = new();
         private readonly ConnectionIntelligenceEngine _connectionIntelligenceEngine = new();
         private readonly SpywareCorrelationEngine _spywareCorrelationEngine = new();
         private readonly ProtectionHealthEngine _protectionHealthEngine = new();
@@ -60,6 +62,7 @@ namespace Sentinel.App.Services
         private ScheduledTaskMonitor.ScheduledTaskSnapshot _scheduledTaskSnapshot = new(0, 0, "None", "Scheduled-task analysis is loading.");
         private ActiveConnectionMonitor.ActiveConnectionSnapshot _activeConnectionSnapshot = new(0, 0, 0, "None", "None", "Active connection analysis is loading.");
         private DriverHealthEvidenceProvider.DriverHealthSnapshot _driverHealthSnapshot = DriverHealthEvidenceProvider.DriverHealthSnapshot.Unavailable();
+        private WindowsHealthEvidenceProvider.WindowsHealthDiscoverySnapshot _windowsHealthSnapshot = new(null, null, null, null, null, false, false, false);
 
         private DateTime _lastProcessRefresh = DateTime.MinValue;
         private DateTime _lastMemoryInvestigationRefresh = DateTime.MinValue;
@@ -72,6 +75,7 @@ namespace Sentinel.App.Services
         private DateTime _lastScheduledTaskRefresh = DateTime.MinValue;
         private DateTime _lastActiveConnectionRefresh = DateTime.MinValue;
         private DateTime _lastDriverHealthRefresh = DateTime.MinValue;
+        private DateTime _lastWindowsHealthRefresh = DateTime.MinValue;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -91,7 +95,8 @@ namespace Sentinel.App.Services
                 RefreshStartupDataIfDueAsync(now),
                 RefreshScheduledTaskDataIfDueAsync(now),
                 RefreshActiveConnectionDataIfDueAsync(now),
-                RefreshDriverHealthDataIfDueAsync(now));
+                RefreshDriverHealthDataIfDueAsync(now),
+                RefreshWindowsHealthDataIfDueAsync(now));
 
             NetworkMonitor.NetworkThroughputSnapshot networkSnapshot = _networkMonitor.GetThroughput();
             SystemSnapshot snapshot = new()
@@ -168,6 +173,7 @@ namespace Sentinel.App.Services
             snapshot.InvestigationReasonCode = investigation.ReasonCode;
 
             ApplyProactiveDriverFinding(snapshot);
+            ApplyProactiveWindowsHealthFinding(snapshot);
 
             InvestigationRecurrenceTracker.RecurrenceResult recurrence = _recurrenceTracker.Record(snapshot.InvestigationReasonCode, snapshot.InvestigationRequiresAttention, DateTimeOffset.Now);
             snapshot.InvestigationRecurrenceCount = recurrence.Count;
@@ -237,6 +243,117 @@ namespace Sentinel.App.Services
             snapshot.RiskLevel = "Low";
             snapshot.RiskSummary = $"A driver problem is active for {device}.";
             snapshot.Recommendation = "Let Sentinel investigate and prepare the safest verified repair path.";
+        }
+
+        private void ApplyProactiveWindowsHealthFinding(SystemSnapshot snapshot)
+        {
+            if (snapshot.InvestigationRequiresAttention)
+                return;
+
+            if (_windowsHealthSnapshot.RestartPending == true)
+            {
+                snapshot.InvestigationState = "NeedsAttention";
+                snapshot.InvestigationConclusion = "Windows needs a restart.";
+                snapshot.InvestigationSummary = "Windows has verified restart-pending indicators. Sentinel detected this automatically.";
+                snapshot.InvestigationRequiresAttention = true;
+                snapshot.InvestigationReasonCode = "windows-restart-pending";
+                snapshot.GuidanceTitle = "Windows needs a restart";
+                snapshot.GuidanceSeverity = "Attention";
+                snapshot.GuidanceConfidencePercent = 100;
+                snapshot.GuidanceConfidenceLabel = "Verified by Windows";
+                snapshot.GuidanceEvidence = "Windows reports a pending restart through local system indicators.";
+                snapshot.GuidanceWhatHappened = "An update or Windows maintenance operation is waiting for the computer to restart.";
+                snapshot.GuidanceWhyItMatters = "Some updates or repairs do not finish until Windows restarts.";
+                snapshot.GuidanceRecommendedAction = "Save your work and restart when convenient. Sentinel will verify the computer again after startup.";
+                snapshot.GuidanceFixAvailability = "User action required";
+                snapshot.GuidanceFixDetails = "Sentinel will not restart Windows without your approval.";
+                snapshot.GuidanceActionId = "open-windows-update";
+                snapshot.GuidanceActionLabel = "Review Windows Update";
+                snapshot.RiskScore = Math.Max(snapshot.RiskScore, 10);
+                snapshot.RiskLevel = "Low";
+                snapshot.RiskSummary = "Windows is waiting for a restart.";
+                snapshot.Recommendation = "Save your work and restart Windows when convenient.";
+                return;
+            }
+
+            if (_windowsHealthSnapshot.PendingUpdateCount is > 0)
+            {
+                int count = _windowsHealthSnapshot.PendingUpdateCount.Value;
+                string noun = count == 1 ? "update" : "updates";
+                snapshot.InvestigationState = "NeedsAttention";
+                snapshot.InvestigationConclusion = "Windows updates are available.";
+                snapshot.InvestigationSummary = $"Sentinel verified {count} pending Windows {noun}.";
+                snapshot.InvestigationRequiresAttention = true;
+                snapshot.InvestigationReasonCode = "windows-updates-pending";
+                snapshot.GuidanceTitle = "Windows updates are available";
+                snapshot.GuidanceSeverity = "Attention";
+                snapshot.GuidanceConfidencePercent = 100;
+                snapshot.GuidanceConfidenceLabel = "Verified by Windows Update";
+                snapshot.GuidanceEvidence = $"The local Windows Update scan reports {count} pending {noun}.";
+                snapshot.GuidanceWhatHappened = $"Windows has {count} pending {noun} ready for review.";
+                snapshot.GuidanceWhyItMatters = "Updates can contain security, reliability, and compatibility fixes.";
+                snapshot.GuidanceRecommendedAction = "Review Windows Update and install the updates you approve.";
+                snapshot.GuidanceFixAvailability = "User approval required";
+                snapshot.GuidanceFixDetails = "Sentinel can open Windows Update but will not install general Windows updates without user approval.";
+                snapshot.GuidanceActionId = "open-windows-update";
+                snapshot.GuidanceActionLabel = "Review Windows Update";
+                snapshot.RiskScore = Math.Max(snapshot.RiskScore, 10);
+                snapshot.RiskLevel = "Low";
+                snapshot.RiskSummary = $"{count} Windows {noun} are pending.";
+                snapshot.Recommendation = "Review and install pending Windows updates.";
+                return;
+            }
+
+            if (_windowsHealthSnapshot.SecureBootEvidenceAvailable && _windowsHealthSnapshot.SecureBootEnabled == false)
+            {
+                snapshot.InvestigationState = "NeedsAttention";
+                snapshot.InvestigationConclusion = "Secure Boot is disabled.";
+                snapshot.InvestigationSummary = "Sentinel verified that Secure Boot is currently disabled.";
+                snapshot.InvestigationRequiresAttention = true;
+                snapshot.InvestigationReasonCode = "secure-boot-disabled";
+                snapshot.GuidanceTitle = "Secure Boot is disabled";
+                snapshot.GuidanceSeverity = "Attention";
+                snapshot.GuidanceConfidencePercent = 100;
+                snapshot.GuidanceConfidenceLabel = "Verified by Windows";
+                snapshot.GuidanceEvidence = "Windows reports Secure Boot as disabled.";
+                snapshot.GuidanceWhatHappened = "The computer is currently running without Secure Boot enabled.";
+                snapshot.GuidanceWhyItMatters = "Secure Boot helps prevent untrusted software from loading before Windows starts.";
+                snapshot.GuidanceRecommendedAction = "Review your computer manufacturer's UEFI/BIOS guidance before changing Secure Boot. Sentinel will not change firmware settings automatically.";
+                snapshot.GuidanceFixAvailability = "User action required";
+                snapshot.GuidanceFixDetails = "Firmware configuration varies by computer model and requires deliberate user action.";
+                snapshot.GuidanceActionId = string.Empty;
+                snapshot.GuidanceActionLabel = string.Empty;
+                snapshot.RiskScore = Math.Max(snapshot.RiskScore, 20);
+                snapshot.RiskLevel = "Low";
+                snapshot.RiskSummary = "Secure Boot is disabled.";
+                snapshot.Recommendation = "Review whether Secure Boot should be enabled for this computer.";
+                return;
+            }
+
+            if (_windowsHealthSnapshot.TpmEvidenceAvailable && (_windowsHealthSnapshot.TpmPresent == false || _windowsHealthSnapshot.TpmReady == false))
+            {
+                snapshot.InvestigationState = "NeedsAttention";
+                snapshot.InvestigationConclusion = "Windows hardware security needs review.";
+                snapshot.InvestigationSummary = "Sentinel verified that the TPM is missing or not ready for normal Windows security use.";
+                snapshot.InvestigationRequiresAttention = true;
+                snapshot.InvestigationReasonCode = "tpm-not-ready";
+                snapshot.GuidanceTitle = "Hardware security needs review";
+                snapshot.GuidanceSeverity = "Attention";
+                snapshot.GuidanceConfidencePercent = 100;
+                snapshot.GuidanceConfidenceLabel = "Verified by Windows";
+                snapshot.GuidanceEvidence = $"TPM present: {_windowsHealthSnapshot.TpmPresent}; TPM ready: {_windowsHealthSnapshot.TpmReady}.";
+                snapshot.GuidanceWhatHappened = "Windows reports that the Trusted Platform Module is missing or not ready.";
+                snapshot.GuidanceWhyItMatters = "Windows uses the TPM for several device-security and encryption features.";
+                snapshot.GuidanceRecommendedAction = "Review the computer's TPM/firmware configuration. Sentinel will not change firmware security settings automatically.";
+                snapshot.GuidanceFixAvailability = "User action required";
+                snapshot.GuidanceFixDetails = "TPM configuration can require firmware changes and should not be modified without verified model-specific guidance.";
+                snapshot.GuidanceActionId = string.Empty;
+                snapshot.GuidanceActionLabel = string.Empty;
+                snapshot.RiskScore = Math.Max(snapshot.RiskScore, 20);
+                snapshot.RiskLevel = "Low";
+                snapshot.RiskSummary = "Windows hardware security configuration needs review.";
+                snapshot.Recommendation = "Review TPM status and the computer manufacturer's security guidance.";
+            }
         }
 
         private async Task RefreshSecurityStateForProtectionAsync()
@@ -310,6 +427,7 @@ namespace Sentinel.App.Services
         private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now) { if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return; _lastScheduledTaskRefresh = now; _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot); }
         private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now) { if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return; _lastActiveConnectionRefresh = now; _activeConnectionSnapshot = await Task.Run(_activeConnectionMonitor.GetSnapshot); }
         private async Task RefreshDriverHealthDataIfDueAsync(DateTime now) { if (now - _lastDriverHealthRefresh < DriverHealthRefreshInterval) return; _lastDriverHealthRefresh = now; _driverHealthSnapshot = await Task.Run(_driverHealthEvidenceProvider.GetSnapshot); }
+        private async Task RefreshWindowsHealthDataIfDueAsync(DateTime now) { if (now - _lastWindowsHealthRefresh < WindowsHealthRefreshInterval) return; _lastWindowsHealthRefresh = now; _windowsHealthSnapshot = await Task.Run(_windowsHealthEvidenceProvider.GetDiscoverySnapshot); }
 
         private static bool Contains(string? value, string expected) => !string.IsNullOrWhiteSpace(value) && value.Contains(expected, StringComparison.OrdinalIgnoreCase);
         private static string ExtractServiceDisplayName(string message) { const string prefix = "The "; const string marker = " service terminated unexpectedly"; int start = message.IndexOf(prefix, StringComparison.OrdinalIgnoreCase); int end = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase); if (start < 0 || end <= start + prefix.Length) return string.Empty; return message.Substring(start + prefix.Length, end - (start + prefix.Length)).Trim(); }
