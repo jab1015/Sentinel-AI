@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.8
+Version: 4.9
 
-Status: Active — Sentinel Discovery 2.0
+Status: Active — Sentinel Discovery 2.0 Complete
 
 Last Updated: 2026-08-05
 
@@ -36,74 +36,37 @@ Ask Sentinel is the explanation and follow-up interface, not the primary discove
 
 A user cannot force Sentinel to ignore a critical, high-risk, actively exploitable, data-loss, malware, active-attack, or mortal hardware-failure condition.
 
-# Sentinel Discovery 2.0
+# Sentinel Discovery 2.0 — COMPLETE
 
-## Phase 1 of 5 — Persistent Investigation Intelligence
+## Phase 1 of 5 — Persistent Investigation Intelligence — COMPLETE
 
-Sentinel must stop treating every Discovery cycle as a new investigation.
+Implemented durable persistent investigation memory, stable evidence fingerprints, investigation lifecycle states, repair-attempt history, risk classification, invalidation state, unchanged-evidence reuse, and notification suppression safeguards.
 
-Each verified investigation receives a persistent record containing:
+Acceptance: **PASS — 6/6 original persistent-memory scenarios; subsequently expanded policy suite PASS — 10/10.**
 
-- Investigation ID
-- Finding type and root cause
-- Evidence and confidence/trust
-- Repair attempts and results
-- Risk classification
-- Current lifecycle state
-- Stable finding fingerprint
-- Last verification date
-- Conditions that invalidate the conclusion
+## Phase 2 of 5 — Verified Persistent Exceptions — COMPLETE
 
-The fingerprint may include device instance ID, hardware ID, error code, driver version, Windows build, BIOS version, manufacturer/model, and investigation type.
+Implemented presentation policy and suppression eligibility for verified exhausted noncritical findings. Critical and incomplete findings remain visible. Silent monitoring suppresses notifications only and preserves background monitoring. Resume Notifications restores notification behavior without disabling monitoring.
 
-When the same unchanged fingerprint appears again, Sentinel reuses the verified conclusion instead of repeating expensive investigation work.
+Acceptance: **PASS — persistent investigation/presentation suite 10/10.**
 
-## Phase 2 of 5 — Verified Persistent Exceptions
+## Phase 3 of 5 — Live Persistent Exception Integration — COMPLETE
 
-A finding is eligible for silent monitoring only when Sentinel proves:
+Integrated persistent investigation memory with live driver findings and dashboard behavior. Exact matching prevents unrelated findings from inheriting an exception. Healthy state remains quiet. Live suppression preserves monitoring and supports notification restoration.
 
-1. The investigation is complete.
-2. Every applicable safe, authoritative remediation has been attempted, ruled out, declined, or proven unavailable.
-3. No safe verified automatic repair remains.
-4. The condition is noncritical and not a mortal failure.
-5. The exception applies only to the exact verified fingerprint.
+Acceptance: **PASS — 5/5 live persistent exception scenarios.**
 
-Eligible user choices:
+## Phase 4 of 5 — Cross-Investigation Correlation — COMPLETE
 
-- Keep reminding me
-- Monitor silently
-- Resume reminders
+Implemented evidence correlation across related process/network, service/Event Log, driver/Event Log, and security-control observations. Unsupported relationships remain separate and Sentinel does not invent root cause. Critical evidence retains priority.
 
-Silent monitoring must automatically end when any material evidence changes, including error code, device identity, hardware ID, driver version, Windows build, BIOS/firmware version, severity, repair availability, device replacement, or newly verified authoritative guidance.
+Acceptance: **PASS — 7/7 cross-investigation correlation scenarios.**
 
-## Phase 3 of 5 — Cross-Investigation Correlation
+## Phase 5 of 5 — Trusted Knowledge Engine — COMPLETE
 
-Sentinel must correlate related findings into one root-cause investigation rather than presenting duplicate technical warnings.
+Implemented promotion of completed verified investigations into reusable trusted knowledge with confidence gating, trust requirements, exact evidence compatibility, expiration/revalidation, material-change invalidation, and critical-evidence override.
 
-Correlation sources include drivers/devices, services, event logs, processes, process lineage, command lines, startup entries, scheduled tasks, Defender, Firewall, network activity, storage, Windows Update, TPM, Secure Boot, BIOS/firmware, and other supported evidence.
-
-Low-confidence relationships remain internal. Conflicting evidence must be reported as unresolved rather than guessed.
-
-## Phase 4 of 5 — Adaptive Continuous Discovery
-
-Discovery should become increasingly event-driven and context-aware.
-
-Sentinel should prioritize meaningful system changes, reduce unnecessary repeated scans, defer low-priority work while the computer is busy or on battery, and perform deeper checks when idle.
-
-Priority classes:
-
-- Critical — immediate investigation
-- High — investigate within seconds
-- Medium — queue for investigation
-- Low — investigate when idle
-
-## Phase 5 of 5 — Trusted Knowledge Engine
-
-Completed investigations become reusable verified knowledge records.
-
-Each knowledge record stores evidence, outcome, confidence, trust, risk, repair history, last verification, and explicit invalidation conditions.
-
-Knowledge must be revalidated when material system or authoritative-source evidence changes. Sentinel may reuse a conclusion only when the current fingerprint remains compatible with the stored record.
+Acceptance: **PASS — 8/8 trusted knowledge scenarios.**
 
 # Exhaustive Remediation Rule
 
@@ -136,31 +99,36 @@ Every investigation must end in one defined state:
 
 A persistent noncritical state is not equivalent to healthy. It means Sentinel has verified the condition, exhausted safe remediation, determined the remaining risk is acceptable for silent monitoring, and will continue watching for change.
 
-# Discovery 2.0 Acceptance Requirements
+# Discovery 2.0 Acceptance Record
 
-Before Discovery 2.0 is complete, acceptance must prove:
+Discovery 2.0 acceptance has verified:
 
-- unchanged investigations are reused rather than repeated;
-- suppression is impossible before exhaustive remediation and noncritical classification;
+- unchanged investigations can reuse verified memory;
+- suppression is rejected for incomplete investigations;
 - critical findings cannot be suppressed;
-- silent monitoring preserves evidence collection;
-- exact-fingerprint matching prevents overbroad suppression;
-- material changes reactivate the finding automatically;
-- suppression and reactivation are written to Activity Center;
-- Ask Sentinel accurately explains the investigation state;
-- correlated findings appear as one root-cause investigation where justified;
-- healthy and unchanged persistent findings remain quiet;
-- all system-changing actions remain verified and approval-gated where required.
+- exhausted noncritical findings can enter silent monitoring;
+- monitoring continues while notifications are suppressed;
+- exact matching prevents unrelated findings from reusing exceptions;
+- material evidence changes invalidate prior conclusions;
+- notifications can be resumed without disabling monitoring;
+- healthy state remains quiet;
+- related evidence is correlated without unsupported root-cause claims;
+- unrelated evidence remains independent;
+- critical evidence retains investigation priority;
+- completed verified investigations can become trusted knowledge;
+- low-confidence, incomplete, and critical conclusions are blocked from trusted reuse;
+- expired or materially changed knowledge requires fresh investigation/revalidation.
 
 # Current Progress
 
 - Version 1.0.20.0 baseline: **Complete and accepted**
 - Discovery 2.0 planning: **Complete**
-- Phase 1 — Persistent Investigation Intelligence: **Starting implementation**
-- Phase 2 — Verified Persistent Exceptions: **Planned**
-- Phase 3 — Cross-Investigation Correlation: **Planned**
-- Phase 4 — Adaptive Continuous Discovery: **Planned**
-- Phase 5 — Trusted Knowledge Engine: **Planned**
+- Phase 1 — Persistent Investigation Intelligence: **COMPLETE — PASS**
+- Phase 2 — Verified Persistent Exceptions: **COMPLETE — PASS**
+- Phase 3 — Live Persistent Exception Integration: **COMPLETE — PASS**
+- Phase 4 — Cross-Investigation Correlation: **COMPLETE — PASS**
+- Phase 5 — Trusted Knowledge Engine: **COMPLETE — PASS**
+- Sentinel Discovery 2.0: **5/5 COMPLETE**
 
 ---
 
