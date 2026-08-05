@@ -1,7 +1,7 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 4.6  
-**Status:** Active — Sentinel Discovery 2.0 Complete and Live Validated  
+**Version:** 4.7  
+**Status:** Active — Discovery 2.0 and Adaptive Continuous Discovery Complete  
 **Last Updated:** 2026-08-05  
 **Production Branch:** `main`
 
@@ -15,89 +15,73 @@ The accepted baseline includes proactive Discovery, verified investigation, safe
 
 Discovery 2.0 extends Sentinel from proactive monitoring into a persistent, memory-based investigation platform.
 
-### Phase 1 — Persistent Investigation Intelligence — COMPLETE
+- Phase 1 — Persistent Investigation Intelligence: **COMPLETE**
+- Phase 2 — Verified Persistent Exceptions: **COMPLETE**
+- Phase 3 — Live Persistent Exception Integration: **COMPLETE + LIVE VALIDATED**
+- Phase 4 — Cross-Investigation Correlation: **COMPLETE**
+- Phase 5 — Trusted Knowledge Engine: **COMPLETE**
 
-- Persist completed investigation records.
-- Create stable, evidence-based fingerprints.
-- Reuse unchanged verified conclusions.
-- Avoid repeating expensive investigations when no material evidence has changed.
-- Track investigation lifecycle states and invalidation conditions.
-- Acceptance passed.
+Acceptance includes persistent investigation 6/6, expanded policy 10/10, live persistent exception 5/5, correlation 7/7, Trusted Knowledge 8/8, and end-to-end live Intel(R) Management Engine Interface Code 10 validation.
 
-### Phase 2 — Verified Persistent Exceptions — COMPLETE
+**Discovery 2.0: 5/5 COMPLETE and end-to-end live validated.**
 
-- Require verified completion and exhausted remediation before silent monitoring.
-- Add noncritical/persistent risk classification.
-- Offer notification suppression only when no safe verified repair remains.
-- Prevent suppression of critical and incomplete findings.
-- Continue monitoring while notifications are suppressed.
-- Automatically invalidate prior conclusions on material evidence change.
-- Acceptance passed.
+## Completed Product Initiative — Adaptive Continuous Discovery
 
-### Phase 3 — Live Persistent Exception Integration — COMPLETE + LIVE VALIDATED
+Adaptive Continuous Discovery makes Sentinel's monitoring effort responsive to risk, user attention state, power conditions, and system activity while preserving continuous monitoring.
 
-- Match live findings to persistent investigation memory.
-- Apply exact-fingerprint presentation policy.
-- Keep healthy states quiet.
-- Hide eligible repeated notifications without stopping monitoring.
-- Restore notifications independently of monitoring.
-- Prevent unrelated findings from inheriting an exception.
-- Ensure the real driver-investigation lifecycle reaches Persistent Noncritical only after verified remediation exhaustion.
-- Feed the persistent conclusion into Ask Sentinel so the conversational answer and dashboard agree.
-- Acceptance harness passed 5/5.
-- End-to-end live workflow passed against Intel(R) Management Engine Interface Code 10.
+### Phase 1 — Adaptive Cadence Policy — COMPLETE
 
-### Phase 4 — Cross-Investigation Correlation — COMPLETE
+- Critical / High / Medium / Low Discovery priorities.
+- Risk-sensitive recheck intervals.
+- Battery-aware noncritical throttling.
+- Idle-system deeper-verification allowance.
+- Monitoring remains enabled under every scheduling decision.
+- Acceptance: **7/7 PASS.**
 
-- Group related observations into one investigation when evidence supports the relationship.
-- Correlate process/network, service/Event Log, driver/Event Log, and security-control evidence.
-- Preserve critical priority.
-- Keep unrelated evidence independent.
-- Avoid unsupported root-cause claims.
-- Acceptance passed 7/7.
+### Phase 2 — Live Monitoring Loop Integration — COMPLETE
 
-### Phase 5 — Trusted Knowledge Engine — COMPLETE
+- Adaptive policy connected to the live monitoring/dashboard loop.
+- Critical conditions can tighten to approximately 2-second cadence.
+- Active-attention conditions use approximately 5-second cadence.
+- Quiet systems back off from legacy fixed polling.
+- Silently monitored persistent noncritical conditions remain monitored without forcing high-frequency polling.
+- Critical/security evidence overrides silent-monitoring cadence.
+- Build: **PASS.**
 
-- Convert completed verified investigations into reusable trusted knowledge.
-- Store evidence state, outcomes, confidence, trust, risk, repair history, and expiration rules.
-- Reject incomplete, critical, or low-confidence promotion.
-- Revalidate after material evidence change or expiration.
-- Never allow trusted knowledge to bypass current critical evidence.
-- Acceptance passed 8/8.
+### Phase 3 — Live Adaptive Scheduling Acceptance — COMPLETE
 
-## Governing Product Rule
+- Quiet systems verified at 30-second cadence.
+- Active attention verified at 5 seconds.
+- Critical evidence verified at 2 seconds.
+- Silent persistent conditions verified as low-priority while monitoring remains enabled.
+- Critical override verified.
+- Unnecessary unchanged timer resets prevented.
+- Quiet battery systems verified at one-minute cadence.
+- Acceptance: **7/7 PASS.**
 
-**Sentinel must never suppress a finding until it has completed a verified investigation, exhausted every applicable safe remediation, determined that the condition is noncritical, and verified that there is currently nothing more it can safely do. Suppression hides notifications only; it never stops monitoring. Any material change automatically reopens the investigation.**
+### Phase 4 — Adaptive Diagnostics and Final Acceptance — COMPLETE
 
-## Discovery 2.0 User Experience — LIVE VALIDATED
+- Low-noise cadence diagnostics implemented.
+- Meaningful cadence transitions are recorded and explained.
+- Duplicate unchanged-cadence events are suppressed.
+- Attention and critical acceleration are explained.
+- Silent persistent monitoring explicitly states monitoring continues.
+- Diagnostics never report monitoring as disabled when adaptive scheduling is active.
+- Acceptance: **6/6 PASS.**
 
-For an eligible persistent noncritical condition, Sentinel explains the verified investigation state and can suppress repeated notifications while continuing background monitoring. Notifications can be restored without disabling monitoring, and material evidence change invalidates the prior conclusion.
+**Adaptive Continuous Discovery: 4/4 COMPLETE.**
 
-The live driver workflow has now demonstrated the intended user experience:
+## Governing Product Rules
 
-1. Sentinel discovers the condition.
-2. Sentinel investigates Windows Update and authoritative manufacturer sources.
-3. When no verified safe repair remains, Sentinel classifies the exact condition as persistent noncritical.
-4. The dashboard identifies it as a previously investigated condition.
-5. Ask Sentinel explains the same verified conclusion with confidence/trust information.
-6. Monitor Silently becomes available.
-7. After selection, the dashboard returns to a quiet healthy state while clearly stating that a known noncritical condition is being monitored silently.
-8. Monitoring and investigation memory remain active.
-9. Material evidence change is designed to reopen the investigation automatically.
+**Persistent-condition rule:** Sentinel must never suppress a finding until it has completed a verified investigation, exhausted every applicable safe remediation, determined that the condition is noncritical, and verified that there is currently nothing more it can safely do. Suppression hides notifications only; it never stops monitoring. Any material change automatically reopens the investigation.
 
-The user must never be offered a blanket **ignore all similar issues** option.
+**Adaptive-monitoring rule:** Sentinel may vary monitoring cadence according to verified risk and operating conditions, but adaptive scheduling must never disable monitoring. Critical evidence always overrides reduced cadence and silent persistent-condition presentation.
 
-## Discovery 2.0 Acceptance Milestones
+## Current Roadmap State
 
-- Persistent investigation storage and exact fingerprinting — **PASS**
-- Exhaustive-remediation/suppression policy — **PASS**
-- Silent-monitoring presentation policy — **PASS**
-- Live persistent exception harness — **PASS 5/5**
-- Live persistent-condition end-to-end workflow — **PASS**
-- Cross-investigation correlation — **PASS 7/7**
-- Trusted Knowledge Engine — **PASS 8/8**
-
-**Discovery 2.0: 5/5 phases complete and end-to-end live validated.**
+- Version 1.0.20.0 baseline — **COMPLETE / ACCEPTED**
+- Discovery 2.0 — **5/5 COMPLETE / LIVE VALIDATED**
+- Adaptive Continuous Discovery — **4/4 COMPLETE**
 
 ## Parallel Release Work
 
