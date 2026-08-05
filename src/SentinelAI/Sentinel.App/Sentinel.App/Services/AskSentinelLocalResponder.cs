@@ -4,6 +4,7 @@
  */
 
 using System;
+using System.Linq;
 using Sentinel.App.Models;
 
 namespace Sentinel.App.Services
@@ -13,6 +14,7 @@ namespace Sentinel.App.Services
         private const string InsufficientEvidence = "Sentinel does not yet have enough verified information to answer that question.";
         private readonly WindowsHealthEvidenceProvider _windowsHealth = new();
         private readonly DriverHealthEvidenceProvider _driverHealth = new();
+        private readonly PersistentInvestigationMemoryService _persistentMemory = new();
 
         public string Answer(string question, SystemSnapshot snapshot)
         {
@@ -30,7 +32,11 @@ namespace Sentinel.App.Services
             if (IsTpmQuestion(q)) return _windowsHealth.GetTpmStatus();
             if (IsSecureBootQuestion(q)) return _windowsHealth.GetSecureBootStatus();
             if (IsBitLockerQuestion(q)) return _windowsHealth.GetBitLockerStatus();
-            if (IsDriverHealthQuestion(q)) return _driverHealth.GetDriverHealthStatus();
+            if (IsDriverHealthQuestion(q))
+            {
+                string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
+                return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
+            }
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
@@ -89,6 +95,55 @@ namespace Sentinel.App.Services
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.GuidanceRecommendedAction, snapshot.Recommendation) : "No action is required based on current verified evidence. Sentinel will continue monitoring.";
 
             return InsufficientEvidence;
+        }
+
+        private string? BuildPersistentDriverAnswer(SystemSnapshot snapshot)
+        {
+            try
+            {
+                var records = _persistentMemory.ReadAllAsync().GetAwaiter().GetResult();
+                PersistentInvestigationRecord? record = records
+                    .Where(item => item.FindingType.Equals("Driver", StringComparison.OrdinalIgnoreCase))
+                    .Where(item => item.State == InvestigationLifecycleState.PersistentNoncritical)
+                    .Where(item => MatchesCurrentDriver(snapshot, item))
+                    .OrderByDescending(item => item.LastVerifiedUtc)
+                    .FirstOrDefault();
+
+                if (record is null) return null;
+
+                string notificationState = record.NotificationsSuppressed
+                    ? "I am monitoring this exact condition silently."
+                    : "Notifications are still enabled for this condition. You can choose Monitor Silently on the dashboard.";
+
+                return
+                    "Driver health\n\n" +
+                    "Known persistent condition.\n" +
+                    $"What I found\n{record.RootCause}\n\n" +
+                    "What I verified\n" +
+                    "I completed the available safe driver investigation and found no remaining verified safe repair path for this exact condition.\n\n" +
+                    $"Investigation result\n{record.EvidenceSummary}\n\n" +
+                    "What happens next\n" +
+                    $"{notificationState} Monitoring continues either way, and I will reopen the investigation automatically if material evidence changes.\n\n" +
+                    $"Confidence: {record.ConfidencePercent}%. Trust: {record.TrustLevel}.";
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool MatchesCurrentDriver(SystemSnapshot snapshot, PersistentInvestigationRecord record)
+        {
+            string rootCause = record.RootCause?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(rootCause)) return false;
+
+            return Contains(snapshot.GuidanceWhatHappened, rootCause) ||
+                   Contains(snapshot.InvestigationSummary, rootCause) ||
+                   Contains(snapshot.GuidanceEvidence, rootCause) ||
+                   Contains(rootCause, "Intel(R) Management Engine Interface") &&
+                   (Contains(snapshot.GuidanceWhatHappened, "Management Engine Interface") ||
+                    Contains(snapshot.InvestigationSummary, "Management Engine Interface") ||
+                    Contains(snapshot.GuidanceEvidence, "Management Engine Interface"));
         }
 
         private string BuildLocalHealthVerification(SystemSnapshot snapshot)
@@ -151,6 +206,9 @@ namespace Sentinel.App.Services
             foreach (string term in terms) if (value.Contains(term, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
+
+        private static bool Contains(string? value, string term) =>
+            !string.IsNullOrWhiteSpace(value) && value.Contains(term, StringComparison.OrdinalIgnoreCase);
 
         private static string Safe(string primary, string fallback)
         {
