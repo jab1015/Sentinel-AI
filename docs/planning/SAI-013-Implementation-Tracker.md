@@ -1,96 +1,115 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 5.8  
-**Status:** Complete — Production Acceptance Passed  
-**Last Updated:** 2026-08-04  
+**Version:** 5.9  
+**Status:** Active — Sentinel Discovery 2.0  
+**Last Updated:** 2026-08-05  
 **Production Branch:** `main`
 
-## Project Summary
+## Accepted Baseline
 
-- Phase 1 — Monitoring Foundation: **Complete**
-- Phase 2 — Investigation Experience: **Complete**
-- Phase 3 — Investigation Engine: **Complete**
-- Phase 4 — Safe Remediation Foundation: **Complete**
-- Phase 5 — Remediation Integration & Autonomous Protection: **Complete at planned scope**
-- Phase 6 — Ask Sentinel / AI Assistance: **Complete**
-- Phase 7 — Production Hardening & Commercial Release: **Complete at planned acceptance scope**
-- Phase 8 — Continuous Intrusion & Spyware Protection: **Complete at planned acceptance scope**
-- Sentinel Discovery Expansion: **Complete — 4 of 4**
-- Final Production Validation: **PASS**
-- Installed Release Validation: **PASS — 4 of 4**
+Sentinel AI version 1.0.20.0 remains complete and accepted for its original planned scope.
 
-**Overall progress: 100%.**
+- Discovery Acceptance: **PASS — 8/8**
+- Quarantine Acceptance: **PASS — 6/6 scenarios**
+- Installed Release Validation: **PASS — 4/4**
+- Startup-to-tray after reboot: **PASS**
 
-## Final Release Candidate Status
+## Active Milestone — Discovery 2.0
 
-All four Release Candidate Finalization areas are complete:
+### Phase 1 of 5 — Persistent Investigation Intelligence
 
-### 1 of 4 — Ask Sentinel Local
+**Status: IN PROGRESS**
 
-**COMPLETE — runtime verified**
+Work items:
 
-Ask Sentinel is grounded in verified current evidence and investigation history. Driver-health, Windows Update, restart, TPM/Secure Boot where available, Defender, Firewall, CPU, memory, disk, network, startup, services, processes, and implemented Discovery evidence are integrated. Authoritative repair research preserves source, confidence/trust, and approval boundaries.
+- [ ] Add persistent investigation-memory model.
+- [ ] Add durable investigation-memory storage service.
+- [ ] Define stable finding fingerprint schema.
+- [ ] Record root cause, evidence, confidence/trust, risk, repair attempts, outcome, and last verification.
+- [ ] Define investigation lifecycle states.
+- [ ] Define explicit invalidation conditions.
+- [ ] Reuse unchanged verified conclusions.
+- [ ] Prevent repeated investigation when no material evidence changed.
+- [ ] Feed persisted state to Activity Center.
+- [ ] Feed persisted state to Ask Sentinel.
+- [ ] Add Phase 1 acceptance tests.
 
-### 2 of 4 — Quarantine Manager UI
+### Phase 2 of 5 — Verified Persistent Exceptions
 
-**COMPLETE — runtime and acceptance verified**
+**Status: PLANNED**
 
-Quarantine Manager navigation, empty state, persistent catalog, restore, permanent deletion, approval gates, verification, and Activity/history recording are implemented.
+- [ ] Add exhaustive-remediation ledger.
+- [ ] Require every applicable repair path to be resolved as succeeded, failed, unavailable, not applicable, user declined, or awaiting approval.
+- [ ] Add critical/noncritical suppression policy.
+- [ ] Block suppression of critical, high-risk, active-attack, malware, data-loss, and mortal hardware-failure findings.
+- [ ] Add exact-fingerprint exception records.
+- [ ] Add **Monitor silently** and **Resume reminders** actions.
+- [ ] Keep monitoring active while user notifications are suppressed.
+- [ ] Automatically reactivate on material evidence change.
+- [ ] Record suppression and reactivation in Activity Center.
+- [ ] Explain suppression state through Ask Sentinel.
+- [ ] Add Phase 2 acceptance tests.
 
-Quarantine acceptance harness result: **PASS — 6/6 scenarios**.
+### Phase 3 of 5 — Cross-Investigation Correlation
 
-### 3 of 4 — Activity Center
+**Status: PLANNED**
 
-**COMPLETE — runtime verified**
+- [ ] Create investigation graph/node model.
+- [ ] Correlate driver, service, event, process, startup, scheduled-task, network, security, storage, and Windows-health evidence.
+- [ ] Assign confidence to relationships.
+- [ ] Keep low-confidence links internal.
+- [ ] Present one root-cause investigation when justified.
+- [ ] Surface contradictory evidence without guessing.
+- [ ] Add Phase 3 acceptance tests.
 
-Recent Activity is stable, persistent, and displays verified investigation outcomes. The Intel Management Engine Interface investigation was recorded with the authoritative Dell Support next source and a verified timestamp. Investigation history is available to Ask Sentinel.
+### Phase 4 of 5 — Adaptive Continuous Discovery
 
-### 4 of 4 — Investigation Engine Runtime Integration
+**Status: PLANNED**
 
-**COMPLETE — runtime verified at planned safe-remediation scope**
+- [ ] Add event/change-trigger foundation.
+- [ ] Add Critical/High/Medium/Low discovery priorities.
+- [ ] Add idle, battery, gaming, rendering, sleep, and resume awareness where safely available.
+- [ ] Reduce unnecessary repeated scans.
+- [ ] Reopen investigations only after meaningful evidence changes.
+- [ ] Add Phase 4 performance and acceptance tests.
 
-Verified behavior includes local evidence collection, proactive Discovery, authoritative investigation, confidence/trust handling, safe refusal when no exact installable repair is verified, user-action handoff, approval gating, persistent investigation history, Activity Center integration, and reuse by Ask Sentinel.
+### Phase 5 of 5 — Trusted Knowledge Engine
 
-The accepted driver case correctly did not install an unverified package. Sentinel identified Dell Support as the authoritative next source rather than substituting a generic component-vendor package.
+**Status: PLANNED**
 
-## Product-Wide Discovery Acceptance
+- [ ] Convert completed investigations into reusable verified knowledge records.
+- [ ] Store evidence provenance, confidence, trust, repair history, outcome, risk, last verification, and expiration rules.
+- [ ] Add authoritative-source revalidation triggers.
+- [ ] Prevent stale or incompatible knowledge reuse.
+- [ ] Add Phase 5 acceptance tests.
 
-**PASS — 8/8**
+## Governing Suppression Gate
 
-1. Healthy evidence remains quiet.
-2. Defender disabled is proactive and actionable.
-3. Correlated network behavior requires approval.
-4. Uncorroborated process evidence remains observation-only.
-5. Driver finding is guided and approval-gated.
-6. Windows Update is guided and not silently installed.
-7. Secure Boot remains a guided firmware action.
-8. Critical disk pressure is guided.
+A finding may be offered for silent monitoring only when all conditions are true:
 
-## Final Production Validation
+1. Verified investigation complete.
+2. Applicable safe remediation exhausted.
+3. No safe verified repair remains.
+4. Condition is noncritical and not a mortal failure.
+5. Exception fingerprint exactly matches the active evidence.
+6. Monitoring remains active.
+7. Material change automatically reopens the finding.
 
-**PASS**
+## Initial Implementation Sequence
 
-Verified integrated behavior included initial Discovery progress UX, proactive actionable findings, Ask Sentinel consistency, authoritative driver investigation, approval preservation, Activity Center persistence, Quarantine Manager, continuous system-tray operation, and production tray controls.
+1. Investigation-memory model and storage.
+2. Fingerprint construction and comparison.
+3. Lifecycle/invalidation policy.
+4. Monitoring Engine integration.
+5. Activity Center and Ask Sentinel integration.
+6. Exhaustive-remediation ledger.
+7. Suppression eligibility and UI.
+8. Acceptance harness expansion.
 
-The Windows-startup test was correctly deferred from the Visual Studio development build and then completed against the installed package.
+## Parallel Release Installer Status
 
-## Installed Release Validation
+Production publisher identity is `CN=Modern Methods`. The current self-signed certificate is appropriate for controlled testing but is not publicly trusted on unrelated computers. Broad customer distribution requires public-trust code signing or Microsoft Store distribution.
 
-**PASS — 4 of 4**
+---
 
-**Validated package:** `Sentinel.App (Package)_1.0.20.0_x64.msixbundle`
-
-- Package creation: PASS
-- Direct MSIX bundle installation and installed-app launch: PASS
-- Installed background/system-tray operation: PASS
-- Automatic Windows startup to tray after VM reboot/sign-in: PASS
-
-The installed VM also demonstrated proactive Discovery of a Secure Boot-disabled condition and correctly classified firmware configuration as a guided user action.
-
-## Release Gate
-
-**PASSED.**
-
-Sentinel AI is recorded as **100% complete for the planned implementation and runtime acceptance represented by version 1.0.20.0**.
-
-Future enhancements, broader hardware testing, additional automatically installable repair cases, distribution/signing work, and post-release maintenance are subsequent work unless a release-blocking defect is discovered.
+End of Document
