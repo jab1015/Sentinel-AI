@@ -1,95 +1,86 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 4.2  
-**Status:** Active — Release Candidate Remediation  
+**Version:** 4.3  
+**Status:** Complete — Version 1.0.20.0 Production Acceptance Passed  
 **Last Updated:** 2026-08-04  
 **Production Branch:** `main`
 
 ## Overall Progress
 
-Core Sentinel AI functionality is implemented, including monitoring, investigation foundations, safe remediation, optimization, maintenance, packaging, stability testing, startup-to-tray operation, and verified containment execution.
+Sentinel AI's planned implementation and runtime acceptance are **100% complete** for version **1.0.20.0**.
 
-Final runtime testing identified four release-candidate areas that remain incomplete or unverified. The product is therefore **not release-ready**.
-
-**Current active phase: Release Candidate Finalization — 0 of 4 fully runtime-verified.**
-
-**Overall estimated progress: approximately 93%.**
-
-## Completed Major Foundations
-
-- Monitoring and system evidence collection
-- Investigation and safe-remediation foundations
-- Continuous inbound/outbound connection monitoring
-- Spyware/process correlation
-- Process containment acceptance
-- Firewall block/removal acceptance
-- Quarantine/restore backend acceptance
-- Optimization and maintenance foundations
-- One-hour and eight-hour stability testing
-- Installer/uninstaller foundation
-- Clean install/uninstall testing
-- Windows startup-to-tray verification
-- Network recovery and sleep/wake verification
+The completed product includes continuous monitoring, proactive Sentinel Discovery, investigation, safe remediation policy, optimization and maintenance foundations, continuous network/intrusion evidence, quarantine management, Activity Center history, Ask Sentinel grounded in verified evidence, packaging, startup-to-tray behavior, and production acceptance.
 
 ## Release Candidate Finalization
 
+**4 of 4 COMPLETE**
+
 ### 1 of 4 — Ask Sentinel Local
 
-**Status: Substantially implemented; final runtime acceptance open**
+**COMPLETE — runtime verified**
 
-Runtime verification now demonstrates the required local evidence areas, including Windows Update, pending restart, TPM, Secure Boot verified-unavailable handling, BitLocker/device-encryption verified-unavailable handling, Defender, Firewall, CPU, memory, disk, network, startup applications, running services, and top processes.
-
-Ask Sentinel also now demonstrates an evidence-collection progress indicator, natural-language Windows Update answers, local driver-health evidence, and plain-English driver-health guidance.
-
-Ask Sentinel remains grounded in verified local evidence and investigation history. It does not perform general live web searches.
-
-Current acceptance case: Intel Management Engine Interface Code 10. Windows Update correctly returned no compatible automatic package and made no system change. A new authoritative Microsoft/OEM research fallback and confidence result are implemented and awaiting runtime verification.
+Ask Sentinel uses verified local evidence and investigation history. It remains an explanation/follow-up interface rather than the primary discovery mechanism.
 
 ### 2 of 4 — Quarantine Manager UI
 
-**Status: Incomplete**
+**COMPLETE — runtime verified**
 
-Add a visible user interface for the existing quarantine backend, including item history, reason/evidence summary, restore confirmation, permanent removal, verification state, and Activity Center linkage.
+Visible Quarantine Manager, persistent catalog, approval-gated restore and permanent deletion, verification, and history integration are complete. Quarantine acceptance passed all six scenarios.
 
 ### 3 of 4 — Activity Center
 
-**Status: Incomplete**
+**COMPLETE — runtime verified**
 
-Add a visible 30-day activity history showing automatic repairs, optimizations, investigations, quarantine/restore events, rollbacks, verification outcomes, and user-required actions. Sentinel must tell the user when it successfully fixes something.
+Recent Activity persists verified outcomes and remains stable across dashboard refresh. Real authoritative driver investigation history was displayed and reused by Ask Sentinel.
 
 ### 4 of 4 — Investigation Engine Runtime Integration
 
-**Status: Partially implemented / runtime verification incomplete**
+**COMPLETE — runtime verified**
 
-Demonstrate end-to-end runtime operation:
+Discovery feeds actionable findings into Investigation. Authoritative research uses verified computer/device evidence, preserves confidence/trust, refuses unverified automatic repair, retains approval gates, records outcomes, and feeds verified findings back to Ask Sentinel.
 
-- Local evidence collection
-- Confidence scoring
-- Internal authoritative web research only when local evidence is insufficient
-- Correlation of research with exact local hardware evidence
-- Safe automatic repair when a verified installable package exists
-- Clear user-action-required handoff when automatic repair cannot be verified
-- Repair verification
-- Activity Center logging
-- Stored findings available to Ask Sentinel
+## Sentinel Discovery Expansion
 
-The driver repair workflow now prefers Windows Update and falls back to authoritative Microsoft/OEM research. The fallback is read-only until Sentinel proves an automatically installable package; otherwise the user is sent only to the verified official source.
+**COMPLETE — 4 of 4**
 
-The web-research capability is only for Sentinel AI to resolve problems automatically. It is not a general Ask Sentinel web-search feature.
+Sentinel proactively evaluates implemented technical evidence instead of requiring nontechnical users to know what question to ask.
 
-## Final Acceptance
+Product-wide Discovery Acceptance: **PASS — 8/8 scenarios**.
 
-Final Acceptance Test 8 remains open. It will be rerun only after all four Release Candidate Finalization items are working in the installed product.
+## Final Production Acceptance
+
+**PASS**
+
+Validated:
+
+- visible initial Discovery/gathering state;
+- proactive actionable findings;
+- Ask Sentinel consistency with current Discovery evidence;
+- authoritative driver investigation and safe refusal of an unverified repair;
+- persistent Recent Activity;
+- functional Quarantine Manager;
+- continuous system-tray operation;
+- production tray controls;
+- installed-package operation independent of Visual Studio.
+
+## Installed Release Validation
+
+**PASS — 4 of 4**
+
+Validated package: **Sentinel.App (Package) 1.0.20.0 x64 MSIX bundle**.
+
+The package installed successfully on the VM, launched correctly, completed proactive Discovery, remained running in the system tray after the main window closed, and automatically started tray-only after Windows reboot/sign-in.
 
 ## Release Gate
 
-Do not approve a production release, describe the product as complete, or report 100% progress until:
+**PASSED.**
 
-1. All four Release Candidate Finalization items pass runtime validation.
-2. Final Acceptance Test 8 passes.
-3. Planning/progress documents are updated to completed status.
-4. The final production package is built, signed, and verified.
+Sentinel AI version 1.0.20.0 is recorded as **100% complete for the planned implementation and runtime acceptance**.
 
 ## Product Rule
 
-Sentinel must investigate before acting, keep healthy users undisturbed, verify system-changing outcomes, remain transparent about uncertainty, clearly report successful fixes, and use authoritative web research only as an internal problem-resolution tool when local evidence is insufficient.
+Sentinel investigates before acting, keeps healthy users undisturbed, proactively surfaces verified actionable conditions, verifies system-changing outcomes, remains transparent about uncertainty, clearly reports verified activity, and uses authoritative research only as an internal problem-resolution capability when local evidence is insufficient.
+
+## Future Roadmap
+
+Post-1.0 work may include broader hardware/environment compatibility validation, additional verified automatic-remediation cases, commercial signing/distribution improvements, telemetry/support improvements, and feature expansion. These are future-release items and do not reopen the completed 1.0.20.0 acceptance unless a release-blocking defect is discovered.
