@@ -20,72 +20,75 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
 
             if (!snapshot.InvestigationRequiresAttention)
-            {
-                return RemediationRecommendation.None(
-                    "The investigation does not require action.");
-            }
+                return RemediationRecommendation.None("The investigation does not require action.");
 
             if (!snapshot.DefenderEnabled)
-            {
-                return new RemediationRecommendation(
-                    true,
-                    false,
-                    "refresh-security-state",
-                    "Microsoft Defender",
-                    "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
-            }
+                return Automatic("refresh-security-state", "Microsoft Defender", "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
 
             if (!snapshot.FirewallEnabled)
-            {
-                return new RemediationRecommendation(
-                    true,
-                    false,
-                    "refresh-security-state",
-                    "Windows Firewall",
-                    "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
-            }
+                return Automatic("refresh-security-state", "Windows Firewall", "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
 
             if (IsTransientWindowsUpdateCondition(snapshot))
+                return Automatic("retry-transient-operation", "Windows Update", "Sentinel can safely refresh the transient Windows Update evidence automatically and continue monitoring for recurrence.");
+
+            if (snapshot.InvestigationReasonCode.StartsWith("driver:", StringComparison.OrdinalIgnoreCase))
+                return Guided("review-driver-repair", snapshot.GuidanceTitle, "Sentinel can investigate the exact signed driver and prepare a verified repair. Driver installation and any restart remain approval-gated.");
+
+            switch (snapshot.InvestigationReasonCode)
             {
-                return new RemediationRecommendation(
-                    true,
-                    false,
-                    "retry-transient-operation",
-                    "Windows Update",
-                    "Sentinel can safely refresh the transient Windows Update evidence automatically and continue monitoring for recurrence.");
+                case "windows-restart-pending":
+                    return Guided("review-windows-restart", "Windows restart", "Windows is waiting for a restart. Sentinel will not restart the computer automatically; the user must save work and approve the restart.");
+                case "windows-updates-pending":
+                    return Guided("open-windows-update", "Windows Update", "Sentinel verified pending Windows updates. General update installation remains user-approved through Windows Update.");
+                case "secure-boot-disabled":
+                    return Guided("review-secure-boot", "Secure Boot", "Secure Boot requires firmware-level review. Sentinel will explain the condition but will not alter UEFI/BIOS settings automatically.");
+                case "tpm-not-ready":
+                    return Guided("review-tpm", "TPM", "TPM configuration can require firmware changes. Sentinel will explain the condition but will not alter firmware security settings automatically.");
+                case "memory-pressure-high":
+                    return Guided("open-task-manager", "Memory use", "Sentinel can open Task Manager so the user can review high-memory applications before closing anything.");
+                case "disk-space-critical":
+                    return Guided("open-storage", "System drive", "Sentinel can open Windows Storage settings. It will not delete personal files automatically.");
+                case "service-failure":
+                case "system-finding":
+                    return Guided("open-services", snapshot.PrimaryFlaggedServiceName, "Sentinel can open Windows Services for review. Restarting or disabling a service requires verification and approval.");
             }
 
-            // A connection on an uncommon port is evidence for review, not proof of
-            // malicious activity. Only offer a system-changing network block when the
-            // Investigation Engine has independently correlated the connection with
-            // another process signal and promoted it to an actionable finding.
-            if (IsVerifiedNetworkFinding(snapshot) &&
-                snapshot.FlaggedConnectionCount > 0 &&
-                HasValue(snapshot.PrimaryFlaggedConnectionRemoteEndpoint))
+            if (IsVerifiedNetworkFinding(snapshot) && snapshot.FlaggedConnectionCount > 0 && HasValue(snapshot.PrimaryFlaggedConnectionRemoteEndpoint))
             {
                 return new RemediationRecommendation(
                     true,
                     true,
                     "block-outbound-endpoint",
                     snapshot.PrimaryFlaggedConnectionRemoteEndpoint,
-                    "Sentinel correlated this network endpoint with additional process evidence. Approval is required before blocking it, and Sentinel will verify the resulting firewall rule before reporting success.");
+                    "Sentinel correlated this network endpoint with additional process evidence. Approval is required before blocking it, and Sentinel will verify the resulting firewall rule before reporting success.",
+                    RemediationDisposition.ApprovalRequired);
             }
 
-            if (snapshot.FlaggedProcessCount > 0 &&
-                HasValue(snapshot.PrimaryFlaggedProcessName) &&
-                IsVerifiedProcessFinding(snapshot))
+            if (snapshot.FlaggedProcessCount > 0 && HasValue(snapshot.PrimaryFlaggedProcessName) && IsVerifiedProcessFinding(snapshot))
             {
                 return new RemediationRecommendation(
                     true,
                     true,
                     "contain-process",
                     snapshot.PrimaryFlaggedProcessName,
-                    "The investigation identified a process that may require containment. Sentinel must obtain approval and re-verify the process state before reporting success.");
+                    "The investigation identified a process that may require containment. Sentinel must obtain approval and re-verify the process state before reporting success.",
+                    RemediationDisposition.ApprovalRequired);
             }
 
-            return RemediationRecommendation.None(
-                "The investigation requires attention, but the current evidence does not justify a supported system-changing action.");
+            return new RemediationRecommendation(
+                false,
+                false,
+                "observe-only",
+                "None",
+                "Sentinel verified a condition that requires attention, but the current evidence does not justify a supported system-changing action. Sentinel will continue investigating and monitoring it.",
+                RemediationDisposition.ObserveOnly);
         }
+
+        private static RemediationRecommendation Automatic(string action, string target, string summary) =>
+            new(true, false, action, target, summary, RemediationDisposition.SafeAutomatic);
+
+        private static RemediationRecommendation Guided(string action, string target, string summary) =>
+            new(true, true, action, string.IsNullOrWhiteSpace(target) ? "Windows" : target, summary, RemediationDisposition.GuidedUserAction);
 
         private static bool IsVerifiedNetworkFinding(SystemSnapshot snapshot) =>
             snapshot.InvestigationReasonCode is
@@ -104,23 +107,32 @@ namespace Sentinel.App.Services
             Contains(snapshot.LatestEventMessage, "0x80073D02");
 
         private static bool Contains(string? value, string text) =>
-            !string.IsNullOrWhiteSpace(value) &&
-            value.Contains(text, StringComparison.OrdinalIgnoreCase);
+            !string.IsNullOrWhiteSpace(value) && value.Contains(text, StringComparison.OrdinalIgnoreCase);
 
         private static bool HasValue(string? value) =>
             !string.IsNullOrWhiteSpace(value) &&
             !string.Equals(value, "None", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(value, "Unknown", StringComparison.OrdinalIgnoreCase);
 
+        public enum RemediationDisposition
+        {
+            None,
+            SafeAutomatic,
+            ApprovalRequired,
+            GuidedUserAction,
+            ObserveOnly
+        }
+
         public sealed record RemediationRecommendation(
             bool Available,
             bool RequiresUserApproval,
             string Action,
             string Target,
-            string Summary)
+            string Summary,
+            RemediationDisposition Disposition)
         {
             public static RemediationRecommendation None(string summary) =>
-                new(false, false, "None", "None", summary);
+                new(false, false, "None", "None", summary, RemediationDisposition.None);
         }
     }
 }
