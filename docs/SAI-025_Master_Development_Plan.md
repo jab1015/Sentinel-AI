@@ -1,10 +1,10 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.7
+Version: 4.8
 
-Status: Complete — Production Acceptance Passed
+Status: Active — Sentinel Discovery 2.0
 
-Last Updated: 2026-08-04
+Last Updated: 2026-08-05
 
 Copyright (c) 2026 Modern Methods.
 
@@ -14,101 +14,153 @@ Copyright (c) 2026 Modern Methods.
 
 This document is the authoritative master engineering plan for Sentinel AI.
 
+# Version 1.0 Baseline
+
+Sentinel AI version 1.0.20.0 remains complete for its planned implementation and runtime acceptance. Discovery Acceptance passed 8 of 8 scenarios, Quarantine Acceptance passed 6 of 6 scenarios, and the installed MSIX package passed startup-to-tray validation.
+
+Discovery 2.0 is a post-1.0 product evolution and does not invalidate the accepted 1.0 baseline.
+
 # Product-Wide Sentinel Discovery Rule
 
 Sentinel must not depend on a nontechnical user knowing which technical question to ask.
 
 Every technical condition that Sentinel can safely and reliably verify must participate in continuous Sentinel Discovery. Meaningful findings flow through:
 
-**Discover → Analyze → Investigate → Confidence/Trust → Determine Action → Repair/Protect when safe → Request approval when required → Verify result → Roll back when applicable → Record in Activity Center → Feed verified result to Ask Sentinel.**
+**Discover → Analyze → Correlate → Investigate → Confidence/Trust → Exhaust Safe Remediation → Determine Remaining Risk → Repair/Protect when safe → Request approval when required → Verify result → Record in Activity Center → Preserve Investigation Memory → Feed verified result to Ask Sentinel.**
 
 Ask Sentinel is the explanation and follow-up interface, not the primary discovery mechanism.
 
-Sentinel never invents a diagnosis or silently performs an action whose safety has not been verified. When automatic repair cannot be proven safe, Sentinel makes the finding actionable through plain-language explanation, authoritative investigation, and the correct user-approved next step.
+# Governing Suppression Rule
 
-# Final Status
+**Sentinel must never suppress a finding until it has completed a verified investigation, exhausted every applicable safe remediation, determined that the condition is noncritical, and verified that there is currently nothing more it can safely do. Suppression hides notifications only; it never stops monitoring. Any material change automatically reopens the investigation.**
 
-The planned Sentinel AI implementation and integrated production acceptance are **COMPLETE**.
+A user cannot force Sentinel to ignore a critical, high-risk, actively exploitable, data-loss, malware, active-attack, or mortal hardware-failure condition.
 
-**Overall progress: 100%.**
+# Sentinel Discovery 2.0
 
-The production package validated in the final installed-product acceptance is **Sentinel.App (Package) 1.0.20.0 x64**.
+## Phase 1 of 5 — Persistent Investigation Intelligence
 
-# Completed Major Areas
+Sentinel must stop treating every Discovery cycle as a new investigation.
 
-- Planning and architecture: **Complete**
-- Core platform and monitoring: **Complete**
-- Protection and containment foundation: **Complete**
-- Optimization and maintenance foundation: **Complete**
-- Stability and packaging: **Complete**
-- Ask Sentinel / verified local evidence: **Complete**
-- Investigation Engine runtime integration: **Complete**
-- Quarantine Manager and verified quarantine actions: **Complete**
-- Activity Center / Recent Activity persistence: **Complete**
-- Sentinel Discovery Expansion: **4 of 4 complete**
-- Product-wide Discovery Acceptance: **PASS — 8 of 8 scenarios**
-- Quarantine Acceptance: **PASS — 6 of 6 scenarios**
-- Development-build final production validation: **PASS**
-- Installed Release Validation: **PASS — 4 of 4**
+Each verified investigation receives a persistent record containing:
 
-# Final Production Acceptance Evidence
+- Investigation ID
+- Finding type and root cause
+- Evidence and confidence/trust
+- Repair attempts and results
+- Risk classification
+- Current lifecycle state
+- Stable finding fingerprint
+- Last verification date
+- Conditions that invalidate the conclusion
 
-Runtime acceptance confirmed:
+The fingerprint may include device instance ID, hardware ID, error code, driver version, Windows build, BIOS version, manufacturer/model, and investigation type.
 
-1. Initial startup clearly displays **Sentinel is checking your computer** while current evidence is gathered.
-2. Discovery completes automatically and proactively surfaces verified actionable findings without requiring an Ask Sentinel question.
-3. Ask Sentinel consumes current verified Discovery evidence and preserves approval requirements.
-4. Driver repair review flows into authoritative investigation and source/trust/confidence handling.
-5. When no exact automatically installable repair is verified, Sentinel performs no unverified system change and provides the authoritative next source.
-6. Investigation outcomes persist in Recent Activity and remain consistent with the active Investigation Summary.
-7. Quarantine Manager opens successfully and is connected to the verified quarantine subsystem.
-8. Closing the main application leaves Sentinel continuously running in the system tray.
-9. Tray controls expose Open Sentinel AI, Options, and Exit Sentinel AI.
-10. The packaged installed build starts automatically with Windows and remains tray-only at sign-in rather than forcing the main window open.
+When the same unchanged fingerprint appears again, Sentinel reuses the verified conclusion instead of repeating expensive investigation work.
 
-# Installed Release Validation
+## Phase 2 of 5 — Verified Persistent Exceptions
 
-**Package:** Sentinel.App (Package) 1.0.20.0 x64 MSIX bundle
+A finding is eligible for silent monitoring only when Sentinel proves:
 
-**Result: PASS — 4 of 4**
+1. The investigation is complete.
+2. Every applicable safe, authoritative remediation has been attempted, ruled out, declined, or proven unavailable.
+3. No safe verified automatic repair remains.
+4. The condition is noncritical and not a mortal failure.
+5. The exception applies only to the exact verified fingerprint.
 
-Validated on the VM:
+Eligible user choices:
 
-1. Release package created successfully.
-2. MSIX bundle installed successfully and launched independently of Visual Studio.
-3. Installed application completed Discovery and proactively identified the VM's verified Secure Boot-disabled condition, while correctly treating firmware configuration as a guided user action rather than an automatic change.
-4. Installed application remained active in the system tray after the main window closed and started automatically in the tray after a normal Windows restart/sign-in.
+- Keep reminding me
+- Monitor silently
+- Resume reminders
 
-# Acceptance Harnesses
+Silent monitoring must automatically end when any material evidence changes, including error code, device identity, hardware ID, driver version, Windows build, BIOS/firmware version, severity, repair availability, device replacement, or newly verified authoritative guidance.
 
-## Sentinel Discovery Acceptance
+## Phase 3 of 5 — Cross-Investigation Correlation
 
-**PASS — 8/8**
+Sentinel must correlate related findings into one root-cause investigation rather than presenting duplicate technical warnings.
 
-- Healthy evidence remains quiet.
-- Defender disabled is proactive and actionable.
-- Correlated network behavior requires approval.
-- Uncorroborated process evidence remains observation-only.
-- Driver finding is guided and approval-gated.
-- Windows Update is guided and not silently installed.
-- Secure Boot remains a guided firmware action.
-- Critical disk pressure is guided.
+Correlation sources include drivers/devices, services, event logs, processes, process lineage, command lines, startup entries, scheduled tasks, Defender, Firewall, network activity, storage, Windows Update, TPM, Secure Boot, BIOS/firmware, and other supported evidence.
 
-## Quarantine Acceptance
+Low-confidence relationships remain internal. Conflicting evidence must be reported as unresolved rather than guessed.
 
-**PASS — 6/6 scenarios**
+## Phase 4 of 5 — Adaptive Continuous Discovery
 
-Verified approval gating, quarantine and catalog registration/reconciliation, restore/reversal, permanent deletion, and catalog cleanup.
+Discovery should become increasingly event-driven and context-aware.
 
-# Release Gate
+Sentinel should prioritize meaningful system changes, reduce unnecessary repeated scans, defer low-priority work while the computer is busy or on battery, and perform deeper checks when idle.
 
-**PASSED.**
+Priority classes:
 
-The integrated application, installed package, Discovery behavior, Ask Sentinel grounding, Investigation workflow, Activity Center persistence, Quarantine Manager, continuous tray operation, and Windows startup behavior have been runtime validated at the planned release scope.
+- Critical — immediate investigation
+- High — investigate within seconds
+- Medium — queue for investigation
+- Low — investigate when idle
 
-Sentinel AI is recorded as **100% complete for the planned implementation and runtime acceptance represented by version 1.0.20.0**.
+## Phase 5 of 5 — Trusted Knowledge Engine
 
-Future enhancements, additional hardware-specific remediation cases, broader compatibility testing, signing/distribution changes, and post-release maintenance are subsequent release work and do not reopen this completed development plan unless a release-blocking defect is discovered.
+Completed investigations become reusable verified knowledge records.
+
+Each knowledge record stores evidence, outcome, confidence, trust, risk, repair history, last verification, and explicit invalidation conditions.
+
+Knowledge must be revalidated when material system or authoritative-source evidence changes. Sentinel may reuse a conclusion only when the current fingerprint remains compatible with the stored record.
+
+# Exhaustive Remediation Rule
+
+Before a noncritical finding can be offered for silent monitoring, Sentinel must evaluate all applicable safe repair paths, such as:
+
+- Windows Update
+- Microsoft Update Catalog
+- Computer-manufacturer support
+- Verified component-manufacturer support
+- Driver reinstall or rollback
+- Device reset
+- Service/dependency repair
+- Verified configuration repair
+- SFC/DISM when applicable
+- BIOS/firmware verification
+- Hardware verification
+
+Each path must be recorded as succeeded, failed, unavailable, not applicable, user declined, or awaiting approval.
+
+# Investigation Lifecycle
+
+Every investigation must end in one defined state:
+
+- Resolved
+- Requires User Approval
+- Requires Manual Repair
+- Persistent Noncritical
+- Critical
+- Investigation Incomplete
+
+A persistent noncritical state is not equivalent to healthy. It means Sentinel has verified the condition, exhausted safe remediation, determined the remaining risk is acceptable for silent monitoring, and will continue watching for change.
+
+# Discovery 2.0 Acceptance Requirements
+
+Before Discovery 2.0 is complete, acceptance must prove:
+
+- unchanged investigations are reused rather than repeated;
+- suppression is impossible before exhaustive remediation and noncritical classification;
+- critical findings cannot be suppressed;
+- silent monitoring preserves evidence collection;
+- exact-fingerprint matching prevents overbroad suppression;
+- material changes reactivate the finding automatically;
+- suppression and reactivation are written to Activity Center;
+- Ask Sentinel accurately explains the investigation state;
+- correlated findings appear as one root-cause investigation where justified;
+- healthy and unchanged persistent findings remain quiet;
+- all system-changing actions remain verified and approval-gated where required.
+
+# Current Progress
+
+- Version 1.0.20.0 baseline: **Complete and accepted**
+- Discovery 2.0 planning: **Complete**
+- Phase 1 — Persistent Investigation Intelligence: **Starting implementation**
+- Phase 2 — Verified Persistent Exceptions: **Planned**
+- Phase 3 — Cross-Investigation Correlation: **Planned**
+- Phase 4 — Adaptive Continuous Discovery: **Planned**
+- Phase 5 — Trusted Knowledge Engine: **Planned**
 
 ---
 
