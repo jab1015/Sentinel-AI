@@ -1,8 +1,8 @@
 # SAI-008 — Release Checklist
 
-Version: 1.2  
-Status: Active  
-Last Updated: 2026-07-29
+Version: 1.3  
+Status: Complete — Version 1.0.20.0 Acceptance Passed  
+Last Updated: 2026-08-04
 
 Copyright (c) 2026 Modern Methods.
 
@@ -12,126 +12,73 @@ Copyright (c) 2026 Modern Methods.
 
 This checklist defines the minimum requirements for completing a development session, feature, sprint, or release.
 
-A task is not complete until applicable implementation, build, verification, documentation, and version-control requirements are satisfied.
+A task is complete only when applicable implementation, build, verification, documentation, and version-control requirements are satisfied.
 
----
+# Version 1.0.20.0 Final Release Acceptance
 
-# Standard Quality Gate
+## Planning and Development
 
-## Planning
+☑ Product-wide Sentinel Discovery rule implemented  
+☑ Investigation Engine integrated with proactive Discovery  
+☑ Ask Sentinel grounded in verified evidence and investigation history  
+☑ Quarantine Manager integrated with verified backend actions  
+☑ Activity Center / Recent Activity persistence verified  
+☑ Approval boundaries preserved for system-changing actions  
+☑ Healthy evidence remains quiet  
+☑ Initial Discovery state clearly communicates evidence gathering
 
-☐ Requirement understood  
-☐ Architecture and existing code reviewed  
-☐ Dependencies, risks, and regression impact considered  
-☐ Implementation plan completed
+## Acceptance Harnesses
 
-## Development
+☑ Sentinel Discovery Acceptance — 8/8 PASS  
+☑ Quarantine Acceptance — 6/6 scenarios PASS  
+☑ Approval gating verified  
+☑ Quarantine/catalog registration and reconciliation verified  
+☑ Restore/reversal verified  
+☑ Permanent deletion/catalog cleanup verified
 
-☐ Code implemented  
-☐ SAI-006 Coding Standards followed  
-☐ Error handling added  
-☐ Temporary and placeholder code removed or documented  
-☐ Existing architecture preserved
+## Integrated Production Validation
 
-## Build and Verification
+☑ Application launches successfully  
+☑ Initial Discovery/gathering state displays correctly  
+☑ Verified actionable condition is surfaced proactively  
+☑ Ask Sentinel agrees with active verified Discovery evidence  
+☑ Authoritative investigation executes  
+☑ Unverified automatic repair is refused safely  
+☑ Source/confidence/trust behavior verified  
+☑ Recent Activity persists verified investigation outcome  
+☑ Quarantine Manager opens and reports current state correctly  
+☑ Closing main window preserves background tray operation  
+☑ Tray menu exposes Open Sentinel AI, Options, and Exit Sentinel AI
 
-☐ Solution builds successfully  
-☐ Application launches successfully  
-☐ Feature behaves as expected  
-☐ Existing functionality still works  
-☐ Manual smoke test completed  
-☐ Error scenarios tested when applicable
+## Installed Release Validation
 
-## Documentation and Version Control
+☑ Release package created successfully  
+☑ `Sentinel.App (Package)_1.0.20.0_x64.msixbundle` installed successfully on VM  
+☑ Installed application launches independently of Visual Studio  
+☑ Installed Discovery completed successfully  
+☑ VM Secure Boot-disabled condition surfaced proactively  
+☑ Firmware configuration correctly remained a guided user action  
+☑ Installed application remained running in system tray after main window closed  
+☑ Windows reboot/sign-in completed  
+☑ Sentinel started automatically after sign-in  
+☑ Sentinel started tray-only without forcing the main window open
 
-☐ Tracking documents updated  
-☐ Files reviewed  
-☐ Meaningful commit created  
-☐ Changes pushed to `main`  
-☐ Repository synchronized
+## Release Documentation
 
----
+☑ SAI-025 Master Development Plan updated to 100% complete  
+☑ SAI-013 Implementation Tracker updated to complete  
+☑ SAI-012 Product Roadmap updated to completed  
+☑ SAI-008 Release Checklist updated with final acceptance evidence
 
-# Sprint 3 — Native CPU and Memory Verification
+# Release Decision
 
-☑ Microsoft.Windows.CsWin32 configured  
-☑ `NativeMethods.txt` created  
-☑ `GetSystemTimes` generated and used  
-☑ `GlobalMemoryStatusEx` generated and used  
-☑ Placeholder CPU values removed  
-☑ Native CPU monitoring verified  
-☑ Native physical-memory monitoring verified  
-☑ Dashboard integration verified  
-☑ Build and runtime verification completed
+**PASS**
 
----
+Sentinel AI version **1.0.20.0** has passed the planned integrated runtime and installed-release acceptance scope.
 
-# Sprint 4 — Core Monitoring Expansion Verification
+The release record may describe the planned implementation and runtime acceptance as **100% complete**.
 
-## Disk
-
-☑ System drive detected  
-☑ Total, free, used, and percentage values calculated  
-☑ Disk metrics connected to MonitoringEngine  
-☑ Disk metrics displayed on the dashboard  
-☑ Runtime values verified by the Product Owner
-
-## Network
-
-☑ Active network data sampled  
-☑ Download throughput implemented  
-☑ Upload throughput implemented  
-☑ Network metrics connected to MonitoringEngine  
-☑ Network metrics displayed on the dashboard  
-☑ Runtime values verified by the Product Owner
-
-## Processes
-
-☑ Running process count implemented  
-☑ Highest-memory process identified  
-☑ Highest-memory process usage reported  
-☑ Process metrics connected to MonitoringEngine  
-☑ Process metrics displayed on the dashboard  
-☑ Runtime values verified by the Product Owner
-
-## Windows Security
-
-☑ Microsoft Defender enabled status implemented  
-☑ Windows Firewall enabled status implemented  
-☑ Graceful unavailable states supported  
-☑ Security values connected to MonitoringEngine  
-☑ Security status displayed on the dashboard  
-☑ Runtime values verified by the Product Owner
-
-## Final Verification
-
-☑ CPU, memory, disk, network, process, Defender, and Firewall values displayed  
-☑ One-second refresh preserved  
-☑ Timestamp updates correctly  
-☑ Solution build completed successfully  
-☑ Application launched successfully  
-☑ No visible regression in completed monitoring  
-☑ Product Owner accepted the completed core dashboard  
-☑ README and project tracking synchronized
-
----
-
-# Sprint 5 — Remaining Work
-
-☐ Windows Event Log monitoring  
-☐ Critical and security event classification  
-☐ Suspicious-process indicators  
-☐ Startup application monitoring  
-☐ Service-health monitoring  
-☐ Monitoring integration tests  
-☐ Failure-path and unavailable-service tests  
-☐ Alerting foundation
-
----
-
-# Definition of Done
-
-A feature is complete only when requirements are satisfied, implementation is present, the application builds and runs, runtime behavior is verified, existing functionality is preserved, documentation is current, and changes are pushed to `main`.
+Future compatibility expansion, additional automatic-remediation cases, commercial distribution/signing improvements, and post-release maintenance are subsequent-release work unless a release-blocking defect is discovered.
 
 ---
 
