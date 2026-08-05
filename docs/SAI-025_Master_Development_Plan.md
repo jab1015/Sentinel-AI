@@ -1,8 +1,8 @@
 # SAI-025 — Master Development Plan
 
-Version: 4.6
+Version: 4.7
 
-Status: Active — Final Production Validation
+Status: Complete — Production Acceptance Passed
 
 Last Updated: 2026-08-04
 
@@ -18,115 +18,97 @@ This document is the authoritative master engineering plan for Sentinel AI.
 
 Sentinel must not depend on a nontechnical user knowing which technical question to ask.
 
-Every technical condition that Sentinel can safely and reliably verify must participate in continuous Sentinel Discovery. Meaningful findings must flow through the common lifecycle:
+Every technical condition that Sentinel can safely and reliably verify must participate in continuous Sentinel Discovery. Meaningful findings flow through:
 
 **Discover → Analyze → Investigate → Confidence/Trust → Determine Action → Repair/Protect when safe → Request approval when required → Verify result → Roll back when applicable → Record in Activity Center → Feed verified result to Ask Sentinel.**
 
-Ask Sentinel is the explanation and follow-up interface. It is not the primary discovery mechanism.
+Ask Sentinel is the explanation and follow-up interface, not the primary discovery mechanism.
 
-Supported technical areas must be incorporated into this rule wherever Sentinel has sufficient verified evidence, including drivers/devices, Windows Update and restart state, services, processes, startup items, scheduled tasks, CPU/memory/disk health, Defender/firewall, network connections and suspicious activity, persistence/spyware indicators, Windows security configuration, system/event-log failures, quarantine state, and other implemented Windows health/security evidence.
+Sentinel never invents a diagnosis or silently performs an action whose safety has not been verified. When automatic repair cannot be proven safe, Sentinel makes the finding actionable through plain-language explanation, authoritative investigation, and the correct user-approved next step.
 
-Sentinel must never invent a diagnosis or silently perform an action whose safety has not been verified. When an automatic repair cannot be proven safe, Sentinel must still make the finding actionable by explaining it simply, performing authoritative investigation when appropriate, and presenting the correct user-approved next step.
+# Final Status
 
-# Current Status
+The planned Sentinel AI implementation and integrated production acceptance are **COMPLETE**.
 
-Sentinel Discovery Expansion is complete and product-wide acceptance passed all eight scenarios.
+**Overall progress: 100%.**
 
-Verified product-wide behavior now includes proactive discovery, actionable investigation, safe automatic classification, approval-gated remediation, guided user actions, observation-only handling for insufficient evidence, plain-language primary UX, investigation-history persistence, Activity Center integration, Ask Sentinel reuse, and quiet behavior for healthy evidence.
+The production package validated in the final installed-product acceptance is **Sentinel.App (Package) 1.0.20.0 x64**.
 
-The product remains at **99%** until final production validation and release-document synchronization are complete.
-
-# Current Progress
+# Completed Major Areas
 
 - Planning and architecture: **Complete**
 - Core platform and monitoring: **Complete**
 - Protection and containment foundation: **Complete**
 - Optimization and maintenance foundation: **Complete**
-- Stability and packaging foundation: **Complete**
-- Release Candidate Finalization foundations: **Complete**
+- Stability and packaging: **Complete**
+- Ask Sentinel / verified local evidence: **Complete**
 - Investigation Engine runtime integration: **Complete**
+- Quarantine Manager and verified quarantine actions: **Complete**
+- Activity Center / Recent Activity persistence: **Complete**
 - Sentinel Discovery Expansion: **4 of 4 complete**
 - Product-wide Discovery Acceptance: **PASS — 8 of 8 scenarios**
-- Overall estimated progress: **99%**
+- Quarantine Acceptance: **PASS — 6 of 6 scenarios**
+- Development-build final production validation: **PASS**
+- Installed Release Validation: **PASS — 4 of 4**
 
-# Sentinel Discovery Expansion
+# Final Production Acceptance Evidence
 
-## 1 of 4 — Driver Reference Workflow
+Runtime acceptance confirmed:
 
-**Status: COMPLETE — runtime verified**
+1. Initial startup clearly displays **Sentinel is checking your computer** while current evidence is gathered.
+2. Discovery completes automatically and proactively surfaces verified actionable findings without requiring an Ask Sentinel question.
+3. Ask Sentinel consumes current verified Discovery evidence and preserves approval requirements.
+4. Driver repair review flows into authoritative investigation and source/trust/confidence handling.
+5. When no exact automatically installable repair is verified, Sentinel performs no unverified system change and provides the authoritative next source.
+6. Investigation outcomes persist in Recent Activity and remain consistent with the active Investigation Summary.
+7. Quarantine Manager opens successfully and is connected to the verified quarantine subsystem.
+8. Closing the main application leaves Sentinel continuously running in the system tray.
+9. Tray controls expose Open Sentinel AI, Options, and Exit Sentinel AI.
+10. The packaged installed build starts automatically with Windows and remains tray-only at sign-in rather than forcing the main window open.
 
-The proactive driver workflow is the reference pattern for product-wide Sentinel Discovery.
+# Installed Release Validation
 
-## 2 of 4 — Technical Monitor Discovery Integration
+**Package:** Sentinel.App (Package) 1.0.20.0 x64 MSIX bundle
 
-**Status: COMPLETE**
+**Result: PASS — 4 of 4**
 
-Implemented proactive Discovery integration for supported evidence across drivers/devices, Windows Update and restart state, Defender/firewall, processes, services, startup and scheduled-task evidence, memory and disk conditions, network activity, spyware correlation, event-log findings, Secure Boot, TPM, and other implemented Windows health/security evidence.
+Validated on the VM:
 
-Normal evidence remains quiet unless a verified condition requires user attention.
+1. Release package created successfully.
+2. MSIX bundle installed successfully and launched independently of Visual Studio.
+3. Installed application completed Discovery and proactively identified the VM's verified Secure Boot-disabled condition, while correctly treating firmware configuration as a guided user action rather than an automatic change.
+4. Installed application remained active in the system tray after the main window closed and started automatically in the tray after a normal Windows restart/sign-in.
 
-## 3 of 4 — Actionability and Safe Remediation
+# Acceptance Harnesses
 
-**Status: COMPLETE**
+## Sentinel Discovery Acceptance
 
-Supported findings are classified as:
+**PASS — 8/8**
 
-1. Safe automatic action.
-2. Approval-required action.
-3. Guided user action.
-4. Observation only when evidence does not justify a system change.
+- Healthy evidence remains quiet.
+- Defender disabled is proactive and actionable.
+- Correlated network behavior requires approval.
+- Uncorroborated process evidence remains observation-only.
+- Driver finding is guided and approval-gated.
+- Windows Update is guided and not silently installed.
+- Secure Boot remains a guided firmware action.
+- Critical disk pressure is guided.
 
-Actions remain subject to verification, remediation policy, approval requirements, rollback where applicable, Activity Center logging, and Ask Sentinel grounding.
+## Quarantine Acceptance
 
-## 4 of 4 — Product-Wide Runtime Acceptance
+**PASS — 6/6 scenarios**
 
-**Status: COMPLETE — PASS**
-
-The Discovery Acceptance Harness passed all eight scenarios:
-
-1. Healthy evidence remains quiet.
-2. Defender disabled is proactive and safely actionable.
-3. Correlated network behavior requires approval.
-4. Uncorroborated process evidence remains observation-only.
-5. Driver findings are guided and approval-gated.
-6. Windows Update is guided and not silently installed.
-7. Secure Boot remains a guided firmware action.
-8. Critical disk pressure is guided to Windows Storage.
-
-**Result: PASS — 8/8.**
-
-# UX Requirement
-
-Primary user-facing messages must be concise and nontechnical. Detailed evidence such as device counts, unsigned-driver counts, event counts, hardware IDs, source-selection logic, and other diagnostic data belongs in Technical details unless it is necessary for the user's decision.
-
-During initial startup Discovery, Sentinel must clearly tell the user that it is gathering and analyzing current system evidence before showing a health conclusion.
-
-# Final Production Validation — NEXT
-
-Final release validation must confirm the integrated installed product rather than isolated components.
-
-Required verification:
-
-1. Clean launch and visible initial Discovery state.
-2. Proactive actionable finding appears without Ask Sentinel prompting when a verified condition exists.
-3. Ask Sentinel answers from current verified evidence and investigation history.
-4. Quarantine Manager opens and remains functional.
-5. Activity Center persists verified outcomes.
-6. Investigation Engine and confidence/trust behavior remain intact.
-7. Approval-required actions remain gated.
-8. No false healthy state when an actionable verified condition exists.
-9. Healthy evidence remains quiet.
-10. No crashes, debug breaks, clipping, freezes, or material startup/runtime lag.
-
-After the final production validation passes:
-
-- synchronize all planning/progress/release documents;
-- produce the final release package;
-- mark Sentinel AI 100% only after the release gate is satisfied.
+Verified approval gating, quarantine and catalog registration/reconciliation, restore/reversal, permanent deletion, and catalog cleanup.
 
 # Release Gate
 
-Sentinel AI must not be described as product-complete, commercially ready, or 100% finished until final production validation passes in the integrated application and release documentation is synchronized.
+**PASSED.**
+
+The integrated application, installed package, Discovery behavior, Ask Sentinel grounding, Investigation workflow, Activity Center persistence, Quarantine Manager, continuous tray operation, and Windows startup behavior have been runtime validated at the planned release scope.
+
+Sentinel AI is recorded as **100% complete for the planned implementation and runtime acceptance represented by version 1.0.20.0**.
+
+Future enhancements, additional hardware-specific remediation cases, broader compatibility testing, signing/distribution changes, and post-release maintenance are subsequent release work and do not reopen this completed development plan unless a release-blocking defect is discovered.
 
 ---
 
