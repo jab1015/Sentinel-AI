@@ -1,7 +1,7 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 5.9  
-**Status:** Active — Sentinel Discovery 2.0  
+**Version:** 6.0  
+**Status:** Active — Sentinel Discovery 2.0 Complete  
 **Last Updated:** 2026-08-05  
 **Production Branch:** `main`
 
@@ -14,74 +14,86 @@ Sentinel AI version 1.0.20.0 remains complete and accepted for its original plan
 - Installed Release Validation: **PASS — 4/4**
 - Startup-to-tray after reboot: **PASS**
 
-## Active Milestone — Discovery 2.0
+## Completed Milestone — Discovery 2.0
 
 ### Phase 1 of 5 — Persistent Investigation Intelligence
 
-**Status: IN PROGRESS**
+**Status: COMPLETE — PASS**
 
-Work items:
+- [x] Add persistent investigation-memory model.
+- [x] Add durable investigation-memory storage service.
+- [x] Define stable evidence fingerprint/invalidation state.
+- [x] Record root cause, evidence, confidence/trust, risk, repair attempts, outcome, and last verification.
+- [x] Define investigation lifecycle states.
+- [x] Define explicit invalidation conditions.
+- [x] Reuse unchanged verified conclusions.
+- [x] Prevent suppression of incomplete and critical investigations.
+- [x] Preserve monitoring during notification suppression.
+- [x] Add persistent investigation acceptance tests.
 
-- [ ] Add persistent investigation-memory model.
-- [ ] Add durable investigation-memory storage service.
-- [ ] Define stable finding fingerprint schema.
-- [ ] Record root cause, evidence, confidence/trust, risk, repair attempts, outcome, and last verification.
-- [ ] Define investigation lifecycle states.
-- [ ] Define explicit invalidation conditions.
-- [ ] Reuse unchanged verified conclusions.
-- [ ] Prevent repeated investigation when no material evidence changed.
-- [ ] Feed persisted state to Activity Center.
-- [ ] Feed persisted state to Ask Sentinel.
-- [ ] Add Phase 1 acceptance tests.
+Acceptance evidence: original persistent investigation suite **6/6 PASS**; expanded presentation-policy suite **10/10 PASS**.
 
 ### Phase 2 of 5 — Verified Persistent Exceptions
 
-**Status: PLANNED**
+**Status: COMPLETE — PASS**
 
-- [ ] Add exhaustive-remediation ledger.
-- [ ] Require every applicable repair path to be resolved as succeeded, failed, unavailable, not applicable, user declined, or awaiting approval.
-- [ ] Add critical/noncritical suppression policy.
-- [ ] Block suppression of critical, high-risk, active-attack, malware, data-loss, and mortal hardware-failure findings.
-- [ ] Add exact-fingerprint exception records.
-- [ ] Add **Monitor silently** and **Resume reminders** actions.
-- [ ] Keep monitoring active while user notifications are suppressed.
-- [ ] Automatically reactivate on material evidence change.
-- [ ] Record suppression and reactivation in Activity Center.
-- [ ] Explain suppression state through Ask Sentinel.
-- [ ] Add Phase 2 acceptance tests.
+- [x] Enforce exhausted-remediation requirement for persistent noncritical state.
+- [x] Add critical/noncritical suppression policy.
+- [x] Block suppression of critical findings.
+- [x] Keep incomplete findings active.
+- [x] Add exact evidence matching for persistent exceptions.
+- [x] Add Monitor Silently / Resume Notifications policy.
+- [x] Keep monitoring active while notifications are suppressed.
+- [x] Invalidate prior conclusion after material evidence change.
+- [x] Add presentation-policy acceptance tests.
 
-### Phase 3 of 5 — Cross-Investigation Correlation
+Acceptance evidence: **10/10 PASS**.
 
-**Status: PLANNED**
+### Phase 3 of 5 — Live Persistent Exception Integration
 
-- [ ] Create investigation graph/node model.
-- [ ] Correlate driver, service, event, process, startup, scheduled-task, network, security, storage, and Windows-health evidence.
-- [ ] Assign confidence to relationships.
-- [ ] Keep low-confidence links internal.
-- [ ] Present one root-cause investigation when justified.
-- [ ] Surface contradictory evidence without guessing.
-- [ ] Add Phase 3 acceptance tests.
+**Status: COMPLETE — PASS**
 
-### Phase 4 of 5 — Adaptive Continuous Discovery
+- [x] Match live driver findings to persistent investigation memory.
+- [x] Apply persistent exception policy to live presentation.
+- [x] Hide eligible repeated notification while preserving monitoring.
+- [x] Keep unrelated findings unmatched.
+- [x] Keep healthy state quiet.
+- [x] Restore notifications without disabling monitoring.
+- [x] Add live acceptance harness.
 
-**Status: PLANNED**
+Acceptance evidence: **5/5 PASS**.
 
-- [ ] Add event/change-trigger foundation.
-- [ ] Add Critical/High/Medium/Low discovery priorities.
-- [ ] Add idle, battery, gaming, rendering, sleep, and resume awareness where safely available.
-- [ ] Reduce unnecessary repeated scans.
-- [ ] Reopen investigations only after meaningful evidence changes.
-- [ ] Add Phase 4 performance and acceptance tests.
+### Phase 4 of 5 — Cross-Investigation Correlation
+
+**Status: COMPLETE — PASS**
+
+- [x] Add correlation observation/investigation model.
+- [x] Correlate process and network evidence.
+- [x] Correlate matching service and Event Log evidence.
+- [x] Correlate driver and matching Event Log evidence.
+- [x] Preserve independent investigations for unrelated evidence.
+- [x] Preserve critical security-control severity and priority.
+- [x] Prevent unsupported verified root-cause claims.
+- [x] Add correlation acceptance harness.
+
+Acceptance evidence: **7/7 PASS**.
 
 ### Phase 5 of 5 — Trusted Knowledge Engine
 
-**Status: PLANNED**
+**Status: COMPLETE — PASS**
 
-- [ ] Convert completed investigations into reusable verified knowledge records.
-- [ ] Store evidence provenance, confidence, trust, repair history, outcome, risk, last verification, and expiration rules.
-- [ ] Add authoritative-source revalidation triggers.
-- [ ] Prevent stale or incompatible knowledge reuse.
-- [ ] Add Phase 5 acceptance tests.
+- [x] Add trusted knowledge record model.
+- [x] Promote completed verified investigations into reusable knowledge.
+- [x] Require confidence/trust gating.
+- [x] Prevent incomplete, critical, and low-confidence promotion.
+- [x] Require exhausted remediation for persistent noncritical knowledge.
+- [x] Match reusable knowledge to current evidence state.
+- [x] Invalidate reuse after material evidence change.
+- [x] Add expiration/revalidation behavior.
+- [x] Force direct investigation for current critical evidence.
+- [x] Add Trusted Knowledge acceptance harness.
+
+Acceptance evidence: **8/8 PASS**.
 
 ## Governing Suppression Gate
 
@@ -91,20 +103,19 @@ A finding may be offered for silent monitoring only when all conditions are true
 2. Applicable safe remediation exhausted.
 3. No safe verified repair remains.
 4. Condition is noncritical and not a mortal failure.
-5. Exception fingerprint exactly matches the active evidence.
+5. Exception evidence exactly matches the active condition.
 6. Monitoring remains active.
-7. Material change automatically reopens the finding.
+7. Material change automatically invalidates the prior conclusion and reopens investigation.
 
-## Initial Implementation Sequence
+## Discovery 2.0 Completion Summary
 
-1. Investigation-memory model and storage.
-2. Fingerprint construction and comparison.
-3. Lifecycle/invalidation policy.
-4. Monitoring Engine integration.
-5. Activity Center and Ask Sentinel integration.
-6. Exhaustive-remediation ledger.
-7. Suppression eligibility and UI.
-8. Acceptance harness expansion.
+- Phase 1 — **COMPLETE**
+- Phase 2 — **COMPLETE**
+- Phase 3 — **COMPLETE**
+- Phase 4 — **COMPLETE**
+- Phase 5 — **COMPLETE**
+
+**Overall Discovery 2.0: 5/5 COMPLETE — acceptance passed.**
 
 ## Parallel Release Installer Status
 
