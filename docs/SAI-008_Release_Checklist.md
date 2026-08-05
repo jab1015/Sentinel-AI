@@ -1,7 +1,7 @@
 # SAI-008 — Release Checklist
 
-Version: 1.4  
-Status: Complete — Version 1.0.20.0 Acceptance Passed; Discovery 2.0 Development Acceptance Passed  
+Version: 1.5  
+Status: Complete — Version 1.0.20.0 Acceptance Passed; Discovery 2.0 End-to-End Live Validation Passed  
 Last Updated: 2026-08-05
 
 Copyright (c) 2026 Modern Methods.
@@ -87,18 +87,39 @@ A task is complete only when applicable implementation, build, verification, doc
 ☑ Expired knowledge requires revalidation  
 ☑ Current critical evidence always requires direct investigation
 
+# Discovery 2.0 Live End-to-End Validation
+
+☑ Real Intel(R) Management Engine Interface Code 10 condition discovered  
+☑ Initial live integration gap identified rather than accepted as complete  
+☑ Driver lifecycle corrected so exhausted authoritative investigation can reach Persistent Noncritical  
+☑ Windows Update and authoritative manufacturer-source investigation completed  
+☑ No remaining verified safe installable repair path identified for the exact condition  
+☑ Condition classified as verified persistent noncritical  
+☑ Dashboard changed from active repair warning to previously investigated condition  
+☑ Ask Sentinel reused persistent investigation memory  
+☑ Ask Sentinel and Investigation Summary agreed on the condition and outcome  
+☑ Confidence/trust surfaced in Ask Sentinel response  
+☑ Monitor Silently offered only after eligibility was verified  
+☑ Monitor Silently selected successfully  
+☑ Primary dashboard returned to `Your computer is healthy`  
+☑ Dashboard explicitly reports known noncritical condition is being monitored silently  
+☑ Condition was not falsely marked repaired  
+☑ Background monitoring remains enabled  
+☑ Persistent investigation memory remains active  
+☑ Material evidence change remains an automatic invalidation/reinvestigation trigger
+
 ## Discovery 2.0 Documentation
 
-☑ SAI-025 Master Development Plan updated  
-☑ SAI-013 Implementation Tracker updated  
-☑ SAI-012 Product Roadmap updated  
-☑ SAI-008 Release Checklist updated with Discovery 2.0 acceptance evidence
+☑ SAI-025 Master Development Plan updated with live validation  
+☑ SAI-013 Implementation Tracker updated with live validation  
+☑ SAI-012 Product Roadmap updated with live validation  
+☑ SAI-008 Release Checklist updated with live acceptance evidence
 
 # Release Decision
 
 **Version 1.0.20.0 baseline: PASS**
 
-**Sentinel Discovery 2.0 development acceptance: PASS — 5/5 phases complete.**
+**Sentinel Discovery 2.0: PASS — 5/5 phases complete and end-to-end live persistent-condition workflow validated.**
 
 Discovery 2.0 completion does not by itself constitute a newly packaged public release. Public distribution signing remains separate release work. The self-signed Modern Methods certificate is suitable for controlled testing but does not eliminate certificate trust prompts on unrelated customer computers.
 
