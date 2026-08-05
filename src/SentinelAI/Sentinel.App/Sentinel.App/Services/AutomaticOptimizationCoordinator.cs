@@ -29,6 +29,7 @@ namespace Sentinel.App.Services
         private readonly OptimizationSafetyService _safetyService = new();
         private readonly OptimizationSettingsService _settingsService = new();
         private readonly SafeTemporaryStorageOptimizationExecutor _storageExecutor = new();
+        private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _statePath;
 
@@ -91,6 +92,7 @@ namespace Sentinel.App.Services
                 OptimizationExecutionResult execution =
                     await _storageExecutor.ExecuteAsync(decision, safety, cancellationToken)
                         .ConfigureAwait(false);
+                _outcomeRecorder.Record(execution);
 
                 if (execution.Attempted)
                 {
@@ -156,8 +158,6 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                // Runtime-state persistence must never turn an otherwise safe
-                // optimization outcome into an application failure.
             }
         }
 
