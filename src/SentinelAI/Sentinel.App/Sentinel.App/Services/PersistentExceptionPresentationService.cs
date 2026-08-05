@@ -4,7 +4,6 @@
  */
 
 using Sentinel.App.Models;
-using System;
 
 namespace Sentinel.App.Services
 {
@@ -19,36 +18,36 @@ namespace Sentinel.App.Services
         {
             if (record is null)
             {
-                return PresentationDecision.ShowActiveFinding(
+                return PresentationDecision.CreateActiveFinding(
                     "No reusable verified investigation exists for this condition.");
             }
 
             if (record.IsCritical || record.State == InvestigationLifecycleState.Critical)
             {
-                return PresentationDecision.ShowActiveFinding(
+                return PresentationDecision.CreateActiveFinding(
                     "Critical conditions cannot be hidden or silenced.");
             }
 
             if (record.State != InvestigationLifecycleState.PersistentNoncritical)
             {
-                return PresentationDecision.ShowActiveFinding(
+                return PresentationDecision.CreateActiveFinding(
                     "The investigation is not complete enough to qualify as a persistent noncritical exception.");
             }
 
             if (!record.HasExhaustedRepairLedger)
             {
-                return PresentationDecision.ShowActiveFinding(
+                return PresentationDecision.CreateActiveFinding(
                     "Applicable repair paths have not been fully exhausted.");
             }
 
             if (!record.NotificationsSuppressed)
             {
-                return PresentationDecision.ShowKnownCondition(
+                return PresentationDecision.CreateKnownCondition(
                     "Sentinel completed a verified investigation and found no remaining safe repair, but notifications are still enabled.",
                     "Monitor Silently");
             }
 
-            return PresentationDecision.MonitorSilently(
+            return PresentationDecision.CreateSilentMonitoring(
                 "Sentinel previously completed a verified investigation. No material evidence has changed and no new verified repair is available.",
                 "Resume Notifications");
         }
@@ -62,7 +61,7 @@ namespace Sentinel.App.Services
             string Summary,
             string ActionLabel)
         {
-            public static PresentationDecision ShowActiveFinding(string summary) => new(
+            public static PresentationDecision CreateActiveFinding(string summary) => new(
                 ShowAsActiveFinding: true,
                 ShowKnownCondition: false,
                 SuppressNotification: false,
@@ -71,7 +70,7 @@ namespace Sentinel.App.Services
                 Summary: summary,
                 ActionLabel: string.Empty);
 
-            public static PresentationDecision ShowKnownCondition(string summary, string actionLabel) => new(
+            public static PresentationDecision CreateKnownCondition(string summary, string actionLabel) => new(
                 ShowAsActiveFinding: false,
                 ShowKnownCondition: true,
                 SuppressNotification: false,
@@ -80,7 +79,7 @@ namespace Sentinel.App.Services
                 Summary: summary,
                 ActionLabel: actionLabel);
 
-            public static PresentationDecision MonitorSilently(string summary, string actionLabel) => new(
+            public static PresentationDecision CreateSilentMonitoring(string summary, string actionLabel) => new(
                 ShowAsActiveFinding: false,
                 ShowKnownCondition: true,
                 SuppressNotification: true,
