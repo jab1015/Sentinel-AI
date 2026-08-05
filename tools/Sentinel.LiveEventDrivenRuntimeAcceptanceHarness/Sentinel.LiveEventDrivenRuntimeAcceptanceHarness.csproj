@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Models/SystemSnapshot.cs" Link="Models/SystemSnapshot.cs" />
     <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Services/DiscoveryChangeDetectionService.cs" Link="Services/DiscoveryChangeDetectionService.cs" />
     <Compile Include="../../src/SentinelAI/Sentinel.App/Sentinel.App/Services/LiveEventDrivenDiscoveryCoordinator.cs" Link="Services/LiveEventDrivenDiscoveryCoordinator.cs" />
   </ItemGroup>
