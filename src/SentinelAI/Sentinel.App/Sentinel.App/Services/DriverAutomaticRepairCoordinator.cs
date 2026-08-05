@@ -15,33 +15,41 @@ namespace Sentinel.App.Services
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
         private readonly AuthoritativeDriverResearchService _researchService = new();
+        private readonly DriverPersistentInvestigationCoordinator _persistentInvestigationCoordinator = new();
 
         public async Task<DriverRepairPlan> PrepareAsync(string deviceName)
         {
             DriverRepairPlan windowsUpdatePlan = await Task.Run(() => PrepareWindowsUpdate(deviceName));
             if (windowsUpdatePlan.Available)
             {
+                await PersistOutcomeSafelyAsync(deviceName, windowsUpdatePlan);
                 return windowsUpdatePlan;
             }
 
             AuthoritativeDriverResearchService.DriverResearchResult research =
                 await _researchService.ResearchAsync(deviceName);
 
+            DriverRepairPlan finalPlan;
             if (!research.Completed)
             {
-                return DriverRepairPlan.Unavailable(
+                finalPlan = DriverRepairPlan.Unavailable(
                     deviceName,
                     research.Summary,
                     researchPerformed: true);
             }
+            else
+            {
+                finalPlan = DriverRepairPlan.Researched(
+                    deviceName,
+                    research.SourceName,
+                    research.SourceUri,
+                    research.ConfidencePercent,
+                    research.Summary,
+                    research.UserActionRequired);
+            }
 
-            return DriverRepairPlan.Researched(
-                deviceName,
-                research.SourceName,
-                research.SourceUri,
-                research.ConfidencePercent,
-                research.Summary,
-                research.UserActionRequired);
+            await PersistOutcomeSafelyAsync(deviceName, finalPlan);
+            return finalPlan;
         }
 
         public Task<DriverRepairResult> ExecuteAsync(DriverRepairPlan plan)
@@ -57,6 +65,31 @@ namespace Sentinel.App.Services
             }
 
             return Task.Run(() => Execute(plan));
+        }
+
+        private async Task PersistOutcomeSafelyAsync(string deviceName, DriverRepairPlan plan)
+        {
+            try
+            {
+                await _persistentInvestigationCoordinator
+                    .RecordResearchOutcomeAsync(deviceName, ExtractErrorCode(deviceName), plan)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                // Persistence must never block or change the verified repair decision.
+            }
+        }
+
+        private static string ExtractErrorCode(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            int codeIndex = value.LastIndexOf("(Code ", StringComparison.OrdinalIgnoreCase);
+            if (codeIndex < 0) return string.Empty;
+            int endIndex = value.IndexOf(')', codeIndex);
+            return endIndex > codeIndex
+                ? value[(codeIndex + 1)..endIndex].Trim()
+                : value[(codeIndex + 1)..].Trim();
         }
 
         private static DriverRepairPlan PrepareWindowsUpdate(string deviceName)
