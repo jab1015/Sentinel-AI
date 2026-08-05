@@ -19,10 +19,8 @@ namespace Sentinel.App.Services
         {
             ArgumentNullException.ThrowIfNull(input);
 
-            // Preserve the most specific evidence classification first. A Defender
-            // or Firewall transition can also make the overall state critical, but
-            // the event kind should remain SecurityPostureChanged so downstream
-            // diagnostics and investigation routing know exactly what changed.
+            // Security posture is the most specific classification when a security
+            // control changes, even if that transition also creates critical evidence.
             if (input.SecurityPostureChanged)
             {
                 return Changed(
@@ -39,19 +37,22 @@ namespace Sentinel.App.Services
                     forceImmediateRecheck: true);
             }
 
-            if (input.EvidenceFingerprintChanged)
-            {
-                return Changed(
-                    ChangeKind.EvidenceFingerprintChanged,
-                    "The evidence fingerprint changed, invalidating any unchanged-evidence assumption.",
-                    forceImmediateRecheck: true);
-            }
-
+            // A material change to a condition that was intentionally being monitored
+            // silently must be classified as a reopened persistent condition rather
+            // than only as a generic fingerprint change.
             if (input.PersistentConditionWasSuppressed && input.PersistentConditionMateriallyChanged)
             {
                 return Changed(
                     ChangeKind.PersistentConditionChanged,
                     "A silently monitored persistent condition materially changed and must be reopened.",
+                    forceImmediateRecheck: true);
+            }
+
+            if (input.EvidenceFingerprintChanged)
+            {
+                return Changed(
+                    ChangeKind.EvidenceFingerprintChanged,
+                    "The evidence fingerprint changed, invalidating any unchanged-evidence assumption.",
                     forceImmediateRecheck: true);
             }
 
