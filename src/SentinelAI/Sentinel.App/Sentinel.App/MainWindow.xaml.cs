@@ -276,15 +276,50 @@ namespace Sentinel.App
 
         private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e)
         {
-            if (_guidanceActionId == "open-task-manager") { Process.Start(new ProcessStartInfo("taskmgr.exe") { UseShellExecute = true }); return; }
-            if (_guidanceActionId == "approve-remediation") { await ReviewApprovedRemediationAsync(); return; }
-            if (_guidanceActionId == "review-driver-repair")
+            switch (_guidanceActionId)
             {
-                AskSentinelQuestionBox.Text = "Do I have any driver conflicts?";
-                await SubmitAskSentinelQuestionAsync();
-                return;
+                case "open-task-manager":
+                    OpenShellTarget("taskmgr.exe");
+                    return;
+                case "approve-remediation":
+                    await ReviewApprovedRemediationAsync();
+                    return;
+                case "review-driver-repair":
+                    AskSentinelQuestionBox.Text = "Do I have any driver conflicts?";
+                    await SubmitAskSentinelQuestionAsync();
+                    return;
+                case "open-windows-update":
+                    OpenShellTarget("ms-settings:windowsupdate");
+                    return;
+                case "open-windows-security":
+                    OpenShellTarget("windowsdefender:");
+                    return;
+                case "open-firewall":
+                    OpenShellTarget("windowsdefender://network");
+                    return;
+                case "open-services":
+                    OpenShellTarget("services.msc");
+                    return;
+                case "open-storage":
+                    OpenShellTarget("ms-settings:storagesense");
+                    return;
+                case "check-again":
+                    await UpdateDashboardAsync();
+                    return;
             }
-            if (_guidanceActionId == "open-windows-update") Process.Start(new ProcessStartInfo("ms-settings:windowsupdate") { UseShellExecute = true });
+        }
+
+        private static void OpenShellTarget(string target)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            }
+            catch
+            {
+                // Discovery actions are guidance only. A failed shell handoff must not
+                // change system state or cause Sentinel to report a successful repair.
+            }
         }
 
         private async Task ReviewApprovedRemediationAsync()
