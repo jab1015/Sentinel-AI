@@ -8,24 +8,38 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 # Project Status
 
-**Status:** Release Candidate Validated
+**Status:** Release Candidate Validated — Evidence Accuracy Audit Complete
 **Production Branch:** `main`
 **Current Version:** **1.0.25.0**
 **Release Readiness:** **Validated**
 
-The installed Sentinel AI package has passed runtime validation:
+The installed Sentinel AI package has passed runtime validation, including installed package, publisher, startup task, runtime persistence, Defender/Firewall evidence, network telemetry, diagnostic logging, persistent investigation memory, optimization transparency, and System Evidence accuracy.
 
-- Installed package verification: PASS
-- Modern Methods publisher verification: PASS
-- Startup task verification: PASS
-- Installed process runtime verification: PASS
-- Defender integration verification: PASS
-- Firewall verification: PASS
-- Network telemetry verification: PASS
-- Diagnostic logging verification: PASS
-- Persistent investigation memory verification: PASS
+# System Evidence Accuracy
 
----
+The user-facing System Evidence panel is evidence-bound and names what Sentinel actually measures:
+
+- **CPU Usage** — current processor utilization from Windows system-time counters.
+- **Physical Memory** — physical RAM used/total and percentage.
+- **Windows System Drive** — used/total capacity for the Windows system drive, not all disks.
+- **Current Network Activity** — live receive/send throughput; it is not an internet bandwidth or Speedtest-style capability measurement.
+- **Running Processes** — current process count and highest working-memory process.
+- **Windows Security Evidence** — qualified Defender/Firewall evidence; Sentinel does not overstate inference as authoritative security-product state.
+- **Evidence Collected** — timestamp of the evidence snapshot being displayed.
+
+If Sentinel cannot verify a value, it must say so. It must not invent values or label one measurement as a different capability.
+
+# Optimization Transparency
+
+Optimization is evaluated automatically. Sentinel establishes a local performance baseline before making evidence-driven performance changes unless an immediately actionable condition is independently verified.
+
+Recent Activity and Optimization Status are separate:
+
+- **Recent Activity** preserves recorded Sentinel actions and investigations.
+- **Optimization Status** reports the current optimization assessment even when no change is needed.
+- Actual Sentinel maintenance actions must be persistently recorded and must outrank passive status checks in attribution.
+- Sentinel never claims credit for Windows maintenance that it cannot attribute to Sentinel.
+- Completed optimization is reported only when the action and result are verified.
 
 # Completed Intelligence Systems
 
@@ -41,31 +55,15 @@ Complete and live validated.
 
 ## Adaptive Continuous Discovery
 
-Complete.
-
-Sentinel adjusts monitoring behavior based on system conditions while maintaining continuous protection.
+Complete. Sentinel adjusts monitoring behavior based on system conditions while maintaining continuous protection.
 
 ## Event-Driven Discovery
 
-Complete.
-
-Sentinel responds to meaningful evidence changes immediately instead of relying only on scheduled checks.
+Complete. Sentinel responds to meaningful evidence changes immediately instead of relying only on scheduled checks.
 
 ## Friendly AI Value Layer
 
-Complete.
-
-Sentinel explains verified work in user-friendly language:
-
-- Drive optimization
-- Cleanup actions
-- Windows health checks
-- Network repairs
-- Verified maintenance results
-
-Sentinel only reports actions that were completed and verified.
-
----
+Complete. Sentinel explains verified work in user-friendly language, including verified maintenance, cleanup, Windows health work, network repairs, and other confirmed outcomes. Sentinel only reports actions that were completed and verified.
 
 # Verified Foundations
 
@@ -77,23 +75,23 @@ Sentinel only reports actions that were completed and verified.
 - Safe remediation foundations
 - Maintenance and optimization reporting
 - Activity Center value reporting
+- System Evidence accuracy and semantics audit
+- Optimization transparency and attribution
 - Windows startup-to-tray operation
 - Stability validation
 - MSIX production packaging
-
----
 
 # Product Rules
 
 - Evidence before action
 - Verify outcomes before claiming success
 - Never invent system state or results
-- Keep healthy users undisturbed
+- Name measurements according to what they actually represent
+- Never claim attribution for maintenance Sentinel cannot prove it performed
+- Keep healthy users undisturbed while still confirming ongoing monitoring/optimization status
 - Explain important work clearly
 - Preserve investigation history
 - Keep Ask Sentinel grounded in verified evidence
-
----
 
 # Technology Stack
 
