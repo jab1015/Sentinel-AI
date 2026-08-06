@@ -10,6 +10,7 @@ namespace Sentinel.App
     public sealed partial class MainWindow
     {
         private readonly MaintenanceReportService _maintenanceReportService = new();
+        private readonly FriendlyValueActivityService _friendlyValueActivityService = new();
         private DispatcherTimer? _activityCenterTimer;
         private long _activityVisibilityCallbackToken;
 
@@ -62,9 +63,12 @@ namespace Sentinel.App
                 .OrderByDescending(item => item.TimestampUtc)
                 .First();
 
+            FriendlyValueSummaryService.FriendlyValueSummary? friendly =
+                _friendlyValueActivityService.CreateFor(latest);
+
             HistoryOutcomeIconText.Text = latest.NeedsAttention ? "!" : "✓";
-            HistoryTitleText.Text = GetUserVisibleTitle(latest);
-            HistorySummaryText.Text = latest.Summary;
+            HistoryTitleText.Text = friendly?.Title ?? GetUserVisibleTitle(latest);
+            HistorySummaryText.Text = friendly?.Message ?? latest.Summary;
             HistoryOutcomeText.Text = $"{latest.Outcome} • {latest.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
             InvestigationHistoryBorder.Visibility = Visibility.Visible;
         }
