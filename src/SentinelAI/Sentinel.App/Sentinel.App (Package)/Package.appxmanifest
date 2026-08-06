@@ -11,7 +11,7 @@
   <Identity
     Name="07414ecb-83de-4656-bf2d-b299d64ce5c5"
     Publisher="CN=Modern Methods"
-    Version="1.0.0.0" />
+    Version="1.0.22.0" />
 
   <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -36,7 +36,7 @@
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
         DisplayName="Sentinel AI"
-        Description="Sentinel AI"
+        Description="Sentinel AI quietly monitors, investigates, protects, repairs, and optimizes your Windows computer, then explains what it found and what it did in clear, friendly language."
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
         Square44x44Logo="Images\Square44x44Logo.png">
