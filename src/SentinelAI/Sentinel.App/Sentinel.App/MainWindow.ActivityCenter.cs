@@ -4,6 +4,7 @@ using Microsoft.UI.Dispatching;
 using Sentinel.App.Services;
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Sentinel.App
 {
@@ -13,9 +14,10 @@ namespace Sentinel.App
         private readonly FriendlyValueActivityService _friendlyValueActivityService = new();
         private DispatcherTimer? _activityCenterTimer;
         private long _activityVisibilityCallbackToken;
+        private bool _optimizationStatusRefreshRunning;
         private string _optimizationStatusSummary = "Sentinel is checking whether this computer needs safe optimization.";
 
-        private void ActivityCenter_Loaded(object sender, RoutedEventArgs e)
+        private async void ActivityCenter_Loaded(object sender, RoutedEventArgs e)
         {
             RefreshActivityCenter();
 
@@ -30,12 +32,42 @@ namespace Sentinel.App
                     });
             }
 
+            await RefreshOptimizationStatusAsync();
+
             if (_activityCenterTimer is not null)
                 return;
 
             _activityCenterTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-            _activityCenterTimer.Tick += (_, _) => RefreshActivityCenter();
+            _activityCenterTimer.Tick += ActivityCenterTimer_Tick;
             _activityCenterTimer.Start();
+        }
+
+        private async void ActivityCenterTimer_Tick(object? sender, object e)
+        {
+            RefreshActivityCenter();
+            await RefreshOptimizationStatusAsync();
+        }
+
+        private async Task RefreshOptimizationStatusAsync()
+        {
+            if (_optimizationStatusRefreshRunning)
+                return;
+
+            _optimizationStatusRefreshRunning = true;
+            try
+            {
+                AutomaticOptimizationResult result = await _automaticOptimizationCoordinator.EvaluateAndRunAsync(_engine.CurrentSnapshot);
+                UpdateOptimizationStatus(result);
+            }
+            catch
+            {
+                _optimizationStatusSummary = "Sentinel could not verify optimization status during this check. Monitoring continues and Sentinel will try again automatically.";
+                RefreshActivityCenter();
+            }
+            finally
+            {
+                _optimizationStatusRefreshRunning = false;
+            }
         }
 
         private void UpdateMaintenanceReport() => RefreshActivityCenter();
