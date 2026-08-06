@@ -31,7 +31,6 @@ namespace Sentinel.App
                             InvestigationHistoryBorder.Visibility = Visibility.Visible;
                     });
             }
-
             await RefreshOptimizationStatusAsync();
             if (_activityCenterTimer is not null) return;
             _activityCenterTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
@@ -85,7 +84,6 @@ namespace Sentinel.App
             {
                 _optimizationStatusSummary = $"Optimization check complete. {result.Summary}";
             }
-
             _optimizationStatusUpdatedUtc = DateTime.UtcNow;
             RefreshActivityCenter();
         }
@@ -95,8 +93,6 @@ namespace Sentinel.App
             MaintenanceReport report = _maintenanceReportService.BuildReport();
             MaintenanceReportItem? latest = report.RecentItems.OrderByDescending(item => item.TimestampUtc).FirstOrDefault();
 
-            // Recorded maintenance is evidence that Sentinel actually attempted an action,
-            // so it outranks a passive current optimization assessment.
             if (latest is not null)
             {
                 FriendlyValueSummaryService.FriendlyValueSummary? friendly = _friendlyValueActivityService.CreateFor(latest);
@@ -104,14 +100,17 @@ namespace Sentinel.App
                 HistoryTitleText.Text = friendly?.Title ?? GetUserVisibleTitle(latest);
                 HistorySummaryText.Text = friendly?.Message ?? latest.Summary;
                 HistoryOutcomeText.Text = $"{latest.Outcome} • {latest.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
-                InvestigationHistoryBorder.Visibility = Visibility.Visible;
-                return;
+            }
+            else
+            {
+                HistoryOutcomeIconText.Text = "✓";
+                HistoryTitleText.Text = "No recent Sentinel changes";
+                HistorySummaryText.Text = "Sentinel has not needed to make a verified system change recently.";
+                HistoryOutcomeText.Text = "Monitoring continues automatically";
             }
 
-            HistoryOutcomeIconText.Text = "✓";
-            HistoryTitleText.Text = "Sentinel checked computer optimization";
-            HistorySummaryText.Text = _optimizationStatusSummary;
-            HistoryOutcomeText.Text = _optimizationStatusUpdatedUtc.HasValue
+            OptimizationStatusText.Text = _optimizationStatusSummary;
+            OptimizationStatusTimeText.Text = _optimizationStatusUpdatedUtc.HasValue
                 ? $"Optimization check • {_optimizationStatusUpdatedUtc.Value.ToLocalTime():MMM d, yyyy h:mm tt}"
                 : "Optimization check in progress";
             InvestigationHistoryBorder.Visibility = Visibility.Visible;
@@ -124,10 +123,7 @@ namespace Sentinel.App
             if (item.Category.Equals("Investigation", StringComparison.OrdinalIgnoreCase)) return "Sentinel investigated an issue";
             if (item.Category.Equals("Optimization", StringComparison.OrdinalIgnoreCase))
             {
-                if (summary.Contains("defrag", StringComparison.OrdinalIgnoreCase) ||
-                    summary.Contains("retrim", StringComparison.OrdinalIgnoreCase) ||
-                    summary.Contains("drive", StringComparison.OrdinalIgnoreCase))
-                    return "Sentinel optimized your system drive";
+                if (summary.Contains("defrag", StringComparison.OrdinalIgnoreCase) || summary.Contains("retrim", StringComparison.OrdinalIgnoreCase) || summary.Contains("drive", StringComparison.OrdinalIgnoreCase)) return "Sentinel optimized your system drive";
                 return "Sentinel optimized your computer";
             }
             if (summary.Contains("permanently deleted", StringComparison.OrdinalIgnoreCase)) return "Quarantined file permanently deleted";
