@@ -6,7 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Sentinel.App.Models;
@@ -16,12 +18,14 @@ namespace Sentinel.App.Services
     /// <summary>
     /// Common escalation boundary for unresolved Sentinel investigations.
     /// Local verified evidence always remains authoritative. External information is
-    /// advisory until it is corroborated and must never manufacture a repair outcome.
+    /// accepted only when an approved source contains terms that materially match the
+    /// current investigation. External evidence never authorizes an automatic repair.
     /// </summary>
     public sealed class ExternalInvestigationGateway
     {
         private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(20);
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
+        private const int MaxBodyCharacters = 500_000;
         private readonly InvestigationCache _cache = new();
 
         public async Task<ExternalInvestigationResult> InvestigateAsync(
@@ -37,12 +41,11 @@ namespace Sentinel.App.Services
             if (_cache.TryGet(cacheKey, out ExternalInvestigationResult? cached) && cached is not null)
                 return cached with { FromCache = true };
 
+            IReadOnlyList<string> evidenceTerms = BuildEvidenceTerms(question, snapshot, topic);
             IReadOnlyList<TrustedSource> sources = SourcesFor(topic);
-            if (sources.Count == 0)
-                return ExternalInvestigationResult.NotVerified(topic,
-                    "Sentinel does not have an approved authoritative external source for this investigation yet.");
-
             List<ExternalSourceEvidence> reached = new();
+            List<ExternalSourceEvidence> matched = new();
+
             using HttpClient client = new() { Timeout = NetworkTimeout };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
 
@@ -53,18 +56,25 @@ namespace Sentinel.App.Services
                 {
                     using HttpRequestMessage request = new(HttpMethod.Get, source.Uri);
                     using HttpResponseMessage response = await client.SendAsync(
-                        request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-                    if (response.IsSuccessStatusCode)
-                        reached.Add(new ExternalSourceEvidence(source.Name, source.Uri, source.Authority, true));
+                        request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode) continue;
+
+                    string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    if (body.Length > MaxBodyCharacters) body = body[..MaxBodyCharacters];
+                    string searchable = NormalizeWebText(body);
+                    IReadOnlyList<string> matches = evidenceTerms
+                        .Where(term => searchable.Contains(term, StringComparison.OrdinalIgnoreCase))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(8)
+                        .ToArray();
+
+                    ExternalSourceEvidence evidence = new(
+                        source.Name, source.Uri, source.Authority, true, matches.Count > 0, matches);
+                    reached.Add(evidence);
+                    if (evidence.MatchedCurrentEvidence) matched.Add(evidence);
                 }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    // Per-source timeout: continue to the next approved authority.
-                }
-                catch
-                {
-                    // Network/source failure is evidence of unavailability, not permission to guess.
-                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+                catch { }
             }
 
             ExternalInvestigationResult result;
@@ -73,21 +83,68 @@ namespace Sentinel.App.Services
                 result = ExternalInvestigationResult.NotVerified(topic,
                     "Sentinel could not reach an approved authoritative source. No external conclusion was accepted and no change was made.");
             }
+            else if (matched.Count == 0)
+            {
+                result = new ExternalInvestigationResult(
+                    topic, false, 0,
+                    $"Sentinel reached {reached.Count} approved authoritative source(s), but none contained enough information matching the current verified evidence. Sentinel did not accept an external conclusion.",
+                    reached, true, false, Array.Empty<string>());
+            }
             else
             {
-                int confidence = Math.Min(90, reached.Max(x => x.Authority));
+                string[] matchedTerms = matched.SelectMany(x => x.MatchedTerms)
+                    .Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
+                int sourceAuthority = matched.Max(x => x.Authority);
+                int corroborationBonus = Math.Min(8, (matched.Count - 1) * 4);
+                int termBonus = Math.Min(7, matchedTerms.Length);
+                int confidence = Math.Min(95, Math.Max(60, sourceAuthority - 15 + corroborationBonus + termBonus));
+
                 result = new ExternalInvestigationResult(
-                    Topic: topic,
-                    Verified: true,
-                    ConfidencePercent: confidence,
-                    Summary: $"Sentinel reached {reached.Count} approved authoritative source(s) for this {topic} investigation. Source availability is verified; a specific factual conclusion still requires evidence matching the current computer before Sentinel may act on it.",
-                    Sources: reached,
-                    RequiresAiEscalation: true,
-                    FromCache: false);
+                    topic, true, confidence,
+                    $"Sentinel found authoritative external material that matches {matchedTerms.Length} term(s) from the current verified {topic} evidence across {matched.Count} approved source(s). This supports further investigation, but it does not by itself prove a diagnosis or authorize a repair.",
+                    reached, true, false, matchedTerms);
             }
 
             _cache.Set(cacheKey, result, CacheLifetime);
             return result;
+        }
+
+        private static IReadOnlyList<string> BuildEvidenceTerms(string question, SystemSnapshot snapshot, string topic)
+        {
+            string combined = string.Join(' ', new[]
+            {
+                question,
+                snapshot.InvestigationReasonCode ?? string.Empty,
+                snapshot.InvestigationConclusion ?? string.Empty,
+                snapshot.InvestigationSummary ?? string.Empty,
+                snapshot.GuidanceTitle ?? string.Empty,
+                snapshot.GuidanceEvidence ?? string.Empty
+            });
+
+            HashSet<string> stop = new(StringComparer.OrdinalIgnoreCase)
+            {
+                "sentinel","windows","computer","current","verified","evidence","issue","problem","found",
+                "what","when","where","which","with","from","that","this","have","does","could","would",
+                "about","your","there","their","them","then","than","into","still","need","needs","attention"
+            };
+
+            List<string> terms = Regex.Matches(combined.ToLowerInvariant(), @"[a-z0-9][a-z0-9._-]{2,}")
+                .Select(m => m.Value)
+                .Where(x => !stop.Contains(x) && !int.TryParse(x, out _))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(x => x.Length)
+                .Take(18)
+                .ToList();
+
+            if (!terms.Contains(topic, StringComparer.OrdinalIgnoreCase)) terms.Add(topic);
+            return terms;
+        }
+
+        private static string NormalizeWebText(string html)
+        {
+            string withoutScripts = Regex.Replace(html, @"<(script|style)[^>]*>.*?</\1>", " ", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            string withoutTags = Regex.Replace(withoutScripts, @"<[^>]+>", " ");
+            return Regex.Replace(WebUtility.HtmlDecode(withoutTags), @"\s+", " ").Trim().ToLowerInvariant();
         }
 
         private static string Classify(string question, SystemSnapshot snapshot)
@@ -151,7 +208,13 @@ namespace Sentinel.App.Services
         private sealed record TrustedSource(string Name, string Uri, int Authority);
     }
 
-    public sealed record ExternalSourceEvidence(string SourceName, string Uri, int Authority, bool Reached);
+    public sealed record ExternalSourceEvidence(
+        string SourceName,
+        string Uri,
+        int Authority,
+        bool Reached,
+        bool MatchedCurrentEvidence,
+        IReadOnlyList<string> MatchedTerms);
 
     public sealed record ExternalInvestigationResult(
         string Topic,
@@ -160,9 +223,10 @@ namespace Sentinel.App.Services
         string Summary,
         IReadOnlyList<ExternalSourceEvidence> Sources,
         bool RequiresAiEscalation,
-        bool FromCache)
+        bool FromCache,
+        IReadOnlyList<string> MatchedTerms)
     {
         public static ExternalInvestigationResult NotVerified(string topic, string summary) =>
-            new(topic, false, 0, summary, Array.Empty<ExternalSourceEvidence>(), false, false);
+            new(topic, false, 0, summary, Array.Empty<ExternalSourceEvidence>(), false, false, Array.Empty<string>());
     }
 }
