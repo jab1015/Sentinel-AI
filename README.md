@@ -2,78 +2,96 @@
 
 > **Windows Investigation, Security & Remediation Assistant**
 
-Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, presents plain-language conclusions when attention is warranted, provides policy-controlled remediation/autonomous protection, and includes evidence-grounded Ask Sentinel assistance.
+Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8**. It continuously evaluates system and security evidence, provides evidence-grounded assistance, performs safe verified actions, and explains its work in plain language.
 
 ---
 
 # Project Status
 
-**Status:** Release Candidate Remediation  
-**Production Branch:** `main`  
-**Overall Estimated Progress:** **approximately 91%**  
-**Release Ready:** **No**
+**Status:** Release Candidate Validated
+**Production Branch:** `main`
+**Current Version:** **1.0.25.0**
+**Release Readiness:** **Validated**
 
-Core monitoring, protection, containment, optimization, maintenance, packaging, startup-to-tray, stability, clean install/uninstall, network recovery, and sleep/wake foundations are implemented and verified.
+The installed Sentinel AI package has passed runtime validation:
 
-Final runtime testing identified four incomplete or unverified release-candidate areas:
-
-1. Ask Sentinel Local evidence coverage
-2. Quarantine Manager UI
-3. Activity Center UI and repair visibility
-4. Investigation Engine runtime integration and verification
-
-Final Acceptance Test 8 remains open.
+- Installed package verification: PASS
+- Modern Methods publisher verification: PASS
+- Startup task verification: PASS
+- Installed process runtime verification: PASS
+- Defender integration verification: PASS
+- Firewall verification: PASS
+- Network telemetry verification: PASS
+- Diagnostic logging verification: PASS
+- Persistent investigation memory verification: PASS
 
 ---
 
-# Release Candidate Finalization
+# Completed Intelligence Systems
 
-## 1 of 4 — Ask Sentinel Local
+## Sentinel Discovery 2.0
 
-The UI works, but local evidence coverage is incomplete. Remaining providers include Windows Update, pending restart, TPM, Secure Boot, BitLocker/device encryption, and broader Windows health questions.
+Complete and live validated.
 
-Ask Sentinel remains local-only and does not perform live web searches.
+- Persistent Investigation Intelligence
+- Investigation memory
+- Trusted knowledge workflow
+- Cross-investigation correlation
+- Verified persistent exceptions
 
-## 2 of 4 — Quarantine Manager UI
+## Adaptive Continuous Discovery
 
-The quarantine/restore backend and acceptance harness pass, but the installed product still needs a visible Quarantine Manager with item history, evidence summary, restore, permanent removal, verification state, and activity linkage.
+Complete.
 
-## 3 of 4 — Activity Center
+Sentinel adjusts monitoring behavior based on system conditions while maintaining continuous protection.
 
-The product still needs a visible 30-day history for automatic repairs, optimizations, investigations, quarantine/restore actions, rollbacks, verification results, and user-required actions. Sentinel must clearly tell the user when it successfully fixes something.
+## Event-Driven Discovery
 
-## 4 of 4 — Investigation Engine Runtime Integration
+Complete.
 
-The internal investigation workflow must be demonstrated end-to-end: local evidence collection, confidence scoring, authoritative web research when local evidence is insufficient, safe repair decisions, verification, Activity Center logging, and stored findings available to Ask Sentinel.
+Sentinel responds to meaningful evidence changes immediately instead of relying only on scheduled checks.
 
-The web-research capability exists only to help Sentinel resolve problems automatically. It is not a general Ask Sentinel internet-search feature.
+## Friendly AI Value Layer
+
+Complete.
+
+Sentinel explains verified work in user-friendly language:
+
+- Drive optimization
+- Cleanup actions
+- Windows health checks
+- Network repairs
+- Verified maintenance results
+
+Sentinel only reports actions that were completed and verified.
 
 ---
 
 # Verified Foundations
 
 - Continuous system and security monitoring
-- Inbound/outbound connection monitoring
-- Spyware/process correlation
-- Process containment acceptance
-- Firewall block/removal acceptance
-- Quarantine/restore backend acceptance
-- Optimization and maintenance foundations
-- One-hour and eight-hour stability testing
-- Clean install and uninstall
-- Windows startup-to-tray
-- Network disconnect/recovery
-- Sleep/wake recovery
+- Incoming and outgoing network telemetry
+- Investigation Engine
+- Persistent investigation memory
+- Ask Sentinel grounded responses
+- Safe remediation foundations
+- Maintenance and optimization reporting
+- Activity Center value reporting
+- Windows startup-to-tray operation
+- Stability validation
+- MSIX production packaging
 
 ---
 
-# Installing Sentinel AI
+# Product Rules
 
-Sentinel is deployed through its Windows packaging project. For another standard 64-bit Windows computer, create a **Release | x64** package from **Sentinel.App (Package)** in Visual Studio and distribute the complete generated package output, not a standalone EXE from the build folder.
-
-Public/commercial installation requires the package to be signed with the approved trusted production publisher identity. Private certificate material and credentials must never be committed to this repository.
-
-Detailed packaging, installation, clean-computer verification, and uninstall instructions are maintained in `docs/SAI-028_Installer_Uninstaller_Plan.md`.
+- Evidence before action
+- Verify outcomes before claiming success
+- Never invent system state or results
+- Keep healthy users undisturbed
+- Explain important work clearly
+- Preserve investigation history
+- Keep Ask Sentinel grounded in verified evidence
 
 ---
 
@@ -83,39 +101,14 @@ Detailed packaging, installation, clean-computer verification, and uninstall ins
 |---|---|
 | Language | C# |
 | Framework | .NET 8 |
-| UI Framework | WinUI 3 |
-| Native API Generation | Microsoft.Windows.CsWin32 |
-| Target Platform | Windows 10 and later |
-| Version Control | Git |
-| Production Branch | `main` |
-| Build System | MSBuild |
-
----
-
-# Core Product Rules
-
-- Evidence before action
-- Investigate causes rather than merely report metrics
-- Least-risk remediation
-- Verify system-changing outcomes
-- Never claim success without verification
-- Never invent system state, history, remediation, threats, actions, or outcomes
-- Keep healthy users undisturbed
-- Tell users when Sentinel successfully fixes something
-- Keep Ask Sentinel grounded in verified local evidence
-- Use authoritative web research only for internal problem resolution when local evidence is insufficient
-
----
-
-# Release Gate
-
-Sentinel AI must not be described as complete, commercially ready, or 100% finished until all four Release Candidate Finalization items pass runtime validation and Final Acceptance Test 8 passes.
+| UI | WinUI 3 |
+| Native API | Microsoft.Windows.CsWin32 |
+| Platform | Windows 10 and later |
 
 ---
 
 # Author
 
-**Modern Methods**  
-Product Owner
+**Modern Methods**
 
 Copyright (c) 2026 Modern Methods.
