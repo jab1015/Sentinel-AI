@@ -1,105 +1,59 @@
 # SAI-012 — Product Roadmap
 
-**Version:** 4.8  
-**Status:** Active — Discovery 2.0, Adaptive Continuous Discovery, and Event-Driven Discovery Complete  
-**Last Updated:** 2026-08-05  
+**Version:** 4.9  
+**Status:** Active — Production Candidate Validated  
+**Last Updated:** 2026-08-06  
 **Production Branch:** `main`
 
-## Version 1.0 Baseline
+## Version 1.0.25.0 Release Candidate State
 
-Sentinel AI version 1.0.20.0 remains **100% complete for its planned implementation and runtime acceptance**.
+Sentinel AI production engineering has completed the current milestone set.
 
-The accepted baseline includes proactive Discovery, verified investigation, safe remediation policy, Ask Sentinel, Activity Center, Quarantine Manager, continuous tray operation, packaging, and Windows startup-to-tray behavior.
+Completed:
+- Discovery 2.0 — COMPLETE / LIVE VALIDATED
+- Adaptive Continuous Discovery — COMPLETE
+- Event-Driven Discovery — COMPLETE
+- Friendly AI Value Summaries — COMPLETE
+- Friendly Activity Center messaging — COMPLETE
+- Persistent Investigation Memory — VALIDATED
+- Installed runtime validation — PASS
 
-## Completed Product Initiative — Discovery 2.0
+## Production Validation
 
-Discovery 2.0 extends Sentinel from proactive monitoring into a persistent, memory-based investigation platform.
+Installed Sentinel AI version 1.0.25.0 passed final runtime validation:
 
-- Phase 1 — Persistent Investigation Intelligence: **COMPLETE**
-- Phase 2 — Verified Persistent Exceptions: **COMPLETE**
-- Phase 3 — Live Persistent Exception Integration: **COMPLETE + LIVE VALIDATED**
-- Phase 4 — Cross-Investigation Correlation: **COMPLETE**
-- Phase 5 — Trusted Knowledge Engine: **COMPLETE**
+- Package installed: PASS
+- Modern Methods publisher: PASS
+- Startup task: PASS
+- Runtime persistence: PASS
+- Defender integration: PASS
+- Firewall validation: PASS
+- Network telemetry: PASS
+- Diagnostic logging: PASS
+- Investigation memory: PASS
 
-**Discovery 2.0: 5/5 COMPLETE and end-to-end live validated.**
+## User Value Layer
 
-## Completed Product Initiative — Adaptive Continuous Discovery
+Sentinel now communicates verified work in friendly language.
 
-Adaptive Continuous Discovery makes Sentinel's monitoring effort responsive to risk, user attention state, power conditions, and system activity while preserving continuous monitoring.
-
-- Phase 1 — Adaptive Cadence Policy: **COMPLETE — 7/7 PASS**
-- Phase 2 — Live Monitoring Loop Integration: **COMPLETE — BUILD PASS**
-- Phase 3 — Live Adaptive Scheduling Acceptance: **COMPLETE — 7/7 PASS**
-- Phase 4 — Adaptive Diagnostics and Final Acceptance: **COMPLETE — 6/6 PASS**
-
-**Adaptive Continuous Discovery: 4/4 COMPLETE.**
-
-## Completed Product Initiative — Event-Driven Discovery
-
-Event-Driven Discovery adds material-change responsiveness on top of adaptive polling. Sentinel no longer has to wait for the next ordinary interval when current evidence changes in a way that requires immediate re-evaluation.
-
-### Phase 1 — Material Change Detection — COMPLETE
-
-- Critical evidence appearance detected.
-- Security-posture changes detected.
-- Evidence-fingerprint changes detected.
-- Material changes to silently monitored persistent conditions detected.
-- Attention transitions detected.
-- Power/idle operating-context changes detected.
-- Unchanged evidence remains quiet.
-- Urgent changes are separated from cadence-only recalculation.
-- Acceptance: **8/8 PASS.**
-
-### Phase 2 — Live State Coordinator — COMPLETE
-
-- Previous live state retained for comparison.
-- Fingerprint, Defender/Firewall, critical, attention, suppression, power, and idle state compared across observations.
-- Specific security-event classification preserved.
-- Initial state and unchanged snapshots do not create false events.
-- Acceptance: **8/8 PASS.**
-
-### Phase 3 — Live Runtime Integration — COMPLETE
-
-- Live snapshots feed Event-Driven Discovery evaluation.
-- Urgent material changes can request immediate confirmation refresh.
-- Unchanged conditions stay on Adaptive Continuous Discovery cadence.
-- Confirmation snapshots settle without recursive refresh loops.
-- Materially changed silently monitored conditions reopen automatically.
-- Security-posture transitions interrupt ordinary cadence.
-- Nonurgent power/idle changes and attention clearing recalculate without false urgency.
-- Build: **PASS.** Runtime acceptance: **8/8 PASS.**
-
-### Phase 4 — Event Diagnostics and Final Acceptance — COMPLETE
-
-- Unchanged evidence produces no diagnostic noise.
-- Fingerprint changes explain immediate recheck behavior.
-- Duplicate identical events are suppressed.
-- Security posture changes receive specific event labeling.
-- Reopened persistent conditions explain why investigation resumed.
-- Operating-context changes remain explicitly nonurgent.
-- Diagnostics always preserve monitoring-enabled state.
-- Acceptance: **7/7 PASS.**
-
-**Event-Driven Discovery: 4/4 COMPLETE.**
-
-## Governing Product Rules
-
-**Persistent-condition rule:** Sentinel must never suppress a finding until it has completed a verified investigation, exhausted every applicable safe remediation, determined that the condition is noncritical, and verified that there is currently nothing more it can safely do. Suppression hides notifications only; it never stops monitoring. Any material change automatically reopens the investigation.
-
-**Adaptive-monitoring rule:** Sentinel may vary monitoring cadence according to verified risk and operating conditions, but adaptive scheduling must never disable monitoring. Critical evidence always overrides reduced cadence and silent persistent-condition presentation.
-
-**Event-driven rule:** A material evidence change may interrupt ordinary adaptive cadence and force immediate re-evaluation. Unchanged evidence must remain quiet, nonurgent context changes must not be falsely escalated, and confirmation refreshes must settle without recursive loops.
+Examples:
+- Drive optimization becomes a computer tune-up message.
+- Cleanup becomes storage improvement messaging.
+- Repairs are only shown when verified.
+- Technical implementation details remain hidden unless requested.
 
 ## Current Roadmap State
 
-- Version 1.0.20.0 baseline — **COMPLETE / ACCEPTED**
-- Discovery 2.0 — **5/5 COMPLETE / LIVE VALIDATED**
-- Adaptive Continuous Discovery — **4/4 COMPLETE**
-- Event-Driven Discovery — **4/4 COMPLETE**
+- Version 1.0.25.0 baseline — COMPLETE / VALIDATED
+- Discovery 2.0 — COMPLETE
+- Adaptive Continuous Discovery — COMPLETE
+- Event-Driven Discovery — COMPLETE
+- Friendly AI Value Layer — COMPLETE
+- Release Operations — IN PROGRESS
 
 ## Parallel Release Work
 
-Public distribution signing remains a separate installer milestone. The self-signed Modern Methods certificate is suitable for controlled testing but does not eliminate certificate trust prompts on unrelated customer computers. Public-trust signing or Store distribution must be completed before broad customer release.
+Remaining release work is limited to final release operations, artifact organization, and distribution signing decisions.
 
 ---
 
