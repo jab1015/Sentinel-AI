@@ -15,7 +15,9 @@ $acceptanceSuites = @(
     "Run-LiveEventDrivenDiscoveryAcceptance.ps1",
     "Run-LiveEventDrivenRuntimeAcceptance.ps1",
     "Run-EventDrivenDiscoveryDiagnosticsAcceptance.ps1",
-    "Run-QuarantineAcceptance.ps1"
+    "Run-QuarantineAcceptance.ps1",
+    "Run-FriendlyValueSummaryAcceptance.ps1",
+    "Run-FriendlyValueActivityAcceptance.ps1"
 )
 
 Write-Host "=== Sentinel AI Final Production Regression ==="
