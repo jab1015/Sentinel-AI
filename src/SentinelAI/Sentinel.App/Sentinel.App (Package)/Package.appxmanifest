@@ -9,9 +9,9 @@
   IgnorableNamespaces="uap desktop rescap">
 
   <Identity
-    Name="07414ecb-83de-4656-bf2d-b299d64ce5c5"
-    Publisher="CN=Modern Methods"
-    Version="1.0.22.0" />
+    Name="ModernMethods.SentinelAI"
+    Publisher="CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A"
+    Version="1.0.25.0" />
 
   <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
