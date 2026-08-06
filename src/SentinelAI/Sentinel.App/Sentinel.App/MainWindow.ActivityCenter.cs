@@ -21,7 +21,6 @@ namespace Sentinel.App
         private async void ActivityCenter_Loaded(object sender, RoutedEventArgs e)
         {
             RefreshActivityCenter();
-
             if (_activityVisibilityCallbackToken == 0)
             {
                 _activityVisibilityCallbackToken = InvestigationHistoryBorder.RegisterPropertyChangedCallback(
@@ -34,10 +33,7 @@ namespace Sentinel.App
             }
 
             await RefreshOptimizationStatusAsync();
-
-            if (_activityCenterTimer is not null)
-                return;
-
+            if (_activityCenterTimer is not null) return;
             _activityCenterTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
             _activityCenterTimer.Tick += ActivityCenterTimer_Tick;
             _activityCenterTimer.Start();
@@ -51,9 +47,7 @@ namespace Sentinel.App
 
         private async Task RefreshOptimizationStatusAsync()
         {
-            if (_optimizationStatusRefreshRunning)
-                return;
-
+            if (_optimizationStatusRefreshRunning) return;
             _optimizationStatusRefreshRunning = true;
             try
             {
@@ -66,10 +60,7 @@ namespace Sentinel.App
                 _optimizationStatusUpdatedUtc = DateTime.UtcNow;
                 RefreshActivityCenter();
             }
-            finally
-            {
-                _optimizationStatusRefreshRunning = false;
-            }
+            finally { _optimizationStatusRefreshRunning = false; }
         }
 
         private void UpdateMaintenanceReport() => RefreshActivityCenter();
@@ -88,7 +79,7 @@ namespace Sentinel.App
             }
             else if (!result.Decision.OptimizationWarranted)
             {
-                _optimizationStatusSummary = "Optimization check complete. No verified optimization is needed right now; performance is within this computer's established baseline.";
+                _optimizationStatusSummary = "Optimization check complete. No verified performance optimization is needed right now; performance is within this computer's established baseline.";
             }
             else
             {
@@ -104,26 +95,26 @@ namespace Sentinel.App
             MaintenanceReport report = _maintenanceReportService.BuildReport();
             MaintenanceReportItem? latest = report.RecentItems.OrderByDescending(item => item.TimestampUtc).FirstOrDefault();
 
-            bool showOptimization = _optimizationStatusUpdatedUtc.HasValue &&
-                (latest is null || _optimizationStatusUpdatedUtc.Value >= latest.TimestampUtc);
-
-            if (showOptimization || latest is null)
+            // An actual recorded Sentinel action always outranks a passive optimization check.
+            // This prevents a fresh "no optimization needed" assessment from hiding a verified
+            // defrag/retrim/repair that Sentinel itself performed and recorded.
+            if (latest is not null)
             {
-                HistoryOutcomeIconText.Text = "✓";
-                HistoryTitleText.Text = "Sentinel checked computer optimization";
-                HistorySummaryText.Text = _optimizationStatusSummary;
-                HistoryOutcomeText.Text = _optimizationStatusUpdatedUtc.HasValue
-                    ? $"Optimization check • {_optimizationStatusUpdatedUtc.Value.ToLocalTime():MMM d, yyyy h:mm tt}"
-                    : "Optimization check in progress";
+                FriendlyValueSummaryService.FriendlyValueSummary? friendly = _friendlyValueActivityService.CreateFor(latest);
+                HistoryOutcomeIconText.Text = latest.NeedsAttention ? "!" : "✓";
+                HistoryTitleText.Text = friendly?.Title ?? GetUserVisibleTitle(latest);
+                HistorySummaryText.Text = friendly?.Message ?? latest.Summary;
+                HistoryOutcomeText.Text = $"{latest.Outcome} • {latest.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
                 InvestigationHistoryBorder.Visibility = Visibility.Visible;
                 return;
             }
 
-            FriendlyValueSummaryService.FriendlyValueSummary? friendly = _friendlyValueActivityService.CreateFor(latest);
-            HistoryOutcomeIconText.Text = latest.NeedsAttention ? "!" : "✓";
-            HistoryTitleText.Text = friendly?.Title ?? GetUserVisibleTitle(latest);
-            HistorySummaryText.Text = friendly?.Message ?? latest.Summary;
-            HistoryOutcomeText.Text = $"{latest.Outcome} • {latest.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
+            HistoryOutcomeIconText.Text = "✓";
+            HistoryTitleText.Text = "Sentinel checked computer optimization";
+            HistorySummaryText.Text = _optimizationStatusSummary;
+            HistoryOutcomeText.Text = _optimizationStatusUpdatedUtc.HasValue
+                ? $"Optimization check • {_optimizationStatusUpdatedUtc.Value.ToLocalTime():MMM d, yyyy h:mm tt}"
+                : "Optimization check in progress";
             InvestigationHistoryBorder.Visibility = Visibility.Visible;
         }
 
@@ -132,7 +123,12 @@ namespace Sentinel.App
             if (item.NeedsAttention) return "Sentinel needs your attention";
             string summary = item.Summary ?? string.Empty;
             if (item.Category.Equals("Investigation", StringComparison.OrdinalIgnoreCase)) return "Sentinel investigated an issue";
-            if (item.Category.Equals("Optimization", StringComparison.OrdinalIgnoreCase)) return "Sentinel optimized your computer";
+            if (item.Category.Equals("Optimization", StringComparison.OrdinalIgnoreCase))
+            {
+                if (item.Action.Contains("defrag", StringComparison.OrdinalIgnoreCase)) return "Sentinel optimized your system drive";
+                if (item.Action.Contains("retrim", StringComparison.OrdinalIgnoreCase)) return "Sentinel optimized your system drive";
+                return "Sentinel optimized your computer";
+            }
             if (summary.Contains("permanently deleted", StringComparison.OrdinalIgnoreCase)) return "Quarantined file permanently deleted";
             if (summary.Contains("restored the approved file", StringComparison.OrdinalIgnoreCase) || summary.Contains("restored", StringComparison.OrdinalIgnoreCase) && item.Category.Equals("Protection", StringComparison.OrdinalIgnoreCase)) return "Quarantined file restored";
             if (summary.Contains("quarantined", StringComparison.OrdinalIgnoreCase) && item.Category.Equals("Protection", StringComparison.OrdinalIgnoreCase)) return "Suspicious file quarantined";
