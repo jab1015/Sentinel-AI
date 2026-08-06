@@ -19,7 +19,8 @@ namespace Sentinel.App.Services
     /// Common escalation boundary for unresolved Sentinel investigations.
     /// Local verified evidence always remains authoritative. External information is
     /// accepted only when an approved source contains terms that materially match the
-    /// current investigation. External evidence never authorizes an automatic repair.
+    /// current investigation. Cloud AI may interpret unresolved evidence only after
+    /// local and authoritative methods have run, and it can never authorize repair.
     /// </summary>
     public sealed class ExternalInvestigationGateway
     {
@@ -27,6 +28,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
         private const int MaxBodyCharacters = 500_000;
         private readonly InvestigationCache _cache = new();
+        private readonly SmartSentinelAiCoordinator _aiCoordinator = new();
 
         public async Task<ExternalInvestigationResult> InvestigateAsync(
             string question,
@@ -80,8 +82,10 @@ namespace Sentinel.App.Services
             ExternalInvestigationResult result;
             if (reached.Count == 0)
             {
-                result = ExternalInvestigationResult.NotVerified(topic,
-                    "Sentinel could not reach an approved authoritative source. No external conclusion was accepted and no change was made.");
+                result = new ExternalInvestigationResult(
+                    topic, false, 0,
+                    "Sentinel could not reach an approved authoritative source. No external conclusion was accepted and no change was made.",
+                    Array.Empty<ExternalSourceEvidence>(), true, false, Array.Empty<string>());
             }
             else if (matched.Count == 0)
             {
@@ -103,6 +107,45 @@ namespace Sentinel.App.Services
                     topic, true, confidence,
                     $"Sentinel found authoritative external material that matches {matchedTerms.Length} term(s) from the current verified {topic} evidence across {matched.Count} approved source(s). This supports further investigation, but it does not by itself prove a diagnosis or authorize a repair.",
                     reached, true, false, matchedTerms);
+            }
+
+            if (result.RequiresAiEscalation)
+            {
+                bool highRisk = topic.Equals("security", StringComparison.OrdinalIgnoreCase) ||
+                                topic.Equals("firewall", StringComparison.OrdinalIgnoreCase);
+                bool highComplexity = result.Sources.Count > 1 && !result.Verified;
+
+                AiEscalationContext aiContext = new(
+                    LocalEvidenceAvailable: evidenceTerms.Count > 0,
+                    LocalEvidenceInsufficient: true,
+                    LocalConclusionVerified: false,
+                    CachedVerifiedFindingAvailable: false,
+                    ExternalResearchApplicable: true,
+                    AuthoritativeResearchAttempted: true,
+                    AuthoritativeExternalConclusionVerified: result.Verified,
+                    NeedsInterpretation: true,
+                    NeedsUserExplanation: true,
+                    HighComplexity: highComplexity,
+                    HighRisk: highRisk);
+
+                SmartAiResult ai = await _aiCoordinator.AnalyzeAsync(
+                    "external-investigation",
+                    question,
+                    snapshot,
+                    result,
+                    aiContext,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (ai.UsedCloudAi && !string.IsNullOrWhiteSpace(ai.Answer))
+                {
+                    string cacheNote = ai.FromCache ? " Reused a recent verified-evidence analysis with no new token request." : string.Empty;
+                    result = result with
+                    {
+                        Summary = result.Summary +
+                                  $" AI advisory ({ai.ConfidencePercent}% confidence): {ai.Answer.Trim()}" +
+                                  " Sentinel treats this as interpretation only; any factual or actionable conclusion must still be verified against this computer." + cacheNote
+                    };
+                }
             }
 
             _cache.Set(cacheKey, result, CacheLifetime);
