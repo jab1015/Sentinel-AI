@@ -15,6 +15,7 @@ namespace Sentinel.App
         private DispatcherTimer? _activityCenterTimer;
         private long _activityVisibilityCallbackToken;
         private bool _optimizationStatusRefreshRunning;
+        private DateTime? _optimizationStatusUpdatedUtc;
         private string _optimizationStatusSummary = "Sentinel is checking whether this computer needs safe optimization.";
 
         private async void ActivityCenter_Loaded(object sender, RoutedEventArgs e)
@@ -62,6 +63,7 @@ namespace Sentinel.App
             catch
             {
                 _optimizationStatusSummary = "Sentinel could not verify optimization status during this check. Monitoring continues and Sentinel will try again automatically.";
+                _optimizationStatusUpdatedUtc = DateTime.UtcNow;
                 RefreshActivityCenter();
             }
             finally
@@ -93,26 +95,31 @@ namespace Sentinel.App
                 _optimizationStatusSummary = $"Optimization check complete. {result.Summary}";
             }
 
+            _optimizationStatusUpdatedUtc = DateTime.UtcNow;
             RefreshActivityCenter();
         }
 
         private void RefreshActivityCenter()
         {
             MaintenanceReport report = _maintenanceReportService.BuildReport();
+            MaintenanceReportItem? latest = report.RecentItems.OrderByDescending(item => item.TimestampUtc).FirstOrDefault();
 
-            if (report.RecentItems.Count == 0)
+            bool showOptimization = _optimizationStatusUpdatedUtc.HasValue &&
+                (latest is null || _optimizationStatusUpdatedUtc.Value >= latest.TimestampUtc);
+
+            if (showOptimization || latest is null)
             {
                 HistoryOutcomeIconText.Text = "✓";
-                HistoryTitleText.Text = "Sentinel is monitoring and optimizing automatically";
+                HistoryTitleText.Text = "Sentinel checked computer optimization";
                 HistorySummaryText.Text = _optimizationStatusSummary;
-                HistoryOutcomeText.Text = "Monitoring and optimization checks continue automatically";
+                HistoryOutcomeText.Text = _optimizationStatusUpdatedUtc.HasValue
+                    ? $"Optimization check • {_optimizationStatusUpdatedUtc.Value.ToLocalTime():MMM d, yyyy h:mm tt}"
+                    : "Optimization check in progress";
                 InvestigationHistoryBorder.Visibility = Visibility.Visible;
                 return;
             }
 
-            MaintenanceReportItem latest = report.RecentItems.OrderByDescending(item => item.TimestampUtc).First();
             FriendlyValueSummaryService.FriendlyValueSummary? friendly = _friendlyValueActivityService.CreateFor(latest);
-
             HistoryOutcomeIconText.Text = latest.NeedsAttention ? "!" : "✓";
             HistoryTitleText.Text = friendly?.Title ?? GetUserVisibleTitle(latest);
             HistorySummaryText.Text = friendly?.Message ?? latest.Summary;
