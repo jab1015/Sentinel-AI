@@ -1,13 +1,11 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 6.4  
-**Status:** Active — Core Production Engineering Complete; Release Packaging Next  
-**Last Updated:** 2026-08-05  
+**Version:** 6.5  
+**Status:** Active — Evidence Accuracy and Optimization Transparency Complete  
+**Last Updated:** 2026-08-06  
 **Production Branch:** `main`
 
 ## Accepted Baseline
-
-Sentinel AI production scope has passed the current full regression baseline.
 
 - Final Production Regression: **PASS — 15/15 suites**
 - Discovery Acceptance: **PASS — 8/8**
@@ -15,95 +13,57 @@ Sentinel AI production scope has passed the current full regression baseline.
 - Installed Sentinel Validation: **PASS — 12/12**
 - Startup-to-tray after reboot: **PASS**
 
-## Completed Milestone — Discovery 2.0
+## Completed Milestones
 
-- Phase 1 — Persistent Investigation Intelligence: **COMPLETE — PASS**
-- Phase 2 — Verified Persistent Exceptions: **COMPLETE — PASS**
-- Phase 3 — Live Persistent Exception Integration: **COMPLETE — PASS + LIVE VALIDATED**
-- Phase 4 — Cross-Investigation Correlation: **COMPLETE — 7/7 PASS**
-- Phase 5 — Trusted Knowledge Engine: **COMPLETE — 8/8 PASS**
+- Discovery 2.0: **5/5 COMPLETE — END-TO-END LIVE VALIDATED**
+- Adaptive Continuous Discovery: **4/4 COMPLETE**
+- Event-Driven Discovery: **4/4 COMPLETE**
+- Friendly AI Value Summaries: **3/3 COMPLETE**
 
-**Discovery 2.0: 5/5 COMPLETE — END-TO-END LIVE VALIDATED.**
+## Completed Milestone — System Evidence Accuracy Audit
 
-## Completed Milestone — Adaptive Continuous Discovery
+**Status: COMPLETE — BUILD + LIVE UI VERIFIED**
 
-- Phase 1 — Adaptive Cadence Policy: **COMPLETE — 7/7 PASS**
-- Phase 2 — Live Monitoring Loop Integration: **COMPLETE — BUILD PASS**
-- Phase 3 — Live Adaptive Scheduling Acceptance: **COMPLETE — 7/7 PASS**
-- Phase 4 — Diagnostics and Final Acceptance: **COMPLETE — 6/6 PASS**
+- [x] Audit CPU source, units, and current-state semantics.
+- [x] Audit physical-memory source, units, and current-state semantics.
+- [x] Correct generic Disk label to Windows System Drive.
+- [x] Confirm network measurement is current receive/send throughput.
+- [x] Rename network presentation to Current Network Activity.
+- [x] Explicitly avoid presenting throughput as Speedtest/internet capability.
+- [x] Clarify process count and highest working-memory process.
+- [x] Qualify Defender/Firewall presentation as Windows Security Evidence.
+- [x] Correct Last Updated presentation to Evidence Collected.
+- [x] Runtime verify all corrected labels in the installed UI.
 
-**Adaptive Continuous Discovery: 4/4 COMPLETE.**
+## Completed Milestone — Optimization Transparency & Attribution
 
-## Completed Milestone — Event-Driven Discovery
+**Status: COMPLETE — BUILD + LIVE UI VERIFIED**
 
-- Phase 1 — Material Change Detection: **COMPLETE — 8/8 PASS**
-- Phase 2 — Live State Coordinator: **COMPLETE — 8/8 PASS**
-- Phase 3 — Live Runtime Integration: **COMPLETE — BUILD PASS + 8/8 PASS**
-- Phase 4 — Diagnostics and Final Acceptance: **COMPLETE — 7/7 PASS**
-
-**Event-Driven Discovery: 4/4 COMPLETE.**
-
-## Completed Milestone — Friendly AI Value Summaries
-
-### Phase 1 of 3 — Verified Friendly Summary Engine
-**Status: COMPLETE — 8/8 PASS**
-
-- [x] Translate verified maintenance outcomes into plain English.
-- [x] Never claim incomplete or unverified work.
-- [x] Combine multiple verified actions into one readable update.
-- [x] Collapse duplicate action types.
-- [x] Keep command-line, registry, and implementation jargon out of user-facing summaries.
-
-### Phase 2 of 3 — Live Activity Center Integration
-**Status: COMPLETE — BUILD PASS + 8/8 PASS**
-
-- [x] Surface verified drive optimization in friendly language.
-- [x] Surface verified temporary-file cleanup.
-- [x] Surface verified network repair.
-- [x] Surface verified Windows system-file work without SFC jargon.
-- [x] Surface verified driver repair.
-- [x] Suppress failed, incomplete, unverified, or unknown work rather than inventing value.
-
-### Phase 3 of 3 — Production Regression
-**Status: COMPLETE — 15/15 SUITES PASS**
-
-- [x] Add Friendly Value Summary acceptance to final regression.
-- [x] Add Friendly Value Activity acceptance to final regression.
-- [x] Run complete production regression with all suites passing.
-
-**Friendly AI Value Summaries: 3/3 COMPLETE.**
+- [x] Confirm automatic optimization coordinator executes evaluations.
+- [x] Surface baseline-learning progress to the user.
+- [x] Surface no-verified-optimization-needed outcome.
+- [x] Separate current Optimization Status from Recent Activity.
+- [x] Preserve actual recorded Sentinel actions while showing current optimization state.
+- [x] Verify Sentinel cannot claim the observed Aug. 3 Windows drive optimization because no Sentinel attribution record exists.
+- [x] Preserve the rule that drive optimization/maintenance may be credited to Sentinel only when Sentinel execution is recorded and verified.
 
 ## Final Production Regression — 2026-08-05
 
-The complete regression runner passed all 15 available production suites with zero failures:
-
-1. Discovery Acceptance — PASS
-2. Persistent Investigation Acceptance — PASS
-3. Live Persistent Exception Acceptance — PASS
-4. Cross-Investigation Correlation Acceptance — PASS
-5. Trusted Knowledge Acceptance — PASS
-6. Adaptive Discovery Acceptance — PASS
-7. Live Adaptive Discovery Acceptance — PASS
-8. Adaptive Discovery Diagnostics Acceptance — PASS
-9. Event-Driven Discovery Acceptance — PASS
-10. Live Event-Driven Discovery Acceptance — PASS
-11. Live Event-Driven Runtime Acceptance — PASS
-12. Event-Driven Discovery Diagnostics Acceptance — PASS
-13. Quarantine Acceptance — PASS
-14. Friendly Value Summary Acceptance — PASS
-15. Friendly Value Activity Acceptance — PASS
-
-**Final Production Regression: PASS — 15 passed, 0 failed.**
+The complete regression runner passed all 15 available production suites with zero failures. Existing accepted regression remains the production baseline; the subsequent evidence-accuracy changes were build and live-UI verified on 2026-08-06.
 
 ## Governing Runtime Rules
 
-Adaptive scheduling may change how frequently Sentinel rechecks evidence, but it must never disable monitoring. Event-Driven Discovery may interrupt that cadence when material evidence changes. Critical/security evidence and materially changed persistent conditions receive immediate re-evaluation. Unchanged evidence remains quiet and confirmation refreshes must not create recursive loops.
+Adaptive scheduling may change how frequently Sentinel rechecks evidence, but it must never disable monitoring. Event-Driven Discovery may interrupt that cadence when material evidence changes.
 
-Friendly value messaging is evidence-bound. Sentinel may tell the user what it accomplished only when the underlying maintenance or repair action is completed and verified. Failed, incomplete, unknown, or unverified actions must never be presented as successful work.
+Friendly value messaging is evidence-bound. Sentinel may tell the user what it accomplished only when the underlying maintenance or repair action is completed and verified.
+
+System Evidence is also evidence-bound. Labels must accurately identify what is measured. Capability must not be inferred from activity. Security evidence must not be described with stronger certainty than its source supports. Unknown evidence must remain unknown.
+
+Optimization attribution is evidence-bound. Sentinel must not claim Windows maintenance as its own unless a Sentinel execution record proves the action and outcome.
 
 ## Remaining Release Work
 
-Core production engineering and the current regression baseline are complete. Remaining work is release packaging/distribution:
+Core production engineering, evidence accuracy, optimization transparency, and the current regression baseline are complete. Remaining work is release packaging/distribution:
 
 - Final installer/package preparation.
 - Final installed-package smoke validation for the release package.
