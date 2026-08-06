@@ -4,11 +4,18 @@ using Microsoft.Windows.AppLifecycle;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Sentinel.App
 {
     public partial class App : Application
     {
+        private static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new(-4);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiFlag);
+
         private readonly DiagnosticLogService _diagnosticLog = new();
         private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
         private Window? _window;
@@ -18,8 +25,26 @@ namespace Sentinel.App
 
         public App()
         {
+            EnsurePerMonitorDpiAwareness();
             InitializeComponent();
             UnhandledException += App_UnhandledException;
+        }
+
+        private static void EnsurePerMonitorDpiAwareness()
+        {
+            try
+            {
+                // The application manifest already declares PerMonitorV2. This explicit
+                // process-level declaration gives Windows/WACK a runtime DPI-awareness
+                // signal as well. Failure is non-fatal because Windows may have already
+                // established the context from the manifest before managed startup.
+                _ = SetProcessDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2);
+            }
+            catch
+            {
+                // DPI awareness remains declared in app.manifest. Do not block startup
+                // if the OS has already locked the process DPI-awareness context.
+            }
         }
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
