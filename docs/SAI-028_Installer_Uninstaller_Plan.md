@@ -1,10 +1,10 @@
 # SAI-028 — Installer and Uninstaller Plan
 
-Version: 2.0
+Version: 2.1
 
 Status: Complete — Release Operations
 
-Last Updated: 2026-08-02
+Last Updated: 2026-08-06
 
 Copyright (c) 2026 Modern Methods.
 
@@ -46,7 +46,7 @@ For a properly production-signed release:
 3. Confirm the displayed publisher is the approved Modern Methods/Sentinel AI production publisher.
 4. Choose **Install**.
 5. Launch **Sentinel AI** from the Windows Start menu after installation.
-6. Complete the first-run experience and verify the personalized greeting, healthy-state experience, monitoring evidence, Ask Sentinel, and Technical details.
+6. Complete the first-run experience and verify the personalized greeting, healthy-state experience, monitoring evidence, Ask Sentinel, Recent Activity, Optimization Status, and Technical details.
 
 A development/test package signed with a non-public certificate may require the corresponding trusted certificate to be installed on the test computer before Windows will accept the package. This is for controlled testing only and is not the commercial distribution method.
 
@@ -54,7 +54,7 @@ A development/test package signed with a non-public certificate may require the 
 
 Windows installation on another user's computer should use a trusted production-signed package. Private signing keys, PFX files, passwords, tokens, and certificate secrets must never be committed to this repository.
 
-SAI-029 defines the signing boundary. Until the production signing certificate/distribution identity is provisioned, Sentinel's implementation is complete but the package is a development/release-candidate artifact rather than a publicly distributable installer.
+Until the production signing certificate/distribution identity is provisioned, Sentinel's implementation is complete but the package is a development/release-candidate artifact rather than a publicly distributable installer.
 
 # Uninstallation
 
@@ -71,18 +71,28 @@ User-data retention/removal must follow the documented privacy and release polic
 
 After installing on a clean/secondary Windows computer, verify:
 
-- Sentinel launches without `REGDB_E_CLASSNOTREG`, `ApplicationData.Current`, `XamlRoot`, or startup/debugging failures.
+- Sentinel launches without runtime/startup failures.
 - First visible window appears promptly.
 - Personalized greeting persists.
-- CPU, memory, disk, network, process, Defender, and Firewall evidence populate.
+- System Evidence populates with accurate semantics:
+  - CPU Usage.
+  - Physical Memory.
+  - Windows System Drive.
+  - Current Network Activity (live throughput, not bandwidth capability).
+  - Running Processes / highest working memory.
+  - Qualified Windows Security Evidence.
+  - Evidence Collected timestamp.
 - Ask Sentinel remains grounded in verified local evidence.
+- Recent Activity preserves recorded Sentinel work.
+- Optimization Status is independently visible and reports baseline learning/no-change-needed/completed verified outcomes as applicable.
+- Sentinel does not claim maintenance performed independently by Windows.
 - Technical details expand normally.
 - Closing and reopening Sentinel works normally.
 - Windows uninstall completes successfully.
 
 # Release Status
 
-Installer/uninstaller implementation and local runtime verification are complete as Phase 7 item 7. Public deployment still requires the release-operations step of provisioning and applying the approved production signing identity before distributing the generated package to other users.
+Installer/uninstaller implementation and local runtime verification are complete. System Evidence accuracy and optimization transparency were live verified on 2026-08-06. Public deployment still requires provisioning and applying the approved production signing/distribution identity before broad customer distribution.
 
 ---
 
