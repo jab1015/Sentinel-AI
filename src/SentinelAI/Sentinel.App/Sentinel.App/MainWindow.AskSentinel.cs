@@ -12,6 +12,7 @@ namespace Sentinel.App
     public sealed partial class MainWindow
     {
         private readonly AskSentinelResponseOrchestrator _askSentinelResponseOrchestrator = new();
+        private readonly ExternalInvestigationGateway _externalInvestigationGateway = new();
         private readonly DriverAutomaticRepairCoordinator _driverRepairCoordinator = new();
         private readonly MaintenanceOutcomeRecorder _askSentinelOutcomeRecorder = new();
         private bool _askSentinelBusy;
@@ -61,11 +62,57 @@ namespace Sentinel.App
                 var history = await _investigationHistoryService.ReadRecentAsync(100);
                 AskSentinelProgressText.Text = "Preparing a verified answer…";
                 AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() => _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
+
+                if (response.IsInsufficientEvidence)
+                {
+                    AskSentinelProgressText.Text = "Local evidence is not enough. Checking approved authoritative sources…";
+                    ExternalInvestigationResult external = await _externalInvestigationGateway.InvestigateAsync(question, snapshot);
+                    if (external.Verified)
+                    {
+                        string sourceNames = external.Sources.Count == 0
+                            ? "approved authoritative sources"
+                            : string.Join(", ", System.Linq.Enumerable.Select(external.Sources, x => x.SourceName));
+                        string externalAnswer =
+                            response.Answer + "\n\nExternal investigation\n" +
+                            external.Summary + "\n\nSources reached: " + sourceNames +
+                            $"\nAuthority confidence: {external.ConfidencePercent}%" +
+                            "\n\nSentinel has verified the source availability, but it has not yet verified a machine-specific conclusion from those sources. No repair or factual claim will be made until that evidence is matched to this computer.";
+                        response = response with
+                        {
+                            Answer = externalAnswer,
+                            GroundingSummary = "Local evidence was insufficient, so Sentinel escalated to approved authoritative external sources. Source availability was verified; no unsupported machine-specific conclusion was accepted."
+                        };
+
+                        string fingerprint = $"external:{external.Topic}:{question.Trim().ToLowerInvariant()}";
+                        await _investigationHistoryService.RecordAsync(
+                            fingerprint,
+                            "External investigation",
+                            external.Summary,
+                            "Information",
+                            external.RequiresAiEscalation,
+                            false);
+                        _askSentinelOutcomeRecorder.RecordInvestigation(
+                            "External investigation",
+                            external.Summary,
+                            external.RequiresAiEscalation,
+                            $"Topic: {external.Topic}; Confidence: {external.ConfidencePercent}%; Sources: {sourceNames}");
+                        UpdateMaintenanceReport();
+                    }
+                    else
+                    {
+                        response = response with
+                        {
+                            Answer = response.Answer + "\n\nExternal investigation\n" + external.Summary,
+                            GroundingSummary = "Sentinel had insufficient local evidence and could not verify an approved authoritative external source, so it did not guess."
+                        };
+                    }
+                }
+
                 AskSentinelAnswerText.Text = response.Answer;
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 UpdateAskSentinelRepairActions(response.Answer);
                 AskSentinelStatusText.Text = response.IsInsufficientEvidence
-                    ? $"Checked verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}; Sentinel will not guess beyond it."
+                    ? $"Checked verified evidence updated {response.EvidenceTimestamp:h:mm:ss tt}; Sentinel did not guess beyond verified findings."
                     : response.UsedInvestigationHistory
                         ? $"Answered from verified current evidence and Sentinel investigation history; current evidence updated {response.EvidenceTimestamp:h:mm:ss tt}."
                         : $"Answered from verified local evidence updated {response.EvidenceTimestamp:h:mm:ss tt}.";
