@@ -95,9 +95,8 @@ namespace Sentinel.App
             MaintenanceReport report = _maintenanceReportService.BuildReport();
             MaintenanceReportItem? latest = report.RecentItems.OrderByDescending(item => item.TimestampUtc).FirstOrDefault();
 
-            // An actual recorded Sentinel action always outranks a passive optimization check.
-            // This prevents a fresh "no optimization needed" assessment from hiding a verified
-            // defrag/retrim/repair that Sentinel itself performed and recorded.
+            // Recorded maintenance is evidence that Sentinel actually attempted an action,
+            // so it outranks a passive current optimization assessment.
             if (latest is not null)
             {
                 FriendlyValueSummaryService.FriendlyValueSummary? friendly = _friendlyValueActivityService.CreateFor(latest);
@@ -125,8 +124,10 @@ namespace Sentinel.App
             if (item.Category.Equals("Investigation", StringComparison.OrdinalIgnoreCase)) return "Sentinel investigated an issue";
             if (item.Category.Equals("Optimization", StringComparison.OrdinalIgnoreCase))
             {
-                if (item.Action.Contains("defrag", StringComparison.OrdinalIgnoreCase)) return "Sentinel optimized your system drive";
-                if (item.Action.Contains("retrim", StringComparison.OrdinalIgnoreCase)) return "Sentinel optimized your system drive";
+                if (summary.Contains("defrag", StringComparison.OrdinalIgnoreCase) ||
+                    summary.Contains("retrim", StringComparison.OrdinalIgnoreCase) ||
+                    summary.Contains("drive", StringComparison.OrdinalIgnoreCase))
+                    return "Sentinel optimized your system drive";
                 return "Sentinel optimized your computer";
             }
             if (summary.Contains("permanently deleted", StringComparison.OrdinalIgnoreCase)) return "Quarantined file permanently deleted";
