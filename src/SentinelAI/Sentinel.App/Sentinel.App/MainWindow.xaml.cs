@@ -124,12 +124,12 @@ namespace Sentinel.App
                 if (_timer.Interval != cadence.NextCheckInterval) _timer.Interval = cadence.NextCheckInterval;
 
                 CpuText.Text = $"CPU Usage: {snapshot.CpuUsagePercent:0.0}%";
-                MemoryText.Text = $"Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
+                MemoryText.Text = $"Physical Memory: {snapshot.MemoryUsedGB:0.00} GB / {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)";
                 double diskUsedGB = Math.Max(snapshot.DiskTotalGB - snapshot.DiskFreeGB, 0);
-                DiskText.Text = snapshot.DiskTotalGB > 0 ? $"Disk: {diskUsedGB:0.00} GB / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)" : "Disk: Unavailable";
+                DiskText.Text = snapshot.DiskTotalGB > 0 ? $"Windows System Drive: {diskUsedGB:0.00} GB used / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)" : "Windows System Drive: Unavailable";
                 NetworkText.Text = $"Current Network Activity: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
-                ProcessText.Text = snapshot.HighestMemoryProcessGB > 0 ? $"Processes: {snapshot.ProcessCount} running | Top memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)" : $"Processes: {snapshot.ProcessCount} running";
-                SecurityText.Text = $"Security: Defender {snapshot.DefenderStatus} | Firewall {snapshot.FirewallStatus}";
+                ProcessText.Text = snapshot.HighestMemoryProcessGB > 0 ? $"Running Processes: {snapshot.ProcessCount} | Highest working memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)" : $"Running Processes: {snapshot.ProcessCount}";
+                SecurityText.Text = $"Windows Security Evidence: Defender {FormatSecurityEvidence(snapshot.DefenderStatus)} | Firewall {FormatSecurityEvidence(snapshot.FirewallStatus)}";
                 CriticalEventsText.Text = snapshot.CriticalEventCount.ToString(); ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
                 LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}" : "No recent critical or error events.";
                 LatestEventMessageText.Text = snapshot.LatestEventMessage;
@@ -167,12 +167,23 @@ namespace Sentinel.App
                 }
                 VerifyGuidanceButton.Visibility = investigationRequiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
                 RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0"; RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
-                LastUpdatedText.Text = $"Last Updated: {snapshot.Timestamp:hh:mm:ss tt}";
+                LastUpdatedText.Text = $"Evidence Collected: {snapshot.Timestamp:MMM d, yyyy h:mm:ss tt}";
                 _ = _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot); _ = _integratedMaintenanceCoordinator.EvaluateAndRunAsync();
             }
             finally { _isRefreshing = false; }
             if (forceEventDrivenFollowUp) ScheduleEventDrivenFollowUp();
         }
+
+        private static string FormatSecurityEvidence(string status) => status switch
+        {
+            "Enabled" => "appears enabled",
+            "Limited" => "appears limited",
+            "Disabled" => "appears disabled",
+            "Disabled or inactive" => "appears disabled or inactive",
+            "Not detected" => "not detected",
+            "Unavailable" => "could not be verified",
+            _ => status
+        };
 
         private void ScheduleEventDrivenFollowUp() { if (_eventDrivenFollowUpPending) return; _eventDrivenFollowUpPending = true; _ = RunEventDrivenFollowUpAsync(); }
         private async Task RunEventDrivenFollowUpAsync() { try { await Task.Delay(250); await UpdateDashboardAsync(); } finally { _eventDrivenFollowUpPending = false; } }
