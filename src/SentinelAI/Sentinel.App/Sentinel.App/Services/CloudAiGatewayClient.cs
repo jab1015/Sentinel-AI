@@ -14,19 +14,25 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Client for the Modern Methods server-side AI gateway.
-    /// No provider API secret is stored in Sentinel. The endpoint is intentionally
-    /// configuration-driven so release builds can be pointed at the production gateway.
+    /// No provider API secret is stored in Sentinel. The production HTTPS endpoint
+    /// is built in, while SENTINEL_AI_GATEWAY_URL can override it for testing.
     /// </summary>
     public sealed class CloudAiGatewayClient
     {
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+        private const string ProductionEndpoint =
+            "https://sentinel-ai-gateway-49908265995.us-central1.run.app/v1/analyze";
+
         private readonly HttpClient _httpClient;
         private readonly Uri? _endpoint;
 
         public CloudAiGatewayClient()
         {
             _httpClient = new HttpClient { Timeout = RequestTimeout };
-            string? endpoint = Environment.GetEnvironmentVariable("SENTINEL_AI_GATEWAY_URL");
+
+            string? configured = Environment.GetEnvironmentVariable("SENTINEL_AI_GATEWAY_URL");
+            string endpoint = string.IsNullOrWhiteSpace(configured) ? ProductionEndpoint : configured.Trim();
+
             if (Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps)
                 _endpoint = uri;
         }
