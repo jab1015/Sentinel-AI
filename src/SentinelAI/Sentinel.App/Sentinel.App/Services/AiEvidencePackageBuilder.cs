@@ -12,10 +12,6 @@ using Sentinel.App.Models;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Builds the smallest useful, privacy-reduced evidence package for cloud AI.
-    /// The package is issue-scoped; it is not a full machine dump.
-    /// </summary>
     public sealed class AiEvidencePackageBuilder
     {
         private const int DefaultCharacterBudget = 5_000;
@@ -25,7 +21,8 @@ namespace Sentinel.App.Services
             string userQuestion,
             SystemSnapshot snapshot,
             ExternalInvestigationResult? external = null,
-            int characterBudget = DefaultCharacterBudget)
+            int characterBudget = DefaultCharacterBudget,
+            string? supplementalEvidence = null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
             ArgumentNullException.ThrowIfNull(snapshot);
@@ -41,15 +38,10 @@ namespace Sentinel.App.Services
                 Add(facts, "process", $"{snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason}");
             if (snapshot.FlaggedConnectionCount > 0)
                 Add(facts, "network", $"{snapshot.PrimaryFlaggedConnectionProcessName} -> {RedactEndpoint(snapshot.PrimaryFlaggedConnectionRemoteEndpoint)}: {snapshot.PrimaryFlaggedConnectionReason}");
-            if (snapshot.FlaggedServiceCount > 0)
-                Add(facts, "service", snapshot.PrimaryFlaggedServiceName);
-            if (snapshot.FlaggedCommandLineCount > 0)
-                Add(facts, "command", $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason}");
-            if (snapshot.FlaggedStartupEntryCount > 0)
-                Add(facts, "startup", $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}");
-            if (snapshot.FlaggedScheduledTaskCount > 0)
-                Add(facts, "task", $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}");
-
+            if (snapshot.FlaggedServiceCount > 0) Add(facts, "service", snapshot.PrimaryFlaggedServiceName);
+            if (snapshot.FlaggedCommandLineCount > 0) Add(facts, "command", $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason}");
+            if (snapshot.FlaggedStartupEntryCount > 0) Add(facts, "startup", $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}");
+            if (snapshot.FlaggedScheduledTaskCount > 0) Add(facts, "task", $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}");
             if (!snapshot.DefenderEnabled || !snapshot.FirewallEnabled)
                 Add(facts, "protection", $"Defender={snapshot.DefenderEnabled}; Firewall={snapshot.FirewallEnabled}; {snapshot.ProtectionHealthSummary}");
 
@@ -57,36 +49,29 @@ namespace Sentinel.App.Services
             {
                 Add(facts, "external-topic", external.Topic);
                 Add(facts, "external-summary", external.Summary);
-                if (external.MatchedTerms.Count > 0)
-                    Add(facts, "external-matches", string.Join(", ", external.MatchedTerms.Take(10)));
-                if (external.Sources.Count > 0)
-                    Add(facts, "authorities", string.Join(", ", external.Sources.Where(x => x.Reached).Select(x => x.SourceName).Distinct().Take(5)));
+                if (external.MatchedTerms.Count > 0) Add(facts, "external-matches", string.Join(", ", external.MatchedTerms.Take(10)));
+                if (external.Sources.Count > 0) Add(facts, "authorities", string.Join(", ", external.Sources.Where(x => x.Reached).Select(x => x.SourceName).Distinct().Take(5)));
             }
+
+            Add(facts, "machine-specific supplemental evidence", supplementalEvidence);
 
             string sanitizedQuestion = Sanitize(userQuestion);
             StringBuilder builder = new();
             builder.AppendLine("SENTINEL_AI_EVIDENCE_V1");
             builder.AppendLine($"purpose: {Sanitize(purpose)}");
-            if (!string.IsNullOrWhiteSpace(sanitizedQuestion))
-                builder.AppendLine($"question: {Limit(sanitizedQuestion, 500)}");
-            builder.AppendLine("rules: use only supplied verified evidence; distinguish fact from inference; do not authorize repairs; request more evidence when insufficient.");
+            if (!string.IsNullOrWhiteSpace(sanitizedQuestion)) builder.AppendLine($"question: {Limit(sanitizedQuestion, 500)}");
+            builder.AppendLine("rules: use only supplied verified evidence; distinguish fact from inference; do not authorize repairs; request more evidence only if Sentinel cannot collect it locally.");
             builder.AppendLine("facts:");
 
             foreach (string fact in facts.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                string line = "- " + Limit(Sanitize(fact), 700);
+                string line = "- " + Limit(Sanitize(fact), 1_400);
                 if (builder.Length + line.Length + 2 > characterBudget) break;
                 builder.AppendLine(line);
             }
 
             string payload = builder.ToString().Trim();
-            return new AiEvidencePackage(
-                Purpose: purpose,
-                Payload: payload,
-                CharacterCount: payload.Length,
-                EstimatedInputTokens: Math.Max(1, (int)Math.Ceiling(payload.Length / 4.0)),
-                Redacted: true,
-                ContainsFullSystemDump: false);
+            return new AiEvidencePackage(purpose, payload, payload.Length, Math.Max(1, (int)Math.Ceiling(payload.Length / 4.0)), true, false);
         }
 
         private static void Add(ICollection<string> facts, string label, string? value)
@@ -103,8 +88,7 @@ namespace Sentinel.App.Services
             result = Regex.Replace(result, @"(?i)\b(?:token|api[_ -]?key|authorization|password|passwd|secret)\s*[:=]\s*[^\s,;]+", "$1=[redacted]");
             result = Regex.Replace(result, @"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[redacted-ip]");
             result = Regex.Replace(result, @"\b[A-Fa-f0-9]{2}(?:[:-][A-Fa-f0-9]{2}){5}\b", "[redacted-mac]");
-            result = Regex.Replace(result, @"\s+", " ").Trim();
-            return result;
+            return Regex.Replace(result, @"\s+", " ").Trim();
         }
 
         private static string RedactEndpoint(string? endpoint)
@@ -118,11 +102,5 @@ namespace Sentinel.App.Services
         private static string Limit(string value, int max) => value.Length <= max ? value : value[..max] + "…";
     }
 
-    public sealed record AiEvidencePackage(
-        string Purpose,
-        string Payload,
-        int CharacterCount,
-        int EstimatedInputTokens,
-        bool Redacted,
-        bool ContainsFullSystemDump);
+    public sealed record AiEvidencePackage(string Purpose, string Payload, int CharacterCount, int EstimatedInputTokens, bool Redacted, bool ContainsFullSystemDump);
 }
