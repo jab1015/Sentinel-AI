@@ -12,6 +12,10 @@
       <Configuration>Release</Configuration>
       <Platform>x86</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="LocalDev|x86">
+      <Configuration>LocalDev</Configuration>
+      <Platform>x86</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|x64">
       <Configuration>Debug</Configuration>
       <Platform>x64</Platform>
@@ -20,12 +24,20 @@
       <Configuration>Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="LocalDev|x64">
+      <Configuration>LocalDev</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Debug|ARM64">
       <Configuration>Debug</Configuration>
       <Platform>ARM64</Platform>
     </ProjectConfiguration>
     <ProjectConfiguration Include="Release|ARM64">
       <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="LocalDev|ARM64">
+      <Configuration>LocalDev</Configuration>
       <Platform>ARM64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
