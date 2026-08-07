@@ -1,10 +1,10 @@
 # SAI-033 — Production Release Acceptance Test
 
-Version: 1.0
+Version: 1.1
 
 Status: Active — Final Acceptance
 
-Last Updated: 2026-08-02
+Last Updated: 2026-08-07
 
 Copyright (c) 2026 Modern Methods.
 
@@ -12,95 +12,92 @@ Copyright (c) 2026 Modern Methods.
 
 # Purpose
 
-Define the final acceptance gate for Sentinel AI Phase 7 and the commercial release candidate.
+Define the final acceptance gate for the Sentinel AI commercial release candidate, including Smart Sentinel cloud intelligence and verified remediation behavior.
 
-# Acceptance Procedure
+# Verified Release Evidence
 
-Perform this test against the current `main` branch using **Release | x64** unless another release architecture is specifically under test.
+## Build / Runtime
 
-## Build and Startup
-
-- [ ] Pull the current `main` branch successfully.
-- [ ] Release build completes with zero build errors.
-- [ ] Sentinel launches normally.
-- [ ] First visible window appears without the previously repaired startup lag or startup/debugging failures.
-- [ ] No `REGDB_E_CLASSNOTREG`, `ApplicationData.Current`, `XamlRoot`, or process-module enumeration startup failure occurs.
-
-## Healthy-State Experience
-
-- [ ] Personalized greeting persists correctly.
-- [ ] Healthy system displays **Your computer is healthy.**
-- [ ] Healthy system does not unnecessarily surface investigation warnings or demand action.
-- [ ] Monitoring continues quietly.
-- [ ] Technical details remain available through progressive disclosure.
-
-## Monitoring Evidence
-
-- [ ] CPU evidence populates.
-- [ ] Memory evidence populates.
-- [ ] Disk evidence populates.
-- [ ] Network evidence populates.
-- [ ] Process evidence populates.
-- [ ] Defender status populates.
-- [ ] Firewall status populates.
-- [ ] Evidence refreshes without UI freezing or material lag.
-
-## Investigation Safety
-
-- [ ] Historical raw Windows errors do not independently force Action Required.
-- [ ] Uncorrelated uncommon-port network activity does not independently trigger a block recommendation.
-- [ ] Recurrence tracking counts distinct observations rather than every monitoring refresh.
-- [ ] Sentinel does not make unsupported security claims.
-- [ ] Investigation guidance explains verified findings and required action in nontechnical language.
-
-## Ask Sentinel
-
-- [ ] Ask Sentinel accepts a user question.
-- [ ] Ask Sentinel remains grounded in verified local evidence.
-- [ ] Unsupported conclusions are not invented when evidence is insufficient.
-- [ ] Ask Sentinel interaction does not stop monitoring or degrade startup/runtime responsiveness.
-
-## Remediation Safety
-
-- [ ] Safe authorized remediation paths remain available when applicable.
-- [ ] Approval-required actions still require user authorization.
-- [ ] Verification-after-action behavior remains functional.
-- [ ] Failed remediation leaves the application in a safe state and does not falsely report success.
-
-## Accessibility and UX
-
-- [ ] Keyboard navigation reaches interactive controls.
-- [ ] Ask Sentinel can be submitted using the supported keyboard interaction.
-- [ ] Technical details can be expanded/collapsed by keyboard.
-- [ ] Screen-reader automation names/headings are exposed for primary controls and sections.
-- [ ] Text remains readable and the executive experience remains uncluttered.
+- [x] Current `main` pulled successfully during repeated release checkpoints.
+- [x] Release | x64 builds completed successfully after Smart Sentinel integration changes.
+- [x] Sentinel launches and remains responsive.
+- [x] System-tray behavior remains functional.
 
 ## Stability
 
-Previously completed release evidence:
-
 - [x] One-hour stability test — PASS.
 - [x] Eight-hour stability test — PASS.
+- [x] Intrusion-protection acceptance harness — PASS.
+- [x] Quarantine acceptance harness — PASS.
 
-Final candidate check:
+## Packaging
 
-- [ ] No new crash, hang, runaway resource use, or material performance regression is observed during final acceptance smoke testing.
+- [x] Packaged installation verified.
+- [x] Branding/icon corrected and revalidated.
+- [x] WHACK completed — PASSED WITH WARNINGS.
+- [x] Final Store package was successfully generated before the Smart Sentinel integration work.
 
-## Release Infrastructure
+## Smart Sentinel Cloud Gateway
 
-- [ ] Installer/uninstaller release configuration remains buildable.
-- [ ] Code-signing boundary does not require secrets in source control.
-- [ ] Application-update boundary requires trusted Windows signature/package verification.
-- [ ] Privacy, user, and troubleshooting documentation is present.
-- [ ] No private signing keys, passwords, tokens, or production credentials are committed to the repository.
+- [x] Google Cloud project created and billing enabled.
+- [x] Cloud Run / Cloud Build / Artifact Registry / Logging / Secret Manager APIs enabled.
+- [x] OpenAI API key stored in Google Secret Manager.
+- [x] Cloud Run service account granted Secret Manager accessor permission.
+- [x] Sentinel AI Gateway deployed successfully to Cloud Run.
+- [x] `/health` returned healthy with provider configured.
+- [x] Initial secret newline defect identified from production logs and repaired.
+- [x] OpenAI billing/quota issue identified and corrected.
+- [x] Live OpenAI response completed successfully through the gateway.
+- [x] Acceptance request used 180 input tokens + 111 output tokens = 291 total tokens.
+- [x] AI cache / minimal-token architecture implemented.
 
-# Acceptance Result
+## Ask Sentinel Intelligence
 
-**PASS** only when every unchecked item above has been runtime verified for the release candidate or is explicitly satisfied by verified release evidence.
+- [x] Local evidence remains the first authority.
+- [x] Ask Sentinel does not fabricate unsupported conclusions.
+- [x] Questions requiring external knowledge correctly escalate beyond local-only answers.
+- [x] Approved authoritative sources are queried before AI interpretation.
+- [x] AI advisory remains interpretation only and cannot authorize repairs.
+- [x] Machine-specific driver evidence is collected automatically when needed.
+- [x] Hardware IDs, installed driver, computer identity, BIOS identity, and relevant recent Windows events are collected locally without asking the user to retrieve them.
+- [x] Technical evidence is available behind Details.
+- [x] Primary Ask Sentinel presentation is consumer-readable and repair-focused.
 
-If any item fails, Phase 7 item 12 remains incomplete until the failure is repaired and retested.
+## End-to-End Driver Investigation Acceptance
 
-When all items pass, Phase 7 is **12 of 12 complete** and the implementation tracker may be advanced to the completed commercial-release milestone.
+Test condition: Intel(R) Management Engine Interface, Windows Code 10, Dell XPS 8700.
+
+- [x] Sentinel detected the failing device automatically.
+- [x] Sentinel identified the Code 10 / failed-start condition.
+- [x] Sentinel gathered machine-specific evidence automatically.
+- [x] Sentinel checked Windows Update / approved Microsoft sources.
+- [x] Sentinel used AI to correlate local and external evidence without overstating certainty.
+- [x] Sentinel identified driver/firmware compatibility as the strongest lead while preserving uncertainty about the exact root cause.
+- [x] Sentinel attempted to prepare a safe automatic repair.
+- [x] No exact automatically installable package was verified.
+- [x] Sentinel correctly refused to substitute an unverified generic component-vendor package.
+- [x] Sentinel identified Dell Support as the correct OEM next source.
+- [x] Continue Repair opened the official Dell Support destination.
+- [x] User-facing answer remained concise while technical evidence was available through Details.
+
+**Result: PASS.** Refusing an unverified automatic driver/firmware repair is considered correct safe behavior.
+
+# Final Package Gate
+
+The following items remain before release-candidate freeze:
+
+- [ ] Pull the documentation synchronization commit(s).
+- [ ] Rebuild Release | x64 from current `main`.
+- [ ] Generate a refreshed Store package containing the completed Smart Sentinel integration.
+- [ ] Install the refreshed package on the acceptance computer.
+- [ ] Run final smoke test: launch, tray, monitoring, Ask Sentinel local answer, Ask Sentinel external escalation, repair fallback, Quarantine access.
+- [ ] Run WHACK on the refreshed package if required for the submission artifact.
+- [ ] Record package version and final acceptance result.
+- [ ] Freeze the release candidate and update changelog / README release status.
+
+# Acceptance Rule
+
+The Smart Sentinel architecture and end-to-end investigation workflow are accepted. Commercial release acceptance becomes **FINAL PASS** only after the refreshed Store package built from current `main` completes the Final Package Gate above.
 
 ---
 
