@@ -40,7 +40,6 @@ app.MapGet("/health", () => Results.Ok(new
 app.MapPost("/v1/analyze", async (
     SentinelAiRequest request,
     IHttpClientFactory httpClientFactory,
-    HttpContext context,
     CancellationToken cancellationToken) =>
 {
     if (request.SchemaVersion != 1)
@@ -50,22 +49,23 @@ app.MapPost("/v1/analyze", async (
         return Results.BadRequest(new { error = "Evidence payload is empty or exceeds the gateway limit." });
 
     int requestedBudget = Math.Clamp(request.MaximumTotalTokens, 1, 2_500);
-    int maxOutputTokens = Math.Clamp(requestedBudget / 4, 128, 600);
+    int maxOutputTokens = Math.Clamp(requestedBudget / 3, 192, 700);
 
     string? apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")?.Trim();
     if (string.IsNullOrWhiteSpace(apiKey))
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 
-    string economyModel = Environment.GetEnvironmentVariable("SENTINEL_AI_ECONOMY_MODEL") ?? "gpt-5-mini";
-    string advancedModel = Environment.GetEnvironmentVariable("SENTINEL_AI_ADVANCED_MODEL") ?? "gpt-5";
-    string model = request.ModelTier.Equals("Advanced", StringComparison.OrdinalIgnoreCase)
-        ? advancedModel
-        : economyModel;
+    bool advanced = request.ModelTier.Equals("Advanced", StringComparison.OrdinalIgnoreCase);
+    string economyModel = Environment.GetEnvironmentVariable("SENTINEL_AI_ECONOMY_MODEL") ?? "gpt-5.6-luna";
+    string advancedModel = Environment.GetEnvironmentVariable("SENTINEL_AI_ADVANCED_MODEL") ?? "gpt-5.6-terra";
+    string model = advanced ? advancedModel : economyModel;
+    string reasoningEffort = advanced ? "low" : "none";
 
     var prompt = new
     {
         model,
         max_output_tokens = maxOutputTokens,
+        reasoning = new { effort = reasoningEffort },
         input = new object[]
         {
             new
@@ -111,7 +111,10 @@ app.MapPost("/v1/analyze", async (
     JsonElement root = document.RootElement;
     string answer = ExtractOutputText(root);
     if (string.IsNullOrWhiteSpace(answer))
+    {
+        Console.Error.WriteLine($"OpenAI returned HTTP 200 but no output text: {SafeProviderError(raw)}");
         return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
 
     int inputTokens = ReadUsage(root, "input_tokens");
     int outputTokens = ReadUsage(root, "output_tokens");
@@ -139,6 +142,12 @@ static int ReadInt(string name, int fallback, int min, int max)
 
 static string ExtractOutputText(JsonElement root)
 {
+    if (root.TryGetProperty("output_text", out JsonElement direct) && direct.ValueKind == JsonValueKind.String)
+    {
+        string? text = direct.GetString();
+        if (!string.IsNullOrWhiteSpace(text)) return text;
+    }
+
     if (!root.TryGetProperty("output", out JsonElement output) || output.ValueKind != JsonValueKind.Array)
         return string.Empty;
 
@@ -153,7 +162,8 @@ static string ExtractOutputText(JsonElement root)
                 type.GetString()?.Equals("output_text", StringComparison.OrdinalIgnoreCase) == true &&
                 part.TryGetProperty("text", out JsonElement text))
             {
-                return text.GetString() ?? string.Empty;
+                string? value = text.GetString();
+                if (!string.IsNullOrWhiteSpace(value)) return value;
             }
         }
     }
@@ -184,7 +194,7 @@ static string SafeProviderError(string raw)
 {
     if (string.IsNullOrWhiteSpace(raw)) return "empty provider response";
     string oneLine = raw.Replace('\r', ' ').Replace('\n', ' ').Trim();
-    return oneLine.Length <= 500 ? oneLine : oneLine[..500];
+    return oneLine.Length <= 1000 ? oneLine : oneLine[..1000];
 }
 
 public sealed record SentinelAiRequest(
