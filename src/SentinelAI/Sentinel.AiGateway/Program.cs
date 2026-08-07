@@ -52,7 +52,7 @@ app.MapPost("/v1/analyze", async (
     int requestedBudget = Math.Clamp(request.MaximumTotalTokens, 1, 2_500);
     int maxOutputTokens = Math.Clamp(requestedBudget / 4, 128, 600);
 
-    string? apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+    string? apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")?.Trim();
     if (string.IsNullOrWhiteSpace(apiKey))
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 
