@@ -26,8 +26,29 @@
                         <Image Source="Assets/Shield.png" Width="34" Height="34"/>
                         <StackPanel>
                             <TextBlock Text="Sentinel AI Options" FontSize="27" FontWeight="SemiBold" Foreground="White"/>
-                            <TextBlock Text="Control how Sentinel starts and runs on this computer." FontSize="14" Foreground="#BFDBFE"/>
+                            <TextBlock Text="Control Sentinel, your subscription, and how protection runs on this computer." FontSize="14" Foreground="#BFDBFE" TextWrapping="Wrap"/>
                         </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="Sentinel AI subscription" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Local monitoring stays available without a subscription. A subscription supports cloud AI investigations and the ongoing services Sentinel uses when local evidence is not enough." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="8">
+                                <TextBlock x:Name="SubscriptionPlanText" Text="Checking Microsoft Store subscription…" FontSize="17" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="SubscriptionStatusText" Text="Sentinel is verifying your subscription." FontSize="14" Foreground="#BFDBFE" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Button x:Name="MonthlySubscriptionButton" Content="Monthly" MinHeight="44" Click="MonthlySubscriptionButton_Click" IsEnabled="False"/>
+                            <Button Grid.Column="1" x:Name="AnnualSubscriptionButton" Content="Annual — best value" MinHeight="44" Click="AnnualSubscriptionButton_Click" IsEnabled="False"/>
+                        </Grid>
+                        <Button x:Name="RefreshSubscriptionButton" Content="Refresh subscription" HorizontalAlignment="Left" Click="RefreshSubscriptionButton_Click"/>
                     </StackPanel>
                 </Border>
 
