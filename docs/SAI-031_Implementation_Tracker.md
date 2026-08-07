@@ -1,8 +1,8 @@
 # SAI-031 — Implementation Tracker
 
-Version: 1.2  
-Status: Active  
-Last Updated: 2026-07-29
+Version: 2.0  
+Status: Active — Release Candidate Finalization  
+Last Updated: 2026-08-07
 
 Copyright (c) 2026 Modern Methods.
 
@@ -14,165 +14,136 @@ Copyright (c) 2026 Modern Methods.
 |---|---|---:|
 | Foundation | Complete | 100% |
 | Core Monitoring | Complete | 100% |
-| Security Intelligence | Active | 10% |
-| AI Engine | Planned | 0% |
-| Reporting and Notifications | Planned | 0% |
-| Enterprise Features | Planned | 0% |
+| Security Intelligence | Complete | 100% |
+| Ask Sentinel / AI Intelligence | Complete — acceptance passed | 100% |
+| Investigation / Remediation | Complete — acceptance passed | 100% |
+| Packaging / Release Infrastructure | Complete — final refresh pending | 99% |
+
+**Overall release-candidate progress: approximately 99.8%.**
 
 ---
 
 # Foundation
 
-- [x] WinUI 3 project
-- [x] .NET 8 target
-- [x] MonitoringEngine
-- [x] SystemSnapshot
-- [x] Modular monitor services
-- [x] One-second dashboard refresh
-- [x] GitHub repository and `main` branch
-- [x] Project documentation system
-
----
+- [x] WinUI 3 / .NET 8 application
+- [x] Windows 11 target and packaged deployment
+- [x] MonitoringEngine / SystemSnapshot architecture
+- [x] Modular monitoring and investigation services
+- [x] GitHub `main` branch workflow
+- [x] Documentation and release-control structure
 
 # Core Monitoring
 
-## CPU
-
-- [x] Native CPU usage
-- [x] Consecutive sample calculation
-- [x] First and invalid sample handling
-- [x] MonitoringEngine integration
-- [x] Dashboard display
+- [x] CPU monitoring
+- [x] Memory monitoring
+- [x] Disk evidence
+- [x] Network throughput evidence
+- [x] Process evidence
+- [x] Microsoft Defender state
+- [x] Windows Firewall state
+- [x] Continuous monitoring and one-second dashboard refresh
 - [x] Runtime verification
-
-## Memory
-
-- [x] Total physical memory
-- [x] Used physical memory
-- [x] Usage percentage
-- [x] MonitoringEngine integration
-- [x] Dashboard display
-- [x] Runtime verification
-
-## Disk
-
-- [x] System-drive detection
-- [x] Capacity, free-space, and used-space calculations
-- [x] Usage percentage
-- [x] MonitoringEngine integration
-- [x] Dashboard display
-- [x] Runtime verification
-- [ ] Read and write throughput
-- [ ] SMART health
-
-## Network
-
-- [x] Active-adapter sampling
-- [x] Download throughput
-- [x] Upload throughput
-- [x] MonitoringEngine integration
-- [x] Dashboard display
-- [x] Runtime verification
-- [ ] Active connections
-- [ ] Detailed interface statistics
-
-## Processes
-
-- [x] Process count
-- [x] Highest-memory process
-- [x] Highest-memory process usage
-- [x] MonitoringEngine integration
-- [x] Dashboard display
-- [x] Runtime verification
-- [ ] CPU usage per process
-- [ ] Digital-signature validation
-- [ ] Suspicious-process detection
-
-## Windows Security
-
-- [x] Microsoft Defender enabled status
-- [x] Windows Firewall enabled status
-- [x] MonitoringEngine integration
-- [x] Dashboard display
-- [x] Runtime verification
-- [ ] SmartScreen status
-- [ ] Windows Update status
-- [ ] Secure Boot status
-- [ ] TPM status
-
-## Verification
-
-- [x] Successful build
-- [x] Successful launch
-- [x] One-second refresh verified
-- [x] CPU, memory, disk, network, process, Defender, and Firewall runtime verification
-- [x] Product Owner acceptance of the completed core dashboard
-- [ ] Automated monitor tests
-- [ ] MonitoringEngine integration tests
-- [ ] Failure-path and unavailable-service tests
-
----
+- [x] One-hour stability test — PASS
+- [x] Eight-hour stability test — PASS
 
 # Security Intelligence
 
-- [ ] Windows Event Log collection
-- [ ] Critical-event classification
-- [ ] Security-event classification
-- [ ] Suspicious-process indicators
-- [ ] Startup application analysis
-- [ ] Service-health analysis
-- [ ] Threat engine
-- [ ] Threat scoring
-- [ ] Behavioral detection
+- [x] Windows event evidence
+- [x] Process/service/startup/task intelligence
+- [x] Network connection telemetry
+- [x] Incoming/outgoing connection investigation
+- [x] Suspicious-condition correlation
+- [x] Confidence / risk handling
+- [x] Intrusion-protection acceptance harness — PASS
+- [x] Quarantine Manager acceptance harness — PASS
+- [x] Safe quarantine / restore / delete gates
 
----
+# Ask Sentinel / AI Intelligence
 
-# AI Engine
+- [x] Ask Sentinel grounded in verified local evidence
+- [x] Investigation-history integration
+- [x] Local-first / cloud-only-when-needed policy
+- [x] External authoritative-source investigation
+- [x] Product-wide AI coordinator
+- [x] Minimal-token evidence packages
+- [x] Shared AI response cache
+- [x] Cloud AI gateway deployed to Google Cloud Run
+- [x] OpenAI API key protected in Google Secret Manager
+- [x] Cloud gateway health check — PASS
+- [x] Live gateway/OpenAI acceptance harness — PASS
+- [x] Token accounting verified
+- [x] Economy AI path verified with a 291-token acceptance request
+- [x] Ask Sentinel escalation defect repaired
+- [x] Machine-specific driver diagnostic evidence automatically collected
+- [x] AI receives local driver/device/BIOS/event evidence when needed
+- [x] Consumer-facing Ask Sentinel response redesigned for readability
+- [x] Raw technical evidence moved behind Details
+- [x] End-to-end Smart Sentinel acceptance — PASS
 
-- [ ] Recommendation engine
-- [ ] Explainable AI
-- [ ] Confidence scores
-- [ ] Risk classification
+# Investigation / Remediation
 
----
+- [x] Verified local evidence remains authoritative
+- [x] AI cannot independently authorize a repair
+- [x] Automatic-repair preparation uses deterministic safety gates
+- [x] Windows Update driver search precedes external OEM research
+- [x] Device identity / hardware IDs / driver / BIOS / event evidence gathered automatically
+- [x] OEM fallback identifies the computer manufacturer as preferred authority
+- [x] User approval remains required before consequential repair actions
+- [x] Restart requires separate approval
+- [x] Post-repair verification path retained
+- [x] Intel Management Engine Interface Code 10 end-to-end investigation acceptance — PASS
+- [x] Correctly refused an unverified generic repair and routed to Dell Support for the Dell XPS 8700
 
-# Reporting and Notifications
+# UX / Product Direction
 
-- [ ] Toast notifications
-- [ ] Critical alerts
-- [ ] Alert history
-- [ ] Historical reports
-- [ ] Export support
+- [x] Consumer-first dashboard
+- [x] Progressive disclosure for technical details
+- [x] Quiet healthy-state monitoring
+- [x] Ask Sentinel readable answer card and progress state
+- [x] Repair-first response structure
+- [x] Nontechnical user is not asked to manually retrieve hardware IDs, BIOS, driver, or Event Viewer data
+- [x] Technical evidence remains available through Details
+- [x] System tray operation
+- [x] Packaged startup task
 
----
+# Packaging / Release Infrastructure
 
-# Completed Sprint
-
-## Sprint 4 — Core Monitoring Expansion
-
-Status: Complete and Runtime Verified
-
-Evidence:
-
-- All core metrics are implemented and displayed
-- Defender and Firewall states are displayed
-- The solution builds and launches successfully
-- The Product Owner verified live runtime behavior
+- [x] MSIX packaging verified
+- [x] Package branding/icon corrected
+- [x] Local packaged installation verified
+- [x] WHACK executed successfully — PASSED WITH WARNINGS
+- [x] Final Store package created previously
+- [x] Cloud gateway deployed and serving production traffic
+- [x] Secrets excluded from source control
+- [ ] Refresh final Store package after Smart Sentinel integration changes
+- [ ] Run final release smoke test against refreshed package
+- [ ] Update final release documentation / changelog
 
 ---
 
 # Current Sprint
 
-## Sprint 5 — Security Intelligence Foundation
+## Release Candidate Finalization — Smart Sentinel
 
-Priority order:
+Status: Finalization
 
-1. Windows Event Log monitoring
-2. Critical and security event classification
-3. Suspicious-process indicators
-4. Startup application monitoring
-5. Service-health monitoring
-6. Integration and failure-path tests
+Completed acceptance evidence:
+
+1. Cloud Run gateway health — PASS
+2. OpenAI provider connection — PASS
+3. Minimal-token AI acceptance — PASS
+4. Ask Sentinel external escalation — PASS
+5. Automatic machine evidence acquisition — PASS
+6. Safe repair decision / OEM fallback — PASS
+7. Consumer Ask Sentinel redesign — PASS
+8. Release build checkpoints — PASS
+
+Remaining sequence:
+
+1. Synchronize release documentation.
+2. Create refreshed final Store package from current `main`.
+3. Install refreshed package and run final smoke test.
+4. Record final release acceptance and freeze release candidate.
 
 ---
 
