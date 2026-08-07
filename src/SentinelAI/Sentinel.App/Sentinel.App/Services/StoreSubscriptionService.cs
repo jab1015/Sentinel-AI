@@ -26,9 +26,9 @@ namespace Sentinel.App.Services
 
         public async Task<SubscriptionState> GetStateAsync()
         {
-#if DEBUG
-            return new SubscriptionState(true, SubscriptionPlan.Development, "Development build", null, null,
-                "Cloud AI is enabled for this Visual Studio development build. Store licensing is enforced in Release packages.");
+#if DEBUG || SENTINEL_LOCAL_DEV
+            return new SubscriptionState(true, SubscriptionPlan.Development, "Local development build", null, null,
+                "Cloud AI is enabled for this local development build. Microsoft Store subscription licensing remains enforced in Release packages.");
 #else
             if (!HasPackageIdentity())
                 return SubscriptionState.Unavailable("Microsoft Store licensing is available only in an installed Sentinel package.");
