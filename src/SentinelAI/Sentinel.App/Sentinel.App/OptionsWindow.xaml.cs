@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sentinel.App.Services;
 using System;
+using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.Graphics;
 
@@ -12,6 +13,7 @@ namespace Sentinel.App
     {
         private readonly WindowsStartupRegistrationService _startupService = new();
         private readonly OptimizationSettingsService _optimizationSettingsService = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
         private bool _loading;
         private bool _initialLayoutApplied;
 
@@ -21,12 +23,12 @@ namespace Sentinel.App
             Activated += OptionsWindow_Activated;
         }
 
-        private void OptionsWindow_Activated(object sender, WindowActivatedEventArgs args)
+        private async void OptionsWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
             if (!_initialLayoutApplied)
             {
                 _initialLayoutApplied = true;
-                AppWindow.Resize(new SizeInt32(850, 760));
+                AppWindow.Resize(new SizeInt32(850, 820));
 
                 if (AppWindow.Presenter is OverlappedPresenter presenter)
                 {
@@ -38,6 +40,77 @@ namespace Sentinel.App
             Activated -= OptionsWindow_Activated;
             LoadStartupState();
             LoadOptimizationState();
+            await LoadSubscriptionStateAsync();
+        }
+
+        private async Task LoadSubscriptionStateAsync()
+        {
+            MonthlySubscriptionButton.IsEnabled = false;
+            AnnualSubscriptionButton.IsEnabled = false;
+            SubscriptionPlanText.Text = "Checking Microsoft Store subscription…";
+            SubscriptionStatusText.Text = "Sentinel is verifying your subscription.";
+
+            SubscriptionState state = await _subscriptionService.GetStateAsync();
+            SubscriptionPlanText.Text = state.DisplayName;
+            SubscriptionStatusText.Text = state.Summary;
+
+            if (state.Plan == SubscriptionPlan.Development)
+            {
+                MonthlySubscriptionButton.Visibility = Visibility.Collapsed;
+                AnnualSubscriptionButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            MonthlySubscriptionButton.Visibility = Visibility.Visible;
+            AnnualSubscriptionButton.Visibility = Visibility.Visible;
+
+            if (state.MonthlyProduct is not null)
+            {
+                MonthlySubscriptionButton.Content = $"Monthly — {state.MonthlyProduct.Price.FormattedPrice}";
+                MonthlySubscriptionButton.IsEnabled = !state.IsActive;
+            }
+            else
+            {
+                MonthlySubscriptionButton.Content = "Monthly — coming soon";
+                MonthlySubscriptionButton.IsEnabled = false;
+            }
+
+            if (state.AnnualProduct is not null)
+            {
+                AnnualSubscriptionButton.Content = $"Annual — {state.AnnualProduct.Price.FormattedPrice} — best value";
+                AnnualSubscriptionButton.IsEnabled = !state.IsActive;
+            }
+            else
+            {
+                AnnualSubscriptionButton.Content = "Annual — coming soon";
+                AnnualSubscriptionButton.IsEnabled = false;
+            }
+        }
+
+        private async void MonthlySubscriptionButton_Click(object sender, RoutedEventArgs e) =>
+            await PurchaseSubscriptionAsync(SubscriptionPlan.Monthly);
+
+        private async void AnnualSubscriptionButton_Click(object sender, RoutedEventArgs e) =>
+            await PurchaseSubscriptionAsync(SubscriptionPlan.Annual);
+
+        private async void RefreshSubscriptionButton_Click(object sender, RoutedEventArgs e) =>
+            await LoadSubscriptionStateAsync();
+
+        private async Task PurchaseSubscriptionAsync(SubscriptionPlan plan)
+        {
+            MonthlySubscriptionButton.IsEnabled = false;
+            AnnualSubscriptionButton.IsEnabled = false;
+            SubscriptionStatusText.Text = "Opening Microsoft Store secure checkout…";
+
+            SubscriptionPurchaseResult result = await _subscriptionService.PurchaseAsync(plan);
+            SubscriptionStatusText.Text = result.Message;
+            if (result.Succeeded)
+                await LoadSubscriptionStateAsync();
+            else
+            {
+                MonthlySubscriptionButton.IsEnabled = true;
+                AnnualSubscriptionButton.IsEnabled = true;
+            }
         }
 
         private void LoadStartupState()
