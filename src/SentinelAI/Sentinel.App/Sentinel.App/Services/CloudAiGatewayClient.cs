@@ -16,15 +16,25 @@ namespace Sentinel.App.Services
     /// Client for the Modern Methods server-side AI gateway.
     /// No provider API secret is stored in Sentinel. The production HTTPS endpoint
     /// is built in, while SENTINEL_AI_GATEWAY_URL can override it for testing.
+    ///
+    /// RELEASE SAFETY BOUNDARY:
+    /// A current Microsoft Store subscription must be verified before any request
+    /// that can consume paid cloud-AI tokens is transmitted.
     /// </summary>
     public sealed class CloudAiGatewayClient
     {
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan SubscriptionCacheLifetime = TimeSpan.FromMinutes(5);
         private const string ProductionEndpoint =
             "https://sentinel-ai-gateway-49908265995.us-central1.run.app/v1/analyze";
 
+        private static readonly SemaphoreSlim SubscriptionLock = new(1, 1);
+        private static SubscriptionState? _cachedSubscriptionState;
+        private static DateTimeOffset _cachedSubscriptionAt;
+
         private readonly HttpClient _httpClient;
         private readonly Uri? _endpoint;
+        private readonly StoreSubscriptionService _subscriptionService = new();
 
         public CloudAiGatewayClient()
         {
@@ -56,6 +66,18 @@ namespace Sentinel.App.Services
             if (evidence.EstimatedInputTokens > decision.MaximumTotalTokens)
                 return CloudAiResult.Unavailable("The evidence package exceeds Sentinel's AI token budget, so no cloud request was sent.");
 
+            // This check intentionally happens immediately before constructing/sending
+            // the paid request. If Store licensing cannot be positively verified,
+            // Sentinel fails closed and continues with free local functionality.
+            SubscriptionState subscription = await GetVerifiedSubscriptionStateAsync(cancellationToken).ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return CloudAiResult.SubscriptionRequired(
+                    string.IsNullOrWhiteSpace(subscription.Summary)
+                        ? "A Sentinel AI subscription is required for cloud AI investigations. Local monitoring remains available."
+                        : subscription.Summary);
+            }
+
             CloudAiRequest request = new(
                 SchemaVersion: 1,
                 Purpose: evidence.Purpose,
@@ -85,7 +107,8 @@ namespace Sentinel.App.Services
                     OutputTokens: Math.Max(0, body.OutputTokens),
                     ConfidencePercent: Math.Clamp(body.ConfidencePercent, 0, 100),
                     RequiresMoreEvidence: body.RequiresMoreEvidence,
-                    Reason: "Secure AI gateway returned an advisory analysis. Sentinel must still validate any actionable conclusion against local evidence.");
+                    Reason: "Secure AI gateway returned an advisory analysis. Sentinel must still validate any actionable conclusion against local evidence.",
+                    RequiresSubscription: false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -95,6 +118,42 @@ namespace Sentinel.App.Services
             {
                 return CloudAiResult.Unavailable("Secure AI gateway is temporarily unavailable. Sentinel continued without cloud AI.");
             }
+        }
+
+        public static void InvalidateSubscriptionCache()
+        {
+            _cachedSubscriptionState = null;
+            _cachedSubscriptionAt = default;
+        }
+
+        private async Task<SubscriptionState> GetVerifiedSubscriptionStateAsync(CancellationToken cancellationToken)
+        {
+#if DEBUG
+            return await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+#else
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            SubscriptionState? cached = _cachedSubscriptionState;
+            if (cached is not null && now - _cachedSubscriptionAt < SubscriptionCacheLifetime)
+                return cached;
+
+            await SubscriptionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                now = DateTimeOffset.UtcNow;
+                cached = _cachedSubscriptionState;
+                if (cached is not null && now - _cachedSubscriptionAt < SubscriptionCacheLifetime)
+                    return cached;
+
+                SubscriptionState current = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+                _cachedSubscriptionState = current;
+                _cachedSubscriptionAt = now;
+                return current;
+            }
+            finally
+            {
+                SubscriptionLock.Release();
+            }
+#endif
         }
 
         private sealed record CloudAiRequest(
@@ -124,12 +183,16 @@ namespace Sentinel.App.Services
         int OutputTokens,
         int ConfidencePercent,
         bool RequiresMoreEvidence,
-        string Reason)
+        string Reason,
+        bool RequiresSubscription = false)
     {
         public static CloudAiResult NotUsed(string reason) =>
             new(false, true, string.Empty, string.Empty, string.Empty, 0, 0, 0, false, reason);
 
         public static CloudAiResult Unavailable(string reason) =>
             new(false, false, string.Empty, string.Empty, string.Empty, 0, 0, 0, false, reason);
+
+        public static CloudAiResult SubscriptionRequired(string reason) =>
+            new(false, false, string.Empty, string.Empty, string.Empty, 0, 0, 0, false, reason, true);
     }
 }
