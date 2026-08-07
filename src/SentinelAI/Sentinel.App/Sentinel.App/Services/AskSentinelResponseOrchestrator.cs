@@ -46,11 +46,14 @@ namespace Sentinel.App.Services
             else answer = _localResponder.Answer(question, snapshot).Trim();
 
             if (string.IsNullOrWhiteSpace(answer)) answer = InsufficientEvidence;
-            bool insufficientEvidence = IsInsufficientEvidence(answer);
+
+            bool localInsufficient = IsInsufficientEvidence(answer);
+            bool requiresExternalKnowledge = !usedHistory && RequiresExternalKnowledge(question, answer);
+            bool insufficientEvidence = localInsufficient || requiresExternalKnowledge;
 
             AskSentinelResponse preliminary = new(answer, snapshot.Timestamp, context.Evidence.Count,
                 context.RequiresAttention, insufficientEvidence, usedHistory, usedRecommendationGuard, false,
-                BuildGroundingSummary(context, usedHistory, usedRecommendationGuard, insufficientEvidence));
+                BuildGroundingSummary(context, usedHistory, usedRecommendationGuard, localInsufficient, requiresExternalKnowledge));
 
             var validation = _safetyValidator.Validate(preliminary, snapshot);
             if (!validation.IsSafe)
@@ -67,6 +70,44 @@ namespace Sentinel.App.Services
             }
 
             return preliminary with { PassedFinalSafetyValidation = true };
+        }
+
+        private static bool RequiresExternalKnowledge(string question, string localAnswer)
+        {
+            string value = question.Trim().ToLowerInvariant();
+
+            string[] explicitExternalIntent =
+            {
+                "external source", "external sources", "authoritative source", "authoritative sources",
+                "according to", "look online", "search online", "search the internet", "check the internet",
+                "research", "known cause", "known causes", "microsoft says", "vendor says",
+                "manufacturer says", "official documentation", "latest information"
+            };
+
+            if (explicitExternalIntent.Any(value.Contains)) return true;
+
+            bool asksForInterpretation =
+                value.Contains("what does") || value.Contains("what does this mean") ||
+                value.Contains("why is") || value.Contains("why does") || value.Contains("why did") ||
+                value.Contains("root cause") || value.Contains("cause of") || value.Contains("causes of") ||
+                value.Contains("which cause") || value.Contains("best matches") || value.Contains("explain");
+
+            if (!asksForInterpretation) return false;
+
+            // A terse local state report can verify that a condition exists without actually
+            // answering an explanatory/causal question. Escalate only when the local answer
+            // appears too limited to satisfy that broader intent, preserving zero-token local
+            // answers when Sentinel already has a substantive verified explanation.
+            string answer = localAnswer?.Trim() ?? string.Empty;
+            if (answer.Length < 420) return true;
+
+            bool containsCausalExplanation =
+                answer.Contains("because", StringComparison.OrdinalIgnoreCase) ||
+                answer.Contains("caused by", StringComparison.OrdinalIgnoreCase) ||
+                answer.Contains("reason", StringComparison.OrdinalIgnoreCase) ||
+                answer.Contains("evidence shows", StringComparison.OrdinalIgnoreCase);
+
+            return !containsCausalExplanation;
         }
 
         private static string CreateHistoryAnswer(string question, SystemSnapshot snapshot,
@@ -202,11 +243,12 @@ namespace Sentinel.App.Services
             answer.Contains("does not have a verified prior investigation", StringComparison.OrdinalIgnoreCase);
 
         private static string BuildGroundingSummary(AskSentinelContextBuilder.AskSentinelContext context,
-            bool usedHistory, bool usedRecommendationGuard, bool insufficientEvidence)
+            bool usedHistory, bool usedRecommendationGuard, bool localInsufficient, bool requiresExternalKnowledge)
         {
             if (usedHistory) return "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
-            if (usedRecommendationGuard) return "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
-            if (insufficientEvidence) return $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
+            if (usedRecommendationGuard && !requiresExternalKnowledge) return "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
+            if (requiresExternalKnowledge) return $"Sentinel has {context.Evidence.Count} verified local evidence item(s), but the question asks for explanation, causal interpretation, or external knowledge that local evidence alone cannot fully establish. External investigation is required before the answer is complete.";
+            if (localInsufficient) return $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
             return $"Answer grounded in {context.Evidence.Count} verified local evidence item(s) from the current Sentinel snapshot.";
         }
 
