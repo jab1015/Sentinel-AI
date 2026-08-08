@@ -19,6 +19,7 @@ namespace Sentinel.App.Services
         private readonly AskSentinelLocalResponder _localResponder = new();
         private readonly AskSentinelRecommendationAdvisor _recommendationAdvisor = new();
         private readonly AskSentinelResponseSafetyValidator _safetyValidator = new();
+        private readonly MaintenanceHistoryService _maintenanceHistoryService = new();
 
         public AskSentinelResponse CreateResponse(string question, SystemSnapshot snapshot,
             IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry>? history = null)
@@ -31,7 +32,12 @@ namespace Sentinel.App.Services
             bool usedHistory = false;
             bool usedRecommendationGuard = false;
 
-            if (IsHistoryQuestion(question))
+            if (IsMaintenanceHistoryQuestion(question))
+            {
+                answer = CreateMaintenanceHistoryAnswer(question, _maintenanceHistoryService.GetSummary());
+                usedHistory = true;
+            }
+            else if (IsHistoryQuestion(question))
             {
                 answer = CreateHistoryAnswer(question, snapshot, history ?? Array.Empty<InvestigationHistoryService.InvestigationHistoryEntry>());
                 usedHistory = !answer.Equals(InsufficientEvidence, StringComparison.OrdinalIgnoreCase) &&
@@ -94,10 +100,6 @@ namespace Sentinel.App.Services
 
             if (!asksForInterpretation) return false;
 
-            // A terse local state report can verify that a condition exists without actually
-            // answering an explanatory/causal question. Escalate only when the local answer
-            // appears too limited to satisfy that broader intent, preserving zero-token local
-            // answers when Sentinel already has a substantive verified explanation.
             string answer = localAnswer?.Trim() ?? string.Empty;
             if (answer.Length < 420) return true;
 
@@ -110,6 +112,44 @@ namespace Sentinel.App.Services
             return !containsCausalExplanation;
         }
 
+        private static string CreateMaintenanceHistoryAnswer(string question, MaintenanceHistorySummary summary)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool optimizationOnly = value.Contains("optimization") || value.Contains("optimizations") ||
+                                    value.Contains("optimize") || value.Contains("optimized");
+
+            MaintenanceHistoryEntry[] entries = summary.Entries
+                .Where(entry => !optimizationOnly || entry.Category.Equals("Optimization", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(entry => entry.TimestampUtc)
+                .ToArray();
+
+            if (entries.Length == 0)
+            {
+                return optimizationOnly
+                    ? "I don't have a verified record of any optimization actions being performed on this computer in the last 30 days."
+                    : "I don't have a verified record of any maintenance actions being performed on this computer in the last 30 days.";
+            }
+
+            string[] recent = entries.Take(5).Select(entry =>
+            {
+                string outcome = entry.RolledBack
+                    ? "rolled back safely"
+                    : entry.Verified
+                        ? "verified"
+                        : entry.Successful
+                            ? "completed"
+                            : "needs follow-up";
+                return $"• {entry.Action} — {entry.UserSummary} ({outcome}, {entry.TimestampUtc.ToLocalTime():MMM d, h:mm tt})";
+            }).ToArray();
+
+            string heading = optimizationOnly
+                ? $"I found {entries.Length} recorded optimization action{(entries.Length == 1 ? string.Empty : "s")} in the last 30 days."
+                : $"I found {entries.Length} recorded maintenance action{(entries.Length == 1 ? string.Empty : "s")} in the last 30 days.";
+
+            return $"{heading}\n\n{string.Join("\n", recent)}" +
+                   (entries.Length > recent.Length ? $"\n\nShowing the {recent.Length} most recent." : string.Empty);
+        }
+
         private static string CreateHistoryAnswer(string question, SystemSnapshot snapshot,
             IReadOnlyList<InvestigationHistoryService.InvestigationHistoryEntry> history)
         {
@@ -117,7 +157,7 @@ namespace Sentinel.App.Services
                 return "I don't have a previous verified investigation that answers that question.";
 
             var matching = FindQuestionTopicMatch(question, history);
-            if (matching is null)
+            if (matching is null && IsGenericIssueHistoryQuestion(question))
             {
                 string fingerprint = snapshot.InvestigationReasonCode?.Trim() ?? string.Empty;
                 if (!string.IsNullOrWhiteSpace(fingerprint) &&
@@ -220,12 +260,43 @@ namespace Sentinel.App.Services
             entry.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             entry.Conclusion.Contains(term, StringComparison.OrdinalIgnoreCase);
 
+        private static bool IsMaintenanceHistoryQuestion(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool maintenanceTopic = value.Contains("optimization") || value.Contains("optimizations") ||
+                                    value.Contains("optimize") || value.Contains("optimized") ||
+                                    value.Contains("maintenance") || value.Contains("cleanup") ||
+                                    value.Contains("cleaned") || value.Contains("defrag") ||
+                                    value.Contains("retrim") || value.Contains("startup optimization");
+            bool historicalIntent = value.Contains("recent") || value.Contains("recently") ||
+                                    value.Contains("lately") || value.Contains("done") ||
+                                    value.Contains("performed") || value.Contains("have been") ||
+                                    value.Contains("last") || value.Contains("history") ||
+                                    value.Contains("what optimizations") || value.Contains("what maintenance");
+            return maintenanceTopic && historicalIntent;
+        }
+
         private static bool IsHistoryQuestion(string question)
         {
             string value = question.Trim().ToLowerInvariant();
             return value.Contains("before") || value.Contains("previous") || value.Contains("previously") ||
                    value.Contains("history") || value.Contains("again") || value.Contains("last time") ||
-                   value.Contains("past") || value.Contains("earlier");
+                   value.Contains("past") || value.Contains("earlier") || value.Contains("recently") ||
+                   value.Contains("lately");
+        }
+
+        private static bool IsGenericIssueHistoryQuestion(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool hasExplicitTopic = value.Contains("driver") || value.Contains("network") ||
+                                    value.Contains("internet") || value.Contains("connection") ||
+                                    value.Contains("firewall") || value.Contains("process") ||
+                                    value.Contains("spyware") || value.Contains("update") ||
+                                    value.Contains("optimization") || value.Contains("maintenance");
+            if (hasExplicitTopic) return false;
+
+            return value.Contains("issue") || value.Contains("problem") || value.Contains("that") ||
+                   value.Contains("this") || value.Contains("it") || value.Contains("last time");
         }
 
         private static bool IsRecommendationQuestion(string question)
@@ -245,7 +316,7 @@ namespace Sentinel.App.Services
         private static string BuildGroundingSummary(AskSentinelContextBuilder.AskSentinelContext context,
             bool usedHistory, bool usedRecommendationGuard, bool localInsufficient, bool requiresExternalKnowledge)
         {
-            if (usedHistory) return "Answer grounded in Sentinel's persisted investigation history and the current verified snapshot.";
+            if (usedHistory) return "Answer grounded in Sentinel's persisted investigation or maintenance history and the current verified snapshot.";
             if (usedRecommendationGuard && !requiresExternalKnowledge) return "Recommendation grounded in current verified Sentinel evidence and remediation safety state; no unverified action or outcome is claimed.";
             if (requiresExternalKnowledge) return $"Sentinel has {context.Evidence.Count} verified local evidence item(s), but the question asks for explanation, causal interpretation, or external knowledge that local evidence alone cannot fully establish. External investigation is required before the answer is complete.";
             if (localInsufficient) return $"Sentinel checked {context.Evidence.Count} verified local evidence item(s) and did not find enough support for a factual answer.";
