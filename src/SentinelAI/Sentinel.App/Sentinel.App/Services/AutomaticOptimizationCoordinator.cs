@@ -22,6 +22,7 @@ namespace Sentinel.App.Services
     public sealed class AutomaticOptimizationCoordinator
     {
         private static readonly TimeSpan MinimumExecutionInterval = TimeSpan.FromHours(12);
+        private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
 
         private readonly PerformanceBaselineService _baselineService = new();
         private readonly UnifiedInvestigationAssessmentService _assessmentService = new();
@@ -30,7 +31,6 @@ namespace Sentinel.App.Services
         private readonly OptimizationSettingsService _settingsService = new();
         private readonly SafeTemporaryStorageOptimizationExecutor _storageExecutor = new();
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
-        private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _statePath;
 
         public AutomaticOptimizationCoordinator()
@@ -71,7 +71,7 @@ namespace Sentinel.App.Services
                     safety.Summary);
             }
 
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await ExecutionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 RuntimeState state = LoadState();
@@ -126,7 +126,7 @@ namespace Sentinel.App.Services
             }
             finally
             {
-                _gate.Release();
+                ExecutionGate.Release();
             }
         }
 
@@ -148,16 +148,30 @@ namespace Sentinel.App.Services
 
         private void SaveState(RuntimeState state)
         {
+            string? temporaryPath = null;
             try
             {
                 string json = JsonSerializer.Serialize(state, new JsonSerializerOptions
                 {
                     WriteIndented = true
                 });
-                File.WriteAllText(_statePath, json);
+                string directory = Path.GetDirectoryName(_statePath)!;
+                temporaryPath = Path.Combine(
+                    directory,
+                    $".optimization-runtime-state.{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(temporaryPath, json);
+                File.Move(temporaryPath, _statePath, overwrite: true);
             }
             catch
             {
+            }
+            finally
+            {
+                if (!string.IsNullOrWhiteSpace(temporaryPath))
+                {
+                    try { File.Delete(temporaryPath); }
+                    catch { }
+                }
             }
         }
 
