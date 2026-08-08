@@ -43,6 +43,22 @@ namespace Sentinel.App.Services
                 (sameProcessNetworkCorrelation ? 18 : 0) +
                 (persistenceCorrelation ? 16 : 0));
 
+            bool monitoringIncomplete =
+                !snapshot.NetworkConnectionMonitoringAvailable ||
+                !snapshot.StartupPersistenceMonitoringAvailable ||
+                !snapshot.ScheduledTaskMonitoringAvailable;
+
+            if (evidenceFamilies < 2 && monitoringIncomplete)
+            {
+                return new SpywareCorrelationResult(
+                    SpywareCorrelationState.EvidenceIncomplete,
+                    confidence,
+                    false,
+                    "Spyware correlation evidence is incomplete",
+                    "Sentinel could not collect all current network and persistence evidence. No spyware conclusion can be made until monitoring coverage is restored.",
+                    "spyware-evidence-incomplete");
+            }
+
             if (evidenceFamilies < 2)
             {
                 return new SpywareCorrelationResult(
@@ -108,6 +124,7 @@ namespace Sentinel.App.Services
 
         public enum SpywareCorrelationState
         {
+            EvidenceIncomplete,
             NoCorroboratedConcern,
             Observe,
             Review,
