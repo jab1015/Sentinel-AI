@@ -40,6 +40,23 @@ namespace Sentinel.App.Services
                     "The component store is repairable") == false &&
                 !componentStoreCorruptionDetected;
 
+            if (dism.ExitCode == -1)
+            {
+                return new SystemImageHealthAssessment(
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    "Windows component-store assessment reached its safety timeout. Sentinel skipped SFC to avoid compounding system load and will not infer integrity health.",
+                    dism.ExitCode,
+                    dism.Output,
+                    dism.Error,
+                    -1,
+                    string.Empty,
+                    "SFC verification was skipped after the DISM safety timeout.");
+            }
+
             CommandResult sfc = await RunAsync(
                 "sfc.exe",
                 "/verifyonly",
