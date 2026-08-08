@@ -11,8 +11,8 @@ void Check(string name, bool condition)
     if (!condition) failures++;
 }
 
-MaintenanceReportItem Item(string category, string summary, string outcome = "Verified") =>
-    new(DateTimeOffset.UtcNow, category, summary, outcome, false);
+MaintenanceReportItem Item(string category, string summary, string outcome = "Verified", string action = "") =>
+    new(DateTimeOffset.UtcNow, category, summary, outcome, false) { Action = action };
 
 Console.WriteLine("--- Scenario 1: verified drive optimization becomes friendly value language ---");
 var drive = service.CreateFor(Item("Optimization", "Drive optimization completed with retrim."));
@@ -49,9 +49,23 @@ Console.WriteLine("\n--- Scenario 7: unknown verified technical work is not inve
 var unknown = service.CreateFor(Item("Other", "An unrelated technical operation completed."));
 Check("Unknown action suppressed", unknown is null);
 
-Console.WriteLine("\n--- Scenario 8: driver repair is only surfaced when verified ---");
-var driver = service.CreateFor(Item("Automatic Repair", "Driver repair completed and verified."));
-Check("Driver summary created", driver is not null);
+Console.WriteLine("\n--- Scenario 8: a generic driver mention is never presented as a repair ---");
+var genericDriver = service.CreateFor(Item("Automatic Repair", "Driver repair completed and verified."));
+Check("Generic driver claim suppressed", genericDriver is null);
+
+Console.WriteLine("\n--- Scenario 9: driver detection or research is never presented as a repair ---");
+var driverResearch = service.CreateFor(Item(
+    "Automatic Repair",
+    "Driver: Intel Management Engine Interface; investigation completed.",
+    action: "Research driver"));
+Check("Driver research suppressed", driverResearch is null);
+
+Console.WriteLine("\n--- Scenario 10: an identified install with explicit post-repair verification may be surfaced ---");
+var driver = service.CreateFor(Item(
+    "Automatic Repair",
+    "Device: Example Device; package: Example Driver 2.0; installed; post-repair verification passed.",
+    action: "Install driver"));
+Check("Evidence-backed driver summary created", driver is not null);
 Check("Driver repair described", driver?.Message.Contains("driver repair", StringComparison.OrdinalIgnoreCase) == true);
 
 Console.WriteLine($"\nRESULT: {(failures == 0 ? "PASS" : "FAIL")}");
