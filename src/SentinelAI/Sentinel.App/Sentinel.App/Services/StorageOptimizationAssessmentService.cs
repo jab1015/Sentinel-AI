@@ -19,6 +19,7 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class StorageOptimizationAssessmentService
     {
+        private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(20);
         public async Task<StorageOptimizationAssessment> AssessSystemDriveAsync(
             CancellationToken cancellationToken = default)
         {
@@ -145,9 +146,26 @@ namespace Sentinel.App.Services
             };
 
             process.Start();
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            Task<string> errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorTask = process.StandardError.ReadToEndAsync();
+            using CancellationTokenSource timeoutSource = new(CommandTimeout);
+            using CancellationTokenSource linkedSource =
+                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+
+            try
+            {
+                await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                try { process.Kill(entireProcessTree: true); }
+                catch { }
+
+                return new CommandResult(
+                    -1,
+                    string.Empty,
+                    $"Windows storage assessment exceeded its {CommandTimeout.TotalSeconds:0}-second safety timeout.");
+            }
 
             return new CommandResult(
                 process.ExitCode,
