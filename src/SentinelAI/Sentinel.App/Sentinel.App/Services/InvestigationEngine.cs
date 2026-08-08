@@ -26,7 +26,14 @@ namespace Sentinel.App.Services
                 Contains(snapshot.PrimaryFlaggedServiceName, "Storage Spaces") ||
                 Contains(snapshot.PrimaryFlaggedServiceName, "SMP");
 
-            bool securityProtectionDisabled = !snapshot.DefenderEnabled || !snapshot.FirewallEnabled;
+            bool defenderVerifiedInactive =
+                snapshot.DefenderStatus.Equals("Disabled or inactive", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.DefenderStatus.Equals("Limited", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.DefenderStatus.Equals("Not detected", StringComparison.OrdinalIgnoreCase);
+            bool firewallVerifiedInactive =
+                snapshot.FirewallStatus.Equals("Disabled", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.FirewallStatus.StartsWith("Partial", StringComparison.OrdinalIgnoreCase);
+            bool securityProtectionDisabled = defenderVerifiedInactive || firewallVerifiedInactive;
             bool protectionHealthDegraded =
                 !snapshot.ProtectionHealthFullyProtected &&
                 !Contains(snapshot.ProtectionHealthState, "Starting");
@@ -91,7 +98,9 @@ namespace Sentinel.App.Services
                         ? "Sentinel verified that a core Windows security protection is not enabled."
                         : snapshot.ProtectionHealthSummary,
                     true,
-                    "security-protection-disabled");
+                    securityProtectionDisabled
+                        ? "security-protection-disabled"
+                        : "security-monitoring-coverage-degraded");
             }
 
             if (highConfidenceSpywareFinding)
