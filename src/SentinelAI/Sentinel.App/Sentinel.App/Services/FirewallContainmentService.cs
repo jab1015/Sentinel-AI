@@ -10,6 +10,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
@@ -24,8 +25,22 @@ namespace Sentinel.App.Services
     public sealed class FirewallContainmentService
     {
         private const string RulePrefix = "Sentinel AI Block";
+        private static readonly SemaphoreSlim ContainmentGate = new(1, 1);
 
         public async Task<FirewallContainmentResult> BlockEndpointAsync(string remoteEndpoint)
+        {
+            await ContainmentGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await BlockEndpointCoreAsync(remoteEndpoint).ConfigureAwait(false);
+            }
+            finally
+            {
+                ContainmentGate.Release();
+            }
+        }
+
+        private async Task<FirewallContainmentResult> BlockEndpointCoreAsync(string remoteEndpoint)
         {
             if (!TryExtractRemoteAddress(remoteEndpoint, out IPAddress? address) || address is null)
             {
@@ -80,7 +95,7 @@ namespace Sentinel.App.Services
                 bool verified = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
                 if (!verified)
                 {
-                    FirewallContainmentResult cleanup = await RemoveBlockAsync(remoteEndpoint).ConfigureAwait(false);
+                    FirewallContainmentResult cleanup = await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     return cleanup.Succeeded
                         ? new FirewallContainmentResult(
                             Attempted: true,
@@ -107,7 +122,7 @@ namespace Sentinel.App.Services
 
                 if (before.IsHealthy && !after.IsHealthy)
                 {
-                    FirewallContainmentResult rollback = await RemoveBlockAsync(remoteEndpoint).ConfigureAwait(false);
+                    FirewallContainmentResult rollback = await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     return rollback.Succeeded
                         ? new FirewallContainmentResult(
                             Attempted: true,
@@ -144,7 +159,7 @@ namespace Sentinel.App.Services
                 if (ruleCreated)
                 {
                     FirewallContainmentResult cleanup =
-                        await RemoveBlockAsync(remoteEndpoint).ConfigureAwait(false);
+                        await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     if (cleanup.Succeeded)
                     {
                         return new FirewallContainmentResult(
@@ -176,6 +191,19 @@ namespace Sentinel.App.Services
         }
 
         public async Task<FirewallContainmentResult> RemoveBlockAsync(string remoteEndpoint)
+        {
+            await ContainmentGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                return await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
+            }
+            finally
+            {
+                ContainmentGate.Release();
+            }
+        }
+
+        private async Task<FirewallContainmentResult> RemoveBlockCoreAsync(string remoteEndpoint)
         {
             if (!TryExtractRemoteAddress(remoteEndpoint, out IPAddress? address) || address is null)
             {
