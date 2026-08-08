@@ -312,16 +312,43 @@ namespace Sentinel.App.Services
 
         private static bool IsLocalOrPrivate(IPAddress address)
         {
-            if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any)) return true;
+            if (address.IsIPv4MappedToIPv6)
+            {
+                address = address.MapToIPv4();
+            }
+
+            if (IPAddress.IsLoopback(address) ||
+                address.Equals(IPAddress.Any) ||
+                address.Equals(IPAddress.IPv6Any))
+            {
+                return true;
+            }
+
             byte[] bytes = address.GetAddressBytes();
             if (bytes.Length == 4)
             {
-                return bytes[0] == 10 || bytes[0] == 127 ||
-                       (bytes[0] == 169 && bytes[1] == 254) ||
-                       (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
-                       (bytes[0] == 192 && bytes[1] == 168);
+                int first = bytes[0];
+                int second = bytes[1];
+                return first == 0 ||
+                       first == 10 ||
+                       first == 127 ||
+                       (first == 100 && second >= 64 && second <= 127) ||
+                       (first == 169 && second == 254) ||
+                       (first == 172 && second >= 16 && second <= 31) ||
+                       (first == 192 && second == 0) ||
+                       (first == 192 && second == 168) ||
+                       (first == 192 && second == 0 && bytes[2] == 2) ||
+                       (first == 198 && (second == 18 || second == 19)) ||
+                       (first == 198 && second == 51 && bytes[2] == 100) ||
+                       (first == 203 && second == 0 && bytes[2] == 113) ||
+                       first >= 224;
             }
-            return address.IsIPv6LinkLocal || address.IsIPv6SiteLocal;
+
+            bool uniqueLocal = (bytes[0] & 0xFE) == 0xFC;
+            return address.IsIPv6LinkLocal ||
+                   address.IsIPv6SiteLocal ||
+                   address.IsIPv6Multicast ||
+                   uniqueLocal;
         }
 
         private static ProcessIdentity GetProcessIdentity(int processId)
