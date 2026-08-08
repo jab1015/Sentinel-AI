@@ -25,6 +25,7 @@ namespace Sentinel.App.Services
                 firewallUnavailable ||
                 !snapshot.NetworkConnectionMonitoringAvailable ||
                 !snapshot.AuthenticationMonitoringAvailable ||
+                !snapshot.ProcessMonitoringAvailable ||
                 !snapshot.CommandLineMonitoringAvailable ||
                 !snapshot.ProcessLineageMonitoringAvailable ||
                 !snapshot.StartupPersistenceMonitoringAvailable ||
