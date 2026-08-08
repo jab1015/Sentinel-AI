@@ -8,10 +8,12 @@ string sourceDirectory = Path.Combine(root, "source");
 string catalogPath = Path.Combine(root, "catalog.json");
 string sourcePath = Path.Combine(sourceDirectory, "sentinel-quarantine-test.txt");
 string deleteSourcePath = Path.Combine(sourceDirectory, "sentinel-quarantine-delete-test.txt");
+string tamperSourcePath = Path.Combine(sourceDirectory, "sentinel-quarantine-tamper-test.txt");
 
 Directory.CreateDirectory(sourceDirectory);
 await File.WriteAllTextAsync(sourcePath, "Sentinel AI quarantine acceptance test.");
 await File.WriteAllTextAsync(deleteSourcePath, "Sentinel AI permanent deletion acceptance test.");
+await File.WriteAllTextAsync(tamperSourcePath, "Sentinel AI quarantine tamper acceptance test.");
 
 QuarantineService service = new(quarantineDirectory: quarantineDirectory);
 QuarantineCatalogService catalog = new(catalogPath);
@@ -130,7 +132,47 @@ try
         Console.WriteLine("Catalog removal after delete: FAIL");
     }
 
-    bool pass = approvalGatePass && quarantinePass && catalogAddPass && catalogReconcilePass && restoreApprovalPass && restorePass && restoreCatalogPass && deleteCatalogAddPass && deleteApprovalPass && deletePass && deleteCatalogPass;
+    Console.WriteLine();
+    Console.WriteLine("--- Scenario 7: tampered quarantine identity is refused ---");
+    QuarantineService.QuarantineResult tamperQuarantined = await service.QuarantineAsync(
+        tamperSourcePath,
+        hasVerifiedEvidence: true,
+        isWindowsProtectedComponent: false,
+        userApproved: true);
+
+    bool tamperedRestoreRefused = false;
+    bool tamperedDeleteRefused = false;
+    if (tamperQuarantined.Record is not null)
+    {
+        await File.AppendAllTextAsync(
+            tamperQuarantined.Record.QuarantinePath,
+            " changed after quarantine");
+
+        QuarantineService.QuarantineResult tamperedRestore =
+            await service.RestoreAsync(tamperQuarantined.Record, userApproved: true);
+        tamperedRestoreRefused =
+            !tamperedRestore.Succeeded &&
+            File.Exists(tamperQuarantined.Record.QuarantinePath) &&
+            !File.Exists(tamperSourcePath);
+        Console.WriteLine($"Tampered restore refused: {(tamperedRestoreRefused ? "PASS" : "FAIL")}");
+
+        QuarantineService.QuarantineResult tamperedDelete =
+            await service.DeletePermanentlyAsync(tamperQuarantined.Record, userApproved: true);
+        tamperedDeleteRefused =
+            !tamperedDelete.Succeeded &&
+            File.Exists(tamperQuarantined.Record.QuarantinePath);
+        Console.WriteLine($"Tampered deletion refused and rolled back: {(tamperedDeleteRefused ? "PASS" : "FAIL")}");
+    }
+    else
+    {
+        Console.WriteLine("Tampered restore refused: FAIL");
+        Console.WriteLine("Tampered deletion refused and rolled back: FAIL");
+    }
+
+    bool pass = approvalGatePass && quarantinePass && catalogAddPass && catalogReconcilePass &&
+        restoreApprovalPass && restorePass && restoreCatalogPass && deleteCatalogAddPass &&
+        deleteApprovalPass && deletePass && deleteCatalogPass &&
+        tamperedRestoreRefused && tamperedDeleteRefused;
 
     Console.WriteLine();
     Console.WriteLine(pass ? "RESULT: PASS" : "RESULT: FAIL");
