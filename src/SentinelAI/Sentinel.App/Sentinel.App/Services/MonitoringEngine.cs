@@ -447,7 +447,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_processMonitor.GetIntelligence, _processSnapshot);
             if (!result.Success)
             {
-                _lastProcessRefresh = DateTime.MinValue;
+                _lastProcessRefresh = now;
                 return;
             }
 
@@ -460,7 +460,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(() => _memoryInvestigationMonitor.GetSnapshot(memoryUsagePercent), _memoryInvestigationSnapshot);
             if (!result.Success)
             {
-                _lastMemoryInvestigationRefresh = DateTime.MinValue;
+                _lastMemoryInvestigationRefresh = now;
                 return;
             }
 
@@ -473,7 +473,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_processLineageMonitor.GetSnapshot, _processLineageSnapshot);
             if (!result.Success)
             {
-                _lastProcessLineageRefresh = DateTime.MinValue;
+                _lastProcessLineageRefresh = now;
                 return;
             }
 
@@ -486,7 +486,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_commandLineMonitor.GetSnapshot, _commandLineSnapshot);
             if (!result.Success)
             {
-                _lastCommandLineRefresh = DateTime.MinValue;
+                _lastCommandLineRefresh = now;
                 return;
             }
 
@@ -499,7 +499,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_serviceMonitor.GetIntelligence, _serviceSnapshot);
             if (!result.Success)
             {
-                _lastServiceRefresh = DateTime.MinValue;
+                _lastServiceRefresh = now;
                 return;
             }
 
@@ -512,7 +512,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_securityMonitor.GetStatus, _securitySnapshot);
             if (!result.Success)
             {
-                _lastSecurityRefresh = DateTime.MinValue;
+                _securitySnapshot = new SecurityMonitor.SecurityStatusSnapshot("Unavailable", "Unavailable");
+                _lastSecurityRefresh = now;
                 return;
             }
 
@@ -525,7 +526,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_eventLogMonitor.GetStatus, _eventLogSnapshot);
             if (!result.Success)
             {
-                _lastEventLogRefresh = DateTime.MinValue;
+                _eventLogSnapshot = new EventLogMonitor.EventLogStatusSnapshot(0, 0, null, "Unavailable", "Windows Event Log evidence could not be collected.");
+                _lastEventLogRefresh = now;
                 return;
             }
 
@@ -538,7 +540,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_authenticationAnomalyMonitor.GetSnapshot, _authenticationSnapshot);
             if (!result.Success)
             {
-                _lastAuthenticationRefresh = DateTime.MinValue;
+                _authenticationSnapshot = new AuthenticationAnomalyMonitor.AuthenticationAnomalySnapshot(false, 0, 0, "None", false, 0, "Unavailable", "Authentication evidence could not be collected.");
+                _lastAuthenticationRefresh = now;
                 return;
             }
 
@@ -551,7 +554,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_windowsCrashEvidenceMonitor.GetSnapshot, _crashSnapshot);
             if (!result.Success)
             {
-                _lastCrashRefresh = DateTime.MinValue;
+                _crashSnapshot = new WindowsCrashEvidenceMonitor.WindowsCrashEvidenceSnapshot(false, false, false, null, 0, "Unavailable", "Not available", false, "Crash evidence could not be collected.");
+                _lastCrashRefresh = now;
                 return;
             }
 
@@ -564,7 +568,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_startupPersistenceMonitor.GetSnapshot, _startupSnapshot);
             if (!result.Success)
             {
-                _lastStartupRefresh = DateTime.MinValue;
+                _lastStartupRefresh = now;
                 return;
             }
 
@@ -577,7 +581,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_scheduledTaskMonitor.GetSnapshot, _scheduledTaskSnapshot);
             if (!result.Success)
             {
-                _lastScheduledTaskRefresh = DateTime.MinValue;
+                _lastScheduledTaskRefresh = now;
                 return;
             }
 
@@ -590,7 +594,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_activeConnectionMonitor.GetSnapshot, _activeConnectionSnapshot);
             if (!result.Success)
             {
-                _lastActiveConnectionRefresh = DateTime.MinValue;
+                _activeConnectionSnapshot = ActiveConnectionMonitor.ActiveConnectionSnapshot.Unavailable;
+                _lastActiveConnectionRefresh = now;
                 return;
             }
 
@@ -603,7 +608,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_driverHealthEvidenceProvider.GetSnapshot, _driverHealthSnapshot);
             if (!result.Success)
             {
-                _lastDriverHealthRefresh = DateTime.MinValue;
+                _driverHealthSnapshot = DriverHealthEvidenceProvider.DriverHealthSnapshot.Unavailable();
+                _lastDriverHealthRefresh = now;
                 return;
             }
 
@@ -616,7 +622,8 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_windowsHealthEvidenceProvider.GetDiscoverySnapshot, _windowsHealthSnapshot);
             if (!result.Success)
             {
-                _lastWindowsHealthRefresh = DateTime.MinValue;
+                _windowsHealthSnapshot = new WindowsHealthEvidenceProvider.WindowsHealthDiscoverySnapshot(null, null, null, null, null, false, false, false);
+                _lastWindowsHealthRefresh = now;
                 return;
             }
 
