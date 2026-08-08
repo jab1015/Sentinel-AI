@@ -1,8 +1,8 @@
 # SAI-000 — Project Status
 
-Version: 1.3  
-Status: Active  
-Last Updated: 2026-07-31
+Version: 1.4  
+Status: Active — Security completion pending Windows acceptance  
+Last Updated: 2026-08-08
 
 Copyright (c) 2026 Modern Methods.
 
@@ -34,13 +34,42 @@ This document is the single source of truth for the current state of Sentinel AI
 
 # Current Phase
 
-Security Intelligence and Safe Remediation
+Proactive Security Completion — implementation and harness preparation
 
 ---
 
 # Current Objective
 
 Continue expanding Sentinel from passive monitoring and investigation into a trustworthy Windows investigation assistant that can recommend and safely execute narrowly scoped remediation while preserving explicit user control.
+
+---
+
+# Current Validation Gate
+
+Repository-wide security implementation and static source verification are substantially complete. The current estimate is **97% complete**.
+
+This is not yet a release-complete claim:
+
+- The updated branch has not yet been pulled into the Product Owner's Visual Studio environment.
+- The full Windows build and acceptance harness suite have not yet run against these changes.
+- Live installed-app checks, BSOD-question grounding, performance observation, and remediation safety validation remain pending.
+- The prior July/August production acceptance results remain historical baseline evidence and do not validate the current change set.
+
+The Product Owner should wait for the explicit instruction **READY TO PULL, BUILD, AND TEST** before beginning the validation sequence.
+
+---
+
+# Security Completion Implemented
+
+- Continuous Defender, Firewall, authentication, network, process, lineage, service, startup, scheduled-task, persistence, spyware, crash, and availability evidence.
+- Fail-closed incomplete-evidence semantics throughout protection, risk, Ask Sentinel, and Activity Center.
+- Persistent atomic investigation and maintenance history with unavailable-history distinction.
+- Ask Sentinel current-evidence and verified-history grounding, including optimization action versus current-need separation.
+- Explicit, single-use, exact-target remediation approval with PID/start-time process binding.
+- Transactional firewall and quarantine containment with verification, rollback, idempotence, serialization, and timeouts.
+- Automatic optimization default-off, mandatory verification/rollback, single-action cycles, cooldown persistence, and bounded resource use.
+- Approval-only DISM/SFC repair and exclusion from unattended maintenance.
+- Non-destructive acceptance harnesses for optimization settings, remediation outcomes, quarantine tamper resistance, containment identity, and maintenance-history integrity.
 
 ---
 
