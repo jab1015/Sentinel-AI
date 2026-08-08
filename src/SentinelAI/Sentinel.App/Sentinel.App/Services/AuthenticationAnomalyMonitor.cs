@@ -31,7 +31,7 @@ namespace Sentinel.App.Services
                     evidence.Add(new FailedAuthenticationEvidence(
                         record.TimeCreated ?? DateTime.Now,
                         ReadProperty(record, 19, "Unknown source"),
-                        ReadProperty(record, 6, "Unknown account")));
+                        ReadProperty(record, 5, "Unknown account")));
                 }
 
                 return Analyze(evidence, true);
@@ -51,24 +51,28 @@ namespace Sentinel.App.Services
             FailedAuthenticationEvidence[] recent = evidence
                 .Where(item => item.Timestamp >= DateTime.Now.AddMinutes(-10))
                 .ToArray();
-            var repeatedSource = recent
+            FailedAuthenticationEvidence[] remote = recent
                 .Where(item => IsRemoteSource(item.SourceAddress))
+                .ToArray();
+            var repeatedSource = remote
                 .GroupBy(item => item.SourceAddress, StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(group => group.Count())
                 .FirstOrDefault();
             int repeatedCount = repeatedSource?.Count() ?? 0;
-            bool suspicious = repeatedCount >= 5 || recent.Length >= 10;
+            bool suspicious = repeatedCount >= 5 || remote.Length >= 10;
             int confidence = suspicious
-                ? Math.Min(95, 60 + Math.Max(repeatedCount - 4, recent.Length - 9) * 5)
-                : recent.Length == 0 ? 100 : Math.Min(45, recent.Length * 8);
+                ? Math.Min(95, 60 + Math.Max(repeatedCount - 4, remote.Length - 9) * 5)
+                : recent.Length == 0 ? 100 : Math.Min(45, remote.Length * 8);
             string source = repeatedSource?.Key ?? "None";
             string summary = suspicious
                 ? repeatedCount >= 5
                     ? $"Sentinel verified {repeatedCount} failed logons from {source} within 10 minutes. This repeated remote pattern requires investigation."
-                    : $"Sentinel verified {recent.Length} failed logons within 10 minutes across multiple sources."
+                    : $"Sentinel verified {remote.Length} failed logons from remote sources within 10 minutes across multiple sources."
                 : recent.Length == 0
                     ? "No failed-logon authentication events were detected in the last 10 minutes."
-                    : $"Sentinel observed {recent.Length} recent failed logon(s); the evidence does not currently form a brute-force pattern.";
+                    : remote.Length == 0
+                        ? $"Sentinel observed {recent.Length} recent local failed logon(s); no remote brute-force pattern is present."
+                        : $"Sentinel observed {recent.Length} recent failed logon(s), including {remote.Length} from remote sources; the evidence does not currently form a brute-force pattern.";
 
             return new AuthenticationAnomalySnapshot(true, recent.Length, repeatedCount, source,
                 suspicious, confidence, suspicious ? "Suspicious" : recent.Length > 0 ? "Observing" : "Healthy", summary);
