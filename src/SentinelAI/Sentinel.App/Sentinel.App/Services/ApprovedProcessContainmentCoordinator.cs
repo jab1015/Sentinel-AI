@@ -50,8 +50,17 @@ namespace Sentinel.App.Services
                 validation,
                 executeAsync: async () =>
                 {
+                    if (request.TargetProcessId <= 0 || !request.TargetProcessStartUtc.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "The approval did not include an exact process instance. Sentinel made no system change.");
+                    }
+
                     containmentResult = await _processContainment
-                        .ContainAsync(request.Target)
+                        .ContainAsync(
+                            request.Target,
+                            request.TargetProcessId,
+                            request.TargetProcessStartUtc)
                         .ConfigureAwait(false);
 
                     if (!containmentResult.Succeeded)
