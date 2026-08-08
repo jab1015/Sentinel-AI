@@ -53,9 +53,26 @@ namespace Sentinel.App.Services
                 bool verified = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
                 if (!verified)
                 {
-                    return FirewallContainmentResult.Failure(
-                        "Network block could not be verified",
-                        "Windows reported that the firewall command completed, but Sentinel could not verify the expected outbound block rule.");
+                    FirewallContainmentResult cleanup = await RemoveBlockAsync(remoteEndpoint).ConfigureAwait(false);
+                    return cleanup.Succeeded
+                        ? new FirewallContainmentResult(
+                            Attempted: true,
+                            Succeeded: false,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Unverified network block removed",
+                            Summary: "Windows created a firewall rule, but Sentinel could not verify every expected property. Sentinel removed the new rule and verified cleanup instead of leaving an unverified system change in place.",
+                            RolledBack: true,
+                            ConnectivityHealthy: cleanup.ConnectivityHealthy)
+                        : new FirewallContainmentResult(
+                            Attempted: true,
+                            Succeeded: false,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Unverified network block requires review",
+                            Summary: "Windows created a firewall rule, but Sentinel could not verify it or verify cleanup. Review Windows Firewall rules before relying on the containment result.",
+                            RolledBack: false,
+                            ConnectivityHealthy: false);
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
@@ -120,7 +137,7 @@ namespace Sentinel.App.Services
                 int deleteExitCode = await RunNetshElevatedAsync(
                     $"advfirewall firewall delete rule name=\"{ruleName}\"");
 
-                bool stillExists = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                bool stillExists = await RuleExistsAsync(ruleName).ConfigureAwait(false);
                 if (deleteExitCode != 0 || stillExists)
                 {
                     return FirewallContainmentResult.Failure(
@@ -222,6 +239,32 @@ namespace Sentinel.App.Services
                    output.Contains(remoteIp, StringComparison.OrdinalIgnoreCase) &&
                    output.Contains("Block", StringComparison.OrdinalIgnoreCase) &&
                    output.Contains("Out", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static async Task<bool> RuleExistsAsync(string ruleName)
+        {
+            using Process process = new()
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "netsh.exe",
+                    Arguments = $"advfirewall firewall show rule name=\"{ruleName}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+            Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorRead = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            string output = await outputRead.ConfigureAwait(false);
+            _ = await errorRead.ConfigureAwait(false);
+
+            return process.ExitCode == 0 &&
+                   output.Contains(ruleName, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryExtractRemoteAddress(string value, out IPAddress? address)
