@@ -1,4 +1,4 @@
-﻿/* Sentinel AI - Copyright (c) 2026 Modern Methods. */
+/* Sentinel AI - Copyright (c) 2026 Modern Methods. */
 using System;
 namespace Sentinel.App.Models
 {
@@ -99,6 +99,15 @@ namespace Sentinel.App.Models
         public int AuthenticationAnomalyConfidenceScore { get; set; }
         public string AuthenticationAnomalyState { get; set; } = "Starting";
         public string AuthenticationAnomalySummary { get; set; } = "Sentinel is checking recent Windows authentication evidence.";
+        public bool CrashEvidenceAvailable { get; set; }
+        public bool RecentCrashDetected { get; set; }
+        public bool RecentBugCheckDetected { get; set; }
+        public DateTime? RecentCrashTime { get; set; }
+        public int RecentCrashEventId { get; set; }
+        public string RecentCrashProvider { get; set; } = "None";
+        public string RecentBugCheckCode { get; set; } = "Not available";
+        public bool CrashRootCauseVerified { get; set; }
+        public string RecentCrashSummary { get; set; } = "Sentinel is checking recent Windows crash evidence.";
         public int RiskScore { get; set; }
         public string RiskLevel { get; set; } = "Calculating...";
         public string RiskSummary { get; set; } = "Analyzing current conditions.";
@@ -145,3 +154,4 @@ namespace Sentinel.App.Models
         public bool InvestigationShouldEscalate { get; set; }
     }
 }
+
