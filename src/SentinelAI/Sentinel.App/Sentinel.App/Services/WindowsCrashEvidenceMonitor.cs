@@ -13,7 +13,7 @@ namespace Sentinel.App.Services
     {
         private const int MaximumEvents = 40;
         private const string CrashEventQuery =
-            "*[System[((EventID=1001) or (EventID=41) or (EventID=6008)) and TimeCreated[timediff(@SystemTime) <= 604800000]]]";
+            "*[System[(((EventID=1001) and Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) or (EventID=41) or (EventID=6008)) and TimeCreated[timediff(@SystemTime) <= 604800000]]]";
 
         public WindowsCrashEvidenceSnapshot GetSnapshot()
         {
@@ -51,7 +51,10 @@ namespace Sentinel.App.Services
         {
             if (!collectionAvailable) return Unavailable("Windows crash evidence is unavailable.");
 
-            CrashEventEvidence? bugCheck = events.Where(item => item.EventId == 1001)
+            CrashEventEvidence? bugCheck = events.Where(item =>
+                    item.EventId == 1001 &&
+                    (item.Provider.Equals("Microsoft-Windows-WER-SystemErrorReporting", StringComparison.OrdinalIgnoreCase) ||
+                     item.Description.Contains("bugcheck", StringComparison.OrdinalIgnoreCase)))
                 .OrderByDescending(item => item.Timestamp).FirstOrDefault();
             CrashEventEvidence? restart = events.Where(item => item.EventId is 41 or 6008)
                 .OrderByDescending(item => item.Timestamp).FirstOrDefault();
