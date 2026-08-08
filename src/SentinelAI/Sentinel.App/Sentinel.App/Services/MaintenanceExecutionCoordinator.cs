@@ -11,14 +11,14 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Runs the supported verified maintenance executors, records only actions that
-    /// actually attempted a change, and returns one concise user-safe report.
+    /// actually attempted a change, and returns one concise user-safe report. Resource-intensive
+    /// DISM/SFC diagnostics and repairs are excluded from unattended maintenance.
     /// </summary>
     public sealed class MaintenanceExecutionCoordinator
     {
         private readonly NetworkRepairExecutor _networkRepairExecutor = new();
         private readonly PowerPlanOptimizationExecutor _powerPlanExecutor = new();
         private readonly WindowsUpdateRepairExecutor _windowsUpdateExecutor = new();
-        private readonly SystemImageRepairExecutor _systemImageExecutor = new();
         private readonly BootStartupOptimizationExecutor _bootStartupExecutor = new();
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
         private readonly MaintenanceReportService _reportService = new();
@@ -53,15 +53,6 @@ namespace Sentinel.App.Services
                     .ConfigureAwait(false);
             _outcomeRecorder.Record(windowsUpdate);
             if (windowsUpdate.Attempted)
-                return BuildSummary(actionsAttempted: 1);
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            SystemImageRepairExecutionResult systemImage =
-                await _systemImageExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
-                    .ConfigureAwait(false);
-            _outcomeRecorder.Record(systemImage);
-            if (systemImage.Attempted)
                 return BuildSummary(actionsAttempted: 1);
 
             cancellationToken.ThrowIfCancellationRequested();
