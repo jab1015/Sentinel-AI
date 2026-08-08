@@ -61,7 +61,7 @@ namespace Sentinel.App.Services
                 string summary = active
                     ? $"Sentinel AI {activePlan.ToString().ToLowerInvariant()} subscription is active" +
                       (expiration.HasValue ? $" through {expiration.Value.LocalDateTime:d}." : ".")
-                    : "A Sentinel AI subscription is required for cloud AI investigations. Local monitoring remains available without one.";
+                    : "Free local monitoring is active. A Sentinel AI subscription is required for cloud investigations, automatic optimization, verified repairs, containment, and quarantine.";
 
                 return new SubscriptionState(
                     active,
@@ -74,7 +74,7 @@ namespace Sentinel.App.Services
             }
             catch (Exception ex)
             {
-                return SubscriptionState.Unavailable("Sentinel could not verify the Microsoft Store subscription right now. Cloud AI will remain off until licensing can be verified.", ex.Message);
+                return SubscriptionState.Unavailable("Sentinel could not verify the Microsoft Store subscription right now. Premium investigations and actions will remain off until licensing can be verified; free local monitoring will continue.", ex.Message);
             }
 #endif
         }
