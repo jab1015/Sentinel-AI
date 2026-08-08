@@ -23,7 +23,7 @@ namespace Sentinel.App.Services
             bool defenderHealthy = snapshot.DefenderEnabled;
             bool firewallHealthy = snapshot.FirewallEnabled;
             bool advancedSecurityNotEntitled =
-                snapshot.NetworkConnectionMonitoringStatus.Equals("Subscription required", StringComparison.OrdinalIgnoreCase);
+                string.Equals(snapshot.NetworkConnectionMonitoringStatus, "Subscription required", StringComparison.OrdinalIgnoreCase);
 
             // Subscription-gated advanced collectors are intentionally inactive, not
             // failed. Evaluate the free tier only against the basic Windows protection
