@@ -22,7 +22,7 @@ namespace Sentinel.App.Services
             string latestEventSource = "None";
             string latestEventMessage = "No user-actionable Windows event evidence was detected.";
 
-            ReadLog(
+            bool systemLogAvailable = ReadLog(
                 "System",
                 ref criticalCount,
                 ref errorCount,
@@ -30,7 +30,7 @@ namespace Sentinel.App.Services
                 ref latestEventSource,
                 ref latestEventMessage);
 
-            ReadLog(
+            bool applicationLogAvailable = ReadLog(
                 "Application",
                 ref criticalCount,
                 ref errorCount,
@@ -38,15 +38,23 @@ namespace Sentinel.App.Services
                 ref latestEventSource,
                 ref latestEventMessage);
 
+            bool collectionAvailable = systemLogAvailable && applicationLogAvailable;
+            if (!collectionAvailable && criticalCount == 0 && errorCount == 0)
+            {
+                latestEventSource = "Unavailable";
+                latestEventMessage = "Windows critical/error event evidence could not be collected completely.";
+            }
+
             return new EventLogStatusSnapshot(
                 criticalCount,
                 errorCount,
                 latestEventTime,
                 latestEventSource,
-                latestEventMessage);
+                latestEventMessage,
+                collectionAvailable);
         }
 
-        private static void ReadLog(
+        private static bool ReadLog(
             string logName,
             ref int criticalCount,
             ref int errorCount,
@@ -101,18 +109,20 @@ namespace Sentinel.App.Services
                         latestEventMessage = description;
                     }
                 }
+
+                return true;
             }
             catch (EventLogNotFoundException)
             {
-                // The log is unavailable on this Windows installation.
+                return false;
             }
             catch (EventLogException)
             {
-                // Access or provider failures must not terminate monitoring.
+                return false;
             }
             catch (UnauthorizedAccessException)
             {
-                // Some event channels require elevation. Continue gracefully.
+                return false;
             }
         }
 
@@ -166,6 +176,11 @@ namespace Sentinel.App.Services
             int ErrorCount,
             DateTime? LatestEventTime,
             string LatestEventSource,
-            string LatestEventMessage);
+            string LatestEventMessage,
+            bool CollectionAvailable = true)
+        {
+            public static EventLogStatusSnapshot Unavailable { get; } =
+                new(0, 0, null, "Unavailable", "Windows critical/error event evidence could not be collected.", false);
+        }
     }
 }
