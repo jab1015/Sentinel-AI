@@ -96,6 +96,7 @@ namespace Sentinel.App.Services
             if (bugCheck is not null)
             {
                 summary = $"Windows recorded a blue-screen BugCheck event{(bugCheckCode == "Not available" ? string.Empty : $" with stop code {bugCheckCode}")}. " +
+                    DescribeBugCheck(bugCheckCode) +
                     "This verifies that a system crash occurred, but the event alone does not identify the responsible driver or hardware component.";
             }
             else if (restart is not null)
@@ -133,6 +134,12 @@ namespace Sentinel.App.Services
             try { return Normalize(record.FormatDescription() ?? $"Event ID {record.Id}"); }
             catch (EventLogException) { return $"Event ID {record.Id}"; }
         }
+
+        private static string DescribeBugCheck(string code) =>
+            code.Equals("0X000000D1", StringComparison.OrdinalIgnoreCase) ||
+            code.Equals("0XD1", StringComparison.OrdinalIgnoreCase)
+                ? "Windows defines this as DRIVER_IRQL_NOT_LESS_OR_EQUAL: kernel-mode code, usually a driver, accessed invalid or pageable memory at an unsafe interrupt level. "
+                : string.Empty;
 
         private static string ExtractBugCheckCode(string value)
         {
