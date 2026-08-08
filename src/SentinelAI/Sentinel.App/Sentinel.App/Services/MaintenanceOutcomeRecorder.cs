@@ -102,6 +102,12 @@ namespace Sentinel.App.Services
             Record("No Action Required", "No action required", summary, true, true, true, false, technicalDetail);
         }
 
+        public void RecordMaintenanceAction(string title, string summary, string technicalDetail = "")
+        {
+            if (string.IsNullOrWhiteSpace(summary)) return;
+            Record("Maintenance", string.IsNullOrWhiteSpace(title) ? "Maintenance action" : title, summary, true, true, true, false, technicalDetail);
+        }
+
         private void Record(string category, string action, string userSummary, bool attempted, bool successful, bool verified, bool rolledBack, string technicalDetail)
         {
             if (!attempted && !rolledBack) return;
