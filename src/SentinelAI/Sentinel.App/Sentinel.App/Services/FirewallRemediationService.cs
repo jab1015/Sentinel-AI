@@ -4,7 +4,6 @@
  */
 
 using System;
-using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,16 +11,20 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Creates a narrowly scoped Windows Firewall outbound block rule only after
-    /// Sentinel has verified the target and the user has approved the action.
+    /// Applies remediation policy and explicit approval before delegating to the
+    /// bounded, idempotent, rollback-capable firewall containment transaction.
     /// </summary>
     public sealed class FirewallRemediationService
     {
         private readonly RemediationPolicy _policy;
+        private readonly FirewallContainmentService _containmentService;
 
-        public FirewallRemediationService(RemediationPolicy? policy = null)
+        public FirewallRemediationService(
+            RemediationPolicy? policy = null,
+            FirewallContainmentService? containmentService = null)
         {
             _policy = policy ?? new RemediationPolicy();
+            _containmentService = containmentService ?? new FirewallContainmentService();
         }
 
         public async Task<FirewallRemediationResult> BlockRemoteAddressAsync(
@@ -32,99 +35,46 @@ namespace Sentinel.App.Services
             bool canRequestElevation,
             CancellationToken cancellationToken = default)
         {
-            if (!IPAddress.TryParse(remoteAddress, out var parsedAddress))
-            {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!IPAddress.TryParse(remoteAddress, out IPAddress? parsedAddress))
                 return Failed("Sentinel could not verify a valid network address to block.");
-            }
 
             string normalizedAddress = parsedAddress.ToString();
-            var decision = _policy.Evaluate(new RemediationPolicy.RemediationRequest(
-                RemediationPolicy.RemediationAction.BlockNetworkEndpoint,
-                RemediationPolicy.RemediationRisk.Moderate,
-                hasVerifiedEvidence,
-                isWindowsProtectedComponent,
-                RequiresElevation: true,
-                CanRequestElevation: canRequestElevation));
+            RemediationPolicy.RemediationDecision decision = _policy.Evaluate(
+                new RemediationPolicy.RemediationRequest(
+                    RemediationPolicy.RemediationAction.BlockNetworkEndpoint,
+                    RemediationPolicy.RemediationRisk.Moderate,
+                    hasVerifiedEvidence,
+                    isWindowsProtectedComponent,
+                    RequiresElevation: true,
+                    CanRequestElevation: canRequestElevation));
 
             if (!decision.Allowed)
-            {
                 return Failed(decision.Explanation);
-            }
 
             if (decision.RequiresUserApproval && !userApproved)
-            {
                 return new FirewallRemediationResult(false, true, false, decision.Explanation);
-            }
 
-            string ruleName = $"Sentinel AI Block {normalizedAddress}";
-            string arguments = $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={normalizedAddress} enable=yes profile=any";
+            cancellationToken.ThrowIfCancellationRequested();
+            FirewallContainmentService.FirewallContainmentResult containment =
+                await _containmentService.BlockEndpointAsync(normalizedAddress)
+                    .ConfigureAwait(false);
 
-            try
-            {
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "netsh.exe",
-                    Arguments = arguments,
-                    UseShellExecute = true,
-                    Verb = "runas",
-                    WindowStyle = ProcessWindowStyle.Hidden
-                };
+            bool verified =
+                containment.Succeeded &&
+                !containment.RolledBack &&
+                containment.ConnectivityHealthy;
 
-                using var process = Process.Start(startInfo);
-                if (process is null)
-                {
-                    return Failed("Sentinel could not start the Windows Firewall action.");
-                }
-
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-                if (process.ExitCode != 0)
-                {
-                    return Failed("Windows Firewall did not accept the requested block rule.");
-                }
-
-                bool verified = await VerifyRuleAsync(ruleName, cancellationToken).ConfigureAwait(false);
-                return new FirewallRemediationResult(
-                    Succeeded: verified,
-                    RequiresUserApproval: false,
-                    RuleVerified: verified,
-                    Message: verified
-                        ? $"Sentinel blocked outbound connections to {normalizedAddress} and verified the Windows Firewall rule."
-                        : "Sentinel requested the firewall block, but could not verify the rule. It will not report the action as complete.");
-            }
-            catch (OperationCanceledException)
-            {
-                return Failed("The firewall action was canceled before Sentinel could verify the result.");
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
-            {
-                return Failed("Sentinel could not safely change Windows Firewall. No success was reported.");
-            }
-        }
-
-        private static async Task<bool> VerifyRuleAsync(string ruleName, CancellationToken cancellationToken)
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "netsh.exe",
-                Arguments = $"advfirewall firewall show rule name=\"{ruleName}\"",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process is null)
-            {
-                return false;
-            }
-
-            string output = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-
-            return process.ExitCode == 0 &&
-                   output.Contains(ruleName, StringComparison.OrdinalIgnoreCase) &&
-                   output.Contains("Block", StringComparison.OrdinalIgnoreCase);
+            return new FirewallRemediationResult(
+                Succeeded: verified,
+                RequiresUserApproval: false,
+                RuleVerified: verified,
+                Message: verified
+                    ? containment.Summary
+                    : containment.RolledBack
+                        ? "Sentinel attempted the approved firewall block, but verification did not pass and the new rule was rolled back."
+                        : containment.Summary);
         }
 
         private static FirewallRemediationResult Failed(string message) =>
