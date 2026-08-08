@@ -15,6 +15,7 @@ namespace Sentinel.App
         private readonly OptimizationSettingsService _optimizationSettingsService = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
         private bool _loading;
+        private bool _premiumEntitled;
         private bool _initialLayoutApplied;
 
         public OptionsWindow()
@@ -53,6 +54,8 @@ namespace Sentinel.App
             SubscriptionState state = await _subscriptionService.GetStateAsync();
             SubscriptionPlanText.Text = state.DisplayName;
             SubscriptionStatusText.Text = state.Summary;
+            _premiumEntitled = state.IsActive;
+            ApplyPremiumControlState();
 
             if (state.Plan == SubscriptionPlan.Development)
             {
@@ -121,7 +124,7 @@ namespace Sentinel.App
             {
                 StartWithWindowsToggle.IsOn = false;
                 StartWithWindowsToggle.IsEnabled = false;
-                StartupStatusText.Text = "This option is available in the installed Sentinel app. Visual Studio development runs do not have the package identity Windows needs for startup registration.";
+                StartupStatusText.Text = "This Visual Studio build cannot change the installed app's startup setting. Open Options from the installed Sentinel package to turn startup on or off.";
                 _loading = false;
                 return;
             }
@@ -165,6 +168,20 @@ namespace Sentinel.App
                 : "Automatic optimization is off. Sentinel will continue monitoring performance without making optimization changes.";
 
             _loading = false;
+            ApplyPremiumControlState();
+        }
+
+        private void ApplyPremiumControlState()
+        {
+            AutomaticOptimizationToggle.IsEnabled = _premiumEntitled;
+            OptimizationModeComboBox.IsEnabled = _premiumEntitled;
+
+            if (!_premiumEntitled)
+            {
+                OptimizationStatusText.Text = AutomaticOptimizationToggle.IsOn
+                    ? "Automatic optimization is paused because no active subscription was verified. Free performance monitoring continues."
+                    : "Free performance monitoring is active. An active subscription is required to enable automatic optimization.";
+            }
         }
 
         private void StartWithWindowsToggle_Toggled(object sender, RoutedEventArgs e)
@@ -197,6 +214,12 @@ namespace Sentinel.App
         {
             if (_loading)
                 return;
+
+            if (!_premiumEntitled)
+            {
+                ApplyPremiumControlState();
+                return;
+            }
 
             OptimizationMode mode = OptimizationMode.Conservative;
             if (OptimizationModeComboBox.SelectedItem is ComboBoxItem selectedItem &&
