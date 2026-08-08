@@ -20,7 +20,7 @@ namespace Sentinel.App.Services
     public sealed class RemediationAuditService
     {
         private readonly string _auditPath;
-        private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private static readonly SemaphoreSlim AuditLock = new(1, 1);
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -28,11 +28,11 @@ namespace Sentinel.App.Services
 
         public RemediationAuditService(string? auditPath = null)
         {
-            _auditPath = auditPath ?? Path.Combine(
+            _auditPath = Path.GetFullPath(auditPath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "SentinelAI",
                 "Audit",
-                "remediation-history.jsonl");
+                "remediation-history.jsonl"));
         }
 
         public async Task RecordAsync(
@@ -61,7 +61,7 @@ namespace Sentinel.App.Services
 
             string json = JsonSerializer.Serialize(entry, JsonOptions) + Environment.NewLine;
 
-            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await AuditLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 string? directory = Path.GetDirectoryName(_auditPath);
@@ -74,7 +74,7 @@ namespace Sentinel.App.Services
             }
             finally
             {
-                _writeLock.Release();
+                AuditLock.Release();
             }
         }
 
@@ -87,37 +87,45 @@ namespace Sentinel.App.Services
                 return Array.Empty<RemediationAuditEntry>();
             }
 
-            if (!File.Exists(_auditPath))
+            await AuditLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                return Array.Empty<RemediationAuditEntry>();
-            }
-
-            string[] lines = await File.ReadAllLinesAsync(_auditPath, cancellationToken).ConfigureAwait(false);
-            var results = new List<RemediationAuditEntry>(Math.Min(maximumEntries, lines.Length));
-
-            for (int index = lines.Length - 1; index >= 0 && results.Count < maximumEntries; index--)
-            {
-                if (string.IsNullOrWhiteSpace(lines[index]))
+                if (!File.Exists(_auditPath))
                 {
-                    continue;
+                    return Array.Empty<RemediationAuditEntry>();
                 }
 
-                try
+                string[] lines = await File.ReadAllLinesAsync(_auditPath, cancellationToken).ConfigureAwait(false);
+                var results = new List<RemediationAuditEntry>(Math.Min(maximumEntries, lines.Length));
+
+                for (int index = lines.Length - 1; index >= 0 && results.Count < maximumEntries; index--)
                 {
-                    var entry = JsonSerializer.Deserialize<RemediationAuditEntry>(lines[index], JsonOptions);
-                    if (entry is not null)
+                    if (string.IsNullOrWhiteSpace(lines[index]))
                     {
-                        results.Add(entry);
+                        continue;
+                    }
+
+                    try
+                    {
+                        var entry = JsonSerializer.Deserialize<RemediationAuditEntry>(lines[index], JsonOptions);
+                        if (entry is not null)
+                        {
+                            results.Add(entry);
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // A damaged historical line must not prevent Sentinel from
+                        // reading later valid audit records.
                     }
                 }
-                catch (JsonException)
-                {
-                    // A damaged historical line must not prevent Sentinel from
-                    // reading later valid audit records.
-                }
-            }
 
-            return results;
+                return results;
+            }
+            finally
+            {
+                AuditLock.Release();
+            }
         }
 
         private static string SanitizeTarget(string target)
