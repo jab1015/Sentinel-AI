@@ -86,7 +86,10 @@ namespace Sentinel.App.Services
                 entry.Category,
                 entry.UserSummary,
                 outcome,
-                entry.Attempted && !entry.Successful && !entry.RolledBack);
+                entry.Attempted && !entry.Successful && !entry.RolledBack)
+            {
+                Action = entry.Action
+            };
         }
     }
 
@@ -102,7 +105,12 @@ namespace Sentinel.App.Services
         string Category,
         string Summary,
         string Outcome,
-        bool NeedsAttention);
+        bool NeedsAttention)
+    {
+        // Retain the exact recorded action so presentation logic can distinguish an
+        // actual repair from research, detection, scanning, or an uncompleted attempt.
+        public string Action { get; init; } = string.Empty;
+    }
 
     public enum MaintenanceReportState
     {
