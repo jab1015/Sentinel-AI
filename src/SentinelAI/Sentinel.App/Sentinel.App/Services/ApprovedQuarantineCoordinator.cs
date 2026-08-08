@@ -18,17 +18,20 @@ namespace Sentinel.App.Services
         private readonly QuarantineService _quarantineService;
         private readonly QuarantineCatalogService _catalogService;
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder;
+        private readonly StoreSubscriptionService _subscriptionService;
 
         public ApprovedQuarantineCoordinator(
             ApprovedRemediationExecutor? approvedExecutor = null,
             QuarantineService? quarantineService = null,
             QuarantineCatalogService? catalogService = null,
-            MaintenanceOutcomeRecorder? outcomeRecorder = null)
+            MaintenanceOutcomeRecorder? outcomeRecorder = null,
+            StoreSubscriptionService? subscriptionService = null)
         {
             _approvedExecutor = approvedExecutor ?? new ApprovedRemediationExecutor();
             _quarantineService = quarantineService ?? new QuarantineService();
             _catalogService = catalogService ?? new QuarantineCatalogService();
             _outcomeRecorder = outcomeRecorder ?? new MaintenanceOutcomeRecorder();
+            _subscriptionService = subscriptionService ?? new StoreSubscriptionService();
         }
 
         public async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteAsync(
@@ -40,6 +43,13 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(currentSnapshot);
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
+
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                    "Free local threat monitoring remains active, but an active Sentinel AI subscription is required for quarantine, restore, or permanent-delete actions.");
+            }
 
             await QuarantineGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
