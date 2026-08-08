@@ -27,6 +27,7 @@ namespace Sentinel.App.Services
                 snapshot.ProcessMonitoringAvailable &&
                 snapshot.CommandLineMonitoringAvailable &&
                 snapshot.ProcessLineageMonitoringAvailable &&
+                snapshot.ServiceMonitoringAvailable &&
                 snapshot.StartupPersistenceMonitoringAvailable &&
                 snapshot.ScheduledTaskMonitoringAvailable;
 
@@ -42,7 +43,7 @@ namespace Sentinel.App.Services
                     ProtectionHealthState.Healthy,
                     true,
                     "Protection is active",
-                    "Sentinel network, authentication, process, command-line, process-lineage, startup-persistence, and scheduled-task monitoring are active. Microsoft Defender and Windows Firewall are also active.",
+                    "Sentinel network, authentication, process, command-line, process-lineage, service, startup-persistence, and scheduled-task monitoring are active. Microsoft Defender and Windows Firewall are also active.",
                     "No action is required.",
                     "protection-healthy");
             }
@@ -66,6 +67,7 @@ namespace Sentinel.App.Services
                     snapshot.ProcessMonitoringAvailable ? string.Empty : "process",
                     snapshot.CommandLineMonitoringAvailable ? string.Empty : "command-line",
                     snapshot.ProcessLineageMonitoringAvailable ? string.Empty : "process-lineage",
+                    snapshot.ServiceMonitoringAvailable ? string.Empty : "service",
                     snapshot.StartupPersistenceMonitoringAvailable ? string.Empty : "startup persistence",
                     snapshot.ScheduledTaskMonitoringAvailable ? string.Empty : "scheduled task"
                 };
