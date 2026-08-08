@@ -441,20 +441,200 @@ namespace Sentinel.App.Services
             snapshot.LatestEventMessage = "A temporary Windows Update file-in-use condition was detected. Windows can retry automatically; Sentinel will continue monitoring for recurrence.";
         }
 
-        private async Task RefreshProcessDataIfDueAsync(DateTime now) { if (now - _lastProcessRefresh < ProcessRefreshInterval) return; _lastProcessRefresh = now; _processSnapshot = await Task.Run(_processMonitor.GetIntelligence); }
-        private async Task RefreshMemoryInvestigationDataIfDueAsync(DateTime now, double memoryUsagePercent) { if (now - _lastMemoryInvestigationRefresh < MemoryInvestigationRefreshInterval) return; _lastMemoryInvestigationRefresh = now; _memoryInvestigationSnapshot = await Task.Run(() => _memoryInvestigationMonitor.GetSnapshot(memoryUsagePercent)); }
-        private async Task RefreshProcessLineageDataIfDueAsync(DateTime now) { if (now - _lastProcessLineageRefresh < ProcessLineageRefreshInterval) return; _lastProcessLineageRefresh = now; _processLineageSnapshot = await Task.Run(_processLineageMonitor.GetSnapshot); }
-        private async Task RefreshCommandLineDataIfDueAsync(DateTime now) { if (now - _lastCommandLineRefresh < CommandLineRefreshInterval) return; _lastCommandLineRefresh = now; _commandLineSnapshot = await Task.Run(_commandLineMonitor.GetSnapshot); }
-        private async Task RefreshServiceDataIfDueAsync(DateTime now) { if (now - _lastServiceRefresh < ServiceRefreshInterval) return; _lastServiceRefresh = now; _serviceSnapshot = await Task.Run(_serviceMonitor.GetIntelligence); }
-        private async Task RefreshSecurityDataIfDueAsync(DateTime now) { if (now - _lastSecurityRefresh < SecurityRefreshInterval) return; _lastSecurityRefresh = now; _securitySnapshot = await Task.Run(_securityMonitor.GetStatus); }
-        private async Task RefreshEventLogDataIfDueAsync(DateTime now) { if (now - _lastEventLogRefresh < EventLogRefreshInterval) return; _lastEventLogRefresh = now; _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus); }
-        private async Task RefreshAuthenticationDataIfDueAsync(DateTime now) { if (now - _lastAuthenticationRefresh < EventLogRefreshInterval) return; _lastAuthenticationRefresh = now; _authenticationSnapshot = await Task.Run(_authenticationAnomalyMonitor.GetSnapshot); }
-        private async Task RefreshCrashDataIfDueAsync(DateTime now) { if (now - _lastCrashRefresh < DriverHealthRefreshInterval) return; _lastCrashRefresh = now; _crashSnapshot = await Task.Run(_windowsCrashEvidenceMonitor.GetSnapshot); }
-        private async Task RefreshStartupDataIfDueAsync(DateTime now) { if (now - _lastStartupRefresh < StartupRefreshInterval) return; _lastStartupRefresh = now; _startupSnapshot = await Task.Run(_startupPersistenceMonitor.GetSnapshot); }
-        private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now) { if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return; _lastScheduledTaskRefresh = now; _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot); }
-        private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now) { if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return; _lastActiveConnectionRefresh = now; _activeConnectionSnapshot = await Task.Run(_activeConnectionMonitor.GetSnapshot); }
-        private async Task RefreshDriverHealthDataIfDueAsync(DateTime now) { if (now - _lastDriverHealthRefresh < DriverHealthRefreshInterval) return; _lastDriverHealthRefresh = now; _driverHealthSnapshot = await Task.Run(_driverHealthEvidenceProvider.GetSnapshot); }
-        private async Task RefreshWindowsHealthDataIfDueAsync(DateTime now) { if (now - _lastWindowsHealthRefresh < WindowsHealthRefreshInterval) return; _lastWindowsHealthRefresh = now; _windowsHealthSnapshot = await Task.Run(_windowsHealthEvidenceProvider.GetDiscoverySnapshot); }
+        private async Task RefreshProcessDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastProcessRefresh < ProcessRefreshInterval) return;
+            var result = await TryCollectAsync(_processMonitor.GetIntelligence, _processSnapshot);
+            if (!result.Success)
+            {
+                _lastProcessRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _processSnapshot = result.Value;
+            _lastProcessRefresh = now;
+        }
+        private async Task RefreshMemoryInvestigationDataIfDueAsync(DateTime now, double memoryUsagePercent)
+        {
+            if (now - _lastMemoryInvestigationRefresh < MemoryInvestigationRefreshInterval) return;
+            var result = await TryCollectAsync(() => _memoryInvestigationMonitor.GetSnapshot(memoryUsagePercent), _memoryInvestigationSnapshot);
+            if (!result.Success)
+            {
+                _lastMemoryInvestigationRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _memoryInvestigationSnapshot = result.Value;
+            _lastMemoryInvestigationRefresh = now;
+        }
+        private async Task RefreshProcessLineageDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastProcessLineageRefresh < ProcessLineageRefreshInterval) return;
+            var result = await TryCollectAsync(_processLineageMonitor.GetSnapshot, _processLineageSnapshot);
+            if (!result.Success)
+            {
+                _lastProcessLineageRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _processLineageSnapshot = result.Value;
+            _lastProcessLineageRefresh = now;
+        }
+        private async Task RefreshCommandLineDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastCommandLineRefresh < CommandLineRefreshInterval) return;
+            var result = await TryCollectAsync(_commandLineMonitor.GetSnapshot, _commandLineSnapshot);
+            if (!result.Success)
+            {
+                _lastCommandLineRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _commandLineSnapshot = result.Value;
+            _lastCommandLineRefresh = now;
+        }
+        private async Task RefreshServiceDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastServiceRefresh < ServiceRefreshInterval) return;
+            var result = await TryCollectAsync(_serviceMonitor.GetIntelligence, _serviceSnapshot);
+            if (!result.Success)
+            {
+                _lastServiceRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _serviceSnapshot = result.Value;
+            _lastServiceRefresh = now;
+        }
+        private async Task RefreshSecurityDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastSecurityRefresh < SecurityRefreshInterval) return;
+            var result = await TryCollectAsync(_securityMonitor.GetStatus, _securitySnapshot);
+            if (!result.Success)
+            {
+                _lastSecurityRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _securitySnapshot = result.Value;
+            _lastSecurityRefresh = now;
+        }
+        private async Task RefreshEventLogDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastEventLogRefresh < EventLogRefreshInterval) return;
+            var result = await TryCollectAsync(_eventLogMonitor.GetStatus, _eventLogSnapshot);
+            if (!result.Success)
+            {
+                _lastEventLogRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _eventLogSnapshot = result.Value;
+            _lastEventLogRefresh = now;
+        }
+        private async Task RefreshAuthenticationDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastAuthenticationRefresh < EventLogRefreshInterval) return;
+            var result = await TryCollectAsync(_authenticationAnomalyMonitor.GetSnapshot, _authenticationSnapshot);
+            if (!result.Success)
+            {
+                _lastAuthenticationRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _authenticationSnapshot = result.Value;
+            _lastAuthenticationRefresh = now;
+        }
+        private async Task RefreshCrashDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastCrashRefresh < DriverHealthRefreshInterval) return;
+            var result = await TryCollectAsync(_windowsCrashEvidenceMonitor.GetSnapshot, _crashSnapshot);
+            if (!result.Success)
+            {
+                _lastCrashRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _crashSnapshot = result.Value;
+            _lastCrashRefresh = now;
+        }
+        private async Task RefreshStartupDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastStartupRefresh < StartupRefreshInterval) return;
+            var result = await TryCollectAsync(_startupPersistenceMonitor.GetSnapshot, _startupSnapshot);
+            if (!result.Success)
+            {
+                _lastStartupRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _startupSnapshot = result.Value;
+            _lastStartupRefresh = now;
+        }
+        private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return;
+            var result = await TryCollectAsync(_scheduledTaskMonitor.GetSnapshot, _scheduledTaskSnapshot);
+            if (!result.Success)
+            {
+                _lastScheduledTaskRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _scheduledTaskSnapshot = result.Value;
+            _lastScheduledTaskRefresh = now;
+        }
+        private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return;
+            var result = await TryCollectAsync(_activeConnectionMonitor.GetSnapshot, _activeConnectionSnapshot);
+            if (!result.Success)
+            {
+                _lastActiveConnectionRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _activeConnectionSnapshot = result.Value;
+            _lastActiveConnectionRefresh = now;
+        }
+        private async Task RefreshDriverHealthDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastDriverHealthRefresh < DriverHealthRefreshInterval) return;
+            var result = await TryCollectAsync(_driverHealthEvidenceProvider.GetSnapshot, _driverHealthSnapshot);
+            if (!result.Success)
+            {
+                _lastDriverHealthRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _driverHealthSnapshot = result.Value;
+            _lastDriverHealthRefresh = now;
+        }
+        private async Task RefreshWindowsHealthDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastWindowsHealthRefresh < WindowsHealthRefreshInterval) return;
+            var result = await TryCollectAsync(_windowsHealthEvidenceProvider.GetDiscoverySnapshot, _windowsHealthSnapshot);
+            if (!result.Success)
+            {
+                _lastWindowsHealthRefresh = DateTime.MinValue;
+                return;
+            }
+
+            _windowsHealthSnapshot = result.Value;
+            _lastWindowsHealthRefresh = now;
+        }
+
+        private static async Task<(bool Success, T Value)> TryCollectAsync<T>(Func<T> collector, T current)
+        {
+            try
+            {
+                return (true, await Task.Run(collector));
+            }
+            catch
+            {
+                return (false, current);
+            }
+        }
 
         private static bool Contains(string? value, string expected) => !string.IsNullOrWhiteSpace(value) && value.Contains(expected, StringComparison.OrdinalIgnoreCase);
         private static string ExtractServiceDisplayName(string message) { const string prefix = "The "; const string marker = " service terminated unexpectedly"; int start = message.IndexOf(prefix, StringComparison.OrdinalIgnoreCase); int end = message.IndexOf(marker, StringComparison.OrdinalIgnoreCase); if (start < 0 || end <= start + prefix.Length) return string.Empty; return message.Substring(start + prefix.Length, end - (start + prefix.Length)).Trim(); }
