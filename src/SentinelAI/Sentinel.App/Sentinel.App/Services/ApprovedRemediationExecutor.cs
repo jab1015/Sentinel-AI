@@ -4,6 +4,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Sentinel.App.Models;
 
@@ -18,6 +19,8 @@ namespace Sentinel.App.Services
     {
         private const int VerificationAttempts = 3;
         private static readonly TimeSpan VerificationDelay = TimeSpan.FromSeconds(1);
+        private static readonly HashSet<Guid> ExecutedApprovalIds = new();
+        private static readonly object ExecutionSync = new();
 
         public async Task<ApprovedRemediationResult> ExecuteAsync(
             SystemSnapshot currentSnapshot,
@@ -36,6 +39,15 @@ namespace Sentinel.App.Services
             if (!validation.IsApproved)
             {
                 return ApprovedRemediationResult.NotAttempted(validation.Message);
+            }
+
+            lock (ExecutionSync)
+            {
+                if (!ExecutedApprovalIds.Add(request.RequestId))
+                {
+                    return ApprovedRemediationResult.NotAttempted(
+                        "This approved remediation was already submitted for execution. Sentinel made no additional system change.");
+                }
             }
 
             if (DateTimeOffset.Now > request.ExpiresAt ||
