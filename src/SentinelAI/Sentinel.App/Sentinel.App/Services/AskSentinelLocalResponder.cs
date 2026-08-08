@@ -32,12 +32,14 @@ namespace Sentinel.App.Services
             if (IsTpmQuestion(q)) return _windowsHealth.GetTpmStatus();
             if (IsSecureBootQuestion(q)) return _windowsHealth.GetSecureBootStatus();
             if (IsBitLockerQuestion(q)) return _windowsHealth.GetBitLockerStatus();
+            // Crash intent must win over an active driver finding. A driver is not
+            // the crash cause unless crash-specific evidence establishes that link.
+            if (IsCrashQuestion(q)) return BuildCrashAnswer(snapshot);
             if (IsDriverHealthQuestion(q))
             {
                 string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
                 return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
             }
-            if (IsCrashQuestion(q)) return BuildCrashAnswer(snapshot);
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
