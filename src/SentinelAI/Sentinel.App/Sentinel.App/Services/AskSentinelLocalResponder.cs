@@ -37,6 +37,7 @@ namespace Sentinel.App.Services
                 string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
                 return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
             }
+            if (IsCrashQuestion(q)) return BuildCrashAnswer(snapshot);
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
@@ -201,6 +202,28 @@ namespace Sentinel.App.Services
                 "drivers healthy",
                 "are my drivers healthy");
 
+        private static bool IsCrashQuestion(string value) =>
+            Has(value, "blue screen", "bluescreen", "bsod", "bugcheck", "bug check",
+                "crashed", "system crash", "computer crash", "unexpected restart", "recovered from a bsd");
+
+        private static string BuildCrashAnswer(SystemSnapshot snapshot)
+        {
+            if (!snapshot.CrashEvidenceAvailable)
+                return "Sentinel could not access Windows crash evidence during this check, so I cannot verify why the computer stopped. I will not treat an unrelated active finding as the crash cause.";
+
+            string timing = snapshot.RecentCrashTime.HasValue
+                ? $" Windows recorded the event at {snapshot.RecentCrashTime.Value:MMM d, yyyy h:mm tt}."
+                : string.Empty;
+            string currentPerformance = $" Current evidence: CPU {snapshot.CpuUsagePercent:0.0}%, memory {snapshot.MemoryUsagePercent:0.0}%, and disk use {snapshot.DiskUsagePercent:0.0}%.";
+
+            if (!snapshot.RecentCrashDetected)
+                return "Sentinel did not find a Windows crash event or recent minidump in the last 7 days, so I cannot verify what caused the reported stop." + currentPerformance;
+
+            return snapshot.RecentCrashSummary + timing +
+                " Sentinel will not name a driver, application, or hardware component as the cause unless crash-specific evidence supports that connection." +
+                currentPerformance;
+        }
+
         private static bool Has(string value, params string[] terms)
         {
             foreach (string term in terms) if (value.Contains(term, StringComparison.OrdinalIgnoreCase)) return true;
@@ -218,3 +241,4 @@ namespace Sentinel.App.Services
         }
     }
 }
+
