@@ -34,6 +34,8 @@ namespace Sentinel.App.Services
                 await _networkRepairExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                     .ConfigureAwait(false);
             _outcomeRecorder.Record(network);
+            if (network.Attempted)
+                return BuildSummary(actionsAttempted: 1);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -41,6 +43,8 @@ namespace Sentinel.App.Services
                 await _powerPlanExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                     .ConfigureAwait(false);
             _outcomeRecorder.Record(power);
+            if (power.Attempted)
+                return BuildSummary(actionsAttempted: 1);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -48,6 +52,8 @@ namespace Sentinel.App.Services
                 await _windowsUpdateExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                     .ConfigureAwait(false);
             _outcomeRecorder.Record(windowsUpdate);
+            if (windowsUpdate.Attempted)
+                return BuildSummary(actionsAttempted: 1);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -55,24 +61,22 @@ namespace Sentinel.App.Services
                 await _systemImageExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                     .ConfigureAwait(false);
             _outcomeRecorder.Record(systemImage);
+            if (systemImage.Attempted)
+                return BuildSummary(actionsAttempted: 1);
 
             cancellationToken.ThrowIfCancellationRequested();
 
             BootStartupOptimizationExecutionResult startup =
                 _bootStartupExecutor.EvaluateAndExecute(settings);
             _outcomeRecorder.Record(startup);
+            return BuildSummary(startup.Attempted ? 1 : 0);
+        }
 
+        private MaintenanceExecutionSummary BuildSummary(int actionsAttempted)
+        {
             MaintenanceReport report = _reportService.BuildReport();
-
-            int attempted = 0;
-            if (network.Attempted) attempted++;
-            if (power.Attempted) attempted++;
-            if (windowsUpdate.Attempted) attempted++;
-            if (systemImage.Attempted) attempted++;
-            if (startup.Attempted) attempted++;
-
             return new MaintenanceExecutionSummary(
-                attempted,
+                actionsAttempted,
                 report.UserActionRequired,
                 report.Headline,
                 report.Summary,
