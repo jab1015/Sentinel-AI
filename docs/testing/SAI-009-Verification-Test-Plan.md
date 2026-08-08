@@ -2,8 +2,8 @@
 
 **Document ID:** SAI-009  
 **Title:** Verification & Test Plan  
-**Version:** 1.1  
-**Status:** Active — current security acceptance pending  
+**Version:** 1.2  
+**Status:** Active — final packaged acceptance pending  
 **Project:** Sentinel AI
 
 ---
@@ -14,6 +14,7 @@
 |---------|------|--------|-------------|
 | 1.0 | 2026-07-28 | Sentinel AI Team | Initial Release |
 | 1.1 | 2026-08-08 | Sentinel AI Team | Added proactive security completion acceptance gate |
+| 1.2 | 2026-08-08 | Sentinel AI Team | Recorded subscription, evidence-accuracy, and crash-investigation acceptance |
 
 ---
 
@@ -485,6 +486,23 @@ Historical acceptance results from earlier builds must not be cited as validatio
 
 ---
 
+## 21.5 Live acceptance recorded on 2026-08-08
+
+The current Release Visual Studio build passed the following read-only live checks:
+
+- basic Defender/Firewall tier is not misreported as degraded;
+- premium security and action controls are subscription-gated;
+- startup limitation is accurately disclosed without package identity;
+- Activity Center suppresses unsupported driver and network repair claims;
+- optimization baseline learning is separated from premium changes;
+- Ask Sentinel reports BugCheck `0x000000D1` without attributing the unrelated Intel MEI condition;
+- crash questions show no generic driver-repair controls;
+- local crash analysis reports when no incident-matching dump was retained.
+
+The final package, Store entitlement, packaged startup toggle, resource test, and complete final-commit automated runner set remain required.
+
+---
+
 # Conclusion
 
 Verification is an integral part of Sentinel AI development. Every feature must demonstrate correctness, reliability, security, and performance before it is considered complete.
@@ -496,5 +514,5 @@ Testing is not a phase—it is a continuous engineering practice.
 # End of Document
 
 **Document ID:** SAI-009  
-**Version:** 1.1  
-**Status:** Active — current security acceptance pending
+**Version:** 1.2  
+**Status:** Active — final packaged acceptance pending
