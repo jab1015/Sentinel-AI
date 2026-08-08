@@ -180,7 +180,9 @@ namespace Sentinel.App
                 VerifyGuidanceButton.Visibility = investigationRequiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
                 RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0"; RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Evidence Collected: {snapshot.Timestamp:MMM d, yyyy h:mm:ss tt}";
-                _ = _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot); _ = _integratedMaintenanceCoordinator.EvaluateAndRunAsync();
+                AutomaticOptimizationResult optimization = await _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
+                UpdateOptimizationStatus(optimization);
+                _ = _integratedMaintenanceCoordinator.EvaluateAndRunAsync();
             }
             finally { _isRefreshing = false; }
             if (forceEventDrivenFollowUp) ScheduleEventDrivenFollowUp();
