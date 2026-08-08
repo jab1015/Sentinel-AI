@@ -142,7 +142,7 @@ namespace Sentinel.App
                 DiskText.Text = snapshot.DiskTotalGB > 0 ? $"Windows System Drive: {diskUsedGB:0.00} GB used / {snapshot.DiskTotalGB:0.00} GB ({snapshot.DiskUsagePercent:0.0}%)" : "Windows System Drive: Unavailable";
                 NetworkText.Text = $"Current Network Activity: ↓ {snapshot.DownloadMbps:0.00} Mbps   ↑ {snapshot.UploadMbps:0.00} Mbps";
                 ProcessText.Text = snapshot.HighestMemoryProcessGB > 0 ? $"Running Processes: {snapshot.ProcessCount} | Highest working memory: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)" : $"Running Processes: {snapshot.ProcessCount}";
-                SecurityText.Text = snapshot.NetworkConnectionMonitoringStatus.Equals("Subscription required", StringComparison.OrdinalIgnoreCase)
+                SecurityText.Text = string.Equals(snapshot.NetworkConnectionMonitoringStatus, "Subscription required", StringComparison.OrdinalIgnoreCase)
                     ? $"Basic Windows security status: Defender {FormatSecurityEvidence(snapshot.DefenderStatus)} | Firewall {FormatSecurityEvidence(snapshot.FirewallStatus)} | Advanced Sentinel security requires a subscription"
                     : $"Windows Security Evidence: Defender {FormatSecurityEvidence(snapshot.DefenderStatus)} | Firewall {FormatSecurityEvidence(snapshot.FirewallStatus)} | Advanced Sentinel security active";
                 CriticalEventsText.Text = snapshot.CriticalEventCount.ToString(); ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
