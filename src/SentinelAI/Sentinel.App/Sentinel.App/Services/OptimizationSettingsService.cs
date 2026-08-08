@@ -15,6 +15,7 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class OptimizationSettingsService
     {
+        private static readonly object SettingsGate = new();
         private readonly string _settingsPath;
 
         public OptimizationSettingsService()
@@ -30,35 +31,58 @@ namespace Sentinel.App.Services
 
         public OptimizationSettings Load()
         {
-            try
+            lock (SettingsGate)
             {
-                if (!File.Exists(_settingsPath))
-                    return OptimizationSettings.Default;
+                try
+                {
+                    if (!File.Exists(_settingsPath))
+                        return OptimizationSettings.Default;
 
-                string json = File.ReadAllText(_settingsPath);
-                OptimizationSettings? settings = JsonSerializer.Deserialize<OptimizationSettings>(json);
-                return settings ?? OptimizationSettings.Default;
-            }
-            catch
-            {
-                return OptimizationSettings.Default;
+                    string json = File.ReadAllText(_settingsPath);
+                    OptimizationSettings? settings = JsonSerializer.Deserialize<OptimizationSettings>(json);
+                    return settings ?? OptimizationSettings.Default;
+                }
+                catch
+                {
+                    return OptimizationSettings.Default;
+                }
             }
         }
 
         public bool Save(OptimizationSettings settings)
         {
-            try
+            ArgumentNullException.ThrowIfNull(settings);
+
+            lock (SettingsGate)
             {
-                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
+                string? temporaryPath = null;
+                try
                 {
-                    WriteIndented = true
-                });
-                File.WriteAllText(_settingsPath, json);
-                return true;
-            }
-            catch
-            {
-                return false;
+                    string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    });
+
+                    string directory = Path.GetDirectoryName(_settingsPath)!;
+                    temporaryPath = Path.Combine(
+                        directory,
+                        $".optimization-settings.{Guid.NewGuid():N}.tmp");
+                    File.WriteAllText(temporaryPath, json);
+                    File.Move(temporaryPath, _settingsPath, overwrite: true);
+                    return true;
+                }
+                catch
+                {
+                    return false;
+                }
+                finally
+                {
+                    if (!string.IsNullOrWhiteSpace(temporaryPath))
+                    {
+                        try { File.Delete(temporaryPath); }
+                        catch { }
+                    }
+                }
             }
         }
     }
