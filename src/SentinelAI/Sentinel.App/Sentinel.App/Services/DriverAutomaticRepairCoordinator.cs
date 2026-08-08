@@ -17,6 +17,7 @@ namespace Sentinel.App.Services
         private readonly AuthoritativeDriverResearchService _researchService = new();
         private readonly DriverPersistentInvestigationCoordinator _persistentInvestigationCoordinator = new();
         private readonly DriverDiagnosticEvidenceCollector _evidenceCollector = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
 
         public async Task<DriverRepairPlan> PrepareAsync(string deviceName)
         {
@@ -61,12 +62,17 @@ namespace Sentinel.App.Services
             return finalPlan;
         }
 
-        public Task<DriverRepairResult> ExecuteAsync(DriverRepairPlan plan)
+        public async Task<DriverRepairResult> ExecuteAsync(DriverRepairPlan plan)
         {
             ArgumentNullException.ThrowIfNull(plan);
             if (!plan.Available || !plan.AutomaticInstallationVerified)
-                return Task.FromResult(new DriverRepairResult(false, false, "Automatic installation is not verified", "Sentinel did not install anything because this repair plan is research guidance, not a verified automatic installation package."));
-            return Task.Run(() => Execute(plan));
+                return new DriverRepairResult(false, false, "Automatic installation is not verified", "Sentinel did not install anything because this repair plan is research guidance, not a verified automatic installation package.");
+
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+                return new DriverRepairResult(false, false, "Subscription required", "Sentinel can monitor and investigate the device locally, but an active subscription is required before it installs a driver repair.");
+
+            return await Task.Run(() => Execute(plan)).ConfigureAwait(false);
         }
 
         private async Task PersistOutcomeSafelyAsync(string deviceName, DriverRepairPlan plan)
