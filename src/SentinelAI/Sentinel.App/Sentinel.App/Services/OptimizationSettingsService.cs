@@ -18,15 +18,19 @@ namespace Sentinel.App.Services
         private static readonly object SettingsGate = new();
         private readonly string _settingsPath;
 
-        public OptimizationSettingsService()
+        public OptimizationSettingsService(string? settingsPath = null)
         {
-            string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Modern Methods",
-                "Sentinel AI");
+            _settingsPath = string.IsNullOrWhiteSpace(settingsPath)
+                ? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Modern Methods",
+                    "Sentinel AI",
+                    "optimization-settings.json")
+                : Path.GetFullPath(settingsPath);
 
-            Directory.CreateDirectory(directory);
-            _settingsPath = Path.Combine(directory, "optimization-settings.json");
+            string? directory = Path.GetDirectoryName(_settingsPath);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
         }
 
         public OptimizationSettings Load()
