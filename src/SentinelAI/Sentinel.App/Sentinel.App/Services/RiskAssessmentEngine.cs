@@ -20,9 +20,12 @@ namespace Sentinel.App.Services
             bool firewallUnavailable =
                 snapshot.FirewallStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase) ||
                 snapshot.FirewallStatus.Equals("Loading...", StringComparison.OrdinalIgnoreCase);
+            bool advancedSecurityEntitled =
+                !string.Equals(snapshot.NetworkConnectionMonitoringStatus, "Subscription required", StringComparison.OrdinalIgnoreCase);
             bool monitoringCoverageIncomplete =
                 defenderUnavailable ||
                 firewallUnavailable ||
+                (advancedSecurityEntitled && (
                 !snapshot.NetworkConnectionMonitoringAvailable ||
                 !snapshot.AuthenticationMonitoringAvailable ||
                 !snapshot.EventLogMonitoringAvailable ||
@@ -32,7 +35,7 @@ namespace Sentinel.App.Services
                 !snapshot.ServiceMonitoringAvailable ||
                 !snapshot.StartupPersistenceMonitoringAvailable ||
                 !snapshot.ScheduledTaskMonitoringAvailable ||
-                snapshot.SpywareCorrelationState.Equals("EvidenceIncomplete", StringComparison.OrdinalIgnoreCase);
+                snapshot.SpywareCorrelationState.Equals("EvidenceIncomplete", StringComparison.OrdinalIgnoreCase)));
 
             if (!snapshot.DefenderEnabled)
             {
