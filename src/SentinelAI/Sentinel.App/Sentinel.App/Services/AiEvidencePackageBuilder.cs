@@ -29,6 +29,22 @@ namespace Sentinel.App.Services
             characterBudget = Math.Clamp(characterBudget, 1_500, 8_000);
 
             List<string> facts = new();
+            Add(facts, "snapshot-time", snapshot.Timestamp.ToString("O"));
+            Add(facts, "protection-state", $"Defender={snapshot.DefenderStatus}; Firewall={snapshot.FirewallStatus}; {snapshot.ProtectionHealthSummary}");
+            Add(facts, "monitoring-coverage",
+                $"network={Availability(snapshot.NetworkConnectionMonitoringAvailable)}; " +
+                $"event-log={Availability(snapshot.EventLogMonitoringAvailable)}; " +
+                $"authentication={Availability(snapshot.AuthenticationMonitoringAvailable)}; " +
+                $"process={Availability(snapshot.ProcessMonitoringAvailable)}; " +
+                $"command-line={Availability(snapshot.CommandLineMonitoringAvailable)}; " +
+                $"lineage={Availability(snapshot.ProcessLineageMonitoringAvailable)}; " +
+                $"service={Availability(snapshot.ServiceMonitoringAvailable)}; " +
+                $"startup={Availability(snapshot.StartupPersistenceMonitoringAvailable)}; " +
+                $"scheduled-task={Availability(snapshot.ScheduledTaskMonitoringAvailable)}; " +
+                $"crash={Availability(snapshot.CrashEvidenceAvailable)}");
+            Add(facts, "network-counts",
+                $"external={snapshot.ExternalConnectionCount}; inbound={snapshot.InboundExternalConnectionCount}; outbound={snapshot.OutboundExternalConnectionCount}; listening-tcp={snapshot.ListeningTcpEndpointCount}; attributed={snapshot.AttributedExternalConnectionCount}");
+            Add(facts, "authentication", snapshot.AuthenticationAnomalySummary);
             Add(facts, "reason", snapshot.InvestigationReasonCode);
             Add(facts, "conclusion", snapshot.InvestigationConclusion);
             Add(facts, "summary", snapshot.InvestigationSummary);
@@ -42,10 +58,7 @@ namespace Sentinel.App.Services
             if (snapshot.FlaggedCommandLineCount > 0) Add(facts, "command", $"{snapshot.PrimaryCommandLineProcessName}: {snapshot.PrimaryCommandLineReason}");
             if (snapshot.FlaggedStartupEntryCount > 0) Add(facts, "startup", $"{snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}");
             if (snapshot.FlaggedScheduledTaskCount > 0) Add(facts, "task", $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}");
-            if (!snapshot.DefenderEnabled || !snapshot.FirewallEnabled)
-                Add(facts, "protection", $"Defender={snapshot.DefenderEnabled}; Firewall={snapshot.FirewallEnabled}; {snapshot.ProtectionHealthSummary}");
-            if (snapshot.RecentCrashDetected)
-                Add(facts, "windows-crash", snapshot.RecentCrashSummary);
+            Add(facts, "windows-crash", snapshot.RecentCrashSummary);
 
             if (external is not null)
             {
@@ -87,7 +100,7 @@ namespace Sentinel.App.Services
             string result = value;
             result = Regex.Replace(result, @"(?i)\b(?:[A-Z]:\\Users\\)[^\\\s]+", @"C:\Users\[redacted-user]");
             result = Regex.Replace(result, @"(?i)\b(?:user(name)?|account)\s*[:=]\s*[^\s,;]+", "user=[redacted]");
-            result = Regex.Replace(result, @"(?i)\b(?:token|api[_ -]?key|authorization|password|passwd|secret)\s*[:=]\s*[^\s,;]+", "$1=[redacted]");
+            result = Regex.Replace(result, @"(?i)\b(?:token|api[_ -]?key|authorization|password|passwd|secret)\s*[:=]\s*[^\s,;]+", "credential=[redacted]");
             result = Regex.Replace(result, @"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[redacted-ip]");
             result = Regex.Replace(result, @"\b[A-Fa-f0-9]{2}(?:[:-][A-Fa-f0-9]{2}){5}\b", "[redacted-mac]");
             return Regex.Replace(result, @"\s+", " ").Trim();
@@ -101,7 +114,9 @@ namespace Sentinel.App.Services
             return string.IsNullOrWhiteSpace(port) ? "[redacted-endpoint]" : $"[redacted-endpoint]:{port}";
         }
 
-        private static string Limit(string value, int max) => value.Length <= max ? value : value[..max] + "â€¦";
+        private static string Availability(bool available) => available ? "active" : "unavailable";
+
+        private static string Limit(string value, int max) => value.Length <= max ? value : value[..max] + "…";
     }
 
     public sealed record AiEvidencePackage(string Purpose, string Payload, int CharacterCount, int EstimatedInputTokens, bool Redacted, bool ContainsFullSystemDump);
