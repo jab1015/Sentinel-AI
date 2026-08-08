@@ -21,7 +21,16 @@ bool ambiguitySafe = Process.GetProcessesByName("notepad").Length <= 1 ||
                      (!ambiguityResult.Succeeded && ambiguityResult.Title.Contains("ambiguous", StringComparison.OrdinalIgnoreCase));
 Console.WriteLine($"Name-only ambiguity safeguard: {ambiguitySafe}");
 
-ProcessContainmentService.ProcessContainmentResult result = await service.ContainAsync("notepad", pid);
+DateTimeOffset approvedStartTimeUtc = notepad.StartTime.ToUniversalTime();
+ProcessContainmentService.ProcessContainmentResult replacedInstanceResult =
+    await service.ContainAsync("notepad", pid, approvedStartTimeUtc.AddSeconds(-1));
+bool replacedInstanceRefused =
+    !replacedInstanceResult.Succeeded &&
+    replacedInstanceResult.Title.Contains("instance changed", StringComparison.OrdinalIgnoreCase);
+Console.WriteLine($"Replaced/PID-reuse safeguard: {replacedInstanceRefused}");
+
+ProcessContainmentService.ProcessContainmentResult result =
+    await service.ContainAsync("notepad", pid, approvedStartTimeUtc);
 Console.WriteLine($"Attempted: {result.Attempted}");
 Console.WriteLine($"Succeeded: {result.Succeeded}");
 Console.WriteLine($"Title: {result.Title}");
@@ -46,7 +55,7 @@ bool protectedRefusal = !protectedResult.Succeeded &&
 Console.WriteLine($"Protected-process refusal: {protectedRefusal}");
 Console.WriteLine($"Protected-process summary: {protectedResult.Summary}");
 
-bool pass = ambiguitySafe && result.Succeeded && !stillRunning && protectedRefusal;
+bool pass = ambiguitySafe && replacedInstanceRefused && result.Succeeded && !stillRunning && protectedRefusal;
 
 Console.WriteLine();
 Console.WriteLine(pass ? "RESULT: PASS" : "RESULT: FAIL");
