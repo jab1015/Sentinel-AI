@@ -38,10 +38,18 @@ namespace Sentinel.App.Services
 
         public CloudAiGatewayClient()
         {
-            _httpClient = new HttpClient { Timeout = RequestTimeout };
+            _httpClient = new HttpClient
+            {
+                Timeout = RequestTimeout,
+                MaxResponseContentBufferSize = 256 * 1024
+            };
 
+            string endpoint = ProductionEndpoint;
+#if DEBUG
             string? configured = Environment.GetEnvironmentVariable("SENTINEL_AI_GATEWAY_URL");
-            string endpoint = string.IsNullOrWhiteSpace(configured) ? ProductionEndpoint : configured.Trim();
+            if (!string.IsNullOrWhiteSpace(configured))
+                endpoint = configured.Trim();
+#endif
 
             if (Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps)
                 _endpoint = uri;
@@ -100,9 +108,9 @@ namespace Sentinel.App.Services
                 return new CloudAiResult(
                     Used: true,
                     Available: true,
-                    Answer: body.Answer.Trim(),
-                    Provider: body.Provider?.Trim() ?? string.Empty,
-                    Model: body.Model?.Trim() ?? string.Empty,
+                    Answer: Limit(body.Answer.Trim(), 8_000),
+                    Provider: Limit(body.Provider?.Trim() ?? string.Empty, 100),
+                    Model: Limit(body.Model?.Trim() ?? string.Empty, 100),
                     InputTokens: Math.Max(0, body.InputTokens),
                     OutputTokens: Math.Max(0, body.OutputTokens),
                     ConfidencePercent: Math.Clamp(body.ConfidencePercent, 0, 100),
@@ -119,6 +127,9 @@ namespace Sentinel.App.Services
                 return CloudAiResult.Unavailable("Secure AI gateway is temporarily unavailable. Sentinel continued without cloud AI.");
             }
         }
+
+        private static string Limit(string value, int maximum) =>
+            value.Length <= maximum ? value : value[..maximum];
 
         public static void InvalidateSubscriptionCache()
         {
