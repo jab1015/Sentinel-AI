@@ -14,17 +14,35 @@ namespace Sentinel.App.Services
         {
             int score = 0;
             string recommendation = "No immediate action is required. Continue normal monitoring.";
+            bool defenderUnavailable =
+                snapshot.DefenderStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.DefenderStatus.Equals("Loading...", StringComparison.OrdinalIgnoreCase);
+            bool firewallUnavailable =
+                snapshot.FirewallStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.FirewallStatus.Equals("Loading...", StringComparison.OrdinalIgnoreCase);
+            bool monitoringCoverageIncomplete =
+                defenderUnavailable ||
+                firewallUnavailable ||
+                !snapshot.NetworkConnectionMonitoringAvailable ||
+                !snapshot.AuthenticationMonitoringAvailable ||
+                !snapshot.StartupPersistenceMonitoringAvailable ||
+                !snapshot.ScheduledTaskMonitoringAvailable ||
+                snapshot.SpywareCorrelationState.Equals("EvidenceIncomplete", StringComparison.OrdinalIgnoreCase);
 
             if (!snapshot.DefenderEnabled)
             {
-                score += 40;
-                recommendation = "Turn on Microsoft Defender or confirm that another trusted antivirus product is actively protecting this computer.";
+                score += defenderUnavailable ? 15 : 40;
+                recommendation = defenderUnavailable
+                    ? "Sentinel could not verify current Microsoft Defender state. Keep monitoring active and review Windows Security if verification does not recover."
+                    : "Turn on Microsoft Defender or confirm that another trusted antivirus product is actively protecting this computer.";
             }
 
             if (!snapshot.FirewallEnabled)
             {
-                score += 35;
-                recommendation = "Turn on Windows Firewall for all network profiles unless another managed firewall is providing equivalent protection.";
+                score += firewallUnavailable ? 15 : 35;
+                recommendation = firewallUnavailable
+                    ? "Sentinel could not verify complete Windows Firewall profile state. Keep monitoring active and review Windows Security if verification does not recover."
+                    : "Turn on Windows Firewall for all network profiles unless another managed firewall is providing equivalent protection.";
             }
 
             if (snapshot.AuthenticationAnomalyDetected)
@@ -111,6 +129,8 @@ namespace Sentinel.App.Services
                 ? "Multiple independent behaviors correlate into a high-confidence spyware-like concern that requires investigation."
                 : snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase)
                     ? "Multiple independent unusual behaviors overlap and should be investigated."
+                    : monitoringCoverageIncomplete
+                        ? "Sentinel cannot verify a healthy security state because one or more monitoring evidence sources are unavailable."
                     : hasCriticalEvent
                         ? "Windows reported a critical system event that requires review. Sentinel is correlating it with current system evidence before recommending any change."
                         : level switch
