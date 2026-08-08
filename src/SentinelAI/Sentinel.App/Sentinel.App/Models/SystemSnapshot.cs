@@ -40,10 +40,12 @@ namespace Sentinel.App.Models
         public int FlaggedServiceCount { get; set; }
         public string PrimaryFlaggedServiceName { get; set; } = "None";
         public string PrimaryFlaggedServiceReason { get; set; } = "No service warning conditions were detected.";
+        public bool StartupPersistenceMonitoringAvailable { get; set; }
         public int StartupEntryCount { get; set; }
         public int FlaggedStartupEntryCount { get; set; }
         public string PrimaryFlaggedStartupEntryName { get; set; } = "None";
         public string PrimaryFlaggedStartupEntryReason { get; set; } = "No unusual startup persistence entries were detected.";
+        public bool ScheduledTaskMonitoringAvailable { get; set; }
         public int ScheduledTaskCount { get; set; }
         public int FlaggedScheduledTaskCount { get; set; }
         public string PrimaryFlaggedScheduledTaskName { get; set; } = "None";
