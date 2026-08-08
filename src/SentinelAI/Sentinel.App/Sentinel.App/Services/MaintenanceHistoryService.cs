@@ -19,57 +19,73 @@ namespace Sentinel.App.Services
     public sealed class MaintenanceHistoryService
     {
         private static readonly TimeSpan RetentionWindow = TimeSpan.FromDays(30);
+        private static readonly object HistorySync = new();
         private readonly string _historyPath;
 
-        public MaintenanceHistoryService()
+        public MaintenanceHistoryService(string? historyPath = null)
         {
-            string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Modern Methods",
-                "Sentinel AI");
+            if (string.IsNullOrWhiteSpace(historyPath))
+            {
+                string directory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Modern Methods",
+                    "Sentinel AI");
 
-            Directory.CreateDirectory(directory);
-            _historyPath = Path.Combine(directory, "maintenance-history.json");
+                Directory.CreateDirectory(directory);
+                _historyPath = Path.Combine(directory, "maintenance-history.json");
+                return;
+            }
+
+            _historyPath = Path.GetFullPath(historyPath);
+            string? customDirectory = Path.GetDirectoryName(_historyPath);
+            if (!string.IsNullOrWhiteSpace(customDirectory))
+                Directory.CreateDirectory(customDirectory);
         }
 
         public void Record(MaintenanceHistoryEntry entry)
         {
             ArgumentNullException.ThrowIfNull(entry);
 
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            List<MaintenanceHistoryEntry> entries = Load()
-                .Where(item => now - item.TimestampUtc <= RetentionWindow)
-                .ToList();
+            lock (HistorySync)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                List<MaintenanceHistoryEntry> entries = Load()
+                    .Where(item => now - item.TimestampUtc <= RetentionWindow)
+                    .ToList();
 
-            entries.Add(entry);
-            Save(entries.OrderByDescending(item => item.TimestampUtc).Take(200).ToArray());
+                entries.Add(entry);
+                Save(entries.OrderByDescending(item => item.TimestampUtc).Take(200).ToArray());
+            }
         }
 
         public MaintenanceHistorySummary GetSummary()
         {
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            MaintenanceHistoryEntry[] entries = Load()
-                .Where(item => now - item.TimestampUtc <= RetentionWindow)
-                .OrderByDescending(item => item.TimestampUtc)
-                .ToArray();
+            lock (HistorySync)
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                MaintenanceHistoryEntry[] entries = Load()
+                    .Where(item => now - item.TimestampUtc <= RetentionWindow)
+                    .OrderByDescending(item => item.TimestampUtc)
+                    .ToArray();
 
-            int verified = entries.Count(item => item.Verified);
-            int rolledBack = entries.Count(item => item.RolledBack);
-            int failed = entries.Count(item => item.Attempted && !item.Successful && !item.RolledBack);
+                int verified = entries.Count(item => item.Verified);
+                int rolledBack = entries.Count(item => item.RolledBack);
+                int failed = entries.Count(item => item.Attempted && !item.Successful && !item.RolledBack);
 
-            string summary = entries.Length == 0
-                ? "Sentinel has not needed to perform any maintenance recently."
-                : failed > 0
-                    ? $"Sentinel recorded {entries.Length} maintenance action(s) in the last 30 days. {verified} were verified and {failed} require follow-up."
-                    : $"Sentinel recorded {entries.Length} maintenance action(s) in the last 30 days. {verified} were verified successfully{(rolledBack > 0 ? $" and {rolledBack} were safely rolled back" : string.Empty)}.";
+                string summary = entries.Length == 0
+                    ? "Sentinel has not needed to perform any maintenance recently."
+                    : failed > 0
+                        ? $"Sentinel recorded {entries.Length} maintenance action(s) in the last 30 days. {verified} were verified and {failed} require follow-up."
+                        : $"Sentinel recorded {entries.Length} maintenance action(s) in the last 30 days. {verified} were verified successfully{(rolledBack > 0 ? $" and {rolledBack} were safely rolled back" : string.Empty)}.";
 
-            return new MaintenanceHistorySummary(
-                entries,
-                entries.Length,
-                verified,
-                rolledBack,
-                failed,
-                summary);
+                return new MaintenanceHistorySummary(
+                    entries,
+                    entries.Length,
+                    verified,
+                    rolledBack,
+                    failed,
+                    summary);
+            }
         }
 
         private List<MaintenanceHistoryEntry> Load()
@@ -91,16 +107,30 @@ namespace Sentinel.App.Services
 
         private void Save(IReadOnlyList<MaintenanceHistoryEntry> entries)
         {
+            string temporaryPath = _historyPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+
             try
             {
                 string json = JsonSerializer.Serialize(entries, new JsonSerializerOptions
                 {
                     WriteIndented = true
                 });
-                File.WriteAllText(_historyPath, json);
+
+                File.WriteAllText(temporaryPath, json);
+                File.Move(temporaryPath, _historyPath, true);
             }
             catch
             {
+                try
+                {
+                    if (File.Exists(temporaryPath))
+                        File.Delete(temporaryPath);
+                }
+                catch
+                {
+                    // Best-effort cleanup of this exact temporary file only.
+                }
+
                 // History persistence is informational only. A logging failure must
                 // never change whether a maintenance action is considered safe.
             }
