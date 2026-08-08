@@ -32,6 +32,7 @@ namespace Sentinel.App.Services
                 $"Firewall: {snapshot.FirewallStatus}",
                 $"Authentication monitoring: {(snapshot.AuthenticationMonitoringAvailable ? "Active" : "Unavailable")}",
                 $"Authentication evidence: {snapshot.AuthenticationAnomalySummary}",
+                $"Recent Windows crash evidence: {snapshot.RecentCrashSummary}",
                 $"Investigation state: {snapshot.InvestigationState}",
                 $"Investigation conclusion: {snapshot.InvestigationConclusion}",
                 $"Investigation summary: {snapshot.InvestigationSummary}",
@@ -45,17 +46,17 @@ namespace Sentinel.App.Services
 
             if (snapshot.FlaggedProcessCount > 0)
             {
-                evidence.Add($"Flagged process: {snapshot.PrimaryFlaggedProcessName} — {snapshot.PrimaryFlaggedProcessReason}");
+                evidence.Add($"Flagged process: {snapshot.PrimaryFlaggedProcessName} â€” {snapshot.PrimaryFlaggedProcessReason}");
             }
 
             if (snapshot.FlaggedServiceCount > 0)
             {
-                evidence.Add($"Flagged service: {snapshot.PrimaryFlaggedServiceName} — {snapshot.PrimaryFlaggedServiceReason}");
+                evidence.Add($"Flagged service: {snapshot.PrimaryFlaggedServiceName} â€” {snapshot.PrimaryFlaggedServiceReason}");
             }
 
             if (snapshot.FlaggedConnectionCount > 0)
             {
-                evidence.Add($"Flagged connection: {snapshot.PrimaryFlaggedConnectionProcessName} -> {snapshot.PrimaryFlaggedConnectionRemoteEndpoint} — {snapshot.PrimaryFlaggedConnectionReason}");
+                evidence.Add($"Flagged connection: {snapshot.PrimaryFlaggedConnectionProcessName} -> {snapshot.PrimaryFlaggedConnectionRemoteEndpoint} â€” {snapshot.PrimaryFlaggedConnectionReason}");
             }
 
             if (!string.IsNullOrWhiteSpace(snapshot.MemoryTopContributors))
@@ -77,3 +78,4 @@ namespace Sentinel.App.Services
             string SafetyInstruction);
     }
 }
+
