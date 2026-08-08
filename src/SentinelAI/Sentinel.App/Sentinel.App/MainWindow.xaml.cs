@@ -234,10 +234,13 @@ namespace Sentinel.App
             if (fingerprint.Equals(_lastRecordedFingerprint, StringComparison.OrdinalIgnoreCase)) return;
 
             var recent = await _investigationHistoryService.ReadRecentAsync(50);
+            var latest = recent.FirstOrDefault(entry =>
+                string.Equals(entry.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase));
             var previous = recent.FirstOrDefault(entry => entry.RequiresAttention &&
                 string.Equals(entry.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase));
             string title = string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) ? "Investigation" : snapshot.GuidanceTitle;
             string summary = string.IsNullOrWhiteSpace(snapshot.InvestigationSummary) ? snapshot.GuidanceWhatHappened : snapshot.InvestigationSummary;
+            string severity = snapshot.GuidanceSeverity?.Trim() ?? string.Empty;
 
             if (previous is not null)
             {
@@ -252,9 +255,20 @@ namespace Sentinel.App
                 InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
             }
 
-            await _investigationHistoryService.RecordAsync(fingerprint, title, summary, snapshot.GuidanceSeverity, true, false);
-            _monitoringOutcomeRecorder.RecordInvestigation(title, summary, true, $"Fingerprint: {fingerprint}; Recurring: {previous is not null}");
-            UpdateMaintenanceReport();
+            bool unchangedActiveFinding = latest is not null &&
+                latest.RequiresAttention &&
+                !latest.Resolved &&
+                string.Equals(latest.Title, title, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(latest.Conclusion, summary, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(latest.Severity, severity, StringComparison.OrdinalIgnoreCase);
+
+            if (!unchangedActiveFinding)
+            {
+                await _investigationHistoryService.RecordAsync(fingerprint, title, summary, severity, true, false);
+                _monitoringOutcomeRecorder.RecordInvestigation(title, summary, true, $"Fingerprint: {fingerprint}; Recurring: {previous is not null}; Evidence changed: {latest is not null}");
+                UpdateMaintenanceReport();
+            }
+
             _lastRecordedFingerprint = fingerprint;
         }
         private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e) { switch (_guidanceActionId) { case "open-task-manager": OpenShellTarget("taskmgr.exe"); return; case "approve-remediation": await ReviewApprovedRemediationAsync(); return; case "review-driver-repair": AskSentinelQuestionBox.Text = "Do I have any driver conflicts?"; await SubmitAskSentinelQuestionAsync(); return; case "open-windows-update": OpenShellTarget("ms-settings:windowsupdate"); return; case "open-windows-security": OpenShellTarget("windowsdefender:"); return; case "open-firewall": OpenShellTarget("windowsdefender://network"); return; case "open-services": OpenShellTarget("services.msc"); return; case "open-storage": OpenShellTarget("ms-settings:storagesense"); return; case "check-again": await UpdateDashboardAsync(); return; case "monitor-persistent-silently": await SetPersistentNotificationStateAsync(true); return; case "resume-persistent-notifications": await SetPersistentNotificationStateAsync(false); return; } }
