@@ -28,7 +28,7 @@ try
         isWindowsProtectedComponent: false,
         userApproved: false);
 
-    bool approvalGatePass = !denied.Succeeded && denied.RequiresUserApproval && File.Exists(sourcePath);
+    bool approvalGatePass = !denied.Succeeded && !denied.Attempted && denied.RequiresUserApproval && File.Exists(sourcePath);
     Console.WriteLine($"Approval gate: {(approvalGatePass ? "PASS" : "FAIL")}");
 
     Console.WriteLine();
@@ -39,7 +39,7 @@ try
         isWindowsProtectedComponent: false,
         userApproved: true);
 
-    bool quarantinePass = quarantined.Succeeded && quarantined.Verified && quarantined.Record is not null && !File.Exists(sourcePath) && File.Exists(quarantined.Record.QuarantinePath);
+    bool quarantinePass = quarantined.Attempted && quarantined.Succeeded && quarantined.Verified && quarantined.Record is not null && !File.Exists(sourcePath) && File.Exists(quarantined.Record.QuarantinePath);
     Console.WriteLine($"Verified quarantine: {(quarantinePass ? "PASS" : "FAIL")}");
 
     bool catalogAddPass = false;
@@ -71,13 +71,13 @@ try
     if (quarantined.Record is not null)
     {
         QuarantineService.QuarantineResult restoreDenied = await service.RestoreAsync(quarantined.Record, userApproved: false);
-        restoreApprovalPass = !restoreDenied.Succeeded && restoreDenied.RequiresUserApproval && File.Exists(quarantined.Record.QuarantinePath) && !File.Exists(sourcePath);
+        restoreApprovalPass = !restoreDenied.Succeeded && !restoreDenied.Attempted && restoreDenied.RequiresUserApproval && File.Exists(quarantined.Record.QuarantinePath) && !File.Exists(sourcePath);
         Console.WriteLine($"Restore approval gate: {(restoreApprovalPass ? "PASS" : "FAIL")}");
 
         Console.WriteLine();
         Console.WriteLine("--- Scenario 4: verified restore / reversal ---");
         QuarantineService.QuarantineResult restored = await service.RestoreAsync(quarantined.Record, userApproved: true);
-        restorePass = restored.Succeeded && restored.Verified && File.Exists(sourcePath) && !File.Exists(quarantined.Record.QuarantinePath);
+        restorePass = restored.Attempted && restored.Succeeded && restored.Verified && File.Exists(sourcePath) && !File.Exists(quarantined.Record.QuarantinePath);
         Console.WriteLine($"Verified restore: {(restorePass ? "PASS" : "FAIL")}");
 
         await catalog.RemoveAsync(quarantined.Record.QuarantinePath);
@@ -111,13 +111,13 @@ try
         Console.WriteLine($"Delete test catalog registration: {(deleteCatalogAddPass ? "PASS" : "FAIL")}");
 
         QuarantineService.QuarantineResult deleteDenied = await service.DeletePermanentlyAsync(deleteQuarantined.Record, userApproved: false);
-        deleteApprovalPass = !deleteDenied.Succeeded && deleteDenied.RequiresUserApproval && File.Exists(deleteQuarantined.Record.QuarantinePath);
+        deleteApprovalPass = !deleteDenied.Succeeded && !deleteDenied.Attempted && deleteDenied.RequiresUserApproval && File.Exists(deleteQuarantined.Record.QuarantinePath);
         Console.WriteLine($"Delete approval gate: {(deleteApprovalPass ? "PASS" : "FAIL")}");
 
         Console.WriteLine();
         Console.WriteLine("--- Scenario 6: verified permanent deletion ---");
         QuarantineService.QuarantineResult deleted = await service.DeletePermanentlyAsync(deleteQuarantined.Record, userApproved: true);
-        deletePass = deleted.Succeeded && deleted.Verified && !File.Exists(deleteQuarantined.Record.QuarantinePath) && !File.Exists(deleteSourcePath);
+        deletePass = deleted.Attempted && deleted.Succeeded && deleted.Verified && !File.Exists(deleteQuarantined.Record.QuarantinePath) && !File.Exists(deleteSourcePath);
         Console.WriteLine($"Verified permanent deletion: {(deletePass ? "PASS" : "FAIL")}");
 
         await catalog.RemoveAsync(deleteQuarantined.Record.QuarantinePath);
@@ -152,6 +152,7 @@ try
             await service.RestoreAsync(tamperQuarantined.Record, userApproved: true);
         tamperedRestoreRefused =
             !tamperedRestore.Succeeded &&
+            !tamperedRestore.Attempted &&
             File.Exists(tamperQuarantined.Record.QuarantinePath) &&
             !File.Exists(tamperSourcePath);
         Console.WriteLine($"Tampered restore refused: {(tamperedRestoreRefused ? "PASS" : "FAIL")}");
@@ -160,6 +161,7 @@ try
             await service.DeletePermanentlyAsync(tamperQuarantined.Record, userApproved: true);
         tamperedDeleteRefused =
             !tamperedDelete.Succeeded &&
+            tamperedDelete.Attempted &&
             File.Exists(tamperQuarantined.Record.QuarantinePath);
         Console.WriteLine($"Tampered deletion refused and rolled back: {(tamperedDeleteRefused ? "PASS" : "FAIL")}");
     }
