@@ -34,7 +34,7 @@
                 <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
                     <StackPanel Spacing="16">
                         <TextBlock Text="Sentinel AI subscription" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
-                        <TextBlock Text="Local security and system-health monitoring stays available without a subscription. An active subscription unlocks Ask Sentinel cloud investigations, automatic optimization, verified repairs, and containment or quarantine actions." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                        <TextBlock Text="Basic Microsoft Defender, Windows Firewall, and system-health status stays available without a subscription. An active subscription unlocks advanced Sentinel security monitoring and correlation, proactive investigations, Ask Sentinel cloud investigations, automatic optimization, verified repairs, containment, and quarantine." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
 
                         <Border Background="#0A2038" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="8">
