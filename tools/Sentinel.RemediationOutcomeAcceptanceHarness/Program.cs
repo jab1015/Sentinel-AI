@@ -17,6 +17,13 @@ SystemSnapshot snapshot = new()
 var approval = new RemediationApprovalCoordinator();
 var request = approval.CreateRequest(snapshot)!;
 var validation = approval.Validate(request, snapshot, true);
+var replayValidation = approval.Validate(request, snapshot, true);
+Check("Approval request cannot be replayed", !replayValidation.IsApproved);
+
+var fabricated = request with { RequestId = Guid.NewGuid() };
+var fabricatedValidation = approval.Validate(fabricated, snapshot, true);
+Check("Fabricated approval request is rejected", !fabricatedValidation.IsApproved);
+
 var executor = new ApprovedRemediationExecutor();
 bool delegateCalled = false;
 
