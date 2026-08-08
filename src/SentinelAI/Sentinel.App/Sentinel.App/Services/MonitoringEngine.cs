@@ -26,6 +26,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan DriverHealthRefreshInterval = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan WindowsHealthRefreshInterval = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan AutomaticProtectionCooldown = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan EntitlementRefreshInterval = TimeSpan.FromMinutes(5);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -55,6 +56,7 @@ namespace Sentinel.App.Services
         private readonly AutonomousProtectionExecutor _autonomousProtectionExecutor = new();
         private readonly InvestigationRecurrenceTracker _recurrenceTracker = new();
         private readonly WindowsInfoMonitor _windowsInfoMonitor = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
 
         private ProcessMonitor.ProcessIntelligenceSnapshot _processSnapshot = new(0, "Loading...", 0, 0, "None", "Process analysis is loading.");
         private MemoryInvestigationMonitor.MemoryInvestigationSnapshot _memoryInvestigationSnapshot = new(MemoryInvestigationMonitor.MemoryPressureLevel.Normal, 0, 0, "Memory investigation is loading.", "Memory investigation is loading.", "No action is required while Sentinel collects memory context.");
@@ -87,6 +89,8 @@ namespace Sentinel.App.Services
         private DateTime _lastWindowsHealthRefresh = DateTime.MinValue;
         private DateTime _lastAutomaticProtectionAttempt = DateTime.MinValue;
         private string _lastAutomaticProtectionSignature = string.Empty;
+        private bool _advancedSecurityEntitled;
+        private DateTime _lastEntitlementRefresh = DateTime.MinValue;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -107,20 +111,31 @@ namespace Sentinel.App.Services
         private async Task RefreshCoreAsync()
         {
             DateTime now = DateTime.Now;
+            bool advancedSecurityEntitled = await RefreshEntitlementIfDueAsync(now).ConfigureAwait(false);
+            if (!advancedSecurityEntitled)
+            {
+                _processLineageSnapshot = ProcessLineageMonitor.ProcessLineageSnapshot.Unavailable;
+                _commandLineSnapshot = CommandLineMonitor.CommandLineSnapshot.Unavailable;
+                _authenticationSnapshot = new AuthenticationAnomalyMonitor.AuthenticationAnomalySnapshot(false, 0, 0, "None", false, 0, "SubscriptionRequired", "Advanced authentication anomaly detection requires an active Sentinel AI subscription.");
+                _startupSnapshot = StartupPersistenceMonitor.StartupPersistenceSnapshot.Unavailable;
+                _scheduledTaskSnapshot = ScheduledTaskMonitor.ScheduledTaskSnapshot.Unavailable;
+                _activeConnectionSnapshot = ActiveConnectionMonitor.ActiveConnectionSnapshot.Unavailable;
+            }
+
             double memoryUsagePercent = _systemMonitor.GetMemoryPercent();
             await Task.WhenAll(
                 RefreshProcessDataIfDueAsync(now),
                 RefreshMemoryInvestigationDataIfDueAsync(now, memoryUsagePercent),
-                RefreshProcessLineageDataIfDueAsync(now),
-                RefreshCommandLineDataIfDueAsync(now),
+                advancedSecurityEntitled ? RefreshProcessLineageDataIfDueAsync(now) : Task.CompletedTask,
+                advancedSecurityEntitled ? RefreshCommandLineDataIfDueAsync(now) : Task.CompletedTask,
                 RefreshServiceDataIfDueAsync(now),
                 RefreshSecurityDataIfDueAsync(now),
                 RefreshEventLogDataIfDueAsync(now),
-                RefreshAuthenticationDataIfDueAsync(now),
+                advancedSecurityEntitled ? RefreshAuthenticationDataIfDueAsync(now) : Task.CompletedTask,
                 RefreshCrashDataIfDueAsync(now),
-                RefreshStartupDataIfDueAsync(now),
-                RefreshScheduledTaskDataIfDueAsync(now),
-                RefreshActiveConnectionDataIfDueAsync(now),
+                advancedSecurityEntitled ? RefreshStartupDataIfDueAsync(now) : Task.CompletedTask,
+                advancedSecurityEntitled ? RefreshScheduledTaskDataIfDueAsync(now) : Task.CompletedTask,
+                advancedSecurityEntitled ? RefreshActiveConnectionDataIfDueAsync(now) : Task.CompletedTask,
                 RefreshDriverHealthDataIfDueAsync(now),
                 RefreshWindowsHealthDataIfDueAsync(now));
 
@@ -139,28 +154,40 @@ namespace Sentinel.App.Services
                 ScheduledTaskMonitoringAvailable = _scheduledTaskSnapshot.CollectionAvailable, ScheduledTaskCount = _scheduledTaskSnapshot.TotalTaskCount, FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount, PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName, PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
                 EstablishedConnectionCount = _activeConnectionSnapshot.EstablishedConnectionCount, ExternalConnectionCount = _activeConnectionSnapshot.ExternalConnectionCount, InboundExternalConnectionCount = _activeConnectionSnapshot.InboundExternalConnectionCount, OutboundExternalConnectionCount = _activeConnectionSnapshot.OutboundExternalConnectionCount, FlaggedConnectionCount = _activeConnectionSnapshot.ReviewConnectionCount,
                 PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName, PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint, PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
-                ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, RecentUniqueExternalConnectionCount = _activeConnectionSnapshot.RecentUniqueExternalConnectionCount, RepeatingExternalConnectionCount = _activeConnectionSnapshot.RepeatingExternalConnectionCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
+                ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, RecentUniqueExternalConnectionCount = _activeConnectionSnapshot.RecentUniqueExternalConnectionCount, RepeatingExternalConnectionCount = _activeConnectionSnapshot.RepeatingExternalConnectionCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = !advancedSecurityEntitled ? "Subscription required" : _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled", FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled", DefenderStatus = _securitySnapshot.DefenderStatus, FirewallStatus = _securitySnapshot.FirewallStatus,
                 EventLogMonitoringAvailable = _eventLogSnapshot.CollectionAvailable, CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage,
                 AuthenticationMonitoringAvailable = _authenticationSnapshot.CollectionAvailable, RecentFailedLogonCount = _authenticationSnapshot.FailedLogonCount, RepeatedAuthenticationSourceCount = _authenticationSnapshot.RepeatedSourceFailureCount, PrimaryAuthenticationSource = _authenticationSnapshot.PrimarySourceAddress, AuthenticationAnomalyDetected = _authenticationSnapshot.SuspiciousPattern, AuthenticationAnomalyConfidenceScore = _authenticationSnapshot.ConfidenceScore, AuthenticationAnomalyState = _authenticationSnapshot.State, AuthenticationAnomalySummary = _authenticationSnapshot.Summary,
                 CrashEvidenceAvailable = _crashSnapshot.CollectionAvailable, RecentCrashDetected = _crashSnapshot.CrashDetected, RecentBugCheckDetected = _crashSnapshot.BugCheckDetected, RecentCrashTime = _crashSnapshot.OccurredAt, RecentCrashEventId = _crashSnapshot.PrimaryEventId, RecentCrashProvider = _crashSnapshot.Provider, RecentBugCheckCode = _crashSnapshot.BugCheckCode, CrashRootCauseVerified = _crashSnapshot.RootCauseVerified, RecentCrashSummary = _crashSnapshot.Summary
             };
 
-            ConnectionIntelligenceEngine.ConnectionIntelligenceResult connectionIntelligence = _connectionIntelligenceEngine.Analyze(snapshot);
-            snapshot.ConnectionIntelligenceState = connectionIntelligence.State.ToString();
-            snapshot.ConnectionIntelligenceConfidenceScore = connectionIntelligence.ConfidenceScore;
-            snapshot.ConnectionIntelligenceHasCorroboratingEvidence = connectionIntelligence.HasCorroboratingEvidence;
-            snapshot.ConnectionIntelligenceTitle = connectionIntelligence.Title;
-            snapshot.ConnectionIntelligenceSummary = connectionIntelligence.Summary;
-            snapshot.ConnectionIntelligenceReasonCode = connectionIntelligence.ReasonCode;
+            if (advancedSecurityEntitled)
+            {
+                ConnectionIntelligenceEngine.ConnectionIntelligenceResult connectionIntelligence = _connectionIntelligenceEngine.Analyze(snapshot);
+                snapshot.ConnectionIntelligenceState = connectionIntelligence.State.ToString();
+                snapshot.ConnectionIntelligenceConfidenceScore = connectionIntelligence.ConfidenceScore;
+                snapshot.ConnectionIntelligenceHasCorroboratingEvidence = connectionIntelligence.HasCorroboratingEvidence;
+                snapshot.ConnectionIntelligenceTitle = connectionIntelligence.Title;
+                snapshot.ConnectionIntelligenceSummary = connectionIntelligence.Summary;
+                snapshot.ConnectionIntelligenceReasonCode = connectionIntelligence.ReasonCode;
 
-            SpywareCorrelationEngine.SpywareCorrelationResult spyware = _spywareCorrelationEngine.Analyze(snapshot);
-            snapshot.SpywareCorrelationState = spyware.State.ToString();
-            snapshot.SpywareCorrelationConfidenceScore = spyware.ConfidenceScore;
-            snapshot.SpywareCorrelationHasCorroboratingEvidence = spyware.HasCorroboratingEvidence;
-            snapshot.SpywareCorrelationTitle = spyware.Title;
-            snapshot.SpywareCorrelationSummary = spyware.Summary;
-            snapshot.SpywareCorrelationReasonCode = spyware.ReasonCode;
+                SpywareCorrelationEngine.SpywareCorrelationResult spyware = _spywareCorrelationEngine.Analyze(snapshot);
+                snapshot.SpywareCorrelationState = spyware.State.ToString();
+                snapshot.SpywareCorrelationConfidenceScore = spyware.ConfidenceScore;
+                snapshot.SpywareCorrelationHasCorroboratingEvidence = spyware.HasCorroboratingEvidence;
+                snapshot.SpywareCorrelationTitle = spyware.Title;
+                snapshot.SpywareCorrelationSummary = spyware.Summary;
+                snapshot.SpywareCorrelationReasonCode = spyware.ReasonCode;
+            }
+            else
+            {
+                snapshot.ConnectionIntelligenceState = "SubscriptionRequired";
+                snapshot.ConnectionIntelligenceTitle = "Advanced network protection";
+                snapshot.ConnectionIntelligenceSummary = "Connection attribution and suspicious-connection correlation require an active Sentinel AI subscription.";
+                snapshot.SpywareCorrelationState = "SubscriptionRequired";
+                snapshot.SpywareCorrelationTitle = "Advanced spyware protection";
+                snapshot.SpywareCorrelationSummary = "Spyware, persistence, process, and network correlation require an active Sentinel AI subscription.";
+            }
 
             ProtectionHealthEngine.ProtectionHealthResult protectionHealth = _protectionHealthEngine.Evaluate(snapshot);
             snapshot.ProtectionHealthState = protectionHealth.State.ToString();
@@ -222,7 +249,7 @@ namespace Sentinel.App.Services
             snapshot.AutonomousProtectionTarget = protection.Target;
             snapshot.AutonomousProtectionSummary = protection.Summary;
 
-            if (protection.CanExecuteAutomatically && !protection.RequiresUserApproval)
+            if (advancedSecurityEntitled && protection.CanExecuteAutomatically && !protection.RequiresUserApproval)
             {
                 string signature = string.Join("|",
                     protection.Action,
@@ -667,6 +694,25 @@ namespace Sentinel.App.Services
 
             _windowsHealthSnapshot = result.Value;
             _lastWindowsHealthRefresh = now;
+        }
+
+        private async Task<bool> RefreshEntitlementIfDueAsync(DateTime now)
+        {
+            if (now - _lastEntitlementRefresh < EntitlementRefreshInterval)
+                return _advancedSecurityEntitled;
+
+            try
+            {
+                SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+                _advancedSecurityEntitled = subscription.IsActive;
+            }
+            catch
+            {
+                _advancedSecurityEntitled = false;
+            }
+
+            _lastEntitlementRefresh = now;
+            return _advancedSecurityEntitled;
         }
 
         private static async Task<(bool Success, T Value)> TryCollectAsync<T>(Func<T> collector, T current)
