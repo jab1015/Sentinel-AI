@@ -42,7 +42,13 @@ namespace Sentinel.App
 
         private void UpdateOptimizationStatus(AutomaticOptimizationResult result)
         {
-            if (result.Execution is not null && result.Execution.Attempted)
+            if (result.Summary.Contains("subscription", StringComparison.OrdinalIgnoreCase))
+            {
+                _optimizationStatusSummary = result.Baseline.IsEstablished
+                    ? "Free performance monitoring is active and the local baseline is established. Applying optimizations requires an active subscription."
+                    : $"Free performance monitoring is learning this computer's normal baseline ({result.Baseline.SampleCount}/12 checks complete). Applying optimizations requires an active subscription.";
+            }
+            else if (result.Execution is not null && result.Execution.Attempted)
             {
                 _optimizationStatusSummary = result.Execution.Succeeded
                     ? $"Optimization completed and verified. {result.Summary}"
