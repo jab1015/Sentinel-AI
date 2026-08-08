@@ -99,7 +99,8 @@ namespace Sentinel.App
                     };
                 }
 
-                bool driverIssue = !optimizationQuestion && IsDriverIssue(question, snapshot, response.Answer);
+                bool crashQuestion = IsCrashQuestion(question);
+                bool driverIssue = !optimizationQuestion && !crashQuestion && IsDriverIssue(question, snapshot, response.Answer);
 
                 if (response.IsInsufficientEvidence)
                 {
@@ -221,6 +222,18 @@ namespace Sentinel.App
         {
             if (!external.Verified) return "I checked this computer and approved external sources, but I don't have enough verified information to give you a reliable answer yet. I won't guess.";
             return "I checked this computer and approved authoritative sources. I found relevant information and matched it against the local evidence. Sentinel will use that verified evidence for the next safe action rather than relying on an unsupported guess.";
+        }
+
+        private static bool IsCrashQuestion(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            return value.Contains("blue screen") ||
+                   value.Contains("blue-screen") ||
+                   value.Contains("bsod") ||
+                   value.Contains("bugcheck") ||
+                   value.Contains("bug check") ||
+                   value.Contains("stop code") ||
+                   value.Contains("system crash");
         }
 
         private static bool IsDriverIssue(string question, dynamic snapshot, string answer)
