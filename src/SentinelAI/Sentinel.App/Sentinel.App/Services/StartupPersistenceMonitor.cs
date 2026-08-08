@@ -26,13 +26,14 @@ namespace Sentinel.App.Services
         {
             List<StartupEntry> entries = new();
 
-            ReadRegistryHive(Registry.CurrentUser, "Current user", entries);
-            ReadRegistryHive(Registry.LocalMachine, "All users", entries);
-            ReadStartupFolder(
+            bool collectionComplete = true;
+            collectionComplete &= ReadRegistryHive(Registry.CurrentUser, "Current user", entries);
+            collectionComplete &= ReadRegistryHive(Registry.LocalMachine, "All users", entries);
+            collectionComplete &= ReadStartupFolder(
                 Environment.GetFolderPath(Environment.SpecialFolder.Startup),
                 "Current user startup folder",
                 entries);
-            ReadStartupFolder(
+            collectionComplete &= ReadStartupFolder(
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup),
                 "All users startup folder",
                 entries);
@@ -51,18 +52,25 @@ namespace Sentinel.App.Services
                 primary ??= entry;
             }
 
+            if (!collectionComplete && reviewCount == 0)
+            {
+                return StartupPersistenceSnapshot.Unavailable;
+            }
+
             return new StartupPersistenceSnapshot(
                 entries.Count,
                 reviewCount,
                 primary?.Name ?? "None",
-                primary?.Reason ?? "No unusual startup persistence entries were detected.");
+                primary?.Reason ?? "No unusual startup persistence entries were detected.",
+                collectionComplete);
         }
 
-        private static void ReadRegistryHive(
+        private static bool ReadRegistryHive(
             RegistryKey hive,
             string scope,
             ICollection<StartupEntry> entries)
         {
+            bool complete = true;
             foreach (string keyPath in RunKeyPaths)
             {
                 try
@@ -84,19 +92,21 @@ namespace Sentinel.App.Services
                 }
                 catch
                 {
-                    // Inaccessible registry locations are skipped safely.
+                    complete = false;
                 }
             }
+
+            return complete;
         }
 
-        private static void ReadStartupFolder(
+        private static bool ReadStartupFolder(
             string folderPath,
             string source,
             ICollection<StartupEntry> entries)
         {
             if (string.IsNullOrWhiteSpace(folderPath) || !Directory.Exists(folderPath))
             {
-                return;
+                return true;
             }
 
             try
@@ -108,8 +118,10 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                // Inaccessible startup folders are skipped safely.
+                return false;
             }
+
+            return true;
         }
 
         private static StartupEntry AssessEntry(string name, string command, string source)
@@ -177,6 +189,11 @@ namespace Sentinel.App.Services
             int TotalEntryCount,
             int ReviewEntryCount,
             string PrimaryEntryName,
-            string PrimaryReason);
+            string PrimaryReason,
+            bool CollectionAvailable = true)
+        {
+            public static StartupPersistenceSnapshot Unavailable { get; } =
+                new(0, 0, "Unavailable", "Startup persistence evidence could not be collected completely.", false);
+        }
     }
 }
