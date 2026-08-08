@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
@@ -54,15 +56,22 @@ namespace Sentinel.App.Services
 
                 if (!process.Start())
                 {
-                    return Empty("Command-line data was unavailable.");
+                    return CommandLineSnapshot.Unavailable;
                 }
 
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(10000);
+                Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorRead = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(10000))
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    return CommandLineSnapshot.Unavailable;
+                }
 
+                string output = outputRead.GetAwaiter().GetResult();
+                _ = errorRead.GetAwaiter().GetResult();
                 if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
                 {
-                    return Empty("Command-line data was unavailable.");
+                    return CommandLineSnapshot.Unavailable;
                 }
 
                 using JsonDocument document = JsonDocument.Parse(output);
@@ -106,7 +115,7 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                return Empty("Command-line data was unavailable.");
+                return CommandLineSnapshot.Unavailable;
             }
 
             CommandLineFinding? primary = findings.Count > 0 ? findings[0] : null;
@@ -150,11 +159,20 @@ namespace Sentinel.App.Services
         private static string RedactAndShorten(string commandLine)
         {
             string value = commandLine.Replace(Environment.UserName, "<user>", StringComparison.OrdinalIgnoreCase);
+            value = Regex.Replace(
+                value,
+                @"(?i)(--?(?:password|passwd|pwd|token|api[-_]?key|secret|client[-_]?secret)\s*(?:=|\s)\s*)(?:""[^""]*""|'[^']*'|\S+)",
+                "$1<redacted>");
+            value = Regex.Replace(
+                value,
+                @"(?i)(authorization\s*[:=]\s*bearer\s+)\S+",
+                "$1<redacted>");
+            value = Regex.Replace(
+                value,
+                @"(?i)(-(?:enc|encodedcommand|e)\s+)\S+",
+                "$1<encoded-payload-redacted>");
             return value.Length <= 180 ? value : value[..177] + "...";
         }
-
-        private static CommandLineSnapshot Empty(string reason) =>
-            new(0, 0, "None", reason, "None");
 
         private sealed record CommandLineFinding(
             string ProcessName,
@@ -166,6 +184,11 @@ namespace Sentinel.App.Services
             int ReviewFindingCount,
             string PrimaryProcessName,
             string PrimaryReason,
-            string PrimaryCommandLineSummary);
+            string PrimaryCommandLineSummary,
+            bool CollectionAvailable = true)
+        {
+            public static CommandLineSnapshot Unavailable { get; } =
+                new(0, 0, "Unavailable", "Command-line data was unavailable.", "None", false);
+        }
     }
 }
