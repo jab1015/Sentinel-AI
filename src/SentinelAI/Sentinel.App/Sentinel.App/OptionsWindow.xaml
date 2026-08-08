@@ -34,7 +34,7 @@
                 <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
                     <StackPanel Spacing="16">
                         <TextBlock Text="Sentinel AI subscription" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
-                        <TextBlock Text="Local monitoring stays available without a subscription. A subscription supports cloud AI investigations and the ongoing services Sentinel uses when local evidence is not enough." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                        <TextBlock Text="Local security and system-health monitoring stays available without a subscription. An active subscription unlocks Ask Sentinel cloud investigations, automatic optimization, verified repairs, and containment or quarantine actions." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
 
                         <Border Background="#0A2038" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="8">
@@ -78,7 +78,7 @@
                 <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
                     <StackPanel Spacing="16">
                         <TextBlock Text="Computer optimization" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
-                        <TextBlock Text="Sentinel can learn this computer's normal performance and apply only verified optimizations when they are warranted." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                        <TextBlock Text="Sentinel learns this computer's normal performance for free. Applying verified optimizations is a subscription feature." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
 
                         <Border Background="#0A2038" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="10">
