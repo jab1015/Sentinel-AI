@@ -34,8 +34,11 @@ namespace Sentinel.App.Services
                 snapshot.FirewallStatus.Equals("Disabled", StringComparison.OrdinalIgnoreCase) ||
                 snapshot.FirewallStatus.StartsWith("Partial", StringComparison.OrdinalIgnoreCase);
             bool securityProtectionDisabled = defenderVerifiedInactive || firewallVerifiedInactive;
+            bool basicTierHealthy =
+                Contains(snapshot.ProtectionHealthReasonCode, "basic-protection-healthy-subscription-required");
             bool protectionHealthDegraded =
                 !snapshot.ProtectionHealthFullyProtected &&
+                !basicTierHealthy &&
                 !Contains(snapshot.ProtectionHealthState, "Starting");
 
             bool highMemoryPressure = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
