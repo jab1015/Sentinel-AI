@@ -41,6 +41,31 @@ namespace Sentinel.App.Services
 
             try
             {
+                if (await RuleExistsAsync(ruleName).ConfigureAwait(false))
+                {
+                    bool existingVerified =
+                        await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                    return existingVerified
+                        ? new FirewallContainmentResult(
+                            Attempted: false,
+                            Succeeded: true,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Network destination already contained",
+                            Summary: $"Sentinel verified that the existing outbound firewall block for {remoteIp} already has the expected scope. No duplicate rule was created.",
+                            RolledBack: false,
+                            ConnectivityHealthy: before.IsHealthy)
+                        : new FirewallContainmentResult(
+                            Attempted: false,
+                            Succeeded: false,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Existing firewall rule requires review",
+                            Summary: "A rule with Sentinel's deterministic name already exists, but its expected block properties could not be verified. Sentinel made no firewall change.",
+                            RolledBack: false,
+                            ConnectivityHealthy: before.IsHealthy);
+                }
+
                 int addExitCode = await RunNetshElevatedAsync(
                     $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={remoteIp} enable=yes profile=any");
 
