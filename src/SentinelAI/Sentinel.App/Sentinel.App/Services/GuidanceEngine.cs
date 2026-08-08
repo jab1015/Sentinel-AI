@@ -26,6 +26,18 @@ namespace Sentinel.App.Services
             if (!snapshot.FirewallEnabled)
                 return Result("Windows Firewall needs attention", "High", 95, "One or more Windows Firewall profiles reported that protection is not fully enabled.", "One or more Windows Firewall profiles are not fully enabled.", "The firewall helps block unsolicited network traffic and reduces exposure to network attacks.", "Review Windows Firewall and enable protection unless another trusted firewall is managing this computer.", "Approval required", "Sentinel AI will open the correct Windows settings page and verify the status after the user makes the change.", "open-firewall", "Review Firewall");
 
+            if (!snapshot.ProtectionHealthFullyProtected)
+                return Result(
+                    snapshot.ProtectionHealthTitle,
+                    "Moderate",
+                    100,
+                    snapshot.ProtectionHealthSummary,
+                    "One or more Sentinel security-monitoring evidence sources are unavailable.",
+                    "Incomplete monitoring coverage means Sentinel cannot issue a fully verified healthy conclusion.",
+                    snapshot.ProtectionHealthRecommendedAction,
+                    "Monitoring recovery required",
+                    "Sentinel will continue retrying without changing Windows settings.");
+
             if (IsStorageSpacesSmpEvent(snapshot))
                 return Result("Your computer looks healthy", "Low", 96, "A Microsoft Storage Spaces SMP service event was recorded, but no current condition requires user action.", "Windows recorded a background Storage Spaces service event.", "This service may stop when Storage Spaces is not actively needed. Sentinel AI will watch for evidence of an active storage problem.", "No action is needed right now.", "No fix needed", "Monitoring will continue automatically.", "check-again", "Check Again");
 
@@ -85,18 +97,6 @@ namespace Sentinel.App.Services
 
             if (snapshot.DiskUsagePercent >= 90)
                 return Result("The system drive is running low on space", "Moderate", 99, "The recommendation is based on the system drive's current used and available capacity.", $"The system drive is {snapshot.DiskUsagePercent:0.0}% full.", "Low disk space can interrupt Windows updates, prevent applications from saving data, and reduce reliability.", "Review Windows Storage settings and remove only files you recognize or safe temporary-file categories.", "Guided fix available", "Sentinel AI will open Storage settings without deleting anything.", "open-storage", "Open Storage Settings");
-
-            if (!snapshot.ProtectionHealthFullyProtected)
-                return Result(
-                    snapshot.ProtectionHealthTitle,
-                    "Moderate",
-                    100,
-                    snapshot.ProtectionHealthSummary,
-                    "One or more Sentinel security-monitoring evidence sources are unavailable.",
-                    "Incomplete monitoring coverage means Sentinel cannot issue a fully verified healthy conclusion.",
-                    snapshot.ProtectionHealthRecommendedAction,
-                    "Monitoring recovery required",
-                    "Sentinel will continue retrying without changing Windows settings.");
 
             return Result("Your computer looks healthy", "Low", 91, "Defender and Firewall are active, and no current critical condition matched a higher-priority guidance rule.", "Core protections are active and no urgent issue currently requires action.", "Sentinel AI is continuing to watch Windows events, processes, services, system resources, Defender, and Firewall.", "No action is needed right now.", "No fix needed", "Monitoring will continue automatically.", "check-again", "Check Again");
         }
