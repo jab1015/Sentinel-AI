@@ -13,6 +13,7 @@ namespace Sentinel.App.Services
 {
     public sealed class ApprovedQuarantineCoordinator
     {
+        private static readonly SemaphoreSlim QuarantineGate = new(1, 1);
         private readonly ApprovedRemediationExecutor _approvedExecutor;
         private readonly QuarantineService _quarantineService;
         private readonly QuarantineCatalogService _catalogService;
@@ -40,6 +41,9 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
 
+            await QuarantineGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
             if (string.Equals(request.Action, "quarantine-file", StringComparison.OrdinalIgnoreCase))
                 return await ExecuteQuarantineAsync(currentSnapshot, request, validation, cancellationToken).ConfigureAwait(false);
 
@@ -51,6 +55,11 @@ namespace Sentinel.App.Services
 
             return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
                 "This approval is not for a supported quarantine action. Sentinel made no system change.");
+            }
+            finally
+            {
+                QuarantineGate.Release();
+            }
         }
 
         private async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteQuarantineAsync(
