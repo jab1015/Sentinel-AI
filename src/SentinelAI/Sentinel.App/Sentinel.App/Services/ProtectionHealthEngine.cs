@@ -25,6 +25,7 @@ namespace Sentinel.App.Services
             bool monitoringCoverageHealthy =
                 snapshot.AuthenticationMonitoringAvailable &&
                 snapshot.CommandLineMonitoringAvailable &&
+                snapshot.ProcessLineageMonitoringAvailable &&
                 snapshot.StartupPersistenceMonitoringAvailable &&
                 snapshot.ScheduledTaskMonitoringAvailable;
 
@@ -40,7 +41,7 @@ namespace Sentinel.App.Services
                     ProtectionHealthState.Healthy,
                     true,
                     "Protection is active",
-                    "Sentinel network, authentication, command-line, startup-persistence, and scheduled-task monitoring are active. Microsoft Defender and Windows Firewall are also active.",
+                    "Sentinel network, authentication, command-line, process-lineage, startup-persistence, and scheduled-task monitoring are active. Microsoft Defender and Windows Firewall are also active.",
                     "No action is required.",
                     "protection-healthy");
             }
@@ -62,6 +63,7 @@ namespace Sentinel.App.Services
                 {
                     snapshot.AuthenticationMonitoringAvailable ? string.Empty : "authentication",
                     snapshot.CommandLineMonitoringAvailable ? string.Empty : "command-line",
+                    snapshot.ProcessLineageMonitoringAvailable ? string.Empty : "process-lineage",
                     snapshot.StartupPersistenceMonitoringAvailable ? string.Empty : "startup persistence",
                     snapshot.ScheduledTaskMonitoringAvailable ? string.Empty : "scheduled task"
                 };
