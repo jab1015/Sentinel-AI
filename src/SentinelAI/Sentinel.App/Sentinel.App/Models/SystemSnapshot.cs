@@ -19,6 +19,7 @@ namespace Sentinel.App.Models
         public double DiskTotalGB { get; set; }
         public double DownloadMbps { get; set; }
         public double UploadMbps { get; set; }
+        public bool ProcessMonitoringAvailable { get; set; }
         public int ProcessCount { get; set; }
         public string HighestMemoryProcessName { get; set; } = "Unknown";
         public double HighestMemoryProcessGB { get; set; }
