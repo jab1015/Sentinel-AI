@@ -22,11 +22,16 @@ namespace Sentinel.App.Services
                                   snapshot.NetworkConnectionMonitoringStatus.Equals("Active", StringComparison.OrdinalIgnoreCase);
             bool defenderHealthy = snapshot.DefenderEnabled;
             bool firewallHealthy = snapshot.FirewallEnabled;
+            bool monitoringCoverageHealthy =
+                snapshot.AuthenticationMonitoringAvailable &&
+                snapshot.StartupPersistenceMonitoringAvailable &&
+                snapshot.ScheduledTaskMonitoringAvailable;
 
             int degradedComponents = 0;
             if (!networkHealthy) degradedComponents++;
             if (!defenderHealthy) degradedComponents++;
             if (!firewallHealthy) degradedComponents++;
+            if (!monitoringCoverageHealthy) degradedComponents++;
 
             if (degradedComponents == 0)
             {
@@ -34,7 +39,7 @@ namespace Sentinel.App.Services
                     ProtectionHealthState.Healthy,
                     true,
                     "Protection is active",
-                    "Sentinel network monitoring, Microsoft Defender, and Windows Firewall are active.",
+                    "Sentinel network, authentication, startup-persistence, and scheduled-task monitoring are active. Microsoft Defender and Windows Firewall are also active.",
                     "No action is required.",
                     "protection-healthy");
             }
@@ -48,6 +53,25 @@ namespace Sentinel.App.Services
                     "Sentinel cannot currently verify continuous network connection monitoring.",
                     "Keep Sentinel running. If this condition persists, restart Sentinel; if monitoring does not recover, restart Windows.",
                     "protection-network-monitor-unavailable");
+            }
+
+            if (!monitoringCoverageHealthy)
+            {
+                string[] unavailable =
+                {
+                    snapshot.AuthenticationMonitoringAvailable ? string.Empty : "authentication",
+                    snapshot.StartupPersistenceMonitoringAvailable ? string.Empty : "startup persistence",
+                    snapshot.ScheduledTaskMonitoringAvailable ? string.Empty : "scheduled task"
+                };
+
+                string missing = string.Join(", ", Array.FindAll(unavailable, value => !string.IsNullOrWhiteSpace(value)));
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Degraded,
+                    false,
+                    "Sentinel security monitoring coverage is degraded",
+                    $"Sentinel cannot currently verify {missing} monitoring.",
+                    "Keep Sentinel running while it retries. If coverage does not recover, review Activity Center and restart Sentinel before relying on a healthy security status.",
+                    "protection-security-coverage-unavailable");
             }
 
             if (!defenderHealthy && !firewallHealthy)
