@@ -16,6 +16,7 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class MaintenanceExecutionCoordinator
     {
+        private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
         private readonly NetworkRepairExecutor _networkRepairExecutor = new();
         private readonly PowerPlanOptimizationExecutor _powerPlanExecutor = new();
         private readonly WindowsUpdateRepairExecutor _windowsUpdateExecutor = new();
@@ -29,7 +30,10 @@ namespace Sentinel.App.Services
         {
             ArgumentNullException.ThrowIfNull(settings);
             cancellationToken.ThrowIfCancellationRequested();
+            await ExecutionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
+            try
+            {
             NetworkRepairExecutionResult network =
                 await _networkRepairExecutor.EvaluateAndExecuteAsync(settings, cancellationToken)
                     .ConfigureAwait(false);
@@ -61,6 +65,11 @@ namespace Sentinel.App.Services
                 _bootStartupExecutor.EvaluateAndExecute(settings);
             _outcomeRecorder.Record(startup);
             return BuildSummary(startup.Attempted ? 1 : 0);
+            }
+            finally
+            {
+                ExecutionGate.Release();
+            }
         }
 
         private MaintenanceExecutionSummary BuildSummary(int actionsAttempted)
