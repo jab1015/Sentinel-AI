@@ -12,6 +12,7 @@ namespace Sentinel.App.Services
     public sealed class WindowsCrashEvidenceMonitor
     {
         private const int MaximumEvents = 40;
+        private static readonly TimeSpan IncidentCorrelationWindow = TimeSpan.FromMinutes(30);
         private const string CrashEventQuery =
             "*[System[(((EventID=1001) and Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) or (EventID=41) or (EventID=6008)) and TimeCreated[timediff(@SystemTime) <= 604800000]]]";
 
@@ -51,37 +52,52 @@ namespace Sentinel.App.Services
         {
             if (!collectionAvailable) return Unavailable("Windows crash evidence is unavailable.");
 
-            CrashEventEvidence? bugCheck = events.Where(item =>
-                    item.EventId == 1001 &&
-                    (item.Provider.Equals("Microsoft-Windows-WER-SystemErrorReporting", StringComparison.OrdinalIgnoreCase) ||
-                     item.Description.Contains("bugcheck", StringComparison.OrdinalIgnoreCase)))
-                .OrderByDescending(item => item.Timestamp).FirstOrDefault();
-            CrashEventEvidence? restart = events.Where(item => item.EventId is 41 or 6008)
-                .OrderByDescending(item => item.Timestamp).FirstOrDefault();
-            CrashEventEvidence? primary = bugCheck ?? restart;
-            if (primary is null && minidump is null)
+            DateTime? latestEvidenceTime = events
+                .Select(item => (DateTime?)item.Timestamp)
+                .Append(minidump?.LastWriteTime)
+                .Where(value => value.HasValue)
+                .Max();
+
+            if (!latestEvidenceTime.HasValue)
                 return new(true, false, false, null, 0, "None", "None", false,
                     "Sentinel found no Windows crash event or recent minidump in the last 7 days.");
 
-            DateTime? occurredAt = new[] { primary?.Timestamp, minidump?.LastWriteTime }
-                .Where(value => value.HasValue).Select(value => value!.Value).DefaultIfEmpty().Max();
+            bool SameIncident(DateTime timestamp) =>
+                (latestEvidenceTime.Value - timestamp).Duration() <= IncidentCorrelationWindow;
+
+            CrashEventEvidence? bugCheck = events.Where(item =>
+                    item.EventId == 1001 &&
+                    SameIncident(item.Timestamp) &&
+                    (item.Provider.Equals("Microsoft-Windows-WER-SystemErrorReporting", StringComparison.OrdinalIgnoreCase) ||
+                     item.Description.Contains("bugcheck", StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(item => item.Timestamp).FirstOrDefault();
+            CrashEventEvidence? restart = events.Where(item =>
+                    item.EventId is 41 or 6008 && SameIncident(item.Timestamp))
+                .OrderByDescending(item => item.Timestamp).FirstOrDefault();
+            CrashEventEvidence? primary = bugCheck ?? restart;
+            bool correlatedMinidump = minidump is not null && SameIncident(minidump.LastWriteTime);
             string bugCheckCode = bugCheck is null ? "Not available" : ExtractBugCheckCode(bugCheck.Description);
             bool rootCauseVerified = false;
             string summary;
+
             if (bugCheck is not null)
             {
                 summary = $"Windows recorded a blue-screen BugCheck event{(bugCheckCode == "Not available" ? string.Empty : $" with stop code {bugCheckCode}")}. " +
                     "This verifies that a system crash occurred, but the event alone does not identify the responsible driver or hardware component.";
             }
-            else
+            else if (restart is not null)
             {
                 summary = "Windows recorded an unexpected shutdown or restart. This confirms an abnormal interruption, but it does not prove that a blue screen occurred or identify its cause.";
             }
+            else
+            {
+                summary = "A recent Windows minidump is present, but Sentinel did not find a crash event from the same incident. The dump artifact supports that Windows captured a failure, but its cause is not verified.";
+            }
 
-            if (minidump is not null)
-                summary += " A recent Windows minidump is present for deeper local analysis; Sentinel has not read or uploaded its contents.";
+            if (correlatedMinidump)
+                summary += " A minidump from the same incident is present for deeper local analysis; Sentinel has not read or uploaded its contents.";
 
-            return new(true, true, bugCheck is not null, occurredAt, primary?.EventId ?? 0,
+            return new(true, true, bugCheck is not null, latestEvidenceTime, primary?.EventId ?? 0,
                 primary?.Provider ?? "Minidump", bugCheckCode, rootCauseVerified, summary);
         }
 
