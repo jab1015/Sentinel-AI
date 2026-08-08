@@ -25,7 +25,7 @@ namespace Sentinel.App.Services
     public sealed class PersistentInvestigationMemoryService
     {
         private readonly string _storePath;
-        private readonly SemaphoreSlim _gate = new(1, 1);
+        private static readonly SemaphoreSlim StoreGate = new(1, 1);
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -35,11 +35,11 @@ namespace Sentinel.App.Services
 
         public PersistentInvestigationMemoryService(string? storePath = null)
         {
-            _storePath = storePath ?? Path.Combine(
+            _storePath = Path.GetFullPath(storePath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "SentinelAI",
                 "InvestigationMemory",
-                "investigations.json");
+                "investigations.json"));
         }
 
         public static string CreateFingerprint(
@@ -93,7 +93,7 @@ namespace Sentinel.App.Services
             if (string.IsNullOrWhiteSpace(record.Fingerprint))
                 throw new ArgumentException("A persistent investigation requires a fingerprint.", nameof(record));
 
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await StoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 List<PersistentInvestigationRecord> records = await ReadUnlockedAsync(cancellationToken).ConfigureAwait(false);
@@ -109,7 +109,7 @@ namespace Sentinel.App.Services
             }
             finally
             {
-                _gate.Release();
+                StoreGate.Release();
             }
         }
 
@@ -119,7 +119,7 @@ namespace Sentinel.App.Services
             string reason,
             CancellationToken cancellationToken = default)
         {
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await StoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 List<PersistentInvestigationRecord> records = await ReadUnlockedAsync(cancellationToken).ConfigureAwait(false);
@@ -155,21 +155,21 @@ namespace Sentinel.App.Services
             }
             finally
             {
-                _gate.Release();
+                StoreGate.Release();
             }
         }
 
         public async Task<IReadOnlyList<PersistentInvestigationRecord>> ReadAllAsync(
             CancellationToken cancellationToken = default)
         {
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await StoreGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 return await ReadUnlockedAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
-                _gate.Release();
+                StoreGate.Release();
             }
         }
 
@@ -218,10 +218,25 @@ namespace Sentinel.App.Services
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
 
-            string temporaryPath = _storePath + ".tmp";
-            string json = JsonSerializer.Serialize(records, JsonOptions);
-            await File.WriteAllTextAsync(temporaryPath, json, cancellationToken).ConfigureAwait(false);
-            File.Move(temporaryPath, _storePath, overwrite: true);
+            string temporaryPath = _storePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                string json = JsonSerializer.Serialize(records, JsonOptions);
+                await File.WriteAllTextAsync(temporaryPath, json, cancellationToken).ConfigureAwait(false);
+                File.Move(temporaryPath, _storePath, overwrite: true);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(temporaryPath))
+                        File.Delete(temporaryPath);
+                }
+                catch
+                {
+                    // Best-effort cleanup of this exact temporary file only.
+                }
+            }
         }
 
         private static string Normalize(string? value) =>
