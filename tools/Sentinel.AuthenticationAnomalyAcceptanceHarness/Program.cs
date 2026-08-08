@@ -29,6 +29,23 @@ var localOnly = Enumerable.Range(0, 6)
 var local = AuthenticationAnomalyMonitor.Analyze(localOnly, true);
 Check("Local failures do not create remote-source correlation", !local.SuspiciousPattern);
 
+var localThreshold = Enumerable.Range(0, 12)
+    .Select(index => new AuthenticationAnomalyMonitor.FailedAuthenticationEvidence(now.AddSeconds(-index), "::1", "LocalUser"))
+    .ToArray();
+var localThresholdResult = AuthenticationAnomalyMonitor.Analyze(localThreshold, true);
+Check("High-volume local failures do not become remote brute force",
+    !localThresholdResult.SuspiciousPattern && localThresholdResult.State == "Observing");
+
+var distributedRemote = Enumerable.Range(0, 10)
+    .Select(index => new AuthenticationAnomalyMonitor.FailedAuthenticationEvidence(
+        now.AddSeconds(-index),
+        $"203.0.113.{index + 1}",
+        "Administrator"))
+    .ToArray();
+var distributedResult = AuthenticationAnomalyMonitor.Analyze(distributedRemote, true);
+Check("Distributed remote failures are suspicious",
+    distributedResult.SuspiciousPattern && distributedResult.Summary.Contains("remote sources", StringComparison.OrdinalIgnoreCase));
+
 var unavailable = AuthenticationAnomalyMonitor.Analyze(Array.Empty<AuthenticationAnomalyMonitor.FailedAuthenticationEvidence>(), false);
 Check("Unavailable collection is explicit", unavailable.State == "Unavailable" && !unavailable.CollectionAvailable);
 
