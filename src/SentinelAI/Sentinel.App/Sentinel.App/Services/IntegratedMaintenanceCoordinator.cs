@@ -22,6 +22,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan MinimumEvaluationInterval = TimeSpan.FromMinutes(30);
         private static readonly TimeSpan MinimumChangeInterval = TimeSpan.FromHours(12);
         private static readonly TimeSpan RuntimeVerificationInterval = TimeSpan.FromHours(24);
+        private static readonly SemaphoreSlim EvaluationGate = new(1, 1);
 
         private readonly OptimizationSettingsService _settingsService = new();
         private readonly OptimizationRuntimeVerificationService _runtimeVerificationService = new();
@@ -31,7 +32,6 @@ namespace Sentinel.App.Services
         private readonly NetworkRepairExecutor _networkExecutor = new();
         private readonly StorageOptimizationExecutor _storageExecutor = new();
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
-        private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _statePath;
         private readonly string _verificationPath;
 
@@ -50,7 +50,7 @@ namespace Sentinel.App.Services
         public async Task<IntegratedMaintenanceResult> EvaluateAndRunAsync(
             CancellationToken cancellationToken = default)
         {
-            if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+            if (!await EvaluationGate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
                 return IntegratedMaintenanceResult.NotRun("A maintenance evaluation is already in progress.");
 
             try
@@ -110,7 +110,7 @@ namespace Sentinel.App.Services
                 if (!changeAllowed)
                 {
                     return IntegratedMaintenanceResult.NotRun(
-                        "Sentinel recently made a verified system change and is waiting before making another.");
+                        "Sentinel recently attempted automatic maintenance and is waiting before starting another system change.");
                 }
 
                 WindowsServiceRepairPlan servicePlan = _servicePlanService.BuildPlan();
@@ -200,7 +200,7 @@ namespace Sentinel.App.Services
             }
             finally
             {
-                _gate.Release();
+                EvaluationGate.Release();
             }
         }
 
@@ -236,33 +236,36 @@ namespace Sentinel.App.Services
             }
         }
 
-        private void SaveState(MaintenanceState state)
-        {
-            try
-            {
-                string json = JsonSerializer.Serialize(state, new JsonSerializerOptions
-                {
-                    WriteIndented = true
-                });
-                File.WriteAllText(_statePath, json);
-            }
-            catch
-            {
-            }
-        }
+        private void SaveState(MaintenanceState state) =>
+            WriteJsonAtomically(_statePath, state);
 
-        private void SaveVerificationState(RuntimeVerificationState state)
+        private void SaveVerificationState(RuntimeVerificationState state) =>
+            WriteJsonAtomically(_verificationPath, state);
+
+        private static void WriteJsonAtomically<T>(string path, T state)
         {
+            string? temporaryPath = null;
             try
             {
                 string json = JsonSerializer.Serialize(state, new JsonSerializerOptions
                 {
                     WriteIndented = true
                 });
-                File.WriteAllText(_verificationPath, json);
+                string directory = Path.GetDirectoryName(path)!;
+                temporaryPath = Path.Combine(directory, $".maintenance-state.{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(temporaryPath, json);
+                File.Move(temporaryPath, path, overwrite: true);
             }
             catch
             {
+            }
+            finally
+            {
+                if (!string.IsNullOrWhiteSpace(temporaryPath))
+                {
+                    try { File.Delete(temporaryPath); }
+                    catch { }
+                }
             }
         }
 
