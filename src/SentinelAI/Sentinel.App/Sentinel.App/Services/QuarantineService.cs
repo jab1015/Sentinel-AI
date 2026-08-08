@@ -91,7 +91,8 @@ namespace Sentinel.App.Services
                     bool rolledBack = TryRollbackMove(quarantinePath, originalFullPath);
                     return Failed(rolledBack
                         ? "The file changed during quarantine verification. Sentinel restored it to the original location and reported no success."
-                        : "The file changed during quarantine verification and Sentinel could not verify rollback. User review is required.");
+                        : "The file changed during quarantine verification and Sentinel could not verify rollback. User review is required.",
+                        attempted: true);
                 }
 
                 return new QuarantineResult(
@@ -100,21 +101,24 @@ namespace Sentinel.App.Services
                     true,
                     new QuarantineRecord(originalFullPath, quarantinePath, quarantinedHash, DateTimeOffset.UtcNow),
                     quarantinedHash,
-                    "Sentinel quarantined the approved file and verified its identity and removal from the original location.");
+                    "Sentinel quarantined the approved file and verified its identity and removal from the original location.",
+                    Attempted: true);
             }
             catch (OperationCanceledException)
             {
                 bool rolledBack = !moved || TryRollbackMove(quarantinePath, originalFullPath);
                 return Failed(rolledBack
                     ? "The quarantine action was canceled and Sentinel verified that no file remained stranded in quarantine."
-                    : "The quarantine action was canceled after the move, and Sentinel could not verify rollback. User review is required.");
+                    : "The quarantine action was canceled after the move, and Sentinel could not verify rollback. User review is required.",
+                    attempted: moved);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
                 bool rolledBack = !moved || TryRollbackMove(quarantinePath, originalFullPath);
                 return Failed(rolledBack
                     ? "Sentinel could not safely quarantine the file and verified that no incomplete move remained."
-                    : "Sentinel could not complete quarantine or verify rollback of the moved file. User review is required.");
+                    : "Sentinel could not complete quarantine or verify rollback of the moved file. User review is required.",
+                    attempted: moved);
             }
         }
 
@@ -186,7 +190,8 @@ namespace Sentinel.App.Services
                     bool rolledBack = TryRollbackMove(deletionPath, record.QuarantinePath);
                     return Failed(rolledBack
                         ? "The isolated file no longer matched its quarantine record. Sentinel restored it to quarantine and did not delete it."
-                        : "The isolated file did not match its record and Sentinel could not verify rollback. User review is required.");
+                        : "The isolated file did not match its record and Sentinel could not verify rollback. User review is required.",
+                        attempted: true);
                 }
 
                 File.Delete(deletionPath);
@@ -198,8 +203,9 @@ namespace Sentinel.App.Services
                         true,
                         record,
                         record.Sha256,
-                        "Sentinel permanently deleted the approved quarantined file and verified that the isolated copy no longer exists.")
-                    : Failed("Sentinel attempted permanent deletion but could not verify the result.");
+                        "Sentinel permanently deleted the approved quarantined file and verified that the isolated copy no longer exists.",
+                        Attempted: true)
+                    : Failed("Sentinel attempted permanent deletion but could not verify the result.", attempted: true);
             }
             catch (OperationCanceledException)
             {
@@ -207,7 +213,8 @@ namespace Sentinel.App.Services
                     TryRollbackMove(deletionPath, record.QuarantinePath);
                 return Failed(rolledBack
                     ? "Permanent deletion was canceled and Sentinel restored the file to quarantine."
-                    : "Permanent deletion was canceled and Sentinel could not verify restoration to quarantine. User review is required.");
+                    : "Permanent deletion was canceled and Sentinel could not verify restoration to quarantine. User review is required.",
+                    attempted: isolatedForDeletion);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
@@ -215,7 +222,8 @@ namespace Sentinel.App.Services
                     TryRollbackMove(deletionPath, record.QuarantinePath);
                 return Failed(rolledBack
                     ? "Sentinel could not safely delete the quarantined file and restored its isolated copy."
-                    : "Sentinel could not complete deletion or verify restoration of the isolated copy. User review is required.");
+                    : "Sentinel could not complete deletion or verify restoration of the isolated copy. User review is required.",
+                    attempted: isolatedForDeletion);
             }
         }
 
@@ -258,7 +266,8 @@ namespace Sentinel.App.Services
                     bool rolledBack = TryRollbackMove(record.OriginalPath, record.QuarantinePath);
                     return Failed(rolledBack
                         ? "The restored file did not match its quarantine record. Sentinel returned it to quarantine and reported no success."
-                        : "The restored file did not match its record and Sentinel could not verify rollback. User review is required.");
+                        : "The restored file did not match its record and Sentinel could not verify rollback. User review is required.",
+                        attempted: true);
                 }
 
                 return new QuarantineResult(
@@ -267,7 +276,8 @@ namespace Sentinel.App.Services
                     true,
                     record,
                     record.Sha256,
-                    "Sentinel restored the approved file and verified its identity and original location.");
+                    "Sentinel restored the approved file and verified its identity and original location.",
+                    Attempted: true);
             }
             catch (OperationCanceledException)
             {
@@ -275,7 +285,8 @@ namespace Sentinel.App.Services
                     TryRollbackMove(record.OriginalPath, record.QuarantinePath);
                 return Failed(rolledBack
                     ? "Restore was canceled and Sentinel verified that the file remained quarantined."
-                    : "Restore was canceled after the move and Sentinel could not verify rollback. User review is required.");
+                    : "Restore was canceled after the move and Sentinel could not verify rollback. User review is required.",
+                    attempted: moved);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
@@ -283,7 +294,8 @@ namespace Sentinel.App.Services
                     TryRollbackMove(record.OriginalPath, record.QuarantinePath);
                 return Failed(rolledBack
                     ? "Sentinel could not safely restore the file and verified that it remained quarantined."
-                    : "Sentinel could not complete restore or verify rollback. User review is required.");
+                    : "Sentinel could not complete restore or verify rollback. User review is required.",
+                    attempted: moved);
             }
         }
 
@@ -322,8 +334,8 @@ namespace Sentinel.App.Services
             return Convert.ToHexString(hash);
         }
 
-        private static QuarantineResult Failed(string message) =>
-            new(false, false, false, null, null, message);
+        private static QuarantineResult Failed(string message, bool attempted = false) =>
+            new(false, false, false, null, null, message, attempted);
 
         public sealed record QuarantineRecord(
             string OriginalPath,
@@ -337,6 +349,7 @@ namespace Sentinel.App.Services
             bool Verified,
             QuarantineRecord? Record,
             string? Sha256,
-            string Message);
+            string Message,
+            bool Attempted = false);
     }
 }
