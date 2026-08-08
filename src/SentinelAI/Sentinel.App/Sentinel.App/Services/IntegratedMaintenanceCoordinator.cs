@@ -25,6 +25,7 @@ namespace Sentinel.App.Services
         private static readonly SemaphoreSlim EvaluationGate = new(1, 1);
 
         private readonly OptimizationSettingsService _settingsService = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
         private readonly OptimizationRuntimeVerificationService _runtimeVerificationService = new();
         private readonly WindowsServiceRepairPlanService _servicePlanService = new();
         private readonly WindowsServiceRepairSafetyService _serviceSafetyService = new();
@@ -55,6 +56,13 @@ namespace Sentinel.App.Services
 
             try
             {
+                SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+                if (!subscription.IsActive)
+                {
+                    return IntegratedMaintenanceResult.NotRun(
+                        "Free local monitoring remains active. An active Sentinel AI subscription is required before automatic maintenance can make system changes.");
+                }
+
                 MaintenanceState state = LoadState();
                 DateTimeOffset now = DateTimeOffset.UtcNow;
 
