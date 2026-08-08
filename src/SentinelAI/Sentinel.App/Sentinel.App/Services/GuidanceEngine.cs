@@ -26,7 +26,7 @@ namespace Sentinel.App.Services
             if (!snapshot.FirewallEnabled)
                 return Result("Windows Firewall needs attention", "High", 95, "One or more Windows Firewall profiles reported that protection is not fully enabled.", "One or more Windows Firewall profiles are not fully enabled.", "The firewall helps block unsolicited network traffic and reduces exposure to network attacks.", "Review Windows Firewall and enable protection unless another trusted firewall is managing this computer.", "Approval required", "Sentinel AI will open the correct Windows settings page and verify the status after the user makes the change.", "open-firewall", "Review Firewall");
 
-            if (snapshot.ProtectionHealthReasonCode.Equals("basic-protection-healthy-subscription-required", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(snapshot.ProtectionHealthReasonCode, "basic-protection-healthy-subscription-required", StringComparison.OrdinalIgnoreCase))
                 return Result(
                     "Basic Windows protection is active",
                     "Informational",
