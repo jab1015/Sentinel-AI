@@ -12,7 +12,9 @@ SystemSnapshot snapshot = new()
     GuidanceConfidencePercent = 90,
     AutonomousProtectionRequiresUserApproval = true,
     AutonomousProtectionAction = "contain-process",
-    AutonomousProtectionTarget = "already-exited.exe"
+    AutonomousProtectionTarget = "already-exited.exe",
+    PrimaryFlaggedProcessId = 101,
+    PrimaryFlaggedProcessStartUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
 };
 var approval = new RemediationApprovalCoordinator();
 var request = approval.CreateRequest(snapshot)!;
@@ -53,7 +55,9 @@ SystemSnapshot secondSnapshot = new()
     GuidanceConfidencePercent = 90,
     AutonomousProtectionRequiresUserApproval = true,
     AutonomousProtectionAction = "contain-process",
-    AutonomousProtectionTarget = "active-test.exe"
+    AutonomousProtectionTarget = "active-test.exe",
+    PrimaryFlaggedProcessId = 202,
+    PrimaryFlaggedProcessStartUtc = new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero)
 };
 var secondRequest = approval.CreateRequest(secondSnapshot)!;
 var secondValidation = approval.Validate(secondRequest, secondSnapshot, true);
@@ -64,6 +68,23 @@ var changed = await executor.ExecuteAsync(secondSnapshot, secondRequest, secondV
 
 Check("Attempted and independently verified action succeeds", changed.Attempted && changed.Verified);
 Check("Verified success outcome retained", changed.Outcome == ApprovedRemediationExecutor.RemediationOutcome.VerifiedSuccess);
+
+SystemSnapshot identitySnapshot = new()
+{
+    InvestigationRequiresAttention = true,
+    InvestigationReasonCode = "identity-test-condition",
+    GuidanceConfidencePercent = 95,
+    AutonomousProtectionRequiresUserApproval = true,
+    AutonomousProtectionAction = "contain-process",
+    AutonomousProtectionTarget = "identity-test.exe",
+    PrimaryFlaggedProcessId = 303,
+    PrimaryFlaggedProcessStartUtc = new DateTimeOffset(2026, 1, 3, 0, 0, 0, TimeSpan.Zero)
+};
+var identityRequest = approval.CreateRequest(identitySnapshot)!;
+identitySnapshot.PrimaryFlaggedProcessStartUtc =
+    identitySnapshot.PrimaryFlaggedProcessStartUtc.Value.AddSeconds(1);
+var identityValidation = approval.Validate(identityRequest, identitySnapshot, true);
+Check("Replacement process invalidates approval", !identityValidation.IsApproved);
 
 Console.WriteLine(failures == 0 ? "RESULT: PASS" : $"RESULT: FAIL ({failures})");
 Environment.ExitCode = failures == 0 ? 0 : 1;
