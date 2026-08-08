@@ -110,17 +110,17 @@
                         <Border Background="#0A2038" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="12">
                                 <CheckBox x:Name="VerifyEveryChangeCheckBox"
-                                          Checked="OptimizationSetting_Changed"
-                                          Unchecked="OptimizationSetting_Changed">
-                                    <TextBlock Text="Verify every optimization after it runs"
+                                          IsEnabled="False"
+                                          IsChecked="True">
+                                    <TextBlock Text="Always verify every automatic optimization (required)"
                                                Foreground="#F3F4F6"
                                                FontSize="14"
                                                TextWrapping="Wrap"/>
                                 </CheckBox>
                                 <CheckBox x:Name="RollbackCheckBox"
-                                          Checked="OptimizationSetting_Changed"
-                                          Unchecked="OptimizationSetting_Changed">
-                                    <TextBlock Text="Roll back unsuccessful changes when possible"
+                                          IsEnabled="False"
+                                          IsChecked="True">
+                                    <TextBlock Text="Always roll back unsuccessful changes when possible (required)"
                                                Foreground="#F3F4F6"
                                                FontSize="14"
                                                TextWrapping="Wrap"/>
