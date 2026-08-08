@@ -51,8 +51,13 @@ namespace Sentinel.App.Services
             if (ContainsAny(combined, "temporary file", "stale temporary", "disk space"))
                 return FriendlyValueSummaryService.ValueActionKind.TemporaryFileCleanup;
 
-            if (ContainsAny(combined, "network", "winsock", "dns"))
+            if (IsVerifiedNetworkRepair(item))
                 return FriendlyValueSummaryService.ValueActionKind.NetworkRepair;
+
+            // Investigations and monitoring summaries may mention networking without
+            // changing any setting. Never turn those records into a repair claim.
+            if (ContainsAny(combined, "network", "winsock", "dns"))
+                return null;
 
             if (ContainsAny(combined, "system file", "system image", "dism", "sfc"))
                 return FriendlyValueSummaryService.ValueActionKind.SystemFileRepair;
@@ -75,6 +80,19 @@ namespace Sentinel.App.Services
                 return FriendlyValueSummaryService.ValueActionKind.SecurityRepair;
 
             return null;
+        }
+
+        private static bool IsVerifiedNetworkRepair(MaintenanceReportItem item)
+        {
+            if (!item.Category.Equals("Network", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string action = item.Action ?? string.Empty;
+            string summary = item.Summary ?? string.Empty;
+            bool explicitRepairAction = ContainsAny(action, "FlushDnsCache", "flush dns", "network repair", "winsock reset");
+            bool completed = ContainsAny(summary, "repaired", "repair completed");
+            bool postVerified = ContainsAny(summary, "verified", "name resolution is working", "connectivity healthy");
+            return explicitRepairAction && completed && postVerified;
         }
 
         private static bool IsVerifiedDriverRepair(MaintenanceReportItem item)
