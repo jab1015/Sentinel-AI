@@ -1,64 +1,61 @@
 # SAI-014 — Current State Snapshot
 
-Version: 2.0
+Version: 3.0  
+Status: Release Candidate — packaged validation pending  
+Last Updated: 2026-08-08
 
-Status: Active — Release Candidate Remediation
+## Product Position
 
-Last Updated: 2026-08-04
+**Sentinel AI — Your Windows Investigation Assistant**
 
-## Purpose
-
-This document provides a single current-state reference to prevent progress reporting drift between development sessions.
+Sentinel AI helps a computer explain itself using current local evidence, verified history, bounded external research, and safe subscription-gated actions.
 
 ## Current Status
 
-Estimated overall product completion: **93%**
+Estimated overall product completion: **99%**
 
-Current milestone:
+Production branch: `main`
 
-**Release Candidate Finalization**
+Current milestone: **final packaged release validation**
 
-Current milestone progress:
+## Runtime-Verified Results — 2026-08-08
 
-**0 of 4 fully runtime-verified**
+- Release builds completed successfully after every final correction.
+- Free-tier dashboard shows basic Defender, Firewall, and system-health status.
+- Intentionally subscription-gated collectors are not reported as failed or degraded.
+- Advanced security correlation, proactive investigation, external/cloud research, optimization, repair, containment, and quarantine require verified entitlement.
+- Unpackaged Visual Studio startup control accurately explains that installed package identity is required.
+- Optimization controls are disabled without entitlement; free baseline learning remains visible.
+- Activity Center no longer converts investigations into false driver or network repair claims.
+- Driver repair language requires an identified action, installation, and post-repair verification.
+- Ask Sentinel distinguishes verified optimization history from current optimization need.
+- BSOD question correctly used Event 1001 evidence, identified `0x000000D1`, and did not blame the unrelated Intel Management Engine Interface condition.
+- Crash questions no longer display generic driver-repair controls.
+- `0xD1` is explained as `DRIVER_IRQL_NOT_LESS_OR_EQUAL`.
+- Local crash-dump investigation reports the actual artifact state. On the test computer, no dump matching the incident time was retained, so no specific driver could be identified.
 
-Active item:
+## Crash Investigation Boundary
 
-**1 of 4 — Ask Sentinel Local final acceptance / driver investigation handoff**
+Sentinel now searches read-only for a correlated minidump or `MEMORY.DMP`. If Microsoft Debugging Tools for Windows are already installed, analysis is bounded to 45 seconds and parses crash-specific module evidence. Sentinel does not:
 
-## Runtime-Verified Ask Sentinel Progress
+- upload dump contents;
+- install debugging tools;
+- enable Driver Verifier;
+- change crash-dump settings;
+- name generic kernel modules as the root cause;
+- perform a repair or restart without the required entitlement and approval.
 
-- Evidence-collection progress indicator works.
-- `verify Ask Sentinel local` returned all 14 required evidence areas.
-- Windows Update natural-language question works.
-- Pending restart is verified.
-- TPM is verified.
-- Secure Boot and BitLocker/device-encryption correctly report verified-unavailable when Windows does not expose evidence to the process.
-- Defender and Firewall are verified.
-- CPU, memory, disk, network, startup apps, running services, and top processes are verified.
-- Driver-health evidence identifies the Intel Management Engine Interface Code 10 condition.
-- Driver response is presented in plain language.
-- Review Repair / Prepare Automatic Repair / Not Now controls are visible.
-- Windows Update repair search safely returned no compatible package and made no system change.
+A faulting-module candidate is not called a verified root cause until corroborated.
 
-## Implemented — Awaiting Runtime Verification
+## Remaining Release Work
 
-- Authoritative Microsoft/OEM driver-research fallback after Windows Update cannot provide a repair.
-- Research confidence percentage.
-- Correlation with local manufacturer/model/serial/hardware ID evidence.
-- Safe handoff to an official source when automatic installation cannot be verified.
+1. Build the refreshed packaged MSIX from current `main`.
+2. Verify Microsoft Store entitlement in an installed package.
+3. Verify installed-package startup enable/disable behavior.
+4. Run the complete automated regression/acceptance runner set against the final commit.
+5. Run final packaged smoke and resource-efficiency tests.
+6. Record results and freeze the release candidate.
 
-## Remaining Release Candidate Items
+## Release Rule
 
-1. [ ] Ask Sentinel Local — final runtime acceptance of authoritative fallback
-2. [ ] Quarantine Manager UI
-3. [ ] Activity Center
-4. [ ] Investigation Engine end-to-end runtime integration
-
-## Final Acceptance
-
-Final Acceptance Test 8 remains open.
-
-## Progress Rule
-
-Progress must be calculated from current verified evidence and the authoritative planning documents. Do not reuse obsolete Phase 7 counts or percentages.
+The implementation is feature-complete for this scope, but release status remains pending until the final package and complete runner set pass. Historical results are not substitutes for final-commit verification.
