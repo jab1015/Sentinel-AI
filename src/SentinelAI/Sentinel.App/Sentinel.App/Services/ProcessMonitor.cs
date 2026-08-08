@@ -57,15 +57,15 @@ namespace Sentinel.App.Services
                         if (temporaryLocation)
                         {
                             string signer = signature.IsSigned ? $" Signed by {signature.Publisher}." : string.Empty;
-                            findings.Add(new ProcessFinding(processName, $"Running from a temporary location: {ShortenPath(path)}.{signer}"));
+                            findings.Add(new ProcessFinding(processName, $"Running from a temporary location: {ShortenPath(path)}.{signer}", process.Id, GetStartTimeUtc(process)));
                         }
                         else if (!signature.IsSigned)
                         {
-                            findings.Add(new ProcessFinding(processName, $"Unsigned executable in a user-writable location: {ShortenPath(path)}"));
+                            findings.Add(new ProcessFinding(processName, $"Unsigned executable in a user-writable location: {ShortenPath(path)}", process.Id, GetStartTimeUtc(process)));
                         }
                         else if (!signature.IsTrustedPublisher)
                         {
-                            findings.Add(new ProcessFinding(processName, $"Signed by {signature.Publisher}, but running from a user-writable location: {ShortenPath(path)}"));
+                            findings.Add(new ProcessFinding(processName, $"Signed by {signature.Publisher}, but running from a user-writable location: {ShortenPath(path)}", process.Id, GetStartTimeUtc(process)));
                         }
                     }
                     catch
@@ -81,7 +81,9 @@ namespace Sentinel.App.Services
                     Math.Round(highestWorkingSet / 1024d / 1024d / 1024d, 2),
                     findings.Count,
                     primary?.ProcessName ?? "None",
-                    primary?.Reason ?? "No process warning conditions were detected.");
+                    primary?.Reason ?? "No process warning conditions were detected.",
+                    PrimaryProcessId: primary?.ProcessId ?? 0,
+                    PrimaryProcessStartUtc: primary?.StartTimeUtc);
             }
             finally
             {
@@ -223,8 +225,18 @@ namespace Sentinel.App.Services
             return fullPath.StartsWith(normalizedDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
+        private static DateTimeOffset? GetStartTimeUtc(Process process)
+        {
+            try { return process.StartTime.ToUniversalTime(); }
+            catch { return null; }
+        }
+
         private static string ShortenPath(string path) => path.Length <= 90 ? path : "..." + path[^87..];
-        private sealed record ProcessFinding(string ProcessName, string Reason);
+        private sealed record ProcessFinding(
+            string ProcessName,
+            string Reason,
+            int ProcessId,
+            DateTimeOffset? StartTimeUtc);
         private sealed record SignatureAssessment(bool IsSigned, bool IsTrusted, bool IsTrustedPublisher, string Publisher)
         {
             public static SignatureAssessment Unsigned { get; } = new(false, false, false, "Unsigned");
@@ -233,7 +245,9 @@ namespace Sentinel.App.Services
         public sealed record ProcessIntelligenceSnapshot(
             int TotalProcessCount, string HighestMemoryProcessName, double HighestMemoryProcessGB,
             int FlaggedProcessCount, string PrimaryProcessName, string PrimaryReason,
-            bool CollectionAvailable = true)
+            bool CollectionAvailable = true,
+            int PrimaryProcessId = 0,
+            DateTimeOffset? PrimaryProcessStartUtc = null)
         {
             public static ProcessIntelligenceSnapshot Unavailable { get; } =
                 new(0, "Unavailable", 0, 0, "Unavailable", "Process evidence could not be collected.", false);
