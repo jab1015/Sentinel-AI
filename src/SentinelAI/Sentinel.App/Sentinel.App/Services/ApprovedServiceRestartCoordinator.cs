@@ -21,17 +21,20 @@ namespace Sentinel.App.Services
         private readonly ServiceRemediationService _serviceRemediation;
         private readonly FirewallContainmentService _firewallContainment;
         private readonly ProcessContainmentService _processContainment;
+        private readonly StoreSubscriptionService _subscriptionService;
 
         public ApprovedServiceRestartCoordinator(
             ApprovedRemediationExecutor? approvedExecutor = null,
             ServiceRemediationService? serviceRemediation = null,
             FirewallContainmentService? firewallContainment = null,
-            ProcessContainmentService? processContainment = null)
+            ProcessContainmentService? processContainment = null,
+            StoreSubscriptionService? subscriptionService = null)
         {
             _approvedExecutor = approvedExecutor ?? new ApprovedRemediationExecutor();
             _serviceRemediation = serviceRemediation ?? new ServiceRemediationService();
             _firewallContainment = firewallContainment ?? new FirewallContainmentService();
             _processContainment = processContainment ?? new ProcessContainmentService();
+            _subscriptionService = subscriptionService ?? new StoreSubscriptionService();
         }
 
         public async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteAsync(
@@ -44,6 +47,13 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(currentSnapshot);
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
+
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                    "Free local monitoring remains active, but an active Sentinel AI subscription is required before repair or containment changes can be made.");
+            }
 
             if (string.Equals(request.Action, "restart-service", StringComparison.OrdinalIgnoreCase))
             {
