@@ -90,10 +90,10 @@ namespace Sentinel.App.Services
 
         public async Task RefreshAsync()
         {
-            await _refreshGate.WaitAsync().ConfigureAwait(false);
+            await _refreshGate.WaitAsync();
             try
             {
-                await RefreshCoreAsync().ConfigureAwait(false);
+                await RefreshCoreAsync();
             }
             finally
             {
