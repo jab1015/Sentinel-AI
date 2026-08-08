@@ -11,7 +11,7 @@
   <Identity
     Name="ModernMethods.SentinelAI"
     Publisher="CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A"
-    Version="1.0.25.0" />
+    Version="1.0.26.0" />
 
   <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -39,7 +39,7 @@
         Description="Sentinel AI quietly monitors, investigates, protects, repairs, and optimizes your Windows computer, then explains what it found and what it did in clear, friendly language."
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
-        Square44x44Logo="Assets\Shield.png">
+        Square44x44Logo="Images\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Images\SplashScreen.png" />
       </uap:VisualElements>
