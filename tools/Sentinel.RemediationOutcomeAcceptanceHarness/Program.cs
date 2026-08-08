@@ -39,6 +39,13 @@ Check("No change is not marked verified repair", !noChange.Verified);
 Check("No change keeps explicit outcome", noChange.Outcome == ApprovedRemediationExecutor.RemediationOutcome.NotAttempted);
 Check("No-change explanation preserved", noChange.Summary.Contains("already exited", StringComparison.OrdinalIgnoreCase));
 
+bool replayDelegateCalled = false;
+var replayExecution = await executor.ExecuteAsync(snapshot, request, validation,
+    executeAsync: () => { replayDelegateCalled = true; return Task.CompletedTask; },
+    verifyAsync: () => Task.FromResult(true),
+    actionWasAttempted: () => true);
+Check("Approved execution cannot be replayed", !replayExecution.Attempted && !replayDelegateCalled);
+
 SystemSnapshot secondSnapshot = new()
 {
     InvestigationRequiresAttention = true,
