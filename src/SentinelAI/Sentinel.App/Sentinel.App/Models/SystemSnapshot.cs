@@ -30,6 +30,7 @@ namespace Sentinel.App.Models
         public string PrimaryLineageChildProcessName { get; set; } = "None";
         public string PrimaryLineageParentProcessName { get; set; } = "None";
         public string PrimaryLineageReason { get; set; } = "No unusual parent-child process relationships were detected.";
+        public bool CommandLineMonitoringAvailable { get; set; }
         public int ReviewedCommandLineProcessCount { get; set; }
         public int FlaggedCommandLineCount { get; set; }
         public string PrimaryCommandLineProcessName { get; set; } = "None";
