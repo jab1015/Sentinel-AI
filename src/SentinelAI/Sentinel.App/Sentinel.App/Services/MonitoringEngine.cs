@@ -4,6 +4,7 @@
  */
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Sentinel.App.Models;
 
@@ -11,6 +12,7 @@ namespace Sentinel.App.Services
 {
     public class MonitoringEngine
     {
+        private readonly SemaphoreSlim _refreshGate = new(1, 1);
         private static readonly TimeSpan ProcessRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan MemoryInvestigationRefreshInterval = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan ProcessLineageRefreshInterval = TimeSpan.FromSeconds(30);
@@ -87,6 +89,19 @@ namespace Sentinel.App.Services
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
 
         public async Task RefreshAsync()
+        {
+            await _refreshGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await RefreshCoreAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _refreshGate.Release();
+            }
+        }
+
+        private async Task RefreshCoreAsync()
         {
             DateTime now = DateTime.Now;
             double memoryUsagePercent = _systemMonitor.GetMemoryPercent();
