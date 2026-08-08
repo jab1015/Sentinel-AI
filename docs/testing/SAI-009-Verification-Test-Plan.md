@@ -2,8 +2,8 @@
 
 **Document ID:** SAI-009  
 **Title:** Verification & Test Plan  
-**Version:** 1.0  
-**Status:** Approved (Working Draft)  
+**Version:** 1.1  
+**Status:** Active — current security acceptance pending  
 **Project:** Sentinel AI
 
 ---
@@ -13,6 +13,7 @@
 | Version | Date | Author | Description |
 |---------|------|--------|-------------|
 | 1.0 | 2026-07-28 | Sentinel AI Team | Initial Release |
+| 1.1 | 2026-08-08 | Sentinel AI Team | Added proactive security completion acceptance gate |
 
 ---
 
@@ -432,6 +433,58 @@ New testing strategies, automation, and tooling shall be adopted when they impro
 
 ---
 
+# 21. Proactive Security Completion Acceptance Gate
+
+The current security completion change set is not release-verified until all steps below pass on the supported Windows development computer.
+
+## 21.1 Build gate
+
+- Restore dependencies without errors.
+- Build the Release configuration for x64.
+- Record all warnings and errors.
+- Do not install or replace the current Sentinel package if the build fails.
+
+## 21.2 Required automated runners
+
+Run the existing complete regression runner and all applicable existing acceptance runners, followed by:
+
+- Run-OptimizationSafetyAcceptance.ps1
+- Run-MaintenanceHistoryAcceptance.ps1
+- Run-RemediationOutcomeAcceptance.ps1
+- Run-Phase8ContainmentAcceptance.ps1
+- Run-QuarantineAcceptance.ps1
+- Run-IntrusionProtectionAcceptance.ps1
+
+A missing runner, skipped assertion, crash, timeout, or non-zero exit is a failure requiring investigation.
+
+## 21.3 Required live checks
+
+- Confirm Sentinel starts, remains responsive, and does not create abnormal CPU, memory, disk, or network load.
+- Observe continuous monitoring long enough to cover multiple refresh cycles.
+- Confirm Defender, Firewall, network, process, persistence, authentication, and crash evidence show either verified data or explicit unavailable status.
+- Ask the real post-recovery question about the recent BSOD and current slowness.
+- Confirm the answer uses crash-specific evidence, separates present performance from crash cause, and does not blame an unrelated active finding.
+- Ask what optimizations Sentinel performed.
+- Confirm the answer lists verified historical actions when present and separately states whether optimization is currently needed.
+- Confirm unreadable or unavailable history never produces a false no-record statement.
+- Confirm Activity Center distinguishes no change, attempted, verified, failed, rolled back, and unavailable history.
+- Confirm automatic optimization remains off until explicitly enabled.
+- Do not approve destructive quarantine deletion or disruptive remediation against real user data during acceptance; use harness-owned disposable targets only.
+
+## 21.4 Release decision
+
+Release status remains **pending** until:
+
+- every required automated runner passes;
+- live checks pass;
+- no critical or high-severity regression remains;
+- resource behavior is acceptable;
+- documentation is updated with actual observed results.
+
+Historical acceptance results from earlier builds must not be cited as validation of the current change set.
+
+---
+
 # Conclusion
 
 Verification is an integral part of Sentinel AI development. Every feature must demonstrate correctness, reliability, security, and performance before it is considered complete.
@@ -443,5 +496,5 @@ Testing is not a phase—it is a continuous engineering practice.
 # End of Document
 
 **Document ID:** SAI-009  
-**Version:** 1.0  
-**Status:** Approved (Working Draft)
+**Version:** 1.1  
+**Status:** Active — current security acceptance pending
