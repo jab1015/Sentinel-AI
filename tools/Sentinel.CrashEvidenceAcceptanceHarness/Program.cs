@@ -31,6 +31,21 @@ Check("Stop code retained", bugCheck.BugCheckCode == "0X00000133");
 Check("Minidump is reported without reading contents", bugCheck.Summary.Contains("has not read or uploaded", StringComparison.OrdinalIgnoreCase));
 Check("BugCheck does not name unsupported cause", !bugCheck.RootCauseVerified && bugCheck.Summary.Contains("does not identify", StringComparison.OrdinalIgnoreCase));
 
+var separateIncidents = WindowsCrashEvidenceMonitor.Analyze(new[]
+{
+    new WindowsCrashEvidenceMonitor.CrashEventEvidence(41, now, "Microsoft-Windows-Kernel-Power", "The system rebooted without cleanly shutting down first."),
+    new WindowsCrashEvidenceMonitor.CrashEventEvidence(1001, now.AddDays(-2), "Microsoft-Windows-WER-SystemErrorReporting", "The computer rebooted from a bugcheck: 0x0000009F.")
+}, null, true);
+Check("Older BugCheck is not attached to newer restart", separateIncidents.CrashDetected && !separateIncidents.BugCheckDetected);
+Check("Newer restart remains causally bounded", separateIncidents.Summary.Contains("does not prove", StringComparison.OrdinalIgnoreCase));
+
+var dumpOnly = WindowsCrashEvidenceMonitor.Analyze(
+    Array.Empty<WindowsCrashEvidenceMonitor.CrashEventEvidence>(),
+    new WindowsCrashEvidenceMonitor.MinidumpEvidence(now, 4096),
+    true);
+Check("Minidump-only incident is explicit", dumpOnly.CrashDetected && !dumpOnly.BugCheckDetected);
+Check("Minidump-only incident does not invent event evidence", dumpOnly.Summary.Contains("did not find a crash event", StringComparison.OrdinalIgnoreCase));
+
 var unavailable = WindowsCrashEvidenceMonitor.Analyze(Array.Empty<WindowsCrashEvidenceMonitor.CrashEventEvidence>(), null, false);
 Check("Unavailable evidence is explicit", !unavailable.CollectionAvailable && !unavailable.CrashDetected);
 
