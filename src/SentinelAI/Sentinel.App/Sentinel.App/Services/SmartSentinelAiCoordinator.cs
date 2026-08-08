@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -15,6 +16,7 @@ namespace Sentinel.App.Services
 {
     public sealed class SmartSentinelAiCoordinator
     {
+        private const int MaximumCacheEntries = 200;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(6);
         private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new(StringComparer.Ordinal);
         private static long _requestsSent;
@@ -45,7 +47,9 @@ namespace Sentinel.App.Services
             int characterBudget = decision.ModelTier == AiModelTier.Advanced ? 7_000 : 3_500;
             AiEvidencePackage package = _packageBuilder.Build(purpose, userQuestion ?? string.Empty, snapshot, external, characterBudget, supplementalEvidence);
 
-            string cacheKey = Hash(package.Payload + "|" + decision.ModelTier);
+            RemoveExpiredCacheEntries();
+            TrimCacheIfNeeded();
+            string cacheKey = Hash(CreateStableCachePayload(package.Payload) + "|" + decision.ModelTier);
             if (Cache.TryGetValue(cacheKey, out CacheEntry? entry) && entry.ExpiresUtc > DateTimeOffset.UtcNow)
             {
                 return new SmartAiResult(entry.Result.Used, entry.Result.Available, entry.Result.Answer,
@@ -77,6 +81,25 @@ namespace Sentinel.App.Services
             foreach ((string key, CacheEntry value) in Cache)
                 if (value.ExpiresUtc <= now && Cache.TryRemove(key, out _)) removed++;
             return removed;
+        }
+
+        private static string CreateStableCachePayload(string payload)
+        {
+            string[] lines = payload.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            return string.Join("\n", Array.FindAll(lines,
+                line => !line.StartsWith("- snapshot-time:", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static void TrimCacheIfNeeded()
+        {
+            if (Cache.Count < MaximumCacheEntries) return;
+
+            foreach ((string key, CacheEntry _) in Cache
+                         .OrderBy(pair => pair.Value.ExpiresUtc)
+                         .Take(Math.Max(1, Cache.Count - MaximumCacheEntries + 20)))
+            {
+                Cache.TryRemove(key, out _);
+            }
         }
 
         private static string Hash(string value)
