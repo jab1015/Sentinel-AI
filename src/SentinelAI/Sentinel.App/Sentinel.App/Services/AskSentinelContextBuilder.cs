@@ -39,6 +39,7 @@ namespace Sentinel.App.Services
                 $"Startup persistence monitoring: {(snapshot.StartupPersistenceMonitoringAvailable ? "Active" : "Unavailable")}; entries: {snapshot.StartupEntryCount}; flagged: {snapshot.FlaggedStartupEntryCount}",
                 $"Scheduled-task monitoring: {(snapshot.ScheduledTaskMonitoringAvailable ? "Active" : "Unavailable")}; tasks: {snapshot.ScheduledTaskCount}; flagged: {snapshot.FlaggedScheduledTaskCount}",
                 $"Spyware correlation: {snapshot.SpywareCorrelationState}; confidence: {snapshot.SpywareCorrelationConfidenceScore}%; corroborating evidence: {snapshot.SpywareCorrelationHasCorroboratingEvidence}",
+                $"Windows Event Log monitoring: {(snapshot.EventLogMonitoringAvailable ? "Active" : "Unavailable")}; critical events: {snapshot.CriticalEventCount}; actionable errors: {snapshot.ErrorEventCount}",
                 $"Authentication monitoring: {(snapshot.AuthenticationMonitoringAvailable ? "Active" : "Unavailable")}",
                 $"Authentication evidence: {snapshot.AuthenticationAnomalySummary}",
                 $"Crash evidence monitoring: {(snapshot.CrashEvidenceAvailable ? "Active" : "Unavailable")}",
