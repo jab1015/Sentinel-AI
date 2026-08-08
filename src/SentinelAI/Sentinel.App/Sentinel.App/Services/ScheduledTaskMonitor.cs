@@ -221,10 +221,11 @@ namespace Sentinel.App.Services
             int TotalTaskCount,
             int ReviewTaskCount,
             string PrimaryTaskName,
-            string PrimaryReason)
+            string PrimaryReason,
+            bool CollectionAvailable = true)
         {
             public static ScheduledTaskSnapshot Unavailable { get; } =
-                new(0, 0, "Unavailable", "Scheduled-task evidence could not be collected.");
+                new(0, 0, "Unavailable", "Scheduled-task evidence could not be collected.", false);
         }
     }
 }
