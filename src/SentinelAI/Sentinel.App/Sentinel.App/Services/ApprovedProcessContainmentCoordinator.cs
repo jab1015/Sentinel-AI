@@ -18,13 +18,16 @@ namespace Sentinel.App.Services
     {
         private readonly ApprovedRemediationExecutor _approvedExecutor;
         private readonly ProcessContainmentService _processContainment;
+        private readonly StoreSubscriptionService _subscriptionService;
 
         public ApprovedProcessContainmentCoordinator(
             ApprovedRemediationExecutor? approvedExecutor = null,
-            ProcessContainmentService? processContainment = null)
+            ProcessContainmentService? processContainment = null,
+            StoreSubscriptionService? subscriptionService = null)
         {
             _approvedExecutor = approvedExecutor ?? new ApprovedRemediationExecutor();
             _processContainment = processContainment ?? new ProcessContainmentService();
+            _subscriptionService = subscriptionService ?? new StoreSubscriptionService();
         }
 
         public async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteAsync(
@@ -35,6 +38,13 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(currentSnapshot);
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
+
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                    "Free local process monitoring remains active, but an active Sentinel AI subscription is required for process containment.");
+            }
 
             if (!string.Equals(request.Action, "contain-process", StringComparison.OrdinalIgnoreCase))
             {
