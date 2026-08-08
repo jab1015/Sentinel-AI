@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Sentinel AI
  * Copyright (c) 2026 Modern Methods.
  */
@@ -35,6 +35,7 @@ namespace Sentinel.App.Services
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly AuthenticationAnomalyMonitor _authenticationAnomalyMonitor = new();
+        private readonly WindowsCrashEvidenceMonitor _windowsCrashEvidenceMonitor = new();
         private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
@@ -60,6 +61,7 @@ namespace Sentinel.App.Services
         private SecurityMonitor.SecurityStatusSnapshot _securitySnapshot = new("Loading...", "Loading...");
         private EventLogMonitor.EventLogStatusSnapshot _eventLogSnapshot = new(0, 0, null, "None", "Event Log analysis is loading.");
         private AuthenticationAnomalyMonitor.AuthenticationAnomalySnapshot _authenticationSnapshot = new(false, 0, 0, "None", false, 0, "Starting", "Authentication analysis is loading.");
+        private WindowsCrashEvidenceMonitor.WindowsCrashEvidenceSnapshot _crashSnapshot = new(false, false, false, null, 0, "Starting", "Not available", false, "Crash analysis is loading.");
         private StartupPersistenceMonitor.StartupPersistenceSnapshot _startupSnapshot = new(0, 0, "None", "Startup persistence analysis is loading.");
         private ScheduledTaskMonitor.ScheduledTaskSnapshot _scheduledTaskSnapshot = new(0, 0, "None", "Scheduled-task analysis is loading.");
         private ActiveConnectionMonitor.ActiveConnectionSnapshot _activeConnectionSnapshot = new(0, 0, 0, "None", "None", "Active connection analysis is loading.");
@@ -74,6 +76,7 @@ namespace Sentinel.App.Services
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
         private DateTime _lastAuthenticationRefresh = DateTime.MinValue;
+        private DateTime _lastCrashRefresh = DateTime.MinValue;
         private DateTime _lastStartupRefresh = DateTime.MinValue;
         private DateTime _lastScheduledTaskRefresh = DateTime.MinValue;
         private DateTime _lastActiveConnectionRefresh = DateTime.MinValue;
@@ -96,6 +99,7 @@ namespace Sentinel.App.Services
                 RefreshSecurityDataIfDueAsync(now),
                 RefreshEventLogDataIfDueAsync(now),
                 RefreshAuthenticationDataIfDueAsync(now),
+                RefreshCrashDataIfDueAsync(now),
                 RefreshStartupDataIfDueAsync(now),
                 RefreshScheduledTaskDataIfDueAsync(now),
                 RefreshActiveConnectionDataIfDueAsync(now),
@@ -117,10 +121,11 @@ namespace Sentinel.App.Services
                 ScheduledTaskCount = _scheduledTaskSnapshot.TotalTaskCount, FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount, PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName, PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
                 EstablishedConnectionCount = _activeConnectionSnapshot.EstablishedConnectionCount, ExternalConnectionCount = _activeConnectionSnapshot.ExternalConnectionCount, InboundExternalConnectionCount = _activeConnectionSnapshot.InboundExternalConnectionCount, OutboundExternalConnectionCount = _activeConnectionSnapshot.OutboundExternalConnectionCount, FlaggedConnectionCount = _activeConnectionSnapshot.ReviewConnectionCount,
                 PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName, PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint, PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
-                ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
+                ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, RecentUniqueExternalConnectionCount = _activeConnectionSnapshot.RecentUniqueExternalConnectionCount, RepeatingExternalConnectionCount = _activeConnectionSnapshot.RepeatingExternalConnectionCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled", FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled", DefenderStatus = _securitySnapshot.DefenderStatus, FirewallStatus = _securitySnapshot.FirewallStatus,
                 CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage,
-                AuthenticationMonitoringAvailable = _authenticationSnapshot.CollectionAvailable, RecentFailedLogonCount = _authenticationSnapshot.FailedLogonCount, RepeatedAuthenticationSourceCount = _authenticationSnapshot.RepeatedSourceFailureCount, PrimaryAuthenticationSource = _authenticationSnapshot.PrimarySourceAddress, AuthenticationAnomalyDetected = _authenticationSnapshot.SuspiciousPattern, AuthenticationAnomalyConfidenceScore = _authenticationSnapshot.ConfidenceScore, AuthenticationAnomalyState = _authenticationSnapshot.State, AuthenticationAnomalySummary = _authenticationSnapshot.Summary
+                AuthenticationMonitoringAvailable = _authenticationSnapshot.CollectionAvailable, RecentFailedLogonCount = _authenticationSnapshot.FailedLogonCount, RepeatedAuthenticationSourceCount = _authenticationSnapshot.RepeatedSourceFailureCount, PrimaryAuthenticationSource = _authenticationSnapshot.PrimarySourceAddress, AuthenticationAnomalyDetected = _authenticationSnapshot.SuspiciousPattern, AuthenticationAnomalyConfidenceScore = _authenticationSnapshot.ConfidenceScore, AuthenticationAnomalyState = _authenticationSnapshot.State, AuthenticationAnomalySummary = _authenticationSnapshot.Summary,
+                CrashEvidenceAvailable = _crashSnapshot.CollectionAvailable, RecentCrashDetected = _crashSnapshot.CrashDetected, RecentBugCheckDetected = _crashSnapshot.BugCheckDetected, RecentCrashTime = _crashSnapshot.OccurredAt, RecentCrashEventId = _crashSnapshot.PrimaryEventId, RecentCrashProvider = _crashSnapshot.Provider, RecentBugCheckCode = _crashSnapshot.BugCheckCode, CrashRootCauseVerified = _crashSnapshot.RootCauseVerified, RecentCrashSummary = _crashSnapshot.Summary
             };
 
             ConnectionIntelligenceEngine.ConnectionIntelligenceResult connectionIntelligence = _connectionIntelligenceEngine.Analyze(snapshot);
@@ -429,6 +434,7 @@ namespace Sentinel.App.Services
         private async Task RefreshSecurityDataIfDueAsync(DateTime now) { if (now - _lastSecurityRefresh < SecurityRefreshInterval) return; _lastSecurityRefresh = now; _securitySnapshot = await Task.Run(_securityMonitor.GetStatus); }
         private async Task RefreshEventLogDataIfDueAsync(DateTime now) { if (now - _lastEventLogRefresh < EventLogRefreshInterval) return; _lastEventLogRefresh = now; _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus); }
         private async Task RefreshAuthenticationDataIfDueAsync(DateTime now) { if (now - _lastAuthenticationRefresh < EventLogRefreshInterval) return; _lastAuthenticationRefresh = now; _authenticationSnapshot = await Task.Run(_authenticationAnomalyMonitor.GetSnapshot); }
+        private async Task RefreshCrashDataIfDueAsync(DateTime now) { if (now - _lastCrashRefresh < DriverHealthRefreshInterval) return; _lastCrashRefresh = now; _crashSnapshot = await Task.Run(_windowsCrashEvidenceMonitor.GetSnapshot); }
         private async Task RefreshStartupDataIfDueAsync(DateTime now) { if (now - _lastStartupRefresh < StartupRefreshInterval) return; _lastStartupRefresh = now; _startupSnapshot = await Task.Run(_startupPersistenceMonitor.GetSnapshot); }
         private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now) { if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return; _lastScheduledTaskRefresh = now; _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot); }
         private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now) { if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return; _lastActiveConnectionRefresh = now; _activeConnectionSnapshot = await Task.Run(_activeConnectionMonitor.GetSnapshot); }
@@ -440,3 +446,4 @@ namespace Sentinel.App.Services
         public sealed record VerificationResult(string Title, string Summary, bool Resolved);
     }
 }
+
