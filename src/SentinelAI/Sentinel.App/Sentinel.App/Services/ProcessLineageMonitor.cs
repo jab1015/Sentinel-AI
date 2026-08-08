@@ -31,6 +31,11 @@ namespace Sentinel.App.Services
         public ProcessLineageSnapshot GetSnapshot()
         {
             Dictionary<uint, ProcessEntry> processes = EnumerateProcesses();
+            if (processes.Count == 0)
+            {
+                return ProcessLineageSnapshot.Unavailable;
+            }
+
             List<LineageFinding> findings = new();
             int relationshipCount = 0;
 
@@ -156,6 +161,11 @@ namespace Sentinel.App.Services
             int ReviewRelationshipCount,
             string PrimaryChildProcessName,
             string PrimaryParentProcessName,
-            string PrimaryReason);
+            string PrimaryReason,
+            bool CollectionAvailable = true)
+        {
+            public static ProcessLineageSnapshot Unavailable { get; } =
+                new(0, 0, "Unavailable", "Unavailable", "Process lineage evidence could not be collected.", false);
+        }
     }
 }
