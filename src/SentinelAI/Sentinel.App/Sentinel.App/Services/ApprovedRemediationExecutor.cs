@@ -50,7 +50,16 @@ namespace Sentinel.App.Services
                 }
             }
 
+            bool processIdentityMatches =
+                !request.Action.Equals("contain-process", StringComparison.OrdinalIgnoreCase) ||
+                (request.TargetProcessId > 0 &&
+                 request.TargetProcessStartUtc.HasValue &&
+                 currentSnapshot.PrimaryFlaggedProcessId == request.TargetProcessId &&
+                 currentSnapshot.PrimaryFlaggedProcessStartUtc.HasValue &&
+                 currentSnapshot.PrimaryFlaggedProcessStartUtc.Value == request.TargetProcessStartUtc.Value);
+
             if (DateTimeOffset.Now > request.ExpiresAt ||
+                !processIdentityMatches ||
                 !currentSnapshot.InvestigationRequiresAttention ||
                 !currentSnapshot.AutonomousProtectionRequiresUserApproval ||
                 !string.Equals(request.Action, currentSnapshot.AutonomousProtectionAction, StringComparison.OrdinalIgnoreCase) ||
