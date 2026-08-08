@@ -13,6 +13,7 @@ namespace Sentinel.App
         private readonly QuarantineCatalogService _catalogService = new();
         private readonly QuarantineService _quarantineService = new();
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
         private readonly ListView _itemsList = new();
         private readonly TextBlock _emptyText = new();
         private readonly TextBlock _summaryText = new();
@@ -163,6 +164,7 @@ namespace Sentinel.App
         private async void RestoreButton_Click(object sender, RoutedEventArgs e)
         {
             if (_itemsList.SelectedItem is not QuarantineItemView selected) return;
+            if (!await EnsurePremiumActionAsync("restore a quarantined file")) return;
             ContentDialog dialog = new()
             {
                 Title = "Restore quarantined file?",
@@ -186,6 +188,7 @@ namespace Sentinel.App
         private async void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
             if (_itemsList.SelectedItem is not QuarantineItemView selected) return;
+            if (!await EnsurePremiumActionAsync("permanently delete a quarantined file")) return;
             ContentDialog dialog = new()
             {
                 Title = "Delete quarantined file permanently?",
@@ -204,6 +207,17 @@ namespace Sentinel.App
             _statusText.Text = result.Message;
             await ShowResultAsync(result.Succeeded && result.Verified ? "File permanently deleted" : "Delete not completed", result.Message);
             await RefreshAsync();
+        }
+
+        private async Task<bool> EnsurePremiumActionAsync(string action)
+        {
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync();
+            if (subscription.IsActive) return true;
+
+            await ShowResultAsync(
+                "Subscription required",
+                $"Free local threat monitoring remains active. An active Sentinel AI subscription is required to {action}.");
+            return false;
         }
 
         private async Task ShowResultAsync(string title, string message)
