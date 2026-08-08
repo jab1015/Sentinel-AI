@@ -23,6 +23,7 @@ namespace Sentinel.App.Services
         private readonly InvestigationCache _cache = new();
         private readonly SmartSentinelAiCoordinator _aiCoordinator = new();
         private readonly DriverDiagnosticEvidenceCollector _driverEvidenceCollector = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
 
         public async Task<ExternalInvestigationResult> InvestigateAsync(string question, SystemSnapshot snapshot, CancellationToken cancellationToken = default)
         {
@@ -30,6 +31,13 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
 
             string topic = Classify(question, snapshot);
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return ExternalInvestigationResult.SubscriptionRequired(
+                    topic,
+                    "Sentinel answered from free local evidence. An active subscription is required to investigate approved external sources or use cloud AI.");
+            }
             string cacheKey = $"external:{topic}:{Normalize(question)}";
             if (_cache.TryGet(cacheKey, out ExternalInvestigationResult? cached) && cached is not null)
                 return cached with { FromCache = true };
@@ -187,8 +195,9 @@ namespace Sentinel.App.Services
     }
 
     public sealed record ExternalSourceEvidence(string SourceName, string Uri, int Authority, bool Reached, bool MatchedCurrentEvidence, IReadOnlyList<string> MatchedTerms);
-    public sealed record ExternalInvestigationResult(string Topic, bool Verified, int ConfidencePercent, string Summary, IReadOnlyList<ExternalSourceEvidence> Sources, bool RequiresAiEscalation, bool FromCache, IReadOnlyList<string> MatchedTerms)
+    public sealed record ExternalInvestigationResult(string Topic, bool Verified, int ConfidencePercent, string Summary, IReadOnlyList<ExternalSourceEvidence> Sources, bool RequiresAiEscalation, bool FromCache, IReadOnlyList<string> MatchedTerms, bool RequiresSubscription = false)
     {
         public static ExternalInvestigationResult NotVerified(string topic, string summary) => new(topic, false, 0, summary, Array.Empty<ExternalSourceEvidence>(), false, false, Array.Empty<string>());
+        public static ExternalInvestigationResult SubscriptionRequired(string topic, string summary) => new(topic, false, 0, summary, Array.Empty<ExternalSourceEvidence>(), false, false, Array.Empty<string>(), true);
     }
 }
