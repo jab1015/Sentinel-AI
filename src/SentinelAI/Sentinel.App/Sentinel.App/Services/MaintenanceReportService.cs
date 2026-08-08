@@ -22,6 +22,16 @@ namespace Sentinel.App.Services
         {
             MaintenanceHistorySummary history = _historyService.GetSummary();
 
+            if (!history.HistoryAvailable)
+            {
+                return new MaintenanceReport(
+                    MaintenanceReportState.NeedsAttention,
+                    "Maintenance history unavailable",
+                    "Sentinel could not read its verified maintenance history and will not claim that no prior action occurred.",
+                    Array.Empty<MaintenanceReportItem>(),
+                    false);
+            }
+
             if (history.TotalActions == 0)
             {
                 return new MaintenanceReport(
@@ -51,7 +61,7 @@ namespace Sentinel.App.Services
                     : "Maintenance is up to date";
 
             string summary = followUpRequired
-                ? $"Sentinel completed recent maintenance, but {history.FailedActions} action(s) could not be verified and may need your attention."
+                ? $"Sentinel attempted recent maintenance, but {history.FailedActions} action(s) did not complete with verified success and may need your attention."
                 : history.RolledBackActions > 0
                     ? $"Sentinel safely handled recent maintenance and restored {history.RolledBackActions} change(s) when verification did not pass."
                     : $"Sentinel handled {history.TotalActions} maintenance action(s) recently and verified the completed changes.";
