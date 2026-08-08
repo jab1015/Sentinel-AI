@@ -26,6 +26,7 @@ namespace Sentinel.App.Services
                 !snapshot.NetworkConnectionMonitoringAvailable ||
                 !snapshot.AuthenticationMonitoringAvailable ||
                 !snapshot.CommandLineMonitoringAvailable ||
+                !snapshot.ProcessLineageMonitoringAvailable ||
                 !snapshot.StartupPersistenceMonitoringAvailable ||
                 !snapshot.ScheduledTaskMonitoringAvailable ||
                 snapshot.SpywareCorrelationState.Equals("EvidenceIncomplete", StringComparison.OrdinalIgnoreCase);
