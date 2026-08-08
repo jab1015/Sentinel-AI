@@ -18,6 +18,7 @@ namespace Sentinel.App
         private readonly RemediationApprovalCoordinator _approvalCoordinator = new();
         private readonly ApprovedServiceRestartCoordinator _approvedServiceRestartCoordinator = new();
         private readonly InvestigationHistoryService _investigationHistoryService = new();
+        private readonly MaintenanceOutcomeRecorder _monitoringOutcomeRecorder = new();
         private readonly AutomaticOptimizationCoordinator _automaticOptimizationCoordinator = new();
         private readonly IntegratedMaintenanceCoordinator _integratedMaintenanceCoordinator = new();
         private readonly LivePersistentExceptionCoordinator _livePersistentExceptionCoordinator = new();
@@ -25,6 +26,7 @@ namespace Sentinel.App
         private readonly LiveEventDrivenDiscoveryCoordinator _liveEventDrivenDiscoveryCoordinator = new();
         private bool _isRefreshing;
         private bool _initialRefreshStarted;
+        private bool _profileInitialized;
         private bool _wasAttentionActive;
         private bool _attentionNotificationActive;
         private bool _eventDrivenFollowUpPending;
@@ -42,12 +44,22 @@ namespace Sentinel.App
 
         private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
+            if (!_profileInitialized)
+            {
+                _profileInitialized = true;
+                await EnsurePreferredNameAsync();
+            }
+
+            StartMonitoringIfNeeded();
+        }
+
+        public void StartBackgroundMonitoring() => StartMonitoringIfNeeded();
+
+        private void StartMonitoringIfNeeded()
+        {
             if (_initialRefreshStarted) return;
             _initialRefreshStarted = true;
-            Activated -= MainWindow_Activated;
-            await EnsurePreferredNameAsync();
             ShowInitialDiscoveryState();
-            await Task.Yield();
             _ = RunInitialRefreshAsync();
         }
 
@@ -188,7 +200,61 @@ namespace Sentinel.App
         private void ScheduleEventDrivenFollowUp() { if (_eventDrivenFollowUpPending) return; _eventDrivenFollowUpPending = true; _ = RunEventDrivenFollowUpAsync(); }
         private async Task RunEventDrivenFollowUpAsync() { try { await Task.Delay(250); await UpdateDashboardAsync(); } finally { _eventDrivenFollowUpPending = false; } }
         private void UpdateBackgroundAttentionState(Models.SystemSnapshot snapshot, bool requiresAttention) { if (!requiresAttention) { AppWindow.Title = "Sentinel AI"; _attentionNotificationActive = false; return; } if (_attentionNotificationActive) return; string finding = !string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) && !snapshot.GuidanceTitle.Equals("None", StringComparison.OrdinalIgnoreCase) ? snapshot.GuidanceTitle : "Review recommended"; AppWindow.Title = $"Sentinel AI — Attention: {finding}"; _attentionNotificationActive = true; }
-        private async Task UpdateInvestigationHistoryAsync(Models.SystemSnapshot snapshot, bool requiresAttention) { string fingerprint = snapshot.InvestigationReasonCode?.Trim() ?? string.Empty; bool validFingerprint = !string.IsNullOrWhiteSpace(fingerprint) && !fingerprint.Equals("None", StringComparison.OrdinalIgnoreCase) && !fingerprint.Equals("Healthy", StringComparison.OrdinalIgnoreCase); if (!requiresAttention) { InvestigationHistoryBorder.Visibility = Visibility.Collapsed; if (_wasAttentionActive && !string.IsNullOrWhiteSpace(_lastRecordedFingerprint)) await _investigationHistoryService.RecordAsync(_lastRecordedFingerprint, "Condition resolved", "Sentinel no longer detects the condition that previously required attention.", "Resolved", false, true); _wasAttentionActive = false; _lastRecordedFingerprint = string.Empty; return; } _wasAttentionActive = true; if (!validFingerprint) { InvestigationHistoryBorder.Visibility = Visibility.Collapsed; return; } if (!fingerprint.Equals(_lastRecordedFingerprint, StringComparison.OrdinalIgnoreCase)) { var recent = await _investigationHistoryService.ReadRecentAsync(50); var previous = recent.FirstOrDefault(entry => entry.RequiresAttention && string.Equals(entry.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase)); if (previous is not null) { HistoryOutcomeIconText.Text = "↻"; HistoryTitleText.Text = "Sentinel has seen this condition before"; HistorySummaryText.Text = string.IsNullOrWhiteSpace(previous.Conclusion) ? snapshot.InvestigationSummary : previous.Conclusion; HistoryOutcomeText.Text = $"Previously investigated {previous.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}. Sentinel is comparing the current evidence with that earlier occurrence."; InvestigationHistoryBorder.Visibility = Visibility.Visible; } else InvestigationHistoryBorder.Visibility = Visibility.Collapsed; await _investigationHistoryService.RecordAsync(fingerprint, string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) ? "Investigation" : snapshot.GuidanceTitle, string.IsNullOrWhiteSpace(snapshot.InvestigationSummary) ? snapshot.GuidanceWhatHappened : snapshot.InvestigationSummary, snapshot.GuidanceSeverity, true, false); _lastRecordedFingerprint = fingerprint; } }
+        private async Task UpdateInvestigationHistoryAsync(Models.SystemSnapshot snapshot, bool requiresAttention)
+        {
+            string fingerprint = snapshot.InvestigationReasonCode?.Trim() ?? string.Empty;
+            bool validFingerprint = !string.IsNullOrWhiteSpace(fingerprint) &&
+                !fingerprint.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+                !fingerprint.Equals("Healthy", StringComparison.OrdinalIgnoreCase);
+
+            if (!requiresAttention)
+            {
+                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+                if (_wasAttentionActive && !string.IsNullOrWhiteSpace(_lastRecordedFingerprint))
+                {
+                    const string resolvedSummary = "Sentinel no longer detects the condition that previously required attention.";
+                    await _investigationHistoryService.RecordAsync(_lastRecordedFingerprint, "Condition resolved", resolvedSummary, "Resolved", false, true);
+                    _monitoringOutcomeRecorder.RecordVerificationResult("Condition resolved", resolvedSummary, true, $"Fingerprint: {_lastRecordedFingerprint}");
+                    UpdateMaintenanceReport();
+                }
+                _wasAttentionActive = false;
+                _lastRecordedFingerprint = string.Empty;
+                return;
+            }
+
+            _wasAttentionActive = true;
+            if (!validFingerprint)
+            {
+                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            if (fingerprint.Equals(_lastRecordedFingerprint, StringComparison.OrdinalIgnoreCase)) return;
+
+            var recent = await _investigationHistoryService.ReadRecentAsync(50);
+            var previous = recent.FirstOrDefault(entry => entry.RequiresAttention &&
+                string.Equals(entry.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase));
+            string title = string.IsNullOrWhiteSpace(snapshot.GuidanceTitle) ? "Investigation" : snapshot.GuidanceTitle;
+            string summary = string.IsNullOrWhiteSpace(snapshot.InvestigationSummary) ? snapshot.GuidanceWhatHappened : snapshot.InvestigationSummary;
+
+            if (previous is not null)
+            {
+                HistoryOutcomeIconText.Text = "↻";
+                HistoryTitleText.Text = "Sentinel has seen this condition before";
+                HistorySummaryText.Text = string.IsNullOrWhiteSpace(previous.Conclusion) ? summary : previous.Conclusion;
+                HistoryOutcomeText.Text = $"Previously investigated {previous.TimestampUtc.ToLocalTime():MMM d, yyyy h:mm tt}. Sentinel is comparing the current evidence with that earlier occurrence.";
+                InvestigationHistoryBorder.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                InvestigationHistoryBorder.Visibility = Visibility.Collapsed;
+            }
+
+            await _investigationHistoryService.RecordAsync(fingerprint, title, summary, snapshot.GuidanceSeverity, true, false);
+            _monitoringOutcomeRecorder.RecordInvestigation(title, summary, true, $"Fingerprint: {fingerprint}; Recurring: {previous is not null}");
+            UpdateMaintenanceReport();
+            _lastRecordedFingerprint = fingerprint;
+        }
         private async void GuidanceActionButton_Click(object sender, RoutedEventArgs e) { switch (_guidanceActionId) { case "open-task-manager": OpenShellTarget("taskmgr.exe"); return; case "approve-remediation": await ReviewApprovedRemediationAsync(); return; case "review-driver-repair": AskSentinelQuestionBox.Text = "Do I have any driver conflicts?"; await SubmitAskSentinelQuestionAsync(); return; case "open-windows-update": OpenShellTarget("ms-settings:windowsupdate"); return; case "open-windows-security": OpenShellTarget("windowsdefender:"); return; case "open-firewall": OpenShellTarget("windowsdefender://network"); return; case "open-services": OpenShellTarget("services.msc"); return; case "open-storage": OpenShellTarget("ms-settings:storagesense"); return; case "check-again": await UpdateDashboardAsync(); return; case "monitor-persistent-silently": await SetPersistentNotificationStateAsync(true); return; case "resume-persistent-notifications": await SetPersistentNotificationStateAsync(false); return; } }
         private async Task SetPersistentNotificationStateAsync(bool suppress) { if (_currentPersistentException is null) return; PersistentInvestigationMemoryService.SuppressionDecision result = await _livePersistentExceptionCoordinator.SetSilentMonitoringAsync(_currentPersistentException, suppress); _askSentinelOutcomeRecorder.RecordInvestigation(suppress ? "Known condition monitoring" : "Known condition notifications resumed", result.Message, result.Allowed, $"Investigation: {_currentPersistentException.InvestigationId}; Fingerprint: {_currentPersistentException.Fingerprint}; Monitoring continues: true"); UpdateMaintenanceReport(); ContentDialog dialog = new() { Title = result.Allowed ? suppress ? "Monitoring silently" : "Notifications resumed" : "Sentinel cannot change this notification", Content = result.Message, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot }; await dialog.ShowAsync(); await UpdateDashboardAsync(); }
         private static void OpenShellTarget(string target) { try { Process.Start(new ProcessStartInfo(target) { UseShellExecute = true }); } catch { } }

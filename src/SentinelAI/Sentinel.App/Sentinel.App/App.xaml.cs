@@ -72,6 +72,7 @@ namespace Sentinel.App
 
                 if (launchedByWindowsStartup)
                 {
+                    ((MainWindow)_window).StartBackgroundMonitoring();
                     _window.AppWindow.Hide();
                     _ = _diagnosticLog.InformationAsync(
                         "WindowsStartup",
