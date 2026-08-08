@@ -12,6 +12,14 @@ namespace Sentinel.App.Services
     {
         public GuidanceResult Analyze(SystemSnapshot snapshot)
         {
+            if (snapshot.DefenderStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.DefenderStatus.Equals("Loading...", StringComparison.OrdinalIgnoreCase))
+                return Result("Defender status could not be verified", "Moderate", 100, "Sentinel did not receive current Microsoft Defender state from Windows.", "Defender monitoring evidence is temporarily unavailable.", "Sentinel cannot claim that antivirus protection is active or inactive until Windows provides current evidence.", "Keep Sentinel running while it retries. Open Windows Security if you want to verify the status directly.", "Verification required", "No Defender setting will be changed automatically.", "open-windows-security", "Open Windows Security");
+
+            if (snapshot.FirewallStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.FirewallStatus.Equals("Loading...", StringComparison.OrdinalIgnoreCase))
+                return Result("Firewall status could not be verified", "Moderate", 100, "Sentinel did not receive complete current Windows Firewall profile state.", "Firewall monitoring evidence is temporarily unavailable.", "Sentinel cannot claim that firewall protection is active or inactive until every profile can be checked.", "Keep Sentinel running while it retries. Open Windows Security if you want to verify the status directly.", "Verification required", "No Firewall setting will be changed automatically.", "open-firewall", "Review Firewall");
+
             if (!snapshot.DefenderEnabled)
                 return Result("Microsoft Defender needs attention", "High", 96, "Defender status was read directly from Windows protection state.", "Windows' built-in antivirus protection is not fully active.", "Without active antivirus protection, harmful files and applications may not be detected or blocked.", "Open Windows Security and turn on Microsoft Defender protection. Sentinel AI will verify the status afterward.", "Approval required", "Review the protection settings before making a change.", "open-windows-security", "Open Windows Security");
 
@@ -77,6 +85,18 @@ namespace Sentinel.App.Services
 
             if (snapshot.DiskUsagePercent >= 90)
                 return Result("The system drive is running low on space", "Moderate", 99, "The recommendation is based on the system drive's current used and available capacity.", $"The system drive is {snapshot.DiskUsagePercent:0.0}% full.", "Low disk space can interrupt Windows updates, prevent applications from saving data, and reduce reliability.", "Review Windows Storage settings and remove only files you recognize or safe temporary-file categories.", "Guided fix available", "Sentinel AI will open Storage settings without deleting anything.", "open-storage", "Open Storage Settings");
+
+            if (!snapshot.ProtectionHealthFullyProtected)
+                return Result(
+                    snapshot.ProtectionHealthTitle,
+                    "Moderate",
+                    100,
+                    snapshot.ProtectionHealthSummary,
+                    "One or more Sentinel security-monitoring evidence sources are unavailable.",
+                    "Incomplete monitoring coverage means Sentinel cannot issue a fully verified healthy conclusion.",
+                    snapshot.ProtectionHealthRecommendedAction,
+                    "Monitoring recovery required",
+                    "Sentinel will continue retrying without changing Windows settings.");
 
             return Result("Your computer looks healthy", "Low", 91, "Defender and Firewall are active, and no current critical condition matched a higher-priority guidance rule.", "Core protections are active and no urgent issue currently requires action.", "Sentinel AI is continuing to watch Windows events, processes, services, system resources, Defender, and Firewall.", "No action is needed right now.", "No fix needed", "Monitoring will continue automatically.", "check-again", "Check Again");
         }
