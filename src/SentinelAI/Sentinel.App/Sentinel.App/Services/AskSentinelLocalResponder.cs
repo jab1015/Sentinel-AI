@@ -62,9 +62,18 @@ namespace Sentinel.App.Services
                     : $"Network connection monitoring is {snapshot.NetworkConnectionMonitoringStatus}; active network health cannot currently be verified.";
 
             if (Has(q, "startup app", "startup apps", "starts with windows", "startup program", "startup entry"))
-                return snapshot.FlaggedStartupEntryCount > 0
-                    ? $"Sentinel verified {snapshot.StartupEntryCount} startup entries and flagged {snapshot.FlaggedStartupEntryCount}. Primary finding: {snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}"
-                    : $"Sentinel verified {snapshot.StartupEntryCount} startup entries and found no unusual startup persistence entry.";
+                return !snapshot.StartupPersistenceMonitoringAvailable
+                    ? "Sentinel could not completely collect current startup-persistence evidence, so I cannot verify that startup entries are clean."
+                    : snapshot.FlaggedStartupEntryCount > 0
+                        ? $"Sentinel verified {snapshot.StartupEntryCount} startup entries and flagged {snapshot.FlaggedStartupEntryCount}. Primary finding: {snapshot.PrimaryFlaggedStartupEntryName}: {snapshot.PrimaryFlaggedStartupEntryReason}"
+                        : $"Sentinel verified {snapshot.StartupEntryCount} startup entries and found no unusual startup persistence entry.";
+
+            if (Has(q, "scheduled task", "scheduled tasks", "task scheduler", "scheduled persistence"))
+                return !snapshot.ScheduledTaskMonitoringAvailable
+                    ? "Sentinel could not collect current scheduled-task evidence, so I cannot verify that scheduled tasks are clean."
+                    : snapshot.FlaggedScheduledTaskCount > 0
+                        ? $"Sentinel verified {snapshot.ScheduledTaskCount} scheduled tasks and flagged {snapshot.FlaggedScheduledTaskCount}. Primary finding: {snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}"
+                        : $"Sentinel verified {snapshot.ScheduledTaskCount} scheduled tasks and found no unusual scheduled-task persistence.";
 
             if (Has(q, "running service", "running services", "windows service", "services"))
                 return snapshot.FlaggedServiceCount > 0
@@ -81,9 +90,17 @@ namespace Sentinel.App.Services
 
             if (Has(q, "security", "secure", "threat", "malware", "virus"))
             {
-                if (snapshot.FlaggedProcessCount > 0) return $"Sentinel flagged {snapshot.FlaggedProcessCount} process conditions. Primary finding: {snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason}";
-                if (!snapshot.DefenderEnabled || !snapshot.FirewallEnabled) return $"Verified security posture: Defender {snapshot.DefenderStatus}; Firewall {snapshot.FirewallStatus}.";
-                return "Current verified evidence shows no flagged process condition, and Defender and Firewall are enabled. This does not prove that no threat exists.";
+                if (snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase) ||
+                    snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase))
+                    return snapshot.SpywareCorrelationSummary;
+
+                if (!snapshot.ProtectionHealthFullyProtected)
+                    return snapshot.ProtectionHealthSummary;
+
+                if (snapshot.FlaggedProcessCount > 0)
+                    return $"Sentinel flagged {snapshot.FlaggedProcessCount} process conditions. Primary finding: {snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason}";
+
+                return "Current verified evidence shows no corroborated security condition, monitoring coverage is active, and Defender and Firewall are enabled. This does not prove that no threat exists.";
             }
 
             if (Has(q, "process", "app", "application", "program"))
@@ -157,7 +174,7 @@ namespace Sentinel.App.Services
             string secureBoot = _windowsHealth.GetSecureBootStatus();
             string bitLocker = _windowsHealth.GetBitLockerStatus();
 
-            return "Ask Sentinel Local verification completed for 14 evidence areas. " +
+            return "Ask Sentinel Local reported the current available evidence across its local health areas. " +
                    $"Windows Update: {update} Pending restart: {restart} TPM: {tpm} Secure Boot: {secureBoot} BitLocker: {bitLocker} " +
                    $"Defender: {snapshot.DefenderStatus}. Firewall: {snapshot.FirewallStatus}. CPU: {snapshot.CpuUsagePercent:0.0}%. " +
                    $"Memory: {snapshot.MemoryUsagePercent:0.0}% ({snapshot.MemoryUsedGB:0.00} GB of {snapshot.MemoryTotalGB:0.00} GB). " +
