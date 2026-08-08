@@ -106,7 +106,17 @@ namespace Sentinel.App
                     AskSentinelProgressText.Text = "Checking approved sources…";
                     ExternalInvestigationResult external = await _externalInvestigationGateway.InvestigateAsync(question, snapshot);
 
-                    if (driverIssue)
+                    if (external.RequiresSubscription)
+                    {
+                        driverIssue = false;
+                        response = response with
+                        {
+                            Answer = external.Summary,
+                            IsInsufficientEvidence = false,
+                            GroundingSummary = "Answer limited to free local evidence because premium external investigation was not entitled."
+                        };
+                    }
+                    else if (driverIssue)
                     {
                         _driverRepairDeviceName = GetDriverDeviceName(snapshot);
                         AskSentinelProgressText.Text = "I found the issue. Checking for a safe repair…";
