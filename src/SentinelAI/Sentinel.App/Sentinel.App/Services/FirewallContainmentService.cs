@@ -37,6 +37,7 @@ namespace Sentinel.App.Services
             string remoteIp = address.ToString();
             string ruleName = BuildRuleName(remoteIp);
             ConnectivityState before = await CheckConnectivityAsync().ConfigureAwait(false);
+            bool ruleCreated = false;
 
             try
             {
@@ -50,6 +51,7 @@ namespace Sentinel.App.Services
                         $"Windows Firewall returned exit code {addExitCode}. No successful containment claim was recorded.");
                 }
 
+                ruleCreated = true;
                 bool verified = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
                 if (!verified)
                 {
@@ -114,9 +116,37 @@ namespace Sentinel.App.Services
             }
             catch (Exception ex)
             {
+                if (ruleCreated)
+                {
+                    FirewallContainmentResult cleanup =
+                        await RemoveBlockAsync(remoteEndpoint).ConfigureAwait(false);
+                    if (cleanup.Succeeded)
+                    {
+                        return new FirewallContainmentResult(
+                            Attempted: true,
+                            Succeeded: false,
+                            RuleName: ruleName,
+                            RemoteIp: remoteIp,
+                            Title: "Unverified network block removed",
+                            Summary: $"Containment verification stopped unexpectedly ({ex.GetType().Name}). Sentinel removed the new firewall rule and verified rollback.",
+                            RolledBack: true,
+                            ConnectivityHealthy: cleanup.ConnectivityHealthy);
+                    }
+
+                    return new FirewallContainmentResult(
+                        Attempted: true,
+                        Succeeded: false,
+                        RuleName: ruleName,
+                        RemoteIp: remoteIp,
+                        Title: "Firewall containment requires review",
+                        Summary: $"Containment verification stopped unexpectedly ({ex.GetType().Name}), and Sentinel could not verify removal of the new rule. Review Windows Firewall before relying on this result.",
+                        RolledBack: false,
+                        ConnectivityHealthy: false);
+                }
+
                 return FirewallContainmentResult.Failure(
                     "Network containment could not complete",
-                    $"Sentinel did not report the endpoint as blocked because verification did not complete. {ex.Message}");
+                    $"Sentinel did not report the endpoint as blocked because execution did not complete ({ex.GetType().Name}).");
             }
         }
 
