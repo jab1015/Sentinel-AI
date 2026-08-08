@@ -132,8 +132,8 @@ namespace Sentinel.App.Services
                 ProcessRelationshipCount = _processLineageSnapshot.RelationshipCount, FlaggedProcessRelationshipCount = _processLineageSnapshot.ReviewRelationshipCount, PrimaryLineageChildProcessName = _processLineageSnapshot.PrimaryChildProcessName, PrimaryLineageParentProcessName = _processLineageSnapshot.PrimaryParentProcessName, PrimaryLineageReason = _processLineageSnapshot.PrimaryReason,
                 ReviewedCommandLineProcessCount = _commandLineSnapshot.ReviewedProcessCount, FlaggedCommandLineCount = _commandLineSnapshot.ReviewFindingCount, PrimaryCommandLineProcessName = _commandLineSnapshot.PrimaryProcessName, PrimaryCommandLineReason = _commandLineSnapshot.PrimaryReason, PrimaryCommandLineSummary = _commandLineSnapshot.PrimaryCommandLineSummary,
                 InstalledServiceCount = _serviceSnapshot.InstalledServiceCount, RunningServiceCount = _serviceSnapshot.RunningServiceCount, FlaggedServiceCount = _serviceSnapshot.FlaggedServiceCount, PrimaryFlaggedServiceName = _serviceSnapshot.PrimaryServiceName, PrimaryFlaggedServiceReason = _serviceSnapshot.PrimaryReason,
-                StartupEntryCount = _startupSnapshot.TotalEntryCount, FlaggedStartupEntryCount = _startupSnapshot.ReviewEntryCount, PrimaryFlaggedStartupEntryName = _startupSnapshot.PrimaryEntryName, PrimaryFlaggedStartupEntryReason = _startupSnapshot.PrimaryReason,
-                ScheduledTaskCount = _scheduledTaskSnapshot.TotalTaskCount, FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount, PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName, PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
+                StartupPersistenceMonitoringAvailable = _startupSnapshot.CollectionAvailable, StartupEntryCount = _startupSnapshot.TotalEntryCount, FlaggedStartupEntryCount = _startupSnapshot.ReviewEntryCount, PrimaryFlaggedStartupEntryName = _startupSnapshot.PrimaryEntryName, PrimaryFlaggedStartupEntryReason = _startupSnapshot.PrimaryReason,
+                ScheduledTaskMonitoringAvailable = _scheduledTaskSnapshot.CollectionAvailable, ScheduledTaskCount = _scheduledTaskSnapshot.TotalTaskCount, FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount, PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName, PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
                 EstablishedConnectionCount = _activeConnectionSnapshot.EstablishedConnectionCount, ExternalConnectionCount = _activeConnectionSnapshot.ExternalConnectionCount, InboundExternalConnectionCount = _activeConnectionSnapshot.InboundExternalConnectionCount, OutboundExternalConnectionCount = _activeConnectionSnapshot.OutboundExternalConnectionCount, FlaggedConnectionCount = _activeConnectionSnapshot.ReviewConnectionCount,
                 PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName, PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint, PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
                 ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, RecentUniqueExternalConnectionCount = _activeConnectionSnapshot.RecentUniqueExternalConnectionCount, RepeatingExternalConnectionCount = _activeConnectionSnapshot.RepeatingExternalConnectionCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
@@ -568,6 +568,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_startupPersistenceMonitor.GetSnapshot, _startupSnapshot);
             if (!result.Success)
             {
+                _startupSnapshot = StartupPersistenceMonitor.StartupPersistenceSnapshot.Unavailable;
                 _lastStartupRefresh = now;
                 return;
             }
@@ -581,6 +582,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_scheduledTaskMonitor.GetSnapshot, _scheduledTaskSnapshot);
             if (!result.Success)
             {
+                _scheduledTaskSnapshot = ScheduledTaskMonitor.ScheduledTaskSnapshot.Unavailable;
                 _lastScheduledTaskRefresh = now;
                 return;
             }
