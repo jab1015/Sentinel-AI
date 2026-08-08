@@ -155,9 +155,15 @@ namespace Sentinel.App.Services
                         throw new InvalidOperationException(executionResult.Summary);
                     }
                 },
-                verifyAsync: () => Task.FromResult(executionResult is { Succeeded: true }),
+                verifyAsync: () => Task.FromResult(
+                    executionResult is
+                    {
+                        Succeeded: true,
+                        RolledBack: false,
+                        ConnectivityHealthy: true
+                    }),
                 actionWasAttempted: () => executionResult?.Attempted == true,
-                noActionSummary: () => executionResult?.Summary ?? "The approved process was no longer running. No change was needed.")
+                noActionSummary: () => executionResult?.Summary ?? "The approved network block was already present. No duplicate rule was created.")
                 .ConfigureAwait(false);
         }
 
@@ -184,7 +190,17 @@ namespace Sentinel.App.Services
                 executeAsync: async () =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    executionResult = await _processContainment.ContainAsync(processName)
+                    if (request.TargetProcessId <= 0 || !request.TargetProcessStartUtc.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "The approval did not include an exact process instance. Sentinel made no system change.");
+                    }
+
+                    executionResult = await _processContainment
+                        .ContainAsync(
+                            processName,
+                            request.TargetProcessId,
+                            request.TargetProcessStartUtc)
                         .ConfigureAwait(false);
 
                     if (!executionResult.Succeeded)
