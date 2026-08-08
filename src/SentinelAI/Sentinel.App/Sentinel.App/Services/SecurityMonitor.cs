@@ -94,6 +94,7 @@ namespace Sentinel.App.Services
 
                     if (profileKey is null)
                     {
+                        unknownProfiles++;
                         continue;
                     }
 
@@ -113,17 +114,17 @@ namespace Sentinel.App.Services
                     }
                 }
 
-                if (detectedProfiles == 0 || unknownProfiles == detectedProfiles)
+                if (detectedProfiles == 0 || enabledProfiles + disabledProfiles == 0)
                 {
                     return "Unavailable";
                 }
 
-                if (unknownProfiles == 0 && enabledProfiles == detectedProfiles)
+                if (unknownProfiles == 0 && enabledProfiles == profileNames.Length)
                 {
                     return "Enabled";
                 }
 
-                if (unknownProfiles == 0 && disabledProfiles == detectedProfiles)
+                if (unknownProfiles == 0 && disabledProfiles == profileNames.Length)
                 {
                     return "Disabled";
                 }
