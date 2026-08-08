@@ -18,13 +18,16 @@ namespace Sentinel.App.Services
     {
         private readonly ApprovedRemediationExecutor _approvedExecutor;
         private readonly FirewallContainmentService _firewallContainment;
+        private readonly StoreSubscriptionService _subscriptionService;
 
         public ApprovedFirewallContainmentCoordinator(
             ApprovedRemediationExecutor? approvedExecutor = null,
-            FirewallContainmentService? firewallContainment = null)
+            FirewallContainmentService? firewallContainment = null,
+            StoreSubscriptionService? subscriptionService = null)
         {
             _approvedExecutor = approvedExecutor ?? new ApprovedRemediationExecutor();
             _firewallContainment = firewallContainment ?? new FirewallContainmentService();
+            _subscriptionService = subscriptionService ?? new StoreSubscriptionService();
         }
 
         public async Task<ApprovedRemediationExecutor.ApprovedRemediationResult> ExecuteAsync(
@@ -35,6 +38,13 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(currentSnapshot);
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
+
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return ApprovedRemediationExecutor.ApprovedRemediationResult.NotAttempted(
+                    "Free local network monitoring remains active, but an active Sentinel AI subscription is required for firewall containment.");
+            }
 
             if (!string.Equals(request.Action, "block-outbound-endpoint", StringComparison.OrdinalIgnoreCase))
             {
@@ -72,6 +82,14 @@ namespace Sentinel.App.Services
         public async Task<FirewallContainmentService.FirewallContainmentResult> RemoveBlockAsync(
             string remoteEndpoint)
         {
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return FirewallContainmentService.FirewallContainmentResult.Failure(
+                    "Subscription required",
+                    "An active Sentinel AI subscription is required before changing a containment rule.");
+            }
+
             if (string.IsNullOrWhiteSpace(remoteEndpoint))
             {
                 return FirewallContainmentService.FirewallContainmentResult.Failure(
