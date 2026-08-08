@@ -34,7 +34,7 @@ namespace Sentinel.App.Services
             if (IsBitLockerQuestion(q)) return _windowsHealth.GetBitLockerStatus();
             // Crash intent must win over an active driver finding. A driver is not
             // the crash cause unless crash-specific evidence establishes that link.
-            if (IsCrashQuestion(q)) return BuildCrashAnswer(snapshot);
+            if (IsCrashQuestion(q)) return BuildCrashAnswer(snapshot, q);
             if (IsDriverHealthQuestion(q))
             {
                 string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
@@ -205,25 +205,46 @@ namespace Sentinel.App.Services
                 "are my drivers healthy");
 
         private static bool IsCrashQuestion(string value) =>
-            Has(value, "blue screen", "bluescreen", "bsod", "bugcheck", "bug check",
-                "crashed", "system crash", "computer crash", "unexpected restart", "recovered from a bsd");
+            Has(value, "blue screen", "blue-screen", "blue screened", "blue-screened",
+                "bluescreen", "bsod", "bsd", "bds", "bugcheck", "bug check",
+                "stop code", "stop error", "crashed", "system crash", "computer crash",
+                "unexpected restart");
 
-        private static string BuildCrashAnswer(SystemSnapshot snapshot)
+        private static string BuildCrashAnswer(SystemSnapshot snapshot, string question)
         {
+            bool asksAboutSlowness = Has(question, "slow", "sluggish", "lag", "lagging", "performance", "freeze", "freezing");
+            string performance = asksAboutSlowness ? BuildPostCrashPerformanceAnswer(snapshot) : string.Empty;
+
             if (!snapshot.CrashEvidenceAvailable)
-                return "Sentinel could not access Windows crash evidence during this check, so I cannot verify why the computer stopped. I will not treat an unrelated active finding as the crash cause.";
+                return "Sentinel could not access Windows crash evidence during this check, so I cannot verify why the computer stopped. I will not treat an unrelated active finding as the crash cause." + performance;
 
             string timing = snapshot.RecentCrashTime.HasValue
                 ? $" Windows recorded the event at {snapshot.RecentCrashTime.Value:MMM d, yyyy h:mm tt}."
                 : string.Empty;
-            string currentPerformance = $" Current evidence: CPU {snapshot.CpuUsagePercent:0.0}%, memory {snapshot.MemoryUsagePercent:0.0}%, and disk use {snapshot.DiskUsagePercent:0.0}%.";
 
             if (!snapshot.RecentCrashDetected)
-                return "Sentinel did not find a Windows crash event or recent minidump in the last 7 days, so I cannot verify what caused the reported stop." + currentPerformance;
+                return "Sentinel did not find a Windows crash event or recent minidump in the last 7 days, so I cannot verify what caused the reported stop." + performance;
 
             return snapshot.RecentCrashSummary + timing +
                 " Sentinel will not name a driver, application, or hardware component as the cause unless crash-specific evidence supports that connection." +
-                currentPerformance;
+                performance;
+        }
+
+        private static string BuildPostCrashPerformanceAnswer(SystemSnapshot snapshot)
+        {
+            string measurements =
+                $" Current performance evidence is separate from the crash cause: CPU {snapshot.CpuUsagePercent:0.0}%, memory {snapshot.MemoryUsagePercent:0.0}%, and disk use {snapshot.DiskUsagePercent:0.0}%.";
+
+            if (snapshot.MemoryUsagePercent >= 90)
+                return measurements + $" Memory pressure is currently very high; {snapshot.HighestMemoryProcessName} is the largest measured contributor. This can explain current slowness, but it does not establish why Windows crashed.";
+
+            if (snapshot.CpuUsagePercent >= 85)
+                return measurements + " CPU use is currently very high and can explain current slowness, but it does not establish why Windows crashed.";
+
+            if (snapshot.DiskUsagePercent >= 95)
+                return measurements + " The system drive is critically full and can reduce current performance and reliability, but it does not establish why Windows crashed.";
+
+            return measurements + " These current readings do not show severe resource saturation. A brief post-restart slowdown may have ended before this snapshot, so Sentinel will continue monitoring rather than inventing a cause.";
         }
 
         private static bool Has(string value, params string[] terms)
