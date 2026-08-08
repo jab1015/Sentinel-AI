@@ -84,6 +84,8 @@ namespace Sentinel.App.Services
 
                 int detectedProfiles = 0;
                 int enabledProfiles = 0;
+                int disabledProfiles = 0;
+                int unknownProfiles = 0;
 
                 foreach (string profileName in profileNames)
                 {
@@ -96,37 +98,61 @@ namespace Sentinel.App.Services
                     }
 
                     detectedProfiles++;
-
-                    int enabled = ConvertToInt32(
-                        profileKey.GetValue("EnableFirewall"),
-                        defaultValue: 1);
-
-                    if (enabled != 0)
+                    object? rawValue = profileKey.GetValue("EnableFirewall");
+                    if (!TryConvertToInt32(rawValue, out int enabled))
+                    {
+                        unknownProfiles++;
+                    }
+                    else if (enabled != 0)
                     {
                         enabledProfiles++;
                     }
+                    else
+                    {
+                        disabledProfiles++;
+                    }
                 }
 
-                if (detectedProfiles == 0)
+                if (detectedProfiles == 0 || unknownProfiles == detectedProfiles)
                 {
                     return "Unavailable";
                 }
 
-                if (enabledProfiles == detectedProfiles)
+                if (unknownProfiles == 0 && enabledProfiles == detectedProfiles)
                 {
                     return "Enabled";
                 }
 
-                if (enabledProfiles == 0)
+                if (unknownProfiles == 0 && disabledProfiles == detectedProfiles)
                 {
                     return "Disabled";
                 }
 
-                return $"Partial ({enabledProfiles}/{detectedProfiles} profiles)";
+                return $"Partial ({enabledProfiles} enabled, {disabledProfiles} disabled, {unknownProfiles} unknown)";
             }
             catch
             {
                 return "Unavailable";
+            }
+        }
+
+        private static bool TryConvertToInt32(object? value, out int converted)
+        {
+            try
+            {
+                if (value is null)
+                {
+                    converted = 0;
+                    return false;
+                }
+
+                converted = Convert.ToInt32(value);
+                return true;
+            }
+            catch
+            {
+                converted = 0;
+                return false;
             }
         }
 
