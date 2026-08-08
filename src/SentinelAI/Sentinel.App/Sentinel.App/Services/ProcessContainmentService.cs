@@ -15,7 +15,9 @@ namespace Sentinel.App.Services
         private static readonly HashSet<string> ProtectedProcessNames = new(StringComparer.OrdinalIgnoreCase)
         {
             "System", "Idle", "Registry", "smss", "csrss", "wininit", "winlogon",
-            "services", "lsass", "svchost", "dwm", "explorer", "Sentinel.App"
+            "services", "lsass", "svchost", "dwm", "explorer", "Sentinel.App",
+            "Memory Compression", "Secure System", "LsaIso", "fontdrvhost", "sihost",
+            "taskhostw", "conhost", "WmiPrvSE", "MsMpEng", "SecurityHealthService", "NisSrv"
         };
 
         public async Task<ProcessContainmentResult> ContainAsync(string processName)
@@ -118,7 +120,26 @@ namespace Sentinel.App.Services
                 }
             };
             process.Start();
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            try
+            {
+                await process.WaitForExitAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(30))
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // The process may have exited or elevation may prevent cleanup.
+                }
+
+                throw;
+            }
+
             return process.ExitCode;
         }
 
