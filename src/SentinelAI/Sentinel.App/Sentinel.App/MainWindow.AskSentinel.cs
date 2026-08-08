@@ -62,11 +62,32 @@ namespace Sentinel.App
                 await _engine.RefreshAsync();
                 var snapshot = _engine.CurrentSnapshot;
                 var history = await _investigationHistoryService.ReadRecentAsync(100);
+                bool optimizationQuestion = IsOptimizationQuestion(question);
+
+                if (optimizationQuestion)
+                {
+                    AskSentinelProgressText.Text = "Checking current optimization status…";
+                    AutomaticOptimizationResult optimization = await _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
+                    UpdateOptimizationStatus(optimization);
+
+                    if (optimization.Baseline.IsEstablished && !optimization.Decision.OptimizationWarranted)
+                    {
+                        AskSentinelAnswerText.Text = "Sentinel analyzed this computer and found that it is running at optimal performance. No performance optimization is needed right now.";
+                        AskSentinelAnswerText.FontSize = 17;
+                        AskSentinelAnswerText.LineHeight = 25;
+                        AskSentinelAnswerBorder.Padding = new Thickness(20);
+                        AskSentinelAnswerBorder.CornerRadius = new CornerRadius(12);
+                        AskSentinelAnswerBorder.Visibility = Visibility.Visible;
+                        HideAskSentinelRepairActions();
+                        AskSentinelStatusText.Text = "Answered from Sentinel's current verified optimization check.";
+                        return;
+                    }
+                }
+
                 AskSentinelProgressText.Text = "Reviewing what Sentinel already knows…";
                 AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
                     _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
 
-                bool optimizationQuestion = IsOptimizationQuestion(question);
                 if (optimizationQuestion && IsCurrentOptimizationStatusVerifiedHealthy())
                 {
                     response = response with
@@ -283,7 +304,7 @@ namespace Sentinel.App
                     ContentDialog restartDialog = new() { Title = "Repair installed — restart required", Content = "The verified driver repair was installed successfully. Windows needs to restart to finish applying it. Restart now?", PrimaryButtonText = "Restart Now", CloseButtonText = "Later", DefaultButton = ContentDialogButton.Close, XamlRoot = ((FrameworkElement)Content).XamlRoot };
                     if (await restartDialog.ShowAsync() == ContentDialogResult.Primary)
                     {
-                        _askSentinelOutcomeRecorder.RecordMaintenanceAction("Restart approved", "You approved the restart required to finish the verified driver repair.", "The restart was requested only after the repair completed and you approved it.");
+                        _askSentinelOutcomeRecorder.RecordVerificationResult("Restart approved", "You approved the restart required to finish the verified driver repair.", true, "The restart was requested only after the repair completed and you approved it.");
                         UpdateMaintenanceReport();
                         Process.Start(new ProcessStartInfo { FileName = "shutdown.exe", Arguments = "/r /t 0", UseShellExecute = true });
                     }
