@@ -31,7 +31,7 @@ namespace Sentinel.App.Services
                 $"Defender: {snapshot.DefenderStatus}",
                 $"Firewall: {snapshot.FirewallStatus}",
                 $"Network connection monitoring: {(snapshot.NetworkConnectionMonitoringAvailable ? "Active" : "Unavailable")}",
-                $"Connections: {snapshot.ExternalConnectionCount} external ({snapshot.InboundExternalConnectionCount} inbound, {snapshot.OutboundExternalConnectionCount} outbound); {snapshot.ListeningTcpEndpointCount} listening TCP; {snapshot.RepeatingExternalConnectionCount} repeating external",
+                $"Connections: {snapshot.ExternalConnectionCount} external ({snapshot.InboundExternalConnectionCount} inbound, {snapshot.OutboundExternalConnectionCount} outbound); {snapshot.ListeningTcpEndpointCount} listening TCP; {snapshot.RepeatingExternalConnectionCount} external endpoints observed in at least three samples",
                 $"Startup persistence monitoring: {(snapshot.StartupPersistenceMonitoringAvailable ? "Active" : "Unavailable")}; entries: {snapshot.StartupEntryCount}; flagged: {snapshot.FlaggedStartupEntryCount}",
                 $"Scheduled-task monitoring: {(snapshot.ScheduledTaskMonitoringAvailable ? "Active" : "Unavailable")}; tasks: {snapshot.ScheduledTaskCount}; flagged: {snapshot.FlaggedScheduledTaskCount}",
                 $"Spyware correlation: {snapshot.SpywareCorrelationState}; confidence: {snapshot.SpywareCorrelationConfidenceScore}%; corroborating evidence: {snapshot.SpywareCorrelationHasCorroboratingEvidence}",
