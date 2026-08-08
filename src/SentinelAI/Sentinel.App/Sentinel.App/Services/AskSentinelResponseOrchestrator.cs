@@ -134,9 +134,11 @@ namespace Sentinel.App.Services
                 if (!optimizationOnly)
                     return "I don't have a verified record of any maintenance actions being performed on this computer in the last 30 days.";
 
-                string historical = summary.TotalActions > 0
-                    ? $"Sentinel has {summary.TotalActions} verified maintenance record{(summary.TotalActions == 1 ? string.Empty : "s")} in the last 30 days, but none is categorized as a performance optimization action."
-                    : "Sentinel has no recorded performance optimization actions in the last 30 days.";
+                string historical = summary.VerifiedActions > 0
+                    ? $"Sentinel has {summary.VerifiedActions} other verified maintenance record{(summary.VerifiedActions == 1 ? string.Empty : "s")} in the last 30 days, but none is categorized as a performance optimization action."
+                    : summary.TotalActions > 0
+                        ? $"Sentinel has {summary.TotalActions} other maintenance record{(summary.TotalActions == 1 ? string.Empty : "s")} in the last 30 days, but none is both verified and categorized as a performance optimization action."
+                        : "Sentinel has no recorded performance optimization actions in the last 30 days.";
                 return $"{historical}\n\nCurrent status: {CreateCurrentOptimizationStatus(snapshot)}";
             }
 
