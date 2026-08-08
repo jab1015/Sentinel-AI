@@ -44,7 +44,13 @@ namespace Sentinel.App.Services
                 CreatedAt: createdAt,
                 ExpiresAt: createdAt.Add(ApprovalLifetime),
                 Title: BuildTitle(snapshot.AutonomousProtectionAction),
-                Summary: BuildSummary(snapshot));
+                Summary: BuildSummary(snapshot),
+                TargetProcessId: snapshot.AutonomousProtectionAction.Equals("contain-process", StringComparison.OrdinalIgnoreCase)
+                    ? snapshot.PrimaryFlaggedProcessId
+                    : 0,
+                TargetProcessStartUtc: snapshot.AutonomousProtectionAction.Equals("contain-process", StringComparison.OrdinalIgnoreCase)
+                    ? snapshot.PrimaryFlaggedProcessStartUtc
+                    : null);
 
             lock (_sync)
             {
@@ -89,11 +95,20 @@ namespace Sentinel.App.Services
                 return ApprovalValidationResult.Denied("This approval expired because the system may have changed. Sentinel will investigate again before offering the action.");
             }
 
+            bool processIdentityMatches =
+                !request.Action.Equals("contain-process", StringComparison.OrdinalIgnoreCase) ||
+                (request.TargetProcessId > 0 &&
+                 request.TargetProcessStartUtc.HasValue &&
+                 currentSnapshot.PrimaryFlaggedProcessId == request.TargetProcessId &&
+                 currentSnapshot.PrimaryFlaggedProcessStartUtc.HasValue &&
+                 currentSnapshot.PrimaryFlaggedProcessStartUtc.Value == request.TargetProcessStartUtc.Value);
+
             bool stillMatches =
                 currentSnapshot.InvestigationRequiresAttention &&
                 currentSnapshot.AutonomousProtectionRequiresUserApproval &&
                 string.Equals(request.Action, currentSnapshot.AutonomousProtectionAction, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(request.Target, currentSnapshot.AutonomousProtectionTarget, StringComparison.OrdinalIgnoreCase) &&
+                processIdentityMatches &&
                 string.Equals(request.ReasonCode, currentSnapshot.InvestigationReasonCode, StringComparison.OrdinalIgnoreCase);
 
             if (!stillMatches)
@@ -134,7 +149,9 @@ namespace Sentinel.App.Services
             DateTimeOffset CreatedAt,
             DateTimeOffset ExpiresAt,
             string Title,
-            string Summary);
+            string Summary,
+            int TargetProcessId = 0,
+            DateTimeOffset? TargetProcessStartUtc = null);
 
         public sealed record ApprovalValidationResult(
             bool IsApproved,
