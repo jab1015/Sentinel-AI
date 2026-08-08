@@ -69,8 +69,10 @@ namespace Sentinel.App.Services
         bool VerifyEveryChange,
         bool RollBackWhenPossible)
     {
+        // Changing Windows automatically is an explicit user choice. Fresh installs
+        // and unreadable/corrupt settings therefore fail closed until the user opts in.
         public static OptimizationSettings Default { get; } = new(
-            AutomaticOptimizationEnabled: true,
+            AutomaticOptimizationEnabled: false,
             Mode: OptimizationMode.Conservative,
             VerifyEveryChange: true,
             RollBackWhenPossible: true);
