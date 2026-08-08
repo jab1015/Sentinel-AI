@@ -30,8 +30,14 @@ namespace Sentinel.App.Services
                 $"Processes: {snapshot.ProcessCount}; highest memory process: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)",
                 $"Defender: {snapshot.DefenderStatus}",
                 $"Firewall: {snapshot.FirewallStatus}",
+                $"Network connection monitoring: {(snapshot.NetworkConnectionMonitoringAvailable ? "Active" : "Unavailable")}",
+                $"Connections: {snapshot.ExternalConnectionCount} external ({snapshot.InboundExternalConnectionCount} inbound, {snapshot.OutboundExternalConnectionCount} outbound); {snapshot.ListeningTcpEndpointCount} listening TCP; {snapshot.RepeatingExternalConnectionCount} repeating external",
+                $"Startup persistence monitoring: {(snapshot.StartupPersistenceMonitoringAvailable ? "Active" : "Unavailable")}; entries: {snapshot.StartupEntryCount}; flagged: {snapshot.FlaggedStartupEntryCount}",
+                $"Scheduled-task monitoring: {(snapshot.ScheduledTaskMonitoringAvailable ? "Active" : "Unavailable")}; tasks: {snapshot.ScheduledTaskCount}; flagged: {snapshot.FlaggedScheduledTaskCount}",
+                $"Spyware correlation: {snapshot.SpywareCorrelationState}; confidence: {snapshot.SpywareCorrelationConfidenceScore}%; corroborating evidence: {snapshot.SpywareCorrelationHasCorroboratingEvidence}",
                 $"Authentication monitoring: {(snapshot.AuthenticationMonitoringAvailable ? "Active" : "Unavailable")}",
                 $"Authentication evidence: {snapshot.AuthenticationAnomalySummary}",
+                $"Crash evidence monitoring: {(snapshot.CrashEvidenceAvailable ? "Active" : "Unavailable")}",
                 $"Recent Windows crash evidence: {snapshot.RecentCrashSummary}",
                 $"Investigation state: {snapshot.InvestigationState}",
                 $"Investigation conclusion: {snapshot.InvestigationConclusion}",
@@ -46,17 +52,27 @@ namespace Sentinel.App.Services
 
             if (snapshot.FlaggedProcessCount > 0)
             {
-                evidence.Add($"Flagged process: {snapshot.PrimaryFlaggedProcessName} â€” {snapshot.PrimaryFlaggedProcessReason}");
+                evidence.Add($"Flagged process: {snapshot.PrimaryFlaggedProcessName} — {snapshot.PrimaryFlaggedProcessReason}");
             }
 
             if (snapshot.FlaggedServiceCount > 0)
             {
-                evidence.Add($"Flagged service: {snapshot.PrimaryFlaggedServiceName} â€” {snapshot.PrimaryFlaggedServiceReason}");
+                evidence.Add($"Flagged service: {snapshot.PrimaryFlaggedServiceName} — {snapshot.PrimaryFlaggedServiceReason}");
             }
 
             if (snapshot.FlaggedConnectionCount > 0)
             {
-                evidence.Add($"Flagged connection: {snapshot.PrimaryFlaggedConnectionProcessName} -> {snapshot.PrimaryFlaggedConnectionRemoteEndpoint} â€” {snapshot.PrimaryFlaggedConnectionReason}");
+                evidence.Add($"Flagged connection: {snapshot.PrimaryFlaggedConnectionProcessName} -> {snapshot.PrimaryFlaggedConnectionRemoteEndpoint} — {snapshot.PrimaryFlaggedConnectionReason}");
+            }
+
+            if (snapshot.FlaggedStartupEntryCount > 0)
+            {
+                evidence.Add($"Flagged startup entry: {snapshot.PrimaryFlaggedStartupEntryName} — {snapshot.PrimaryFlaggedStartupEntryReason}");
+            }
+
+            if (snapshot.FlaggedScheduledTaskCount > 0)
+            {
+                evidence.Add($"Flagged scheduled task: {snapshot.PrimaryFlaggedScheduledTaskName} — {snapshot.PrimaryFlaggedScheduledTaskReason}");
             }
 
             if (!string.IsNullOrWhiteSpace(snapshot.MemoryTopContributors))
