@@ -92,6 +92,7 @@ namespace Sentinel.App.Models
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
         public string FirewallStatus { get; set; } = "Loading...";
+        public bool EventLogMonitoringAvailable { get; set; }
         public int CriticalEventCount { get; set; }
         public int ErrorEventCount { get; set; }
         public DateTime? LatestEventTime { get; set; }
