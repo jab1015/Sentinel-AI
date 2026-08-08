@@ -24,7 +24,9 @@ namespace Sentinel.App.Services
             RemediationApprovalCoordinator.RemediationApprovalRequest request,
             RemediationApprovalCoordinator.ApprovalValidationResult validation,
             Func<Task> executeAsync,
-            Func<Task<bool>>? verifyAsync = null)
+            Func<Task<bool>>? verifyAsync = null,
+            Func<bool>? actionWasAttempted = null,
+            Func<string>? noActionSummary = null)
         {
             ArgumentNullException.ThrowIfNull(currentSnapshot);
             ArgumentNullException.ThrowIfNull(request);
@@ -52,6 +54,13 @@ namespace Sentinel.App.Services
             {
                 await executeAsync().ConfigureAwait(false);
                 DateTimeOffset attemptedAt = DateTimeOffset.Now;
+
+                if (actionWasAttempted is not null && !actionWasAttempted())
+                {
+                    return ApprovedRemediationResult.NotAttempted(
+                        noActionSummary?.Invoke() ??
+                        "Sentinel rechecked the approved target and verified that no system change was needed.");
+                }
 
                 if (verifyAsync is null)
                 {

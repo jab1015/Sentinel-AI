@@ -155,7 +155,9 @@ namespace Sentinel.App.Services
                         throw new InvalidOperationException(executionResult.Summary);
                     }
                 },
-                verifyAsync: () => Task.FromResult(executionResult is { Succeeded: true }))
+                verifyAsync: () => Task.FromResult(executionResult is { Succeeded: true }),
+                actionWasAttempted: () => executionResult?.Attempted == true,
+                noActionSummary: () => executionResult?.Summary ?? "The approved process was no longer running. No change was needed.")
                 .ConfigureAwait(false);
         }
 
