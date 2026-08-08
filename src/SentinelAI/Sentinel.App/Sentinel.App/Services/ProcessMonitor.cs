@@ -232,6 +232,11 @@ namespace Sentinel.App.Services
 
         public sealed record ProcessIntelligenceSnapshot(
             int TotalProcessCount, string HighestMemoryProcessName, double HighestMemoryProcessGB,
-            int FlaggedProcessCount, string PrimaryProcessName, string PrimaryReason);
+            int FlaggedProcessCount, string PrimaryProcessName, string PrimaryReason,
+            bool CollectionAvailable = true)
+        {
+            public static ProcessIntelligenceSnapshot Unavailable { get; } =
+                new(0, "Unavailable", 0, 0, "Unavailable", "Process evidence could not be collected.", false);
+        }
     }
 }
