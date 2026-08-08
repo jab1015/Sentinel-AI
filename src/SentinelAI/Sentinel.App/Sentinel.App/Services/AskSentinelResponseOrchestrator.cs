@@ -82,6 +82,12 @@ namespace Sentinel.App.Services
         {
             string value = question.Trim().ToLowerInvariant();
 
+            
+            // External reasoning cannot inspect the local dump and must not connect an
+            // unrelated active finding to a crash. Return the bounded local crash
+            // evidence until Sentinel has crash-specific causal evidence.
+            if (IsCrashQuestion(value)) return false;
+
             string[] explicitExternalIntent =
             {
                 "external source", "external sources", "authoritative source", "authoritative sources",
@@ -285,6 +291,13 @@ namespace Sentinel.App.Services
             entry.Fingerprint.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             entry.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             entry.Conclusion.Contains(term, StringComparison.OrdinalIgnoreCase);
+        private static bool IsCrashQuestion(string value) =>
+            value.Contains("blue screen") || value.Contains("bluescreen") ||
+            value.Contains("bsod") || value.Contains("bugcheck") ||
+            value.Contains("bug check") || value.Contains("system crash") ||
+            value.Contains("computer crash") || value.Contains("unexpected restart") ||
+            value.Contains("recovered from a bsd");
+
 
         private static bool IsMaintenanceHistoryQuestion(string question)
         {
