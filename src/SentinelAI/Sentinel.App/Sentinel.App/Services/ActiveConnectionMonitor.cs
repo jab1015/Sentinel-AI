@@ -285,6 +285,11 @@ namespace Sentinel.App.Services
             int localPort,
             bool inbound)
         {
+            if (identity.ProcessName.Equals("Unknown process", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
             int assessedPort = inbound ? localPort : remotePort;
             bool uncommonAssessedPort = assessedPort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
             bool systemProcess = identity.ProcessName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
