@@ -16,6 +16,12 @@ Check("Kernel-Power confirms abnormal restart", unexpectedRestart.CrashDetected)
 Check("Kernel-Power alone is not called a blue screen", !unexpectedRestart.BugCheckDetected);
 Check("Kernel-Power does not invent root cause", !unexpectedRestart.RootCauseVerified);
 
+var unrelated1001 = WindowsCrashEvidenceMonitor.Analyze(new[]
+{
+    new WindowsCrashEvidenceMonitor.CrashEventEvidence(1001, now, "Unrelated-Windows-Provider", "A non-crash event used the same numeric event ID.")
+}, null, true);
+Check("Unrelated Event ID 1001 is not treated as BugCheck", !unrelated1001.BugCheckDetected && !unrelated1001.CrashDetected);
+
 var bugCheck = WindowsCrashEvidenceMonitor.Analyze(new[]
 {
     new WindowsCrashEvidenceMonitor.CrashEventEvidence(1001, now, "Microsoft-Windows-WER-SystemErrorReporting", "The computer has rebooted from a bugcheck. The bugcheck was: 0x00000133.")
