@@ -19,7 +19,7 @@ namespace Sentinel.App.Services
     public sealed class InvestigationHistoryService
     {
         private readonly string _historyPath;
-        private readonly SemaphoreSlim _writeLock = new(1, 1);
+        private static readonly SemaphoreSlim HistoryLock = new(1, 1);
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -27,11 +27,11 @@ namespace Sentinel.App.Services
 
         public InvestigationHistoryService(string? historyPath = null)
         {
-            _historyPath = historyPath ?? Path.Combine(
+            _historyPath = Path.GetFullPath(historyPath ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "SentinelAI",
                 "History",
-                "investigations.jsonl");
+                "investigations.jsonl"));
         }
 
         public async Task RecordAsync(
@@ -60,7 +60,7 @@ namespace Sentinel.App.Services
 
             string json = JsonSerializer.Serialize(entry, JsonOptions) + Environment.NewLine;
 
-            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await HistoryLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 string? directory = Path.GetDirectoryName(_historyPath);
@@ -73,7 +73,7 @@ namespace Sentinel.App.Services
             }
             finally
             {
-                _writeLock.Release();
+                HistoryLock.Release();
             }
         }
 
@@ -81,36 +81,49 @@ namespace Sentinel.App.Services
             int maximumEntries = 100,
             CancellationToken cancellationToken = default)
         {
-            if (maximumEntries <= 0 || !File.Exists(_historyPath))
+            if (maximumEntries <= 0)
             {
                 return Array.Empty<InvestigationHistoryEntry>();
             }
 
-            string[] lines = await File.ReadAllLinesAsync(_historyPath, cancellationToken).ConfigureAwait(false);
-            var results = new List<InvestigationHistoryEntry>(Math.Min(maximumEntries, lines.Length));
-
-            for (int index = lines.Length - 1; index >= 0 && results.Count < maximumEntries; index--)
+            await HistoryLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
             {
-                if (string.IsNullOrWhiteSpace(lines[index]))
+                if (!File.Exists(_historyPath))
                 {
-                    continue;
+                    return Array.Empty<InvestigationHistoryEntry>();
                 }
 
-                try
+                string[] lines = await File.ReadAllLinesAsync(_historyPath, cancellationToken).ConfigureAwait(false);
+                var results = new List<InvestigationHistoryEntry>(Math.Min(maximumEntries, lines.Length));
+
+                for (int index = lines.Length - 1; index >= 0 && results.Count < maximumEntries; index--)
                 {
-                    var entry = JsonSerializer.Deserialize<InvestigationHistoryEntry>(lines[index], JsonOptions);
-                    if (entry is not null)
+                    if (string.IsNullOrWhiteSpace(lines[index]))
                     {
-                        results.Add(entry);
+                        continue;
+                    }
+
+                    try
+                    {
+                        var entry = JsonSerializer.Deserialize<InvestigationHistoryEntry>(lines[index], JsonOptions);
+                        if (entry is not null)
+                        {
+                            results.Add(entry);
+                        }
+                    }
+                    catch (JsonException)
+                    {
+                        // Preserve access to valid history if one historical record is damaged.
                     }
                 }
-                catch (JsonException)
-                {
-                    // Preserve access to valid history if one historical record is damaged.
-                }
-            }
 
-            return results;
+                return results;
+            }
+            finally
+            {
+                HistoryLock.Release();
+            }
         }
 
         public async Task<int> CountRecentOccurrencesAsync(
