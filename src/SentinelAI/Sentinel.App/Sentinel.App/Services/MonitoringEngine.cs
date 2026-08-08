@@ -133,7 +133,7 @@ namespace Sentinel.App.Services
                 DiskUsagePercent = _diskMonitor.GetUsagePercent(), DiskFreeGB = _diskMonitor.GetFreeSpaceGB(), DiskTotalGB = _diskMonitor.GetTotalSpaceGB(), DownloadMbps = networkSnapshot.DownloadMbps, UploadMbps = networkSnapshot.UploadMbps,
                 ProcessCount = _processSnapshot.TotalProcessCount, HighestMemoryProcessName = _processSnapshot.HighestMemoryProcessName, HighestMemoryProcessGB = _processSnapshot.HighestMemoryProcessGB, FlaggedProcessCount = _processSnapshot.FlaggedProcessCount, PrimaryFlaggedProcessName = _processSnapshot.PrimaryProcessName, PrimaryFlaggedProcessReason = _processSnapshot.PrimaryReason,
                 ProcessRelationshipCount = _processLineageSnapshot.RelationshipCount, FlaggedProcessRelationshipCount = _processLineageSnapshot.ReviewRelationshipCount, PrimaryLineageChildProcessName = _processLineageSnapshot.PrimaryChildProcessName, PrimaryLineageParentProcessName = _processLineageSnapshot.PrimaryParentProcessName, PrimaryLineageReason = _processLineageSnapshot.PrimaryReason,
-                ReviewedCommandLineProcessCount = _commandLineSnapshot.ReviewedProcessCount, FlaggedCommandLineCount = _commandLineSnapshot.ReviewFindingCount, PrimaryCommandLineProcessName = _commandLineSnapshot.PrimaryProcessName, PrimaryCommandLineReason = _commandLineSnapshot.PrimaryReason, PrimaryCommandLineSummary = _commandLineSnapshot.PrimaryCommandLineSummary,
+                CommandLineMonitoringAvailable = _commandLineSnapshot.CollectionAvailable, ReviewedCommandLineProcessCount = _commandLineSnapshot.ReviewedProcessCount, FlaggedCommandLineCount = _commandLineSnapshot.ReviewFindingCount, PrimaryCommandLineProcessName = _commandLineSnapshot.PrimaryProcessName, PrimaryCommandLineReason = _commandLineSnapshot.PrimaryReason, PrimaryCommandLineSummary = _commandLineSnapshot.PrimaryCommandLineSummary,
                 InstalledServiceCount = _serviceSnapshot.InstalledServiceCount, RunningServiceCount = _serviceSnapshot.RunningServiceCount, FlaggedServiceCount = _serviceSnapshot.FlaggedServiceCount, PrimaryFlaggedServiceName = _serviceSnapshot.PrimaryServiceName, PrimaryFlaggedServiceReason = _serviceSnapshot.PrimaryReason,
                 StartupPersistenceMonitoringAvailable = _startupSnapshot.CollectionAvailable, StartupEntryCount = _startupSnapshot.TotalEntryCount, FlaggedStartupEntryCount = _startupSnapshot.ReviewEntryCount, PrimaryFlaggedStartupEntryName = _startupSnapshot.PrimaryEntryName, PrimaryFlaggedStartupEntryReason = _startupSnapshot.PrimaryReason,
                 ScheduledTaskMonitoringAvailable = _scheduledTaskSnapshot.CollectionAvailable, ScheduledTaskCount = _scheduledTaskSnapshot.TotalTaskCount, FlaggedScheduledTaskCount = _scheduledTaskSnapshot.ReviewTaskCount, PrimaryFlaggedScheduledTaskName = _scheduledTaskSnapshot.PrimaryTaskName, PrimaryFlaggedScheduledTaskReason = _scheduledTaskSnapshot.PrimaryReason,
@@ -518,6 +518,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_commandLineMonitor.GetSnapshot, _commandLineSnapshot);
             if (!result.Success)
             {
+                _commandLineSnapshot = CommandLineMonitor.CommandLineSnapshot.Unavailable;
                 _lastCommandLineRefresh = now;
                 return;
             }
