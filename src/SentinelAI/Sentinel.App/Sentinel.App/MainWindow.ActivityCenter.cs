@@ -69,7 +69,14 @@ namespace Sentinel.App
             MaintenanceReport report = _maintenanceReportService.BuildReport();
             MaintenanceReportItem? latest = report.RecentItems.OrderByDescending(item => item.TimestampUtc).FirstOrDefault();
 
-            if (latest is not null)
+            if (report.Headline.Equals("Maintenance history unavailable", StringComparison.OrdinalIgnoreCase))
+            {
+                HistoryOutcomeIconText.Text = "!";
+                HistoryTitleText.Text = report.Headline;
+                HistorySummaryText.Text = report.Summary;
+                HistoryOutcomeText.Text = "History evidence unavailable • Monitoring continues";
+            }
+            else if (latest is not null)
             {
                 FriendlyValueSummaryService.FriendlyValueSummary? friendly = _friendlyValueActivityService.CreateFor(latest);
                 HistoryOutcomeIconText.Text = latest.NeedsAttention ? "!" : "✓";
@@ -103,8 +110,12 @@ namespace Sentinel.App
                 return "Sentinel optimized your computer";
             }
             if (summary.Contains("permanently deleted", StringComparison.OrdinalIgnoreCase)) return "Quarantined file permanently deleted";
-            if (summary.Contains("restored the approved file", StringComparison.OrdinalIgnoreCase) || summary.Contains("restored", StringComparison.OrdinalIgnoreCase) && item.Category.Equals("Protection", StringComparison.OrdinalIgnoreCase)) return "Quarantined file restored";
-            if (summary.Contains("quarantined", StringComparison.OrdinalIgnoreCase) && item.Category.Equals("Protection", StringComparison.OrdinalIgnoreCase)) return "Suspicious file quarantined";
+            if (item.Category.Equals("Quarantine", StringComparison.OrdinalIgnoreCase) &&
+                summary.Contains("restored", StringComparison.OrdinalIgnoreCase))
+                return "Quarantined file restored";
+            if (item.Category.Equals("Quarantine", StringComparison.OrdinalIgnoreCase) &&
+                summary.Contains("quarantined", StringComparison.OrdinalIgnoreCase))
+                return "Suspicious file quarantined";
             if (item.Outcome.Equals("Safely restored", StringComparison.OrdinalIgnoreCase)) return "Sentinel protected your computer";
             return "Sentinel fixed an issue";
         }
