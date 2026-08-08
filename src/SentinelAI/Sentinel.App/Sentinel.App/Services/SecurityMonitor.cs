@@ -25,7 +25,8 @@ namespace Sentinel.App.Services
 
         public bool IsWindowsDefenderInstalled()
         {
-            return GetDefenderStatus() != "Not detected";
+            string status = GetDefenderStatus();
+            return status != "Not detected" && status != "Unavailable";
         }
 
         public bool IsFirewallInstalled()
@@ -54,11 +55,21 @@ namespace Sentinel.App.Services
                 using RegistryKey? realTimeKey =
                     Registry.LocalMachine.OpenSubKey(DefenderRealTimeProtection);
 
-                int disableRealTimeMonitoring = ConvertToInt32(
-                    realTimeKey?.GetValue("DisableRealtimeMonitoring"),
-                    defaultValue: 0);
+                using RegistryKey? advancedThreatProtectionKey =
+                    Registry.LocalMachine.OpenSubKey(DefenderAdvancedThreatProtection);
 
-                if (engineRunning && disableRealTimeMonitoring == 0)
+                if (!TryReadOptionalDword(realTimeKey?.GetValue("DisableRealtimeMonitoring"), out int disableRealTimeMonitoring) ||
+                    !TryReadOptionalDword(defenderKey.GetValue("DisableAntiSpyware"), out int disableAntiSpyware) ||
+                    !TryReadOptionalDword(defenderKey.GetValue("PassiveMode"), out int passiveMode) ||
+                    !TryReadOptionalDword(advancedThreatProtectionKey?.GetValue("ForceDefenderPassiveMode"), out int forcedPassiveMode))
+                {
+                    return "Unavailable";
+                }
+
+                bool disabledByPolicy = disableRealTimeMonitoring != 0 || disableAntiSpyware != 0;
+                bool passiveByPolicy = passiveMode != 0 || forcedPassiveMode != 0;
+
+                if (engineRunning && !disabledByPolicy && !passiveByPolicy)
                 {
                     return "Enabled";
                 }
@@ -135,6 +146,17 @@ namespace Sentinel.App.Services
             {
                 return "Unavailable";
             }
+        }
+
+        private static bool TryReadOptionalDword(object? value, out int converted)
+        {
+            if (value is null)
+            {
+                converted = 0;
+                return true;
+            }
+
+            return TryConvertToInt32(value, out converted);
         }
 
         private static bool TryConvertToInt32(object? value, out int converted)
