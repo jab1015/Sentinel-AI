@@ -162,33 +162,35 @@ namespace Sentinel.App.Services
                 CanRequestElevation: false));
 
             if (!decision.Allowed)
-            {
                 return Failed(decision.Explanation);
-            }
 
             if (decision.RequiresUserApproval && !userApproved)
-            {
                 return new QuarantineResult(false, true, false, record, record.Sha256, decision.Explanation);
-            }
+
+            string deletionPath = record.QuarantinePath + $".delete-{Guid.NewGuid():N}";
+            bool isolatedForDeletion = false;
 
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
                 if (!File.Exists(record.QuarantinePath))
-                {
                     return Failed("The quarantined file is no longer available to delete.");
-                }
 
-                string currentHash = await ComputeSha256Async(record.QuarantinePath, cancellationToken).ConfigureAwait(false);
+                File.Move(record.QuarantinePath, deletionPath);
+                isolatedForDeletion = true;
+
+                string currentHash = await ComputeSha256Async(deletionPath, cancellationToken)
+                    .ConfigureAwait(false);
                 if (!string.Equals(currentHash, record.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
-                    return Failed("The quarantined file no longer matches its verified record, so Sentinel will not delete it.");
+                    bool rolledBack = TryRollbackMove(deletionPath, record.QuarantinePath);
+                    return Failed(rolledBack
+                        ? "The isolated file no longer matched its quarantine record. Sentinel restored it to quarantine and did not delete it."
+                        : "The isolated file did not match its record and Sentinel could not verify rollback. User review is required.");
                 }
 
-                File.Delete(record.QuarantinePath);
-                bool verified = !File.Exists(record.QuarantinePath);
-
+                File.Delete(deletionPath);
+                bool verified = !File.Exists(deletionPath) && !File.Exists(record.QuarantinePath);
                 return verified
                     ? new QuarantineResult(
                         true,
@@ -197,15 +199,23 @@ namespace Sentinel.App.Services
                         record,
                         record.Sha256,
                         "Sentinel permanently deleted the approved quarantined file and verified that the isolated copy no longer exists.")
-                    : Failed("Sentinel attempted the permanent deletion but could not verify the result.");
+                    : Failed("Sentinel attempted permanent deletion but could not verify the result.");
             }
             catch (OperationCanceledException)
             {
-                return Failed("The permanent deletion was canceled before Sentinel could verify the result.");
+                bool rolledBack = !isolatedForDeletion ||
+                    TryRollbackMove(deletionPath, record.QuarantinePath);
+                return Failed(rolledBack
+                    ? "Permanent deletion was canceled and Sentinel restored the file to quarantine."
+                    : "Permanent deletion was canceled and Sentinel could not verify restoration to quarantine. User review is required.");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
-                return Failed("Sentinel could not safely delete the quarantined file. No success was reported.");
+                bool rolledBack = !isolatedForDeletion ||
+                    TryRollbackMove(deletionPath, record.QuarantinePath);
+                return Failed(rolledBack
+                    ? "Sentinel could not safely delete the quarantined file and restored its isolated copy."
+                    : "Sentinel could not complete deletion or verify restoration of the isolated copy. User review is required.");
             }
         }
 
@@ -213,47 +223,67 @@ namespace Sentinel.App.Services
             QuarantineRecord record,
             CancellationToken cancellationToken)
         {
+            bool moved = false;
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (!File.Exists(record.QuarantinePath))
-                {
                     return Failed("The quarantined file is no longer available to restore.");
-                }
 
                 if (File.Exists(record.OriginalPath))
-                {
                     return Failed("Sentinel will not overwrite an existing file at the original location.");
-                }
 
-                string currentHash = await ComputeSha256Async(record.QuarantinePath, cancellationToken).ConfigureAwait(false);
+                string currentHash = await ComputeSha256Async(record.QuarantinePath, cancellationToken)
+                    .ConfigureAwait(false);
                 if (!string.Equals(currentHash, record.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
                     return Failed("The quarantined file no longer matches its verified record, so Sentinel will not restore it.");
-                }
 
                 string? parent = Path.GetDirectoryName(record.OriginalPath);
                 if (!string.IsNullOrWhiteSpace(parent))
-                {
                     Directory.CreateDirectory(parent);
-                }
 
                 File.Move(record.QuarantinePath, record.OriginalPath);
-                bool verified = File.Exists(record.OriginalPath) && !File.Exists(record.QuarantinePath);
+                moved = true;
 
-                return verified
-                    ? new QuarantineResult(true, false, true, record, record.Sha256,
-                        "Sentinel restored the approved file and verified its original location.")
-                    : Failed("Sentinel attempted the restore but could not verify the result.");
+                string restoredHash = await ComputeSha256Async(record.OriginalPath, cancellationToken)
+                    .ConfigureAwait(false);
+                bool verified =
+                    string.Equals(restoredHash, record.Sha256, StringComparison.OrdinalIgnoreCase) &&
+                    File.Exists(record.OriginalPath) &&
+                    !File.Exists(record.QuarantinePath);
+
+                if (!verified)
+                {
+                    bool rolledBack = TryRollbackMove(record.OriginalPath, record.QuarantinePath);
+                    return Failed(rolledBack
+                        ? "The restored file did not match its quarantine record. Sentinel returned it to quarantine and reported no success."
+                        : "The restored file did not match its record and Sentinel could not verify rollback. User review is required.");
+                }
+
+                return new QuarantineResult(
+                    true,
+                    false,
+                    true,
+                    record,
+                    record.Sha256,
+                    "Sentinel restored the approved file and verified its identity and original location.");
             }
             catch (OperationCanceledException)
             {
-                return Failed("The restore action was canceled before Sentinel could verify the result.");
+                bool rolledBack = !moved ||
+                    TryRollbackMove(record.OriginalPath, record.QuarantinePath);
+                return Failed(rolledBack
+                    ? "Restore was canceled and Sentinel verified that the file remained quarantined."
+                    : "Restore was canceled after the move and Sentinel could not verify rollback. User review is required.");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
-                return Failed("Sentinel could not safely restore the file. No success was reported.");
+                bool rolledBack = !moved ||
+                    TryRollbackMove(record.OriginalPath, record.QuarantinePath);
+                return Failed(rolledBack
+                    ? "Sentinel could not safely restore the file and verified that it remained quarantined."
+                    : "Sentinel could not complete restore or verify rollback. User review is required.");
             }
         }
 
