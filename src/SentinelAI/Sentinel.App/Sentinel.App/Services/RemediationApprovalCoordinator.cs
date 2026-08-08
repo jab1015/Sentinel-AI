@@ -17,6 +17,7 @@ namespace Sentinel.App.Services
     {
         private static readonly TimeSpan ApprovalLifetime = TimeSpan.FromMinutes(2);
         private readonly HashSet<Guid> _consumedRequestIds = new();
+        private readonly Dictionary<Guid, RemediationApprovalRequest> _issuedRequests = new();
         private readonly object _sync = new();
 
         public RemediationApprovalRequest? CreateRequest(SystemSnapshot snapshot)
@@ -34,7 +35,7 @@ namespace Sentinel.App.Services
 
             DateTimeOffset createdAt = DateTimeOffset.Now;
 
-            return new RemediationApprovalRequest(
+            var request = new RemediationApprovalRequest(
                 RequestId: Guid.NewGuid(),
                 Action: snapshot.AutonomousProtectionAction,
                 Target: snapshot.AutonomousProtectionTarget,
@@ -44,6 +45,13 @@ namespace Sentinel.App.Services
                 ExpiresAt: createdAt.Add(ApprovalLifetime),
                 Title: BuildTitle(snapshot.AutonomousProtectionAction),
                 Summary: BuildSummary(snapshot));
+
+            lock (_sync)
+            {
+                _issuedRequests[request.RequestId] = request;
+            }
+
+            return request;
         }
 
         public ApprovalValidationResult Validate(
@@ -54,17 +62,26 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(currentSnapshot);
 
-            if (!userApproved)
-            {
-                return ApprovalValidationResult.Denied("You did not approve this action. Sentinel made no system change.");
-            }
-
             lock (_sync)
             {
                 if (_consumedRequestIds.Contains(request.RequestId))
                 {
-                    return ApprovalValidationResult.Denied("This approval was already used. Sentinel made no additional system change.");
+                    return ApprovalValidationResult.Denied("This approval request was already validated. Sentinel made no additional system change.");
                 }
+
+                if (!_issuedRequests.TryGetValue(request.RequestId, out RemediationApprovalRequest? issued) ||
+                    issued != request)
+                {
+                    return ApprovalValidationResult.Denied("Sentinel rejected an approval request that it did not issue for this exact action and evidence.");
+                }
+
+                _issuedRequests.Remove(request.RequestId);
+                _consumedRequestIds.Add(request.RequestId);
+            }
+
+            if (!userApproved)
+            {
+                return ApprovalValidationResult.Denied("You did not approve this action. Sentinel made no system change.");
             }
 
             if (DateTimeOffset.Now > request.ExpiresAt)
@@ -87,14 +104,6 @@ namespace Sentinel.App.Services
             if (currentSnapshot.GuidanceConfidencePercent < request.EvidenceConfidencePercent)
             {
                 return ApprovalValidationResult.Denied("Evidence confidence decreased after approval. Sentinel will not proceed without re-investigating.");
-            }
-
-            lock (_sync)
-            {
-                if (!_consumedRequestIds.Add(request.RequestId))
-                {
-                    return ApprovalValidationResult.Denied("This approval was already used. Sentinel made no additional system change.");
-                }
             }
 
             return ApprovalValidationResult.Approved(
