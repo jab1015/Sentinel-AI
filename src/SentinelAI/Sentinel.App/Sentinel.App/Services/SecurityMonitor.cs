@@ -14,6 +14,7 @@ namespace Sentinel.App.Services
     {
         private const string DefenderRoot = @"SOFTWARE\Microsoft\Windows Defender";
         private const string DefenderRealTimeProtection = DefenderRoot + @"\Real-Time Protection";
+        private const string DefenderAdvancedThreatProtection = @"SOFTWARE\\Policies\\Microsoft\\Windows Advanced Threat Protection";
         private const string FirewallProfiles = @"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy";
 
         public SecurityStatusSnapshot GetStatus()
