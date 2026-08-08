@@ -8,12 +8,12 @@ Sentinel AI is a Windows desktop application built with **WinUI 3** and **.NET 8
 
 # Project Status
 
-**Status:** Release Candidate Validated — Evidence Accuracy Audit Complete
+**Status:** Feature Complete — Final Packaged Validation Pending
 **Production Branch:** `main`
 **Current Version:** **1.0.25.0**
-**Release Readiness:** **Validated**
+**Release Readiness:** **99% — refreshed MSIX and final regression pending**
 
-The installed Sentinel AI package has passed runtime validation, including installed package, publisher, startup task, runtime persistence, Defender/Firewall evidence, network telemetry, diagnostic logging, persistent investigation memory, optimization transparency, and System Evidence accuracy.
+The current Release build has passed the final evidence-accuracy, subscription-boundary, Activity Center, optimization-transparency, and BSOD-response live checks. A refreshed installed package must still pass Store-entitlement, packaged-startup, complete automated regression, and resource smoke validation before release.
 
 # System Evidence Accuracy
 
@@ -24,14 +24,14 @@ The user-facing System Evidence panel is evidence-bound and names what Sentinel 
 - **Windows System Drive** — used/total capacity for the Windows system drive, not all disks.
 - **Current Network Activity** — live receive/send throughput; it is not an internet bandwidth or Speedtest-style capability measurement.
 - **Running Processes** — current process count and highest working-memory process.
-- **Windows Security Evidence** — qualified Defender/Firewall evidence; Sentinel does not overstate inference as authoritative security-product state.
+- **Windows Security Evidence** — free basic Defender/Firewall status. Advanced Sentinel correlation, proactive security, external/cloud investigation, optimization, repair, containment, and quarantine require verified subscription entitlement.
 - **Evidence Collected** — timestamp of the evidence snapshot being displayed.
 
 If Sentinel cannot verify a value, it must say so. It must not invent values or label one measurement as a different capability.
 
 # Optimization Transparency
 
-Optimization is evaluated automatically. Sentinel establishes a local performance baseline before making evidence-driven performance changes unless an immediately actionable condition is independently verified.
+Sentinel establishes a free local performance baseline. Applying automatic optimization changes requires verified subscription entitlement, explicit user opt-in, and the mandatory evidence, verification, and rollback safety policy.
 
 Recent Activity and Optimization Status are separate:
 
