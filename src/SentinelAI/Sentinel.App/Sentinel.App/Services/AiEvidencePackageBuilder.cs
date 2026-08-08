@@ -44,6 +44,8 @@ namespace Sentinel.App.Services
             if (snapshot.FlaggedScheduledTaskCount > 0) Add(facts, "task", $"{snapshot.PrimaryFlaggedScheduledTaskName}: {snapshot.PrimaryFlaggedScheduledTaskReason}");
             if (!snapshot.DefenderEnabled || !snapshot.FirewallEnabled)
                 Add(facts, "protection", $"Defender={snapshot.DefenderEnabled}; Firewall={snapshot.FirewallEnabled}; {snapshot.ProtectionHealthSummary}");
+            if (snapshot.RecentCrashDetected)
+                Add(facts, "windows-crash", snapshot.RecentCrashSummary);
 
             if (external is not null)
             {
@@ -99,8 +101,9 @@ namespace Sentinel.App.Services
             return string.IsNullOrWhiteSpace(port) ? "[redacted-endpoint]" : $"[redacted-endpoint]:{port}";
         }
 
-        private static string Limit(string value, int max) => value.Length <= max ? value : value[..max] + "…";
+        private static string Limit(string value, int max) => value.Length <= max ? value : value[..max] + "â€¦";
     }
 
     public sealed record AiEvidencePackage(string Purpose, string Payload, int CharacterCount, int EstimatedInputTokens, bool Redacted, bool ContainsFullSystemDump);
 }
+
