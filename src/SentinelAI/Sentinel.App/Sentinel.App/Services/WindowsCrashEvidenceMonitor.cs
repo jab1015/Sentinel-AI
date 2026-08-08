@@ -13,6 +13,7 @@ namespace Sentinel.App.Services
     {
         private const int MaximumEvents = 40;
         private static readonly TimeSpan IncidentCorrelationWindow = TimeSpan.FromMinutes(30);
+        private readonly CrashDumpAnalysisService _dumpAnalysisService = new();
         private const string CrashEventQuery =
             "*[System[(((EventID=1001) and Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting']) or (EventID=41) or (EventID=6008)) and TimeCreated[timediff(@SystemTime) <= 604800000]]]";
 
@@ -38,7 +39,19 @@ namespace Sentinel.App.Services
                         GetSafeDescription(record)));
                 }
 
-                return Analyze(events, FindLatestMinidump(), true);
+                MinidumpEvidence? minidump = FindLatestMinidump();
+                WindowsCrashEvidenceSnapshot snapshot = Analyze(events, minidump, true);
+                if (!snapshot.CrashDetected)
+                    return snapshot;
+
+                CrashDumpAnalysisService.CrashDumpAnalysisResult dump =
+                    _dumpAnalysisService.AnalyzeLatest(snapshot.OccurredAt);
+                string combinedSummary = snapshot.Summary + " " + dump.Summary;
+                return snapshot with
+                {
+                    RootCauseVerified = false,
+                    Summary = combinedSummary
+                };
             }
             catch (EventLogNotFoundException) { return Unavailable("The Windows System event log is unavailable."); }
             catch (UnauthorizedAccessException) { return Unavailable("Sentinel cannot access Windows crash-event evidence."); }
