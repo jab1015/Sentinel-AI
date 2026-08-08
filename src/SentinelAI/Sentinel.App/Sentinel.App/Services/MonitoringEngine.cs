@@ -141,7 +141,7 @@ namespace Sentinel.App.Services
                 PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName, PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint, PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
                 ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, RecentUniqueExternalConnectionCount = _activeConnectionSnapshot.RecentUniqueExternalConnectionCount, RepeatingExternalConnectionCount = _activeConnectionSnapshot.RepeatingExternalConnectionCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled", FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled", DefenderStatus = _securitySnapshot.DefenderStatus, FirewallStatus = _securitySnapshot.FirewallStatus,
-                CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage,
+                EventLogMonitoringAvailable = _eventLogSnapshot.CollectionAvailable, CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage,
                 AuthenticationMonitoringAvailable = _authenticationSnapshot.CollectionAvailable, RecentFailedLogonCount = _authenticationSnapshot.FailedLogonCount, RepeatedAuthenticationSourceCount = _authenticationSnapshot.RepeatedSourceFailureCount, PrimaryAuthenticationSource = _authenticationSnapshot.PrimarySourceAddress, AuthenticationAnomalyDetected = _authenticationSnapshot.SuspiciousPattern, AuthenticationAnomalyConfidenceScore = _authenticationSnapshot.ConfidenceScore, AuthenticationAnomalyState = _authenticationSnapshot.State, AuthenticationAnomalySummary = _authenticationSnapshot.Summary,
                 CrashEvidenceAvailable = _crashSnapshot.CollectionAvailable, RecentCrashDetected = _crashSnapshot.CrashDetected, RecentBugCheckDetected = _crashSnapshot.BugCheckDetected, RecentCrashTime = _crashSnapshot.OccurredAt, RecentCrashEventId = _crashSnapshot.PrimaryEventId, RecentCrashProvider = _crashSnapshot.Provider, RecentBugCheckCode = _crashSnapshot.BugCheckCode, CrashRootCauseVerified = _crashSnapshot.RootCauseVerified, RecentCrashSummary = _crashSnapshot.Summary
             };
@@ -562,7 +562,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_eventLogMonitor.GetStatus, _eventLogSnapshot);
             if (!result.Success)
             {
-                _eventLogSnapshot = new EventLogMonitor.EventLogStatusSnapshot(0, 0, null, "Unavailable", "Windows Event Log evidence could not be collected.");
+                _eventLogSnapshot = EventLogMonitor.EventLogStatusSnapshot.Unavailable;
                 _lastEventLogRefresh = now;
                 return;
             }
