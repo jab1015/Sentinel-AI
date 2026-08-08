@@ -26,10 +26,17 @@ Check("Cleanup summary created", cleanup is not null);
 Check("Temporary cleanup described", cleanup?.Message.Contains("temporary files", StringComparison.OrdinalIgnoreCase) == true);
 
 Console.WriteLine("\n--- Scenario 3: verified network repair uses reassuring repair language ---");
-var network = service.CreateFor(Item("Network", "Network repair completed and DNS settings verified."));
+var network = service.CreateFor(Item("Network", "Sentinel repaired the DNS resolver cache and verified that name resolution is working.", action: "FlushDnsCache"));
 Check("Network summary created", network is not null);
 Check("Repair title used", network?.Title.Contains("took care of it", StringComparison.OrdinalIgnoreCase) == true);
 Check("Network work described", network?.Message.Contains("network settings", StringComparison.OrdinalIgnoreCase) == true);
+
+Console.WriteLine("\n--- Scenario 3b: a network investigation is never presented as a repair ---");
+var networkInvestigation = service.CreateFor(Item(
+    "Investigation",
+    "Sentinel network protection monitoring requires a subscription.",
+    action: "Protection status"));
+Check("Network investigation repair claim suppressed", networkInvestigation is null);
 
 Console.WriteLine("\n--- Scenario 4: completed but unverified work is never celebrated ---");
 var unverified = service.CreateFor(Item("Optimization", "Drive optimization completed.", "Completed"));
