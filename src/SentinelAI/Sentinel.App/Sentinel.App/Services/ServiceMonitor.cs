@@ -22,6 +22,7 @@ namespace Sentinel.App.Services
             int flaggedCount = 0;
             string primaryServiceName = "None";
             string primaryReason = "No service warning conditions were detected.";
+            bool collectionComplete = true;
 
             ServiceController[] services;
             try
@@ -35,7 +36,8 @@ namespace Sentinel.App.Services
                     0,
                     0,
                     "Unavailable",
-                    "Windows service information could not be read.");
+                    "Windows service information could not be read.",
+                    false);
             }
 
             try
@@ -52,6 +54,7 @@ namespace Sentinel.App.Services
                         }
 
                         ServiceRegistryInfo registryInfo = ReadRegistryInfo(service.ServiceName);
+                        if (!registryInfo.Available) collectionComplete = false;
                         string? finding = EvaluateService(service, registryInfo);
                         if (finding is null)
                         {
@@ -86,7 +89,8 @@ namespace Sentinel.App.Services
                 runningCount,
                 flaggedCount,
                 primaryServiceName,
-                primaryReason);
+                primaryReason,
+                collectionComplete);
         }
 
         public ServiceStatusSnapshot GetServiceStatus(string displayName)
@@ -188,7 +192,8 @@ namespace Sentinel.App.Services
                 return new ServiceRegistryInfo(
                     startType,
                     delayedAutoStart,
-                    ExtractExecutablePath(imagePath));
+                    ExtractExecutablePath(imagePath),
+                    true);
             }
             catch
             {
@@ -270,9 +275,10 @@ namespace Sentinel.App.Services
         private sealed record ServiceRegistryInfo(
             int StartType,
             bool DelayedAutoStart,
-            string ExecutablePath)
+            string ExecutablePath,
+            bool Available)
         {
-            public static ServiceRegistryInfo Empty { get; } = new(-1, false, string.Empty);
+            public static ServiceRegistryInfo Empty { get; } = new(-1, false, string.Empty, false);
         }
 
         public sealed record ServiceIntelligenceSnapshot(
@@ -280,7 +286,12 @@ namespace Sentinel.App.Services
             int RunningServiceCount,
             int FlaggedServiceCount,
             string PrimaryServiceName,
-            string PrimaryReason);
+            string PrimaryReason,
+            bool CollectionAvailable = true)
+        {
+            public static ServiceIntelligenceSnapshot Unavailable { get; } =
+                new(0, 0, 0, "Unavailable", "Windows service evidence could not be collected.", false);
+        }
 
         public sealed record ServiceStatusSnapshot(
             bool Found,
