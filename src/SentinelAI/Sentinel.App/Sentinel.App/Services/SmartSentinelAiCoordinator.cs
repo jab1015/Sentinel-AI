@@ -94,11 +94,11 @@ namespace Sentinel.App.Services
         {
             if (Cache.Count < MaximumCacheEntries) return;
 
-            foreach ((string key, CacheEntry _) in Cache
-                         .OrderBy(pair => pair.Value.ExpiresUtc)
+            foreach (var pair in Cache
+                         .OrderBy(item => item.Value.ExpiresUtc)
                          .Take(Math.Max(1, Cache.Count - MaximumCacheEntries + 20)))
             {
-                Cache.TryRemove(key, out _);
+                Cache.TryRemove(pair.Key, out _);
             }
         }
 
