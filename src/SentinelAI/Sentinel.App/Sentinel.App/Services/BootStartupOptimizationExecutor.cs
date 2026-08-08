@@ -6,6 +6,8 @@
 using Microsoft.Win32;
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Sentinel.App.Services
@@ -87,10 +89,34 @@ namespace Sentinel.App.Services
                         "Sentinel could not preserve rollback information, so the startup item was not changed.");
                 }
 
-                key.DeleteValue(candidate.Name, throwOnMissingValue: false);
+                try
+                {
+                    key.DeleteValue(candidate.Name, throwOnMissingValue: false);
 
-                bool removed = key.GetValue(candidate.Name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is null;
-                if (!removed)
+                    bool removed = key.GetValue(candidate.Name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) is null;
+                    if (!removed)
+                    {
+                        bool rolledBack = Restore(key, rollbackRecord);
+                        return new BootStartupOptimizationExecutionResult(
+                            true,
+                            false,
+                            false,
+                            rolledBack,
+                            candidate.Name,
+                            rolledBack
+                                ? "Windows did not accept the startup optimization. Sentinel restored the original startup entry."
+                                : "Windows did not accept the startup optimization and Sentinel could not verify rollback. No further startup changes will be attempted automatically.");
+                    }
+
+                    return new BootStartupOptimizationExecutionResult(
+                        true,
+                        true,
+                        true,
+                        false,
+                        candidate.Name,
+                        "Sentinel disabled one verified high-impact current-user startup item and preserved the original value for rollback. Boot improvement will be evaluated after future restarts.");
+                }
+                catch (Exception ex)
                 {
                     bool rolledBack = Restore(key, rollbackRecord);
                     return new BootStartupOptimizationExecutionResult(
@@ -100,17 +126,9 @@ namespace Sentinel.App.Services
                         rolledBack,
                         candidate.Name,
                         rolledBack
-                            ? "Windows did not accept the startup optimization. Sentinel restored the original startup entry."
-                            : "Windows did not accept the startup optimization and Sentinel could not verify rollback. No further startup changes will be attempted automatically.");
+                            ? $"Sentinel stopped after a startup-change error and restored the original entry ({ex.GetType().Name})."
+                            : $"Sentinel stopped after a startup-change error, but could not verify rollback ({ex.GetType().Name}).");
                 }
-
-                return new BootStartupOptimizationExecutionResult(
-                    true,
-                    true,
-                    true,
-                    false,
-                    candidate.Name,
-                    "Sentinel disabled one verified high-impact current-user startup item and preserved the original value for rollback. Boot improvement will be evaluated after future restarts.");
             }
             catch (Exception ex)
             {
@@ -141,17 +159,29 @@ namespace Sentinel.App.Services
                     "rollback");
 
                 Directory.CreateDirectory(directory);
-                string safeName = string.Join("_", record.Name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
-                if (string.IsNullOrWhiteSpace(safeName))
-                    safeName = "startup-item";
+                string nameHash = Convert.ToHexString(
+                    SHA256.HashData(Encoding.UTF8.GetBytes(record.Name)))[..16];
+                string path = Path.Combine(
+                    directory,
+                    $"startup-{record.CreatedUtc.UtcDateTime.Ticks}-{nameHash}.json");
+                string temporaryPath = Path.Combine(
+                    directory,
+                    $".startup-rollback.{Guid.NewGuid():N}.tmp");
 
-                string path = Path.Combine(directory, $"startup-{safeName}.json");
-                File.WriteAllText(path, JsonSerializer.Serialize(record, new JsonSerializerOptions
+                try
                 {
-                    WriteIndented = true
-                }));
-
-                return true;
+                    File.WriteAllText(temporaryPath, JsonSerializer.Serialize(record, new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    }));
+                    File.Move(temporaryPath, path, overwrite: false);
+                    return true;
+                }
+                finally
+                {
+                    try { File.Delete(temporaryPath); }
+                    catch { }
+                }
             }
             catch
             {
