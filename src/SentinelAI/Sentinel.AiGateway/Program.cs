@@ -37,6 +37,35 @@ app.MapGet("/health", () => Results.Ok(new
     providerConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY"))
 }));
 
+app.MapPost("/v1/report-ai-content", (AiContentReportRequest request) =>
+{
+    if (request.SchemaVersion != 1)
+        return Results.BadRequest(new { error = "Unsupported schema version." });
+
+    string responseId = Limit((request.ResponseId ?? string.Empty).Trim(), 64);
+    string category = Limit((request.Category ?? string.Empty).Trim(), 64);
+    string comments = Limit((request.Comments ?? string.Empty).Trim(), 1000);
+    string responseText = Limit((request.ResponseText ?? string.Empty).Trim(), 2500);
+
+    if (string.IsNullOrWhiteSpace(responseId) || string.IsNullOrWhiteSpace(category) || string.IsNullOrWhiteSpace(responseText))
+        return Results.BadRequest(new { error = "Report is incomplete." });
+
+    var auditRecord = new
+    {
+        eventType = "AI_CONTENT_REPORT",
+        schemaVersion = 1,
+        responseId,
+        category,
+        comments,
+        responseText,
+        reportedAtUtc = request.ReportedAtUtc == default ? DateTimeOffset.UtcNow : request.ReportedAtUtc,
+        receivedAtUtc = DateTimeOffset.UtcNow
+    };
+
+    Console.WriteLine("AI_CONTENT_REPORT " + JsonSerializer.Serialize(auditRecord));
+    return Results.Ok(new { accepted = true, responseId });
+});
+
 app.MapPost("/v1/analyze", async (
     SentinelAiRequest request,
     IHttpClientFactory httpClientFactory,
@@ -197,6 +226,8 @@ static string SafeProviderError(string raw)
     return oneLine.Length <= 1000 ? oneLine : oneLine[..1000];
 }
 
+static string Limit(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
 public sealed record SentinelAiRequest(
     int SchemaVersion,
     string Purpose,
@@ -212,3 +243,11 @@ public sealed record SentinelAiResponse(
     int OutputTokens,
     int ConfidencePercent,
     bool RequiresMoreEvidence);
+
+public sealed record AiContentReportRequest(
+    int SchemaVersion,
+    string? ResponseId,
+    string? Category,
+    string? Comments,
+    string? ResponseText,
+    DateTimeOffset ReportedAtUtc);
