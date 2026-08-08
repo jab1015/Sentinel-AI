@@ -1,9 +1,44 @@
 # SAI-013 — Implementation Tracker
 
-**Version:** 6.5  
-**Status:** Active — Evidence Accuracy and Optimization Transparency Complete  
-**Last Updated:** 2026-08-06  
+**Version:** 6.6  
+**Status:** Active — Proactive security implementation complete; Windows acceptance pending  
+**Last Updated:** 2026-08-08  
 **Production Branch:** `main`
+
+## Current Security Completion Cycle
+
+**Implementation progress: approximately 97%**
+
+### Implemented and statically verified
+
+- [x] Continuous security monitoring with provider isolation and serialized refresh.
+- [x] Defender and complete Firewall profile evidence with fail-closed availability.
+- [x] Inbound, outbound, listening, UDP, public-endpoint, recurrence, and process attribution evidence.
+- [x] Remote authentication anomaly and brute-force correlation.
+- [x] Process, command-line, lineage, service, startup, task, persistence, spyware, and crash correlation.
+- [x] Persistent atomic investigation, maintenance, remediation, and Activity history.
+- [x] Ask Sentinel grounding in current evidence and verified history.
+- [x] Historical optimization answers distinguish recorded actions from current need.
+- [x] Exact, single-use remediation approval with process PID/start-time binding.
+- [x] Transactional firewall and quarantine containment with rollback and tamper checks.
+- [x] Automatic optimization explicit opt-in, mandatory verification/rollback, serialization, and cooldown.
+- [x] One attempted maintenance change per cycle.
+- [x] Bounded diagnostic and repair commands; unattended DISM/SFC excluded.
+- [x] New regression harnesses for optimization safety, process approval identity, quarantine tamper resistance, and unavailable history.
+
+### Required before completion
+
+- [ ] Pull current main into the Product Owner's Windows development environment.
+- [ ] Clean restore and Release build in Visual Studio/.NET 8.
+- [ ] Run the complete existing regression suite.
+- [ ] Run the new optimization, maintenance-history, remediation-outcome, containment, and quarantine harnesses.
+- [ ] Perform installed-app monitoring/resource observation.
+- [ ] Re-test Ask Sentinel with the real BSOD and post-crash slowness question.
+- [ ] Validate Activity Center action-versus-attempt-versus-current-state presentation.
+- [ ] Fix any failures, repeat regression, and record final evidence.
+- [ ] Finalize release documentation only after all required checks pass.
+
+> The older accepted baseline below predates the current security completion change set. It remains historical evidence, not current release validation.
 
 ## Accepted Baseline
 
