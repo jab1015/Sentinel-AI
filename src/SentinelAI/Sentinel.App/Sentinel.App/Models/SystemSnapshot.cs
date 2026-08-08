@@ -38,6 +38,7 @@ namespace Sentinel.App.Models
         public string PrimaryCommandLineProcessName { get; set; } = "None";
         public string PrimaryCommandLineReason { get; set; } = "No unusual command-line combinations were detected.";
         public string PrimaryCommandLineSummary { get; set; } = "None";
+        public bool ServiceMonitoringAvailable { get; set; }
         public int InstalledServiceCount { get; set; }
         public int RunningServiceCount { get; set; }
         public int FlaggedServiceCount { get; set; }
