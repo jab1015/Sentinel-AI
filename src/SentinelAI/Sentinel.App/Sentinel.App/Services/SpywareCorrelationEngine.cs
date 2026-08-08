@@ -48,6 +48,7 @@ namespace Sentinel.App.Services
                 !snapshot.ProcessMonitoringAvailable ||
                 !snapshot.CommandLineMonitoringAvailable ||
                 !snapshot.ProcessLineageMonitoringAvailable ||
+                !snapshot.ServiceMonitoringAvailable ||
                 !snapshot.StartupPersistenceMonitoringAvailable ||
                 !snapshot.ScheduledTaskMonitoringAvailable;
 
