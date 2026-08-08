@@ -18,6 +18,7 @@ namespace Sentinel.App.Services
     public sealed class PerformanceBaselineService
     {
         private const int MaximumSamples = 720;
+        private static readonly TimeSpan MinimumSampleInterval = TimeSpan.FromMinutes(1);
         private readonly Queue<PerformanceSample> _samples = new();
         private readonly object _sync = new();
 
@@ -36,6 +37,15 @@ namespace Sentinel.App.Services
 
             lock (_sync)
             {
+                PerformanceSample[] existing = _samples.ToArray();
+                if (existing.Length > 0 &&
+                    sample.Timestamp - existing[^1].Timestamp < MinimumSampleInterval)
+                {
+                    // Monitoring cadence may accelerate for security reasons. Do not let
+                    // those rapid checks masquerade as independent performance history.
+                    return BuildResult(sample, existing);
+                }
+
                 _samples.Enqueue(sample);
                 while (_samples.Count > MaximumSamples)
                     _samples.Dequeue();
