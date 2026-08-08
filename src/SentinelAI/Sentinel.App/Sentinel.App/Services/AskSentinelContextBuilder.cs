@@ -33,6 +33,7 @@ namespace Sentinel.App.Services
                 $"Firewall: {snapshot.FirewallStatus}",
                 $"Network connection monitoring: {(snapshot.NetworkConnectionMonitoringAvailable ? "Active" : "Unavailable")}",
                 $"Connections: {snapshot.ExternalConnectionCount} external ({snapshot.InboundExternalConnectionCount} inbound, {snapshot.OutboundExternalConnectionCount} outbound); {snapshot.ListeningTcpEndpointCount} listening TCP; {snapshot.RepeatingExternalConnectionCount} external endpoints observed in at least three samples",
+                $"Service monitoring: {(snapshot.ServiceMonitoringAvailable ? "Active" : "Unavailable")}; installed: {snapshot.InstalledServiceCount}; running: {snapshot.RunningServiceCount}; flagged: {snapshot.FlaggedServiceCount}",
                 $"Process-lineage monitoring: {(snapshot.ProcessLineageMonitoringAvailable ? "Active" : "Unavailable")}; relationships: {snapshot.ProcessRelationshipCount}; flagged: {snapshot.FlaggedProcessRelationshipCount}",
                 $"Command-line monitoring: {(snapshot.CommandLineMonitoringAvailable ? "Active" : "Unavailable")}; reviewed: {snapshot.ReviewedCommandLineProcessCount}; flagged: {snapshot.FlaggedCommandLineCount}",
                 $"Startup persistence monitoring: {(snapshot.StartupPersistenceMonitoringAvailable ? "Active" : "Unavailable")}; entries: {snapshot.StartupEntryCount}; flagged: {snapshot.FlaggedStartupEntryCount}",
