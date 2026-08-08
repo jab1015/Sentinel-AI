@@ -76,14 +76,18 @@ namespace Sentinel.App.Services
                         : $"Sentinel verified {snapshot.ScheduledTaskCount} scheduled tasks and found no unusual scheduled-task persistence.";
 
             if (Has(q, "running service", "running services", "windows service", "services"))
-                return snapshot.FlaggedServiceCount > 0
-                    ? $"Sentinel verified {snapshot.RunningServiceCount} running services out of {snapshot.InstalledServiceCount} installed and flagged {snapshot.FlaggedServiceCount}. Primary finding: {snapshot.PrimaryFlaggedServiceName}: {snapshot.PrimaryFlaggedServiceReason}"
-                    : $"Sentinel verified {snapshot.RunningServiceCount} running services out of {snapshot.InstalledServiceCount} installed and found no service warning condition.";
+                return !snapshot.ServiceMonitoringAvailable
+                    ? "Sentinel could not completely collect current Windows service and persistence evidence, so I cannot verify that services are clean."
+                    : snapshot.FlaggedServiceCount > 0
+                        ? $"Sentinel verified {snapshot.RunningServiceCount} running services out of {snapshot.InstalledServiceCount} installed and flagged {snapshot.FlaggedServiceCount}. Primary finding: {snapshot.PrimaryFlaggedServiceName}: {snapshot.PrimaryFlaggedServiceReason}"
+                        : $"Sentinel verified {snapshot.RunningServiceCount} running services out of {snapshot.InstalledServiceCount} installed and found no service warning condition.";
 
             if (Has(q, "top process", "top processes", "highest memory", "most memory", "running process", "running processes"))
-                return snapshot.HighestMemoryProcessGB > 0
-                    ? $"Sentinel sees {snapshot.ProcessCount} running processes. The highest-memory process is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB."
-                    : $"Sentinel sees {snapshot.ProcessCount} running processes but does not yet have a verified top-memory result.";
+                return !snapshot.ProcessMonitoringAvailable
+                    ? "Sentinel could not collect current process evidence, so I cannot verify running-process or top-memory results."
+                    : snapshot.HighestMemoryProcessGB > 0
+                        ? $"Sentinel sees {snapshot.ProcessCount} running processes. The highest-memory process is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB."
+                        : $"Sentinel sees {snapshot.ProcessCount} running processes but does not yet have a verified top-memory result.";
 
             if (Has(q, "defender", "antivirus", "virus protection")) return $"Microsoft Defender status is {snapshot.DefenderStatus}.";
             if (Has(q, "firewall")) return $"Windows Firewall status is {snapshot.FirewallStatus}.";
