@@ -22,6 +22,22 @@ namespace Sentinel.App.Services
                                   snapshot.NetworkConnectionMonitoringStatus.Equals("Active", StringComparison.OrdinalIgnoreCase);
             bool defenderHealthy = snapshot.DefenderEnabled;
             bool firewallHealthy = snapshot.FirewallEnabled;
+            bool advancedSecurityNotEntitled =
+                snapshot.NetworkConnectionMonitoringStatus.Equals("Subscription required", StringComparison.OrdinalIgnoreCase);
+
+            // Subscription-gated advanced collectors are intentionally inactive, not
+            // failed. Evaluate the free tier only against the basic Windows protection
+            // signals it actually includes.
+            if (advancedSecurityNotEntitled && defenderHealthy && firewallHealthy)
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Healthy,
+                    false,
+                    "Basic Windows protection is active",
+                    "Microsoft Defender and Windows Firewall are active. Advanced Sentinel security correlation and proactive protection require an active subscription.",
+                    "No basic Windows protection action is required.",
+                    "basic-protection-healthy-subscription-required");
+            }
             bool monitoringCoverageHealthy =
                 snapshot.AuthenticationMonitoringAvailable &&
                 snapshot.EventLogMonitoringAvailable &&
