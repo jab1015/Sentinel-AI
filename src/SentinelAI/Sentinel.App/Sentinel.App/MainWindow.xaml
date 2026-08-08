@@ -49,6 +49,13 @@
                                     <TextBlock Text="Sentinel" FontSize="15" FontWeight="SemiBold" Foreground="#CBD5E1" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <TextBlock x:Name="AskSentinelAnswerText" FontSize="17" LineHeight="27" Foreground="#F8FAFC" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                <Button x:Name="ReportAiResponseButton"
+                                        Content="Report AI response"
+                                        HorizontalAlignment="Left"
+                                        Padding="12,6"
+                                        FontSize="13"
+                                        Click="ReportAiResponseButton_Click"
+                                        AutomationProperties.Name="Report AI response"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
