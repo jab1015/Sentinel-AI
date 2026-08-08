@@ -168,7 +168,15 @@ namespace Sentinel.App.Services
 
         private void RecordObservation(ProcessIdentity identity, IPAddress remoteAddress, int remotePort, bool inbound, DateTimeOffset observedAt)
         {
-            ConnectionHistoryKey key = new(identity.ProcessId, remoteAddress.ToString(), remotePort, inbound);
+            string processIdentity = string.IsNullOrWhiteSpace(identity.ExecutablePath)
+                ? identity.ProcessName
+                : identity.ExecutablePath;
+            ConnectionHistoryKey key = new(
+                identity.ProcessId,
+                processIdentity,
+                remoteAddress.ToString(),
+                remotePort,
+                inbound);
             if (_history.TryGetValue(key, out ConnectionHistoryEntry? existing))
             {
                 existing.LastSeen = observedAt;
@@ -386,7 +394,12 @@ namespace Sentinel.App.Services
         private sealed record ProcessIdentity(int ProcessId, string ProcessName, string ExecutablePath);
         private sealed record ConnectionFinding(string ProcessName, string RemoteEndpoint, string Reason);
         private sealed record LocalSocketKey(IPAddress Address, int Port, int ProcessId);
-        private sealed record ConnectionHistoryKey(int ProcessId, string RemoteAddress, int RemotePort, bool Inbound);
+        private sealed record ConnectionHistoryKey(
+            int ProcessId,
+            string ProcessIdentity,
+            string RemoteAddress,
+            int RemotePort,
+            bool Inbound);
 
         private sealed class ConnectionHistoryEntry
         {
