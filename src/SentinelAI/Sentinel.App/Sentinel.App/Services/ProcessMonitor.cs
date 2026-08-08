@@ -49,13 +49,6 @@ namespace Sentinel.App.Services
                             highestMemoryProcessName = processName;
                         }
 
-                        if (workingSet >= 2L * 1024 * 1024 * 1024 && !IsWindowsMemoryCompression(processName))
-                        {
-                            findings.Add(new ProcessFinding(
-                                processName,
-                                BuildHighMemoryReason(processName, workingSet, path, signature, productName)));
-                        }
-
                         if (!IsUserWritableLocation(path)) continue;
 
                         bool temporaryLocation = IsTemporaryLocation(path);
@@ -204,10 +197,10 @@ namespace Sentinel.App.Services
                 string downloads = Path.Combine(userProfile, "Downloads");
                 string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                return fullPath.StartsWith(temp, StringComparison.OrdinalIgnoreCase) ||
-                       fullPath.StartsWith(downloads, StringComparison.OrdinalIgnoreCase) ||
-                       fullPath.StartsWith(appData, StringComparison.OrdinalIgnoreCase) ||
-                       fullPath.StartsWith(localAppData, StringComparison.OrdinalIgnoreCase);
+                return IsWithinDirectory(fullPath, temp) ||
+                       IsWithinDirectory(fullPath, downloads) ||
+                       IsWithinDirectory(fullPath, appData) ||
+                       IsWithinDirectory(fullPath, localAppData);
             }
             catch { return false; }
         }
@@ -218,9 +211,16 @@ namespace Sentinel.App.Services
             {
                 string fullPath = Path.GetFullPath(path);
                 string temp = Path.GetFullPath(Path.GetTempPath());
-                return fullPath.StartsWith(temp, StringComparison.OrdinalIgnoreCase);
+                return IsWithinDirectory(fullPath, temp);
             }
             catch { return false; }
+        }
+
+        private static bool IsWithinDirectory(string fullPath, string directory)
+        {
+            string normalizedDirectory = directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                                         Path.DirectorySeparatorChar;
+            return fullPath.StartsWith(normalizedDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string ShortenPath(string path) => path.Length <= 90 ? path : "..." + path[^87..];
