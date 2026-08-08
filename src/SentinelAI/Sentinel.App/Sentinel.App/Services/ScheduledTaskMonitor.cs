@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
@@ -37,8 +38,25 @@ namespace Sentinel.App.Services
                 };
 
                 process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(10000);
+                Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
+                Task<string> errorRead = process.StandardError.ReadToEndAsync();
+
+                if (!process.WaitForExit(10000))
+                {
+                    try
+                    {
+                        process.Kill(entireProcessTree: true);
+                    }
+                    catch
+                    {
+                        // The process may have exited between the timeout and cleanup.
+                    }
+
+                    return ScheduledTaskSnapshot.Unavailable;
+                }
+
+                string output = outputRead.GetAwaiter().GetResult();
+                _ = errorRead.GetAwaiter().GetResult();
 
                 if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
                 {
@@ -62,6 +80,11 @@ namespace Sentinel.App.Services
                 int taskNameIndex = FindColumn(headers, "TaskName", "Task Name");
                 int actionIndex = FindColumn(headers, "Task To Run", "Actions");
                 int authorIndex = FindColumn(headers, "Author");
+
+                if (taskNameIndex < 0 || actionIndex < 0)
+                {
+                    return ScheduledTaskSnapshot.Unavailable;
+                }
 
                 for (int index = 1; index < lines.Length; index++)
                 {
