@@ -27,6 +27,7 @@ namespace Sentinel.App.Services
                 $"Memory usage: {snapshot.MemoryUsedGB:0.00} GB of {snapshot.MemoryTotalGB:0.00} GB ({snapshot.MemoryUsagePercent:0.0}%)",
                 $"Memory pressure: {snapshot.MemoryPressureLevel}",
                 $"Disk usage: {snapshot.DiskUsagePercent:0.0}%",
+                $"Process monitoring: {(snapshot.ProcessMonitoringAvailable ? "Active" : "Unavailable")}",
                 $"Processes: {snapshot.ProcessCount}; highest memory process: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)",
                 $"Defender: {snapshot.DefenderStatus}",
                 $"Firewall: {snapshot.FirewallStatus}",
