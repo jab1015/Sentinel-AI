@@ -25,6 +25,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan ActiveConnectionRefreshInterval = TimeSpan.FromSeconds(5);
         private static readonly TimeSpan DriverHealthRefreshInterval = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan WindowsHealthRefreshInterval = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan AutomaticProtectionCooldown = TimeSpan.FromMinutes(1);
 
         private readonly SystemMonitor _systemMonitor = new();
         private readonly DiskMonitor _diskMonitor = new();
@@ -84,6 +85,8 @@ namespace Sentinel.App.Services
         private DateTime _lastActiveConnectionRefresh = DateTime.MinValue;
         private DateTime _lastDriverHealthRefresh = DateTime.MinValue;
         private DateTime _lastWindowsHealthRefresh = DateTime.MinValue;
+        private DateTime _lastAutomaticProtectionAttempt = DateTime.MinValue;
+        private string _lastAutomaticProtectionSignature = string.Empty;
 
         public SystemSnapshot CurrentSnapshot { get; private set; } = new();
         public event EventHandler<SystemSnapshot>? SnapshotUpdated;
@@ -221,12 +224,41 @@ namespace Sentinel.App.Services
 
             if (protection.CanExecuteAutomatically && !protection.RequiresUserApproval)
             {
-                AutonomousProtectionExecutor.AutonomousProtectionExecutionResult execution = await _autonomousProtectionExecutor.ExecuteAsync(snapshot, protection, RefreshSecurityStateForProtectionAsync, RetryTransientOperationForProtectionAsync);
-                snapshot.AutonomousProtectionAttempted = execution.Attempted;
-                snapshot.AutonomousProtectionSucceeded = execution.Succeeded;
-                snapshot.AutonomousProtectionCompletedAt = execution.CompletedAt;
-                snapshot.AutonomousProtectionOutcomeTitle = execution.Title;
-                snapshot.AutonomousProtectionOutcomeSummary = execution.Summary;
+                string signature = string.Join("|",
+                    protection.Action,
+                    protection.Target,
+                    snapshot.InvestigationReasonCode);
+                bool sameAction = signature.Equals(_lastAutomaticProtectionSignature, StringComparison.OrdinalIgnoreCase);
+                bool cooldownActive = sameAction &&
+                    now - _lastAutomaticProtectionAttempt < AutomaticProtectionCooldown;
+
+                if (!cooldownActive)
+                {
+                    _lastAutomaticProtectionAttempt = now;
+                    _lastAutomaticProtectionSignature = signature;
+                    AutonomousProtectionExecutor.AutonomousProtectionExecutionResult execution =
+                        await _autonomousProtectionExecutor.ExecuteAsync(
+                            snapshot,
+                            protection,
+                            RefreshSecurityStateForProtectionAsync,
+                            RetryTransientOperationForProtectionAsync);
+                    snapshot.AutonomousProtectionAttempted = execution.Attempted;
+                    snapshot.AutonomousProtectionSucceeded = execution.Succeeded;
+                    snapshot.AutonomousProtectionCompletedAt = execution.CompletedAt;
+                    snapshot.AutonomousProtectionOutcomeTitle = execution.Title;
+                    snapshot.AutonomousProtectionOutcomeSummary = execution.Summary;
+                }
+                else
+                {
+                    snapshot.AutonomousProtectionOutcomeTitle = "Monitoring continues";
+                    snapshot.AutonomousProtectionOutcomeSummary =
+                        "Sentinel already performed this safe evidence refresh recently and is waiting for the normal verification interval before retrying.";
+                }
+            }
+            else
+            {
+                _lastAutomaticProtectionSignature = string.Empty;
+                _lastAutomaticProtectionAttempt = DateTime.MinValue;
             }
 
             CurrentSnapshot = snapshot;
