@@ -55,7 +55,13 @@ namespace Sentinel.App.Services
             }
         }
 
-        public async Task<ProcessContainmentResult> ContainAsync(string expectedProcessName, int processId)
+        public Task<ProcessContainmentResult> ContainAsync(string expectedProcessName, int processId) =>
+            ContainAsync(expectedProcessName, processId, expectedStartTimeUtc: null);
+
+        public async Task<ProcessContainmentResult> ContainAsync(
+            string expectedProcessName,
+            int processId,
+            DateTimeOffset? expectedStartTimeUtc)
         {
             string normalizedName = NormalizeProcessName(expectedProcessName);
             if (string.IsNullOrWhiteSpace(normalizedName) || processId <= 4)
@@ -86,6 +92,25 @@ namespace Sentinel.App.Services
 
                 if (!actualName.Equals(normalizedName, StringComparison.OrdinalIgnoreCase))
                     return ProcessContainmentResult.Failure("Process identity changed", $"PID {processId} is now {actualName}, not the approved process {normalizedName}. Sentinel made no change.");
+
+                if (expectedStartTimeUtc.HasValue)
+                {
+                    DateTimeOffset actualStartTimeUtc;
+                    try { actualStartTimeUtc = target.StartTime.ToUniversalTime(); }
+                    catch (Exception ex)
+                    {
+                        return ProcessContainmentResult.Failure(
+                            "Process identity could not be verified",
+                            $"Sentinel could not verify the start time for PID {processId}. No change was made ({ex.GetType().Name}).");
+                    }
+
+                    if (actualStartTimeUtc != expectedStartTimeUtc.Value)
+                    {
+                        return ProcessContainmentResult.Failure(
+                            "Process instance changed",
+                            $"PID {processId} no longer identifies the exact process instance that was approved. Sentinel made no change.");
+                    }
+                }
             }
 
             try
