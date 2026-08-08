@@ -79,9 +79,8 @@ namespace Sentinel.App.Services
         public void Record(QuarantineService.QuarantineResult result, string action)
         {
             ArgumentNullException.ThrowIfNull(result);
-            bool attempted = !result.RequiresUserApproval;
-            if (!attempted && !result.Succeeded) return;
-            Record("Quarantine", string.IsNullOrWhiteSpace(action) ? "Quarantine operation" : action, result.Message, attempted, result.Succeeded, result.Verified, action.Contains("restore", StringComparison.OrdinalIgnoreCase) && result.Succeeded, result.Sha256 ?? string.Empty);
+            if (!result.Attempted && !result.Succeeded) return;
+            Record("Quarantine", string.IsNullOrWhiteSpace(action) ? "Quarantine operation" : action, result.Message, result.Attempted, result.Succeeded, result.Verified, action.Contains("restore", StringComparison.OrdinalIgnoreCase) && result.Succeeded, result.Sha256 ?? string.Empty);
         }
 
         public void RecordInvestigation(string title, string summary, bool verified, string technicalDetail = "")
