@@ -25,6 +25,8 @@ namespace Sentinel.App.Models
         public double HighestMemoryProcessGB { get; set; }
         public int FlaggedProcessCount { get; set; }
         public string PrimaryFlaggedProcessName { get; set; } = "None";
+        public int PrimaryFlaggedProcessId { get; set; }
+        public DateTimeOffset? PrimaryFlaggedProcessStartUtc { get; set; }
         public string PrimaryFlaggedProcessReason { get; set; } = "No process warning conditions were detected.";
         public bool ProcessLineageMonitoringAvailable { get; set; }
         public int ProcessRelationshipCount { get; set; }
