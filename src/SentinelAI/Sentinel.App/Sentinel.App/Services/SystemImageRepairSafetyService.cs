@@ -10,7 +10,7 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Final safety gate before DISM/SFC repair execution. Only a repair action
-    /// supported by verified corruption evidence can be approved automatically.
+    /// supported by verified corruption evidence can be recommended, but execution requires explicit user approval.
     /// </summary>
     public sealed class SystemImageRepairSafetyService
     {
@@ -56,12 +56,13 @@ namespace Sentinel.App.Services
                     "SFC repair was blocked because the required integrity evidence or repair order was not verified.");
             }
 
-            return new SystemImageRepairSafetyAssessment(
-                true,
-                settings.VerifyEveryChange,
-                approved,
-                approved.RequiresElevation,
-                "The Windows integrity repair passed Sentinel's evidence and ordering safety policy.");
+            // DISM and SFC can run for a long time, consume substantial system
+            // resources, and require elevation. Verified corruption evidence supports
+            // a recommendation, but never constitutes approval to execute the repair.
+            return SystemImageRepairSafetyAssessment.Blocked(
+                approved.Action == SystemImageRepairAction.RestoreComponentStore
+                    ? "Sentinel verified component-store corruption. DISM repair requires explicit user approval and will not run automatically."
+                    : "Sentinel verified protected-file corruption. SFC repair requires explicit user approval and will not run automatically.");
         }
     }
 
