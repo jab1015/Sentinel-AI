@@ -40,7 +40,7 @@ namespace Sentinel.App.Services
 
                     string json = File.ReadAllText(_settingsPath);
                     OptimizationSettings? settings = JsonSerializer.Deserialize<OptimizationSettings>(json);
-                    return settings ?? OptimizationSettings.Default;
+                    return Normalize(settings ?? OptimizationSettings.Default);
                 }
                 catch
                 {
@@ -52,6 +52,7 @@ namespace Sentinel.App.Services
         public bool Save(OptimizationSettings settings)
         {
             ArgumentNullException.ThrowIfNull(settings);
+            settings = Normalize(settings);
 
             lock (SettingsGate)
             {
@@ -84,6 +85,21 @@ namespace Sentinel.App.Services
                     }
                 }
             }
+        }
+
+        private static OptimizationSettings Normalize(OptimizationSettings settings)
+        {
+            OptimizationMode mode = Enum.IsDefined(settings.Mode)
+                ? settings.Mode
+                : OptimizationMode.Conservative;
+
+            // Verification and rollback are mandatory safety invariants for automatic
+            // changes. The persisted fields remain for compatibility with older builds.
+            return new OptimizationSettings(
+                settings.AutomaticOptimizationEnabled,
+                mode,
+                VerifyEveryChange: true,
+                RollBackWhenPossible: true);
         }
     }
 
