@@ -131,7 +131,7 @@ namespace Sentinel.App.Services
                 CpuUsagePercent = _systemMonitor.GetCpuUsage(), MemoryUsedGB = _systemMonitor.GetMemoryUsedGB(), MemoryTotalGB = _systemMonitor.GetMemoryTotalGB(), MemoryUsagePercent = memoryUsagePercent,
                 MemoryPressureLevel = _memoryInvestigationSnapshot.PressureLevel.ToString(), MemoryCompressionGB = _memoryInvestigationSnapshot.MemoryCompressionGB, MemoryTopContributors = _memoryInvestigationSnapshot.TopContributors, MemoryConclusion = _memoryInvestigationSnapshot.Conclusion, MemoryRecommendation = _memoryInvestigationSnapshot.Recommendation,
                 DiskUsagePercent = _diskMonitor.GetUsagePercent(), DiskFreeGB = _diskMonitor.GetFreeSpaceGB(), DiskTotalGB = _diskMonitor.GetTotalSpaceGB(), DownloadMbps = networkSnapshot.DownloadMbps, UploadMbps = networkSnapshot.UploadMbps,
-                ProcessCount = _processSnapshot.TotalProcessCount, HighestMemoryProcessName = _processSnapshot.HighestMemoryProcessName, HighestMemoryProcessGB = _processSnapshot.HighestMemoryProcessGB, FlaggedProcessCount = _processSnapshot.FlaggedProcessCount, PrimaryFlaggedProcessName = _processSnapshot.PrimaryProcessName, PrimaryFlaggedProcessReason = _processSnapshot.PrimaryReason,
+                ProcessMonitoringAvailable = _processSnapshot.CollectionAvailable, ProcessCount = _processSnapshot.TotalProcessCount, HighestMemoryProcessName = _processSnapshot.HighestMemoryProcessName, HighestMemoryProcessGB = _processSnapshot.HighestMemoryProcessGB, FlaggedProcessCount = _processSnapshot.FlaggedProcessCount, PrimaryFlaggedProcessName = _processSnapshot.PrimaryProcessName, PrimaryFlaggedProcessReason = _processSnapshot.PrimaryReason,
                 ProcessLineageMonitoringAvailable = _processLineageSnapshot.CollectionAvailable, ProcessRelationshipCount = _processLineageSnapshot.RelationshipCount, FlaggedProcessRelationshipCount = _processLineageSnapshot.ReviewRelationshipCount, PrimaryLineageChildProcessName = _processLineageSnapshot.PrimaryChildProcessName, PrimaryLineageParentProcessName = _processLineageSnapshot.PrimaryParentProcessName, PrimaryLineageReason = _processLineageSnapshot.PrimaryReason,
                 CommandLineMonitoringAvailable = _commandLineSnapshot.CollectionAvailable, ReviewedCommandLineProcessCount = _commandLineSnapshot.ReviewedProcessCount, FlaggedCommandLineCount = _commandLineSnapshot.ReviewFindingCount, PrimaryCommandLineProcessName = _commandLineSnapshot.PrimaryProcessName, PrimaryCommandLineReason = _commandLineSnapshot.PrimaryReason, PrimaryCommandLineSummary = _commandLineSnapshot.PrimaryCommandLineSummary,
                 InstalledServiceCount = _serviceSnapshot.InstalledServiceCount, RunningServiceCount = _serviceSnapshot.RunningServiceCount, FlaggedServiceCount = _serviceSnapshot.FlaggedServiceCount, PrimaryFlaggedServiceName = _serviceSnapshot.PrimaryServiceName, PrimaryFlaggedServiceReason = _serviceSnapshot.PrimaryReason,
@@ -479,6 +479,7 @@ namespace Sentinel.App.Services
             var result = await TryCollectAsync(_processMonitor.GetIntelligence, _processSnapshot);
             if (!result.Success)
             {
+                _processSnapshot = ProcessMonitor.ProcessIntelligenceSnapshot.Unavailable;
                 _lastProcessRefresh = now;
                 return;
             }
