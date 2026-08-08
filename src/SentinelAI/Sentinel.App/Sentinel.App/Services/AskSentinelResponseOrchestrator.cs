@@ -34,7 +34,7 @@ namespace Sentinel.App.Services
 
             if (IsMaintenanceHistoryQuestion(question))
             {
-                answer = CreateMaintenanceHistoryAnswer(question, _maintenanceHistoryService.GetSummary());
+                answer = CreateMaintenanceHistoryAnswer(question, snapshot, _maintenanceHistoryService.GetSummary());
                 usedHistory = true;
             }
             else if (IsHistoryQuestion(question))
@@ -112,7 +112,7 @@ namespace Sentinel.App.Services
             return !containsCausalExplanation;
         }
 
-        private static string CreateMaintenanceHistoryAnswer(string question, MaintenanceHistorySummary summary)
+        private static string CreateMaintenanceHistoryAnswer(string question, SystemSnapshot snapshot, MaintenanceHistorySummary summary)
         {
             string value = question.Trim().ToLowerInvariant();
             bool optimizationOnly = value.Contains("optimization") || value.Contains("optimizations") ||
@@ -125,8 +125,11 @@ namespace Sentinel.App.Services
 
             if (entries.Length == 0)
             {
+                if (optimizationOnly && IsVerifiedOptimalPerformance(snapshot))
+                    return "Sentinel analyzed this computer and found that it is running at optimal performance. No performance optimization is needed right now.";
+
                 return optimizationOnly
-                    ? "I don't have a verified record of any optimization actions being performed on this computer in the last 30 days."
+                    ? "Sentinel checked the optimization history, but I don't have a verified record of an optimization action being required or performed in the last 30 days."
                     : "I don't have a verified record of any maintenance actions being performed on this computer in the last 30 days.";
             }
 
@@ -148,6 +151,22 @@ namespace Sentinel.App.Services
 
             return $"{heading}\n\n{string.Join("\n", recent)}" +
                    (entries.Length > recent.Length ? $"\n\nShowing the {recent.Length} most recent." : string.Empty);
+        }
+
+        private static bool IsVerifiedOptimalPerformance(SystemSnapshot snapshot)
+        {
+            string combined = string.Join(" ", new[]
+            {
+                snapshot.InvestigationSummary ?? string.Empty,
+                snapshot.InvestigationConclusion ?? string.Empty,
+                snapshot.GuidanceTitle ?? string.Empty,
+                snapshot.GuidanceWhatHappened ?? string.Empty,
+                snapshot.GuidanceEvidence ?? string.Empty
+            });
+
+            return combined.Contains("no verified performance optimization is needed", StringComparison.OrdinalIgnoreCase) ||
+                   combined.Contains("performance is within this computer's established baseline", StringComparison.OrdinalIgnoreCase) ||
+                   combined.Contains("optimization check complete", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string CreateHistoryAnswer(string question, SystemSnapshot snapshot,
