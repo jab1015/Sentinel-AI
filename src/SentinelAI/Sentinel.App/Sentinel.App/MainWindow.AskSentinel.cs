@@ -191,7 +191,11 @@ namespace Sentinel.App
 
         private static string BuildDriverConsumerAnswer(ExternalInvestigationResult external, DriverAutomaticRepairCoordinator.DriverRepairPlan plan)
         {
-            string first = "I found the problem\n\nThe Intel Management Engine Interface is not starting correctly.";
+            bool identified = !string.IsNullOrWhiteSpace(plan.DeviceName) &&
+                              !plan.DeviceName.Equals("Affected Windows device", StringComparison.OrdinalIgnoreCase);
+            string first = identified
+                ? $"I found a driver problem\n\n{plan.DeviceName} is reporting a problem."
+                : "I found evidence of a driver-related problem, but I cannot yet identify the exact device reliably.";
             string finding = external.Verified
                 ? "I checked this computer's driver, system information, recent Windows events, and approved Microsoft driver sources. The evidence points most strongly to a driver or firmware compatibility problem."
                 : "I checked this computer's driver and system information. I do not have enough verified evidence yet to name one exact cause safely.";
@@ -269,6 +273,21 @@ namespace Sentinel.App
         private async void AutomaticAskSentinelRepair_Click(object sender, RoutedEventArgs e)
         {
             if (_automaticRepairButton is null || _askSentinelBusy) return;
+
+            SubscriptionState subscription = await new StoreSubscriptionService().GetStateAsync();
+            if (!subscription.IsActive)
+            {
+                ContentDialog required = new()
+                {
+                    Title = "Subscription required",
+                    Content = "Free local driver monitoring remains active. An active Sentinel AI subscription is required to continue a repair or install a verified driver package.",
+                    CloseButtonText = "OK",
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                };
+                await required.ShowAsync();
+                return;
+            }
+
             _askSentinelBusy = true;
             _automaticRepairButton.IsEnabled = false;
             AskSentinelProgressText.Text = "Preparing a verified repair…";
