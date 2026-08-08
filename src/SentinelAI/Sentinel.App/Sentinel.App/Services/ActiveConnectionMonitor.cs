@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
+using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
@@ -105,7 +106,7 @@ namespace Sentinel.App.Services
 
                         RecordObservation(identity, remoteAddress, remotePort, inbound, observedAt);
 
-                        ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort, inbound);
+                        ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort, localPort, inbound);
                         if (finding is not null)
                         {
                             findings.Add(finding);
@@ -242,13 +243,16 @@ namespace Sentinel.App.Services
             };
 
             process.Start();
-            string output = process.StandardOutput.ReadToEnd();
+            Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorRead = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(NetstatTimeoutMilliseconds))
             {
                 TryTerminate(process);
                 return Array.Empty<string>();
             }
 
+            string output = outputRead.GetAwaiter().GetResult();
+            _ = errorRead.GetAwaiter().GetResult();
             if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
             {
                 return Array.Empty<string>();
@@ -266,14 +270,20 @@ namespace Sentinel.App.Services
                    listeningSockets.Contains(new LocalSocketKey(IPAddress.IPv6Any, localPort, processId));
         }
 
-        private static ConnectionFinding? Assess(ProcessIdentity identity, IPAddress remoteAddress, int remotePort, bool inbound)
+        private static ConnectionFinding? Assess(
+            ProcessIdentity identity,
+            IPAddress remoteAddress,
+            int remotePort,
+            int localPort,
+            bool inbound)
         {
-            bool uncommonRemotePort = remotePort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
+            int assessedPort = inbound ? localPort : remotePort;
+            bool uncommonAssessedPort = assessedPort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
             bool systemProcess = identity.ProcessName.Equals("System", StringComparison.OrdinalIgnoreCase) ||
                                  identity.ProcessName.Equals("svchost", StringComparison.OrdinalIgnoreCase) ||
                                  identity.ProcessName.Equals("services", StringComparison.OrdinalIgnoreCase);
 
-            if (!uncommonRemotePort || systemProcess) return null;
+            if (!uncommonAssessedPort || systemProcess) return null;
 
             string endpoint = $"{remoteAddress}:{remotePort}";
             string executableContext = string.IsNullOrWhiteSpace(identity.ExecutablePath)
@@ -281,8 +291,12 @@ namespace Sentinel.App.Services
                 : $"Executable: {ShortenPath(identity.ExecutablePath)}.";
             string direction = inbound ? "inbound" : "outbound";
 
+            string portContext = inbound
+                ? $"local listening port {localPort}"
+                : $"remote port {remotePort}";
+
             return new ConnectionFinding(identity.ProcessName, endpoint,
-                $"{identity.ProcessName} (PID {identity.ProcessId}) owns an {direction} established connection involving {endpoint} on uncommon remote port {remotePort}. {executableContext} This is attribution evidence only; Sentinel requires correlation before recommending or blocking network activity.");
+                $"{identity.ProcessName} (PID {identity.ProcessId}) owns an {direction} established connection involving {endpoint} on uncommon {portContext}. {executableContext} This is attribution evidence only; Sentinel requires correlation before recommending or blocking network activity.");
         }
 
         private static bool TryParseEndpoint(string value, out IPAddress? address, out int port)
