@@ -125,12 +125,13 @@ namespace Sentinel.App.Services
 
             if (entries.Length == 0)
             {
-                if (optimizationOnly && IsVerifiedOptimalPerformance(snapshot))
-                    return "Sentinel analyzed this computer and found that it is running at optimal performance. No performance optimization is needed right now.";
+                if (!optimizationOnly)
+                    return "I don't have a verified record of any maintenance actions being performed on this computer in the last 30 days.";
 
-                return optimizationOnly
-                    ? "Sentinel checked the optimization history, but I don't have a verified record of an optimization action being required or performed in the last 30 days."
-                    : "I don't have a verified record of any maintenance actions being performed on this computer in the last 30 days.";
+                string historical = summary.TotalActions > 0
+                    ? $"Sentinel has {summary.TotalActions} verified maintenance record{(summary.TotalActions == 1 ? string.Empty : "s")} in the last 30 days, but none is categorized as a performance optimization action."
+                    : "Sentinel has no recorded performance optimization actions in the last 30 days.";
+                return $"{historical}\n\nCurrent status: {CreateCurrentOptimizationStatus(snapshot)}";
             }
 
             string[] recent = entries.Take(5).Select(entry =>
@@ -150,8 +151,14 @@ namespace Sentinel.App.Services
                 : $"I found {entries.Length} recorded maintenance action{(entries.Length == 1 ? string.Empty : "s")} in the last 30 days.";
 
             return $"{heading}\n\n{string.Join("\n", recent)}" +
-                   (entries.Length > recent.Length ? $"\n\nShowing the {recent.Length} most recent." : string.Empty);
+                   (entries.Length > recent.Length ? $"\n\nShowing the {recent.Length} most recent." : string.Empty) +
+                   $"\n\nCurrent status: {CreateCurrentOptimizationStatus(snapshot)}";
         }
+
+        private static string CreateCurrentOptimizationStatus(SystemSnapshot snapshot) =>
+            IsVerifiedOptimalPerformance(snapshot)
+                ? "Sentinel's current verified evaluation says no performance optimization is needed right now."
+                : "Sentinel is continuing to evaluate whether performance optimization is currently needed; the historical record alone does not establish current need.";
 
         private static bool IsVerifiedOptimalPerformance(SystemSnapshot snapshot)
         {

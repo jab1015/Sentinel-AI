@@ -30,6 +30,8 @@ namespace Sentinel.App.Services
                 $"Processes: {snapshot.ProcessCount}; highest memory process: {snapshot.HighestMemoryProcessName} ({snapshot.HighestMemoryProcessGB:0.00} GB)",
                 $"Defender: {snapshot.DefenderStatus}",
                 $"Firewall: {snapshot.FirewallStatus}",
+                $"Authentication monitoring: {(snapshot.AuthenticationMonitoringAvailable ? "Active" : "Unavailable")}",
+                $"Authentication evidence: {snapshot.AuthenticationAnomalySummary}",
                 $"Investigation state: {snapshot.InvestigationState}",
                 $"Investigation conclusion: {snapshot.InvestigationConclusion}",
                 $"Investigation summary: {snapshot.InvestigationSummary}",

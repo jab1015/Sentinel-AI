@@ -72,6 +72,16 @@ namespace Sentinel.App.Services
                 Contains(snapshot.LatestEventMessage, "terminated unexpectedly");
             bool actionableSystemEvidence = !storageSpacesSmp && snapshot.FlaggedServiceCount > 0;
 
+            if (snapshot.AuthenticationAnomalyDetected && snapshot.AuthenticationAnomalyConfidenceScore >= 65)
+            {
+                return new InvestigationResult(
+                    InvestigationState.ActionRequired,
+                    "Repeated failed logons require investigation.",
+                    snapshot.AuthenticationAnomalySummary,
+                    true,
+                    "authentication-brute-force-pattern");
+            }
+
             if (securityProtectionDisabled || protectionHealthDegraded)
             {
                 return new InvestigationResult(

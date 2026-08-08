@@ -34,6 +34,7 @@ namespace Sentinel.App.Services
         private readonly ServiceMonitor _serviceMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
+        private readonly AuthenticationAnomalyMonitor _authenticationAnomalyMonitor = new();
         private readonly StartupPersistenceMonitor _startupPersistenceMonitor = new();
         private readonly ScheduledTaskMonitor _scheduledTaskMonitor = new();
         private readonly ActiveConnectionMonitor _activeConnectionMonitor = new();
@@ -58,6 +59,7 @@ namespace Sentinel.App.Services
         private ServiceMonitor.ServiceIntelligenceSnapshot _serviceSnapshot = new(0, 0, 0, "None", "Service analysis is loading.");
         private SecurityMonitor.SecurityStatusSnapshot _securitySnapshot = new("Loading...", "Loading...");
         private EventLogMonitor.EventLogStatusSnapshot _eventLogSnapshot = new(0, 0, null, "None", "Event Log analysis is loading.");
+        private AuthenticationAnomalyMonitor.AuthenticationAnomalySnapshot _authenticationSnapshot = new(false, 0, 0, "None", false, 0, "Starting", "Authentication analysis is loading.");
         private StartupPersistenceMonitor.StartupPersistenceSnapshot _startupSnapshot = new(0, 0, "None", "Startup persistence analysis is loading.");
         private ScheduledTaskMonitor.ScheduledTaskSnapshot _scheduledTaskSnapshot = new(0, 0, "None", "Scheduled-task analysis is loading.");
         private ActiveConnectionMonitor.ActiveConnectionSnapshot _activeConnectionSnapshot = new(0, 0, 0, "None", "None", "Active connection analysis is loading.");
@@ -71,6 +73,7 @@ namespace Sentinel.App.Services
         private DateTime _lastServiceRefresh = DateTime.MinValue;
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
+        private DateTime _lastAuthenticationRefresh = DateTime.MinValue;
         private DateTime _lastStartupRefresh = DateTime.MinValue;
         private DateTime _lastScheduledTaskRefresh = DateTime.MinValue;
         private DateTime _lastActiveConnectionRefresh = DateTime.MinValue;
@@ -92,6 +95,7 @@ namespace Sentinel.App.Services
                 RefreshServiceDataIfDueAsync(now),
                 RefreshSecurityDataIfDueAsync(now),
                 RefreshEventLogDataIfDueAsync(now),
+                RefreshAuthenticationDataIfDueAsync(now),
                 RefreshStartupDataIfDueAsync(now),
                 RefreshScheduledTaskDataIfDueAsync(now),
                 RefreshActiveConnectionDataIfDueAsync(now),
@@ -115,7 +119,8 @@ namespace Sentinel.App.Services
                 PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName, PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint, PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
                 ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled", FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled", DefenderStatus = _securitySnapshot.DefenderStatus, FirewallStatus = _securitySnapshot.FirewallStatus,
-                CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage
+                CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage,
+                AuthenticationMonitoringAvailable = _authenticationSnapshot.CollectionAvailable, RecentFailedLogonCount = _authenticationSnapshot.FailedLogonCount, RepeatedAuthenticationSourceCount = _authenticationSnapshot.RepeatedSourceFailureCount, PrimaryAuthenticationSource = _authenticationSnapshot.PrimarySourceAddress, AuthenticationAnomalyDetected = _authenticationSnapshot.SuspiciousPattern, AuthenticationAnomalyConfidenceScore = _authenticationSnapshot.ConfidenceScore, AuthenticationAnomalyState = _authenticationSnapshot.State, AuthenticationAnomalySummary = _authenticationSnapshot.Summary
             };
 
             ConnectionIntelligenceEngine.ConnectionIntelligenceResult connectionIntelligence = _connectionIntelligenceEngine.Analyze(snapshot);
@@ -423,6 +428,7 @@ namespace Sentinel.App.Services
         private async Task RefreshServiceDataIfDueAsync(DateTime now) { if (now - _lastServiceRefresh < ServiceRefreshInterval) return; _lastServiceRefresh = now; _serviceSnapshot = await Task.Run(_serviceMonitor.GetIntelligence); }
         private async Task RefreshSecurityDataIfDueAsync(DateTime now) { if (now - _lastSecurityRefresh < SecurityRefreshInterval) return; _lastSecurityRefresh = now; _securitySnapshot = await Task.Run(_securityMonitor.GetStatus); }
         private async Task RefreshEventLogDataIfDueAsync(DateTime now) { if (now - _lastEventLogRefresh < EventLogRefreshInterval) return; _lastEventLogRefresh = now; _eventLogSnapshot = await Task.Run(_eventLogMonitor.GetStatus); }
+        private async Task RefreshAuthenticationDataIfDueAsync(DateTime now) { if (now - _lastAuthenticationRefresh < EventLogRefreshInterval) return; _lastAuthenticationRefresh = now; _authenticationSnapshot = await Task.Run(_authenticationAnomalyMonitor.GetSnapshot); }
         private async Task RefreshStartupDataIfDueAsync(DateTime now) { if (now - _lastStartupRefresh < StartupRefreshInterval) return; _lastStartupRefresh = now; _startupSnapshot = await Task.Run(_startupPersistenceMonitor.GetSnapshot); }
         private async Task RefreshScheduledTaskDataIfDueAsync(DateTime now) { if (now - _lastScheduledTaskRefresh < ScheduledTaskRefreshInterval) return; _lastScheduledTaskRefresh = now; _scheduledTaskSnapshot = await Task.Run(_scheduledTaskMonitor.GetSnapshot); }
         private async Task RefreshActiveConnectionDataIfDueAsync(DateTime now) { if (now - _lastActiveConnectionRefresh < ActiveConnectionRefreshInterval) return; _lastActiveConnectionRefresh = now; _activeConnectionSnapshot = await Task.Run(_activeConnectionMonitor.GetSnapshot); }

@@ -27,6 +27,12 @@ namespace Sentinel.App.Services
                 recommendation = "Turn on Windows Firewall for all network profiles unless another managed firewall is providing equivalent protection.";
             }
 
+            if (snapshot.AuthenticationAnomalyDetected)
+            {
+                score += 45;
+                recommendation = "Review the repeated failed-logon source and confirm whether the attempts were expected. Sentinel will continue monitoring before recommending containment.";
+            }
+
             score += Math.Min(snapshot.CriticalEventCount * 12, 24);
             score += Math.Min(snapshot.ErrorEventCount * 2, 16);
 
@@ -99,7 +105,9 @@ namespace Sentinel.App.Services
                 _ => "Low"
             };
 
-            string summary = snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase)
+            string summary = snapshot.AuthenticationAnomalyDetected
+                ? snapshot.AuthenticationAnomalySummary
+                : snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase)
                 ? "Multiple independent behaviors correlate into a high-confidence spyware-like concern that requires investigation."
                 : snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase)
                     ? "Multiple independent unusual behaviors overlap and should be investigated."

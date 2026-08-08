@@ -91,6 +91,14 @@ namespace Sentinel.App.Models
         public DateTime? LatestEventTime { get; set; }
         public string LatestEventSource { get; set; } = "None";
         public string LatestEventMessage { get; set; } = "No critical or error events detected in the last 24 hours.";
+        public bool AuthenticationMonitoringAvailable { get; set; }
+        public int RecentFailedLogonCount { get; set; }
+        public int RepeatedAuthenticationSourceCount { get; set; }
+        public string PrimaryAuthenticationSource { get; set; } = "None";
+        public bool AuthenticationAnomalyDetected { get; set; }
+        public int AuthenticationAnomalyConfidenceScore { get; set; }
+        public string AuthenticationAnomalyState { get; set; } = "Starting";
+        public string AuthenticationAnomalySummary { get; set; } = "Sentinel is checking recent Windows authentication evidence.";
         public int RiskScore { get; set; }
         public string RiskLevel { get; set; } = "Calculating...";
         public string RiskSummary { get; set; } = "Analyzing current conditions.";
