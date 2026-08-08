@@ -45,6 +45,7 @@ namespace Sentinel.App.Services
 
             bool monitoringIncomplete =
                 !snapshot.NetworkConnectionMonitoringAvailable ||
+                !snapshot.CommandLineMonitoringAvailable ||
                 !snapshot.StartupPersistenceMonitoringAvailable ||
                 !snapshot.ScheduledTaskMonitoringAvailable;
 
