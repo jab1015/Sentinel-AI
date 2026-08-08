@@ -29,6 +29,7 @@ namespace Sentinel.App.Services
         private readonly OptimizationDecisionService _decisionService = new();
         private readonly OptimizationSafetyService _safetyService = new();
         private readonly OptimizationSettingsService _settingsService = new();
+        private readonly StoreSubscriptionService _subscriptionService = new();
         private readonly SafeTemporaryStorageOptimizationExecutor _storageExecutor = new();
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
         private readonly string _statePath;
@@ -58,6 +59,29 @@ namespace Sentinel.App.Services
 
             OptimizationSettings settings = _settingsService.Load();
             OptimizationDecision decision = _decisionService.Evaluate(baseline, assessment);
+
+            // Baseline learning and local assessment remain free. Any optimization
+            // execution requires a positively verified entitlement at the execution
+            // boundary, so stale UI state cannot bypass licensing.
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                OptimizationSettings monitoringOnlySettings = settings with
+                {
+                    AutomaticOptimizationEnabled = false
+                };
+                OptimizationSafetyAssessment monitoringOnlySafety =
+                    _safetyService.Evaluate(decision, monitoringOnlySettings);
+
+                return new AutomaticOptimizationResult(
+                    false,
+                    baseline,
+                    decision,
+                    monitoringOnlySafety,
+                    null,
+                    "Sentinel completed free local performance monitoring. An active subscription is required before Sentinel can apply optimization changes.");
+            }
+
             OptimizationSafetyAssessment safety = _safetyService.Evaluate(decision, settings);
 
             if (!safety.ExecutionAllowed)
