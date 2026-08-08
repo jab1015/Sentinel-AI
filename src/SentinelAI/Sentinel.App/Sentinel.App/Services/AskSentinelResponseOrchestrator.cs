@@ -124,6 +124,12 @@ namespace Sentinel.App.Services
             bool optimizationOnly = value.Contains("optimization") || value.Contains("optimizations") ||
                                     value.Contains("optimize") || value.Contains("optimized");
 
+            if (!summary.HistoryAvailable)
+            {
+                string scope = optimizationOnly ? "optimization" : "maintenance";
+                return $"Sentinel could not read the verified {scope} history, so I cannot claim that no prior action occurred.\n\nCurrent status: {CreateCurrentOptimizationStatus(snapshot)}";
+            }
+
             MaintenanceHistoryEntry[] entries = summary.Entries
                 .Where(entry => !optimizationOnly || entry.Category.Equals("Optimization", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(entry => entry.TimestampUtc)
