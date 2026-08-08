@@ -211,7 +211,7 @@ namespace Sentinel.App.Services
             };
 
             process.Start();
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
             return process.ExitCode;
         }
 
@@ -231,14 +231,38 @@ namespace Sentinel.App.Services
             };
 
             process.Start();
-            string output = await process.StandardOutput.ReadToEndAsync().ConfigureAwait(false);
-            await process.WaitForExitAsync().ConfigureAwait(false);
+            Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
+            Task<string> errorRead = process.StandardError.ReadToEndAsync();
+            await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            string output = await outputRead.ConfigureAwait(false);
+            _ = await errorRead.ConfigureAwait(false);
 
             return process.ExitCode == 0 &&
                    output.Contains(ruleName, StringComparison.OrdinalIgnoreCase) &&
                    output.Contains(remoteIp, StringComparison.OrdinalIgnoreCase) &&
                    output.Contains("Block", StringComparison.OrdinalIgnoreCase) &&
                    output.Contains("Out", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static async Task WaitForExitBoundedAsync(Process process, TimeSpan timeout)
+        {
+            try
+            {
+                await process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // The process may have exited or elevation may prevent cleanup.
+                }
+
+                throw;
+            }
         }
 
         private static async Task<bool> RuleExistsAsync(string ruleName)
@@ -259,7 +283,7 @@ namespace Sentinel.App.Services
             process.Start();
             Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
             Task<string> errorRead = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
             string output = await outputRead.ConfigureAwait(false);
             _ = await errorRead.ConfigureAwait(false);
 
