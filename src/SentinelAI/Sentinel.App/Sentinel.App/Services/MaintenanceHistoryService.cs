@@ -49,7 +49,10 @@ namespace Sentinel.App.Services
             lock (HistorySync)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                List<MaintenanceHistoryEntry> entries = Load()
+                if (!TryLoad(out List<MaintenanceHistoryEntry> loaded))
+                    return;
+
+                List<MaintenanceHistoryEntry> entries = loaded
                     .Where(item => now - item.TimestampUtc <= RetentionWindow)
                     .ToList();
 
@@ -63,7 +66,19 @@ namespace Sentinel.App.Services
             lock (HistorySync)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                MaintenanceHistoryEntry[] entries = Load()
+                if (!TryLoad(out List<MaintenanceHistoryEntry> loaded))
+                {
+                    return new MaintenanceHistorySummary(
+                        Array.Empty<MaintenanceHistoryEntry>(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        "Sentinel could not read the verified maintenance history. It will not infer that no maintenance occurred.",
+                        HistoryAvailable: false);
+                }
+
+                MaintenanceHistoryEntry[] entries = loaded
                     .Where(item => now - item.TimestampUtc <= RetentionWindow)
                     .OrderByDescending(item => item.TimestampUtc)
                     .ToArray();
@@ -88,20 +103,26 @@ namespace Sentinel.App.Services
             }
         }
 
-        private List<MaintenanceHistoryEntry> Load()
+        private bool TryLoad(out List<MaintenanceHistoryEntry> entries)
         {
+            entries = new List<MaintenanceHistoryEntry>();
             try
             {
                 if (!File.Exists(_historyPath))
-                    return new List<MaintenanceHistoryEntry>();
+                    return true;
 
                 string json = File.ReadAllText(_historyPath);
-                return JsonSerializer.Deserialize<List<MaintenanceHistoryEntry>>(json)
-                    ?? new List<MaintenanceHistoryEntry>();
+                List<MaintenanceHistoryEntry>? loaded =
+                    JsonSerializer.Deserialize<List<MaintenanceHistoryEntry>>(json);
+                if (loaded is null)
+                    return false;
+
+                entries = loaded;
+                return true;
             }
             catch
             {
-                return new List<MaintenanceHistoryEntry>();
+                return false;
             }
         }
 
@@ -154,5 +175,6 @@ namespace Sentinel.App.Services
         int VerifiedActions,
         int RolledBackActions,
         int FailedActions,
-        string Summary);
+        string Summary,
+        bool HistoryAvailable = true);
 }
