@@ -64,7 +64,7 @@ namespace Sentinel.App.Services
                         }
                         else if (signature.Status == AuthenticodeTrustStatus.Unsigned)
                         {
-                            findings.Add(new ProcessFinding(processName, $"Unsigned executable in a user-writable location: {ShortenPath(path)}", process.Id, GetStartTimeUtc(process)));
+                            findings.Add(new ProcessFinding(processName, $"Unsigned executable in a user-writable location: {ShortenPath(path)}. Unsigned software is not automatically malicious.", process.Id, GetStartTimeUtc(process)));
                         }
                         else if (!signature.IsTrusted)
                         {
@@ -108,7 +108,7 @@ namespace Sentinel.App.Services
             {
                 AuthenticodeTrustStatus.Trusted => $" Windows verified the Authenticode signature from {signature.Publisher}.",
                 AuthenticodeTrustStatus.TrustedTimestamped => $" Windows verified the timestamped Authenticode signature from {signature.Publisher}.",
-                AuthenticodeTrustStatus.Unsigned => " No Authenticode signature was found.",
+                AuthenticodeTrustStatus.Unsigned => " No Authenticode signature was found; unsigned software is not automatically malicious.",
                 _ => $" Authenticode result: {DescribeStatus(signature.Status)}. Publisher: {signature.Publisher}. {signature.Explanation}"
             };
             return $"Running from a temporary location: {ShortenPath(path)}.{signatureText}";
@@ -118,20 +118,30 @@ namespace Sentinel.App.Services
         {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return SignatureAssessment.VerificationError;
 
-            FileInfo fileInfo;
-            try { fileInfo = new FileInfo(path); }
-            catch { return SignatureAssessment.VerificationError; }
-
-            // Bind cached trust to content, not just a path/mtime tuple. This avoids accepting a
-            // replacement file that preserves its timestamp. Only user-writable candidates reach here.
             string contentHash;
             try { contentHash = ComputeSha256(path); }
             catch { return SignatureAssessment.VerificationError; }
 
-            string cacheKey = $"{path}|{fileInfo.Length}|{contentHash}";
+            string cacheKey = $"{path}|{contentHash}";
             if (_signatureCache.TryGetValue(cacheKey, out SignatureAssessment? cached)) return cached;
 
             AuthenticodeVerificationResult verification = AuthenticodeVerifier.Verify(path);
+
+            // The verifier hashes before and after WinVerifyTrust. If the content Sentinel hashed for
+            // the cache is not the exact content WinVerifyTrust verified, fail closed and never cache it.
+            if (verification.Status == AuthenticodeTrustStatus.FileChangedDuringVerification ||
+                string.IsNullOrWhiteSpace(verification.VerifiedSha256) ||
+                !string.Equals(contentHash, verification.VerifiedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                return new SignatureAssessment(
+                    AuthenticodeTrustStatus.FileChangedDuringVerification,
+                    verification.IsSigned,
+                    false,
+                    false,
+                    verification.Publisher,
+                    "The executable changed between identity and signature checks, so Sentinel did not make a trust decision.");
+            }
+
             SignatureAssessment assessment = new(
                 verification.Status,
                 verification.IsSigned,
@@ -182,6 +192,7 @@ namespace Sentinel.App.Services
             AuthenticodeTrustStatus.Revoked => "revoked signer",
             AuthenticodeTrustStatus.Expired => "expired signature",
             AuthenticodeTrustStatus.ExplicitlyDistrusted => "explicitly distrusted signature",
+            AuthenticodeTrustStatus.FileChangedDuringVerification => "file changed during verification",
             _ => "verification error"
         };
 
