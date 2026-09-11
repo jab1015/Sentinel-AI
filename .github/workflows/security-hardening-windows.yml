@@ -60,6 +60,15 @@ jobs:
       - name: Run system image health acceptance harness
         run: dotnet run --project "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore cloud redaction acceptance harness
+        run: dotnet restore "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj"
+
+      - name: Build cloud redaction acceptance harness
+        run: dotnet build "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run cloud redaction acceptance harness
+        run: dotnet run --project "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore AI gateway security harness
         run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
 
