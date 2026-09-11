@@ -10,6 +10,7 @@ namespace Sentinel.App
 {
     public partial class App : Application
     {
+        private const string MainInstanceKey = "SentinelAI.Main";
         private static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new(-4);
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -18,10 +19,12 @@ namespace Sentinel.App
 
         private readonly DiagnosticLogService _diagnosticLog = new();
         private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
+        private AppInstance? _primaryInstance;
         private Window? _window;
         private OptionsWindow? _optionsWindow;
         private SystemTrayService? _systemTrayService;
         private bool _isExplicitExit;
+        private bool _pendingInteractiveActivation;
 
         public App()
         {
@@ -38,6 +41,8 @@ namespace Sentinel.App
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            if (!EnsurePrimaryInstance()) return;
+
             Stopwatch startupTimer = Stopwatch.StartNew();
             bool launchedByWindowsStartup = IsWindowsStartupLaunch();
             _ = _diagnosticLog.InformationAsync("ApplicationLaunch",
@@ -56,7 +61,7 @@ namespace Sentinel.App
                 _window.AppWindow.Closing += MainAppWindow_Closing;
                 _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);
 
-                if (launchedByWindowsStartup)
+                if (launchedByWindowsStartup && !_pendingInteractiveActivation)
                 {
                     mainWindow.StartBackgroundMonitoring();
                     _window.AppWindow.Hide();
@@ -64,6 +69,7 @@ namespace Sentinel.App
                 }
                 else
                 {
+                    _pendingInteractiveActivation = false;
                     _window.Activate();
                 }
 
@@ -87,6 +93,53 @@ namespace Sentinel.App
                     $"Sentinel AI could not complete startup after {startupTimer.ElapsedMilliseconds} ms.", ex);
                 throw;
             }
+        }
+
+        private bool EnsurePrimaryInstance()
+        {
+            try
+            {
+                AppInstance current = AppInstance.GetCurrent();
+                AppInstance primary = AppInstance.FindOrRegisterForKey(MainInstanceKey);
+                if (!primary.IsCurrent)
+                {
+                    AppActivationArguments activation = current.GetActivatedEventArgs();
+                    primary.RedirectActivationToAsync(activation).AsTask().GetAwaiter().GetResult();
+                    _ = _diagnosticLog.InformationAsync("SingleInstance", "A duplicate Sentinel AI launch was redirected to the existing instance.");
+                    Exit();
+                    return false;
+                }
+
+                _primaryInstance = primary;
+                _primaryInstance.Activated -= PrimaryInstance_Activated;
+                _primaryInstance.Activated += PrimaryInstance_Activated;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _ = _diagnosticLog.ErrorAsync("SingleInstanceFailure",
+                    "Sentinel AI could not establish its single-instance activation boundary.", ex);
+                throw;
+            }
+        }
+
+        private void PrimaryInstance_Activated(object? sender, AppActivationArguments args)
+        {
+            if (args.Kind == ExtendedActivationKind.StartupTask)
+            {
+                _ = _diagnosticLog.InformationAsync("SingleInstance", "A duplicate Windows startup activation was ignored because Sentinel AI is already running.");
+                return;
+            }
+
+            Window? window = _window;
+            if (window is null)
+            {
+                _pendingInteractiveActivation = true;
+                return;
+            }
+
+            ShowMainWindow();
+            _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI window handled a redirected activation.");
         }
 
         private static bool IsWindowsStartupLaunch()
@@ -150,6 +203,7 @@ namespace Sentinel.App
             Window? window = _window;
             if (window is null)
             {
+                if (_primaryInstance is not null) _primaryInstance.Activated -= PrimaryInstance_Activated;
                 _systemTrayService?.Dispose();
                 _systemTrayService = null;
                 Exit();
@@ -159,6 +213,7 @@ namespace Sentinel.App
             window.DispatcherQueue.TryEnqueue(() =>
             {
                 _isExplicitExit = true;
+                if (_primaryInstance is not null) _primaryInstance.Activated -= PrimaryInstance_Activated;
                 _optionsWindow?.Close();
                 _optionsWindow = null;
                 _systemTrayService?.Dispose();
