@@ -19,18 +19,16 @@ namespace Sentinel.App.Services;
 
 internal sealed class PrivilegedBrokerClient
 {
-    private const int ProtocolVersion = 1;
+    private const int ProtocolVersion = 2;
     private const int MaximumRequestBytes = 32 * 1024;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
     private readonly string _brokerPath;
-    private readonly string _resultsRoot;
     private readonly string _recordsRoot;
 
     internal PrivilegedBrokerClient(string? brokerPath = null)
     {
         _brokerPath = brokerPath ?? Path.Combine(AppContext.BaseDirectory, "Sentinel.PrivilegedBroker.exe");
         string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SentinelAI", "Broker");
-        _resultsRoot = Path.Combine(root, "Results");
         _recordsRoot = Path.Combine(root, "QuarantineRecords");
     }
 
@@ -110,26 +108,8 @@ internal sealed class PrivilegedBrokerClient
         if (payload.Length is <= 0 or > MaximumRequestBytes)
             return BrokerInvocationResult.Failure("InvalidRequest", "The privileged request exceeded Sentinel's allowed message size.");
 
-        string pipeName = "SentinelAI-Privileged-" + Guid.NewGuid().ToString("N");
-        long callerStartTicks;
-        try
-        {
-            using Process current = Process.GetCurrentProcess();
-            callerStartTicks = current.StartTime.ToUniversalTime().Ticks;
-        }
-        catch
-        {
-            return BrokerInvocationResult.Failure("CallerIdentityUnavailable", "Sentinel could not establish its process identity for the privileged request.");
-        }
-
-        using NamedPipeServerStream pipe = new(
-            pipeName,
-            PipeDirection.Out,
-            1,
-            PipeTransmissionMode.Byte,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
-            4096,
-            4096);
+        string pipeToken = Guid.NewGuid().ToString("N");
+        string pipeName = "SentinelAI.Broker." + pipeToken;
 
         using Process process = new()
         {
@@ -143,11 +123,7 @@ internal sealed class PrivilegedBrokerClient
             }
         };
         process.StartInfo.ArgumentList.Add("--pipe");
-        process.StartInfo.ArgumentList.Add(pipeName);
-        process.StartInfo.ArgumentList.Add("--caller-pid");
-        process.StartInfo.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        process.StartInfo.ArgumentList.Add("--caller-start");
-        process.StartInfo.ArgumentList.Add(callerStartTicks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        process.StartInfo.ArgumentList.Add(pipeToken);
 
         try
         {
@@ -163,57 +139,82 @@ internal sealed class PrivilegedBrokerClient
             return BrokerInvocationResult.Failure("LaunchFailure", $"The privileged broker could not start ({ex.GetType().Name}).");
         }
 
+        using NamedPipeClientStream pipe = new(
+            ".",
+            pipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous);
+
         try
         {
-            await pipe.WaitForConnectionAsync(token).WaitAsync(TimeSpan.FromSeconds(20), token).ConfigureAwait(false);
-            if (!GetNamedPipeClientProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out uint connectedPid) || connectedPid != process.Id)
+            await pipe.ConnectAsync(token).WaitAsync(TimeSpan.FromSeconds(20), token).ConfigureAwait(false);
+            if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out uint connectedPid) || connectedPid != process.Id)
+            {
+                TerminateBroker(process);
                 return BrokerInvocationResult.Failure("BrokerIdentityMismatch", "The privileged IPC peer was not the broker process Sentinel launched.");
+            }
 
-            byte[] length = BitConverter.GetBytes(payload.Length);
-            await pipe.WriteAsync(length, token).ConfigureAwait(false);
-            await pipe.WriteAsync(payload, token).ConfigureAwait(false);
-            await pipe.FlushAsync(token).ConfigureAwait(false);
+            using StreamWriter writer = new(pipe, new UTF8Encoding(false), bufferSize: 4096, leaveOpen: true) { AutoFlush = true };
+            using StreamReader reader = new(pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
+
+            string requestJson = Encoding.UTF8.GetString(payload);
+            await writer.WriteLineAsync(requestJson).WaitAsync(timeout, token).ConfigureAwait(false);
+            string? responseJson = await reader.ReadLineAsync().WaitAsync(timeout, token).ConfigureAwait(false);
+
+            if (string.IsNullOrWhiteSpace(responseJson) || Encoding.UTF8.GetByteCount(responseJson) > MaximumRequestBytes)
+            {
+                TerminateBroker(process);
+                return BrokerInvocationResult.Failure("InvalidResult", "The broker returned an empty or oversized result.");
+            }
+
+            BrokerResult? result = JsonSerializer.Deserialize<BrokerResult>(responseJson);
+            if (result is null || !result.RequestId.Equals(request.RequestId, StringComparison.Ordinal))
+            {
+                TerminateBroker(process);
+                return BrokerInvocationResult.Failure("InvalidResult", "The broker result could not be matched to this request ID.");
+            }
 
             await process.WaitForExitAsync(token).WaitAsync(timeout, token).ConfigureAwait(false);
+            return new(result.Succeeded, result.Code ?? string.Empty, result.Message ?? string.Empty, result.ItemId ?? string.Empty, result.Sha256 ?? string.Empty);
         }
         catch (OperationCanceledException)
         {
-            return BrokerInvocationResult.Failure("Canceled", "The privileged operation was canceled. Sentinel will verify system state before making any success claim.");
+            TerminateBroker(process);
+            return BrokerInvocationResult.Failure("Canceled", "The privileged operation was canceled. Sentinel terminated the broker request and will verify system state before making any success claim.");
         }
         catch (TimeoutException)
         {
-            return BrokerInvocationResult.Failure("Timeout", "The privileged operation exceeded its verification window. Sentinel did not report success.");
+            TerminateBroker(process);
+            return BrokerInvocationResult.Failure("Timeout", "The privileged operation exceeded its verification window. Sentinel terminated the broker request and did not report success.");
         }
         catch (IOException)
         {
+            TerminateBroker(process);
             return BrokerInvocationResult.Failure("IpcFailure", "The authenticated privileged IPC channel failed. Sentinel made no success claim.");
         }
+        catch (JsonException)
+        {
+            TerminateBroker(process);
+            return BrokerInvocationResult.Failure("InvalidResult", "The privileged broker returned malformed result data.");
+        }
+    }
 
-        string resultPath = Path.Combine(_resultsRoot, request.RequestId + ".json");
-        for (int attempt = 0; attempt < 20 && !File.Exists(resultPath); attempt++)
-            await Task.Delay(50, token).ConfigureAwait(false);
-
-        if (!File.Exists(resultPath))
-            return BrokerInvocationResult.Failure("ResultMissing", $"The broker exited with code {process.ExitCode}, but no protected result record was available.");
-
+    private static void TerminateBroker(Process process)
+    {
         try
         {
-            await using FileStream stream = new(resultPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            BrokerResult? result = await JsonSerializer.DeserializeAsync<BrokerResult>(stream, cancellationToken: token).ConfigureAwait(false);
-            if (result is null || !result.RequestId.Equals(request.RequestId, StringComparison.Ordinal))
-                return BrokerInvocationResult.Failure("InvalidResult", "The broker result could not be matched to this request ID.");
-
-            return new(result.Succeeded, result.Code ?? string.Empty, result.Message ?? string.Empty, result.ItemId ?? string.Empty, result.Sha256 ?? string.Empty);
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5_000);
+            }
         }
-        catch (Exception ex)
-        {
-            return BrokerInvocationResult.Failure("ResultReadFailure", $"The broker result could not be read ({ex.GetType().Name}).");
-        }
+        catch { }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint clientProcessId);
+    private static extern bool GetNamedPipeServerProcessId(IntPtr pipe, out uint serverProcessId);
 
     private static string NewRequestId() => Guid.NewGuid().ToString("N");
 
