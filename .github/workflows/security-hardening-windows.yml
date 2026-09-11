@@ -51,6 +51,15 @@ jobs:
       - name: Run bounded process runner acceptance harness
         run: dotnet run --project "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore system image health acceptance harness
+        run: dotnet restore "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj"
+
+      - name: Build system image health acceptance harness
+        run: dotnet build "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run system image health acceptance harness
+        run: dotnet run --project "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore AI gateway security harness
         run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
 
