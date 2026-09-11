@@ -23,16 +23,18 @@ namespace Sentinel.App.Services
         private readonly string _previousLogPath;
         private readonly string _crashBreadcrumbPath;
 
-        public DiagnosticLogService()
+        public DiagnosticLogService(string? logDirectory = null)
         {
             string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            _logDirectory = Path.Combine(localAppData, "Modern Methods", "Sentinel AI", "Logs");
+            _logDirectory = Path.GetFullPath(logDirectory ?? Path.Combine(localAppData, "Modern Methods", "Sentinel AI", "Logs"));
             _logPath = Path.Combine(_logDirectory, "sentinel.log");
             _previousLogPath = Path.Combine(_logDirectory, "sentinel.previous.log");
             _crashBreadcrumbPath = Path.Combine(_logDirectory, "last-crash.txt");
         }
 
         public string LogPath => _logPath;
+        internal string PreviousLogPath => _previousLogPath;
+        internal string CrashBreadcrumbPath => _crashBreadcrumbPath;
 
         public Task InformationAsync(string eventName, string message) => WriteAsync("INFO", eventName, message, null);
         public Task WarningAsync(string eventName, string message) => WriteAsync("WARN", eventName, message, null);
