@@ -32,30 +32,20 @@ namespace Sentinel.App
 
         private static void EnsurePerMonitorDpiAwareness()
         {
-            try
-            {
-                _ = SetProcessDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2);
-            }
-            catch
-            {
-            }
+            try { _ = SetProcessDpiAwarenessContext(DpiAwarenessContextPerMonitorAwareV2); }
+            catch { }
         }
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             Stopwatch startupTimer = Stopwatch.StartNew();
             bool launchedByWindowsStartup = IsWindowsStartupLaunch();
-            _ = _diagnosticLog.InformationAsync(
-                "ApplicationLaunch",
-                launchedByWindowsStartup
-                    ? "Sentinel AI Windows startup launch started."
-                    : "Sentinel AI interactive launch started.");
+            _ = _diagnosticLog.InformationAsync("ApplicationLaunch",
+                launchedByWindowsStartup ? "Sentinel AI Windows startup launch started." : "Sentinel AI interactive launch started.");
 
             try
             {
-                WindowsStartupRegistrationService.StartupRegistrationResult startup =
-                    _startupRegistrationService.EnsureRegisteredAndVerify();
-
+                WindowsStartupRegistrationService.StartupRegistrationResult startup = _startupRegistrationService.EnsureRegisteredAndVerify();
                 _ = startup.Registered
                     ? _diagnosticLog.InformationAsync("WindowsStartup", startup.Summary)
                     : _diagnosticLog.WarningAsync("WindowsStartup", startup.Summary);
@@ -70,9 +60,7 @@ namespace Sentinel.App
                 {
                     mainWindow.StartBackgroundMonitoring();
                     _window.AppWindow.Hide();
-                    _ = _diagnosticLog.InformationAsync(
-                        "WindowsStartup",
-                        "Sentinel AI started with Windows and is monitoring from the system tray.");
+                    _ = _diagnosticLog.InformationAsync("WindowsStartup", "Sentinel AI started with Windows and is monitoring from the system tray.");
                 }
                 else
                 {
@@ -80,8 +68,7 @@ namespace Sentinel.App
                 }
 
                 startupTimer.Stop();
-                _ = _diagnosticLog.InformationAsync(
-                    "StartupPerformance",
+                _ = _diagnosticLog.InformationAsync("StartupPerformance",
                     launchedByWindowsStartup
                         ? $"Background startup completed in {startupTimer.ElapsedMilliseconds} ms."
                         : $"Main window activated in {startupTimer.ElapsedMilliseconds} ms.");
@@ -96,10 +83,8 @@ namespace Sentinel.App
                 startupTimer.Stop();
                 _systemTrayService?.Dispose();
                 _systemTrayService = null;
-                _ = _diagnosticLog.ErrorAsync(
-                    "ApplicationLaunchFailure",
-                    $"Sentinel AI could not complete startup after {startupTimer.ElapsedMilliseconds} ms.",
-                    ex);
+                _ = _diagnosticLog.ErrorAsync("ApplicationLaunchFailure",
+                    $"Sentinel AI could not complete startup after {startupTimer.ElapsedMilliseconds} ms.", ex);
                 throw;
             }
         }
@@ -111,28 +96,21 @@ namespace Sentinel.App
                 AppActivationArguments? activation = AppInstance.GetCurrent().GetActivatedEventArgs();
                 return activation is not null && activation.Kind == ExtendedActivationKind.StartupTask;
             }
-            catch (Exception)
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
         private void MainAppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
         {
             if (_isExplicitExit) return;
-
             args.Cancel = true;
             sender.Hide();
-            _ = _diagnosticLog.InformationAsync(
-                "SystemTray",
-                "Main window hidden. Sentinel AI continues monitoring in the system tray.");
+            _ = _diagnosticLog.InformationAsync("SystemTray", "Main window hidden. Sentinel AI continues monitoring in the system tray.");
         }
 
         private void ShowMainWindow()
         {
             Window? window = _window;
             if (window is null) return;
-
             window.DispatcherQueue.TryEnqueue(() =>
             {
                 window.AppWindow.Show();
@@ -144,7 +122,6 @@ namespace Sentinel.App
         {
             Window? window = _window;
             if (window is null) return;
-
             window.DispatcherQueue.TryEnqueue(() =>
             {
                 try
@@ -155,7 +132,6 @@ namespace Sentinel.App
                         _optionsWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(720, 440));
                         _optionsWindow.AppWindow.Closing += (_, _) => _optionsWindow = null;
                     }
-
                     _optionsWindow.AppWindow.Show();
                     _optionsWindow.Activate();
                     _ = _diagnosticLog.InformationAsync("Options", "Sentinel AI Options opened from the system tray.");
@@ -192,9 +168,12 @@ namespace Sentinel.App
             });
         }
 
-        private async void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+        private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
-            await _diagnosticLog.ErrorAsync(
+            // The process may terminate immediately after this callback. Persist a bounded
+            // breadcrumb synchronously, then attempt the richer async log without awaiting it.
+            _diagnosticLog.WriteCrashBreadcrumb("UnhandledException", e.Exception);
+            _ = _diagnosticLog.ErrorAsync(
                 "UnhandledException",
                 "An unhandled application exception reached the WinUI application boundary.",
                 e.Exception);
