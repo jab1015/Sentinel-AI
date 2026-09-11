@@ -7,45 +7,44 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Persists the minimal verified metadata Sentinel needs to present and safely
-    /// restore quarantined files across application restarts. The catalog contains
-    /// no executable content; files remain isolated in the quarantine directory.
-    /// </summary>
     public sealed class QuarantineCatalogService
     {
-        private static readonly JsonSerializerOptions JsonOptions = new()
-        {
-            WriteIndented = true
-        };
-
-        private readonly string _catalogPath;
+        private readonly PrivilegedBrokerClient _broker = new();
         private readonly SemaphoreSlim _gate = new(1, 1);
+        private readonly Dictionary<string, Annotation> _annotations = new(StringComparer.OrdinalIgnoreCase);
 
         public QuarantineCatalogService(string? catalogPath = null)
         {
-            _catalogPath = catalogPath ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "SentinelAI",
-                "Quarantine",
-                "catalog.json");
+            // Retained for source compatibility. Broker records are authoritative.
         }
 
-        public async Task<IReadOnlyList<QuarantineCatalogEntry>> GetEntriesAsync(
-            CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<QuarantineCatalogEntry>> GetEntriesAsync(CancellationToken cancellationToken = default)
         {
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                List<QuarantineCatalogEntry> entries = await ReadUnsafeAsync(cancellationToken).ConfigureAwait(false);
-                return entries
-                    .OrderByDescending(entry => entry.QuarantinedAtUtc)
+                BrokerQuarantineRecord[] records = await _broker.ReadProtectedRecordsAsync(cancellationToken).ConfigureAwait(false);
+                return records
+                    .Where(r => Guid.TryParseExact(r.ItemId, "N", out _))
+                    .Select(r =>
+                    {
+                        _annotations.TryGetValue(r.ItemId, out Annotation? annotation);
+                        return new QuarantineCatalogEntry(
+                            r.OriginalPath,
+                            BuildReference(r.ItemId),
+                            r.Sha256,
+                            r.QuarantinedAtUtc,
+                            true,
+                            annotation?.ReasonCode ?? string.Empty,
+                            annotation?.EvidenceConfidencePercent ?? 0,
+                            r.ItemId);
+                    })
+                    .OrderByDescending(r => r.QuarantinedAtUtc)
                     .ToArray();
             }
             finally
@@ -54,11 +53,8 @@ namespace Sentinel.App.Services
             }
         }
 
-        public async Task AddAsync(
-            QuarantineService.QuarantineRecord record,
-            CancellationToken cancellationToken = default)
-            => await AddAsync(record, reasonCode: string.Empty, evidenceConfidencePercent: 0, cancellationToken)
-                .ConfigureAwait(false);
+        public Task AddAsync(QuarantineService.QuarantineRecord record, CancellationToken cancellationToken = default) =>
+            AddAsync(record, string.Empty, 0, cancellationToken);
 
         public async Task AddAsync(
             QuarantineService.QuarantineRecord record,
@@ -67,24 +63,23 @@ namespace Sentinel.App.Services
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(record);
+            if (!Guid.TryParseExact(record.ItemId, "N", out _))
+                throw new InvalidOperationException("The quarantine item identifier is invalid.");
+
+            BrokerQuarantineRecord? brokerRecord = await _broker.ReadProtectedRecordAsync(record.ItemId, cancellationToken).ConfigureAwait(false);
+            if (brokerRecord is null ||
+                !string.Equals(brokerRecord.Sha256, record.Sha256, StringComparison.OrdinalIgnoreCase) ||
+                !PathsEqual(brokerRecord.OriginalPath, record.OriginalPath))
+            {
+                throw new InvalidOperationException("The quarantine item could not be verified against the broker record.");
+            }
 
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                List<QuarantineCatalogEntry> entries = await ReadUnsafeAsync(cancellationToken).ConfigureAwait(false);
-                entries.RemoveAll(entry =>
-                    string.Equals(entry.QuarantinePath, record.QuarantinePath, StringComparison.OrdinalIgnoreCase));
-
-                entries.Add(new QuarantineCatalogEntry(
-                    record.OriginalPath,
-                    record.QuarantinePath,
-                    record.Sha256,
-                    record.QuarantinedAtUtc,
-                    File.Exists(record.QuarantinePath),
+                _annotations[record.ItemId] = new Annotation(
                     reasonCode ?? string.Empty,
-                    Math.Clamp(evidenceConfidencePercent, 0, 100)));
-
-                await WriteUnsafeAsync(entries, cancellationToken).ConfigureAwait(false);
+                    Math.Clamp(evidenceConfidencePercent, 0, 100));
             }
             finally
             {
@@ -92,118 +87,57 @@ namespace Sentinel.App.Services
             }
         }
 
-        public async Task RemoveAsync(
-            string quarantinePath,
-            CancellationToken cancellationToken = default)
+        public Task RemoveAsync(string quarantineReference, CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(quarantinePath)) return;
-
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                List<QuarantineCatalogEntry> entries = await ReadUnsafeAsync(cancellationToken).ConfigureAwait(false);
-                entries.RemoveAll(entry =>
-                    string.Equals(entry.QuarantinePath, quarantinePath, StringComparison.OrdinalIgnoreCase));
-                await WriteUnsafeAsync(entries, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                _gate.Release();
-            }
+            string itemId = ExtractItemId(quarantineReference);
+            if (!string.IsNullOrWhiteSpace(itemId)) _annotations.Remove(itemId);
+            return Task.CompletedTask;
         }
 
-        public async Task<IReadOnlyList<QuarantineCatalogEntry>> ReconcileAsync(
-            CancellationToken cancellationToken = default)
-        {
-            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                List<QuarantineCatalogEntry> entries = await ReadUnsafeAsync(cancellationToken).ConfigureAwait(false);
-                bool changed = false;
-
-                for (int index = 0; index < entries.Count; index++)
-                {
-                    bool exists = File.Exists(entries[index].QuarantinePath);
-                    if (entries[index].IsPresent == exists) continue;
-                    entries[index] = entries[index] with { IsPresent = exists };
-                    changed = true;
-                }
-
-                if (changed)
-                {
-                    await WriteUnsafeAsync(entries, cancellationToken).ConfigureAwait(false);
-                }
-
-                return entries
-                    .OrderByDescending(entry => entry.QuarantinedAtUtc)
-                    .ToArray();
-            }
-            finally
-            {
-                _gate.Release();
-            }
-        }
+        public Task<IReadOnlyList<QuarantineCatalogEntry>> ReconcileAsync(CancellationToken cancellationToken = default) =>
+            GetEntriesAsync(cancellationToken);
 
         public QuarantineService.QuarantineRecord ToRecord(QuarantineCatalogEntry entry)
         {
             ArgumentNullException.ThrowIfNull(entry);
+            if (!Guid.TryParseExact(entry.ItemId, "N", out _))
+                throw new InvalidOperationException("The quarantine entry identifier is invalid.");
+
             return new QuarantineService.QuarantineRecord(
                 entry.OriginalPath,
-                entry.QuarantinePath,
+                BuildReference(entry.ItemId),
                 entry.Sha256,
-                entry.QuarantinedAtUtc);
+                entry.QuarantinedAtUtc)
+            {
+                ItemId = entry.ItemId
+            };
         }
 
-        private async Task<List<QuarantineCatalogEntry>> ReadUnsafeAsync(CancellationToken cancellationToken)
+        private static bool PathsEqual(string left, string right)
         {
-            if (!File.Exists(_catalogPath)) return new List<QuarantineCatalogEntry>();
-
             try
             {
-                await using FileStream stream = new(
-                    _catalogPath,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read,
-                    4096,
-                    FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-                return await JsonSerializer.DeserializeAsync<List<QuarantineCatalogEntry>>(
-                    stream,
-                    JsonOptions,
-                    cancellationToken).ConfigureAwait(false) ?? new List<QuarantineCatalogEntry>();
+                return Path.GetFullPath(left).Equals(Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
             }
-            catch (JsonException)
+            catch
             {
-                // A malformed catalog must never cause Sentinel to trust or act on
-                // unverified quarantine metadata. Start with an empty in-memory view.
-                return new List<QuarantineCatalogEntry>();
+                return false;
             }
         }
 
-        private async Task WriteUnsafeAsync(
-            List<QuarantineCatalogEntry> entries,
-            CancellationToken cancellationToken)
+        private static string BuildReference(string itemId) => "sentinel-quarantine://" + itemId;
+
+        private static string ExtractItemId(string value)
         {
-            string? directory = Path.GetDirectoryName(_catalogPath);
-            if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+            const string prefix = "sentinel-quarantine://";
+            if (string.IsNullOrWhiteSpace(value) || !value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
 
-            string temporaryPath = _catalogPath + ".tmp";
-            await using (FileStream stream = new(
-                temporaryPath,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                4096,
-                FileOptions.Asynchronous | FileOptions.WriteThrough))
-            {
-                await JsonSerializer.SerializeAsync(stream, entries, JsonOptions, cancellationToken)
-                    .ConfigureAwait(false);
-                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            File.Move(temporaryPath, _catalogPath, overwrite: true);
+            string raw = value[prefix.Length..];
+            return Guid.TryParseExact(raw, "N", out Guid parsed) ? parsed.ToString("N") : string.Empty;
         }
+
+        private sealed record Annotation(string ReasonCode, int EvidenceConfidencePercent);
 
         public sealed record QuarantineCatalogEntry(
             string OriginalPath,
@@ -212,7 +146,8 @@ namespace Sentinel.App.Services
             DateTimeOffset QuarantinedAtUtc,
             bool IsPresent,
             string ReasonCode = "",
-            int EvidenceConfidencePercent = 0)
+            int EvidenceConfidencePercent = 0,
+            string ItemId = "")
         {
             public string FileName => Path.GetFileName(OriginalPath);
         }
