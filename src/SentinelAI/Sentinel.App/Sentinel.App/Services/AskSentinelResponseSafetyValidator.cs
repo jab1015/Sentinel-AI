@@ -9,9 +9,13 @@ using Sentinel.App.Models;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Final fail-safe validation for Ask Sentinel responses. This guard runs after
-    /// response construction and blocks internally inconsistent claims before they
-    /// reach the user.
+    /// Structural fail-safe for deterministic Ask Sentinel responses.
+    ///
+    /// Security/action claims are not authorized by scanning English phrases. Cloud-model prose
+    /// is kept out of the security-state display path by ExternalInvestigationGateway; action and
+    /// protection outcomes shown to the user are rendered by deterministic application code from
+    /// verified snapshot/history records. This validator checks structural invariants only rather
+    /// than pretending that wording analysis can prove a claim is supported.
     /// </summary>
     public sealed class AskSentinelResponseSafetyValidator
     {
@@ -26,48 +30,27 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
 
             if (string.IsNullOrWhiteSpace(response.Answer))
-            {
                 return Block("Ask Sentinel produced an empty response.");
-            }
 
             if (response.EvidenceCount <= 0)
-            {
                 return Block("No verified evidence was available to support the response.");
-            }
+
+            if (response.EvidenceTimestamp == default)
+                return Block("The response did not identify the verified evidence snapshot it was based on.");
+
+            if (response.EvidenceTimestamp > DateTimeOffset.UtcNow.AddMinutes(5))
+                return Block("The response evidence timestamp is invalid.");
 
             if (response.UsedInvestigationHistory && response.IsInsufficientEvidence)
-            {
                 return Block("History was marked as used even though the response reports insufficient evidence.");
-            }
 
-            if (ClaimsSuccessfulAction(response.Answer) &&
-                !snapshot.RemediationSucceeded &&
-                !snapshot.AutonomousProtectionSucceeded)
-            {
-                return Block("The response would claim a successful action without a verified success outcome.");
-            }
-
-            if (ClaimsActionWasPerformed(response.Answer) &&
-                !snapshot.RemediationAttempted &&
-                !snapshot.AutonomousProtectionAttempted)
-            {
-                return Block("The response would claim that Sentinel performed an action without a verified action attempt.");
-            }
-
-            if (ClaimsThreatFound(response.Answer) &&
-                snapshot.FlaggedProcessCount <= 0 &&
-                snapshot.FlaggedConnectionCount <= 0 &&
-                snapshot.FlaggedServiceCount <= 0 &&
-                snapshot.DefenderEnabled &&
-                snapshot.FirewallEnabled)
-            {
-                return Block("The response would make an unsupported threat claim.");
-            }
+            if (string.IsNullOrWhiteSpace(response.GroundingSummary))
+                return Block("The response did not retain grounding/provenance information.");
 
             return new ValidationResult(
                 IsSafe: true,
                 Answer: response.Answer,
-                Reason: "Response passed Ask Sentinel final safety validation.");
+                Reason: "Response passed structural safety validation; security/action wording is produced only by deterministic application paths.");
         }
 
         private static ValidationResult Block(string reason) =>
@@ -75,48 +58,6 @@ namespace Sentinel.App.Services
                 IsSafe: false,
                 Answer: InsufficientEvidence,
                 Reason: reason);
-
-        private static bool ClaimsSuccessfulAction(string value) =>
-            ContainsAny(value,
-                "successfully fixed",
-                "successfully removed",
-                "successfully blocked",
-                "successfully stopped",
-                "successfully restarted",
-                "has been fixed",
-                "has been removed",
-                "has been blocked",
-                "has been resolved");
-
-        private static bool ClaimsActionWasPerformed(string value) =>
-            ContainsAny(value,
-                "sentinel fixed",
-                "sentinel removed",
-                "sentinel blocked",
-                "sentinel stopped",
-                "sentinel restarted",
-                "sentinel quarantined");
-
-        private static bool ClaimsThreatFound(string value) =>
-            ContainsAny(value,
-                "sentinel found malware",
-                "sentinel found a virus",
-                "sentinel found a threat",
-                "your computer is infected",
-                "malware is present");
-
-        private static bool ContainsAny(string value, params string[] terms)
-        {
-            foreach (string term in terms)
-            {
-                if (value.Contains(term, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
 
         public sealed record ValidationResult(
             bool IsSafe,
