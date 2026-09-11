@@ -69,6 +69,15 @@ jobs:
       - name: Run cloud redaction acceptance harness
         run: dotnet run --project "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore event log filtering acceptance harness
+        run: dotnet restore "tools/Sentinel.EventLogFilteringAcceptanceHarness/Sentinel.EventLogFilteringAcceptanceHarness.csproj"
+
+      - name: Build event log filtering acceptance harness
+        run: dotnet build "tools/Sentinel.EventLogFilteringAcceptanceHarness/Sentinel.EventLogFilteringAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run event log filtering acceptance harness
+        run: dotnet run --project "tools/Sentinel.EventLogFilteringAcceptanceHarness/Sentinel.EventLogFilteringAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore AI gateway security harness
         run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
 
