@@ -45,6 +45,7 @@ namespace Sentinel.App.Services
                 return IntegratedMaintenanceResult.NotRun("A maintenance evaluation is already in progress.");
 
             bool changeReservationPersisted = false;
+            string reservedCategory = string.Empty;
             try
             {
                 SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
@@ -79,10 +80,6 @@ namespace Sentinel.App.Services
                     if (!verification.Passed)
                         return IntegratedMaintenanceResult.NotRun("Sentinel blocked automatic maintenance because runtime verification did not pass. No system change was made.");
                 }
-                else if (!verificationState.Passed)
-                {
-                    return IntegratedMaintenanceResult.NotRun("Sentinel blocked automatic maintenance because the last runtime verification did not pass.");
-                }
 
                 OptimizationSettings settings = _settingsService.Load();
                 if (!settings.AutomaticOptimizationEnabled)
@@ -95,45 +92,48 @@ namespace Sentinel.App.Services
                 WindowsServiceRepairSafetyAssessment serviceSafety = _serviceSafetyService.Evaluate(servicePlan, settings);
                 if (serviceSafety.ExecutionAllowed)
                 {
-                    if (!ReserveChange(now, "WindowsService"))
-                        return PersistenceBlocked();
+                    if (!ReserveChange(now, "WindowsService")) return PersistenceBlocked();
                     changeReservationPersisted = true;
+                    reservedCategory = "WindowsService";
                     WindowsServiceRepairExecutionResult serviceResult = await _serviceExecutor.ExecuteAsync(serviceSafety, cancellationToken).ConfigureAwait(false);
                     _outcomeRecorder.Record(serviceResult);
-                    PersistOutcomeBestEffort(now, "WindowsService", serviceResult.Summary);
                     if (serviceResult.Attempted)
+                    {
+                        PersistOutcomeBestEffort(now, "WindowsService", serviceResult.Summary);
                         return new IntegratedMaintenanceResult(true, serviceResult.Verified, "WindowsService", serviceResult.Summary);
+                    }
+                    if (!RestoreNoChangeState(now, state.LastChangeUtc, serviceResult.Summary)) return PersistenceBlockedAfterReservation();
+                    changeReservationPersisted = false;
+                    reservedCategory = string.Empty;
                 }
 
-                NetworkRepairPlan networkPlan = await _networkExecutor.EvaluateAsync(settings, cancellationToken).ConfigureAwait(false);
-                if (networkPlan.ExecutionWarranted)
+                if (!ReserveChange(now, "Network")) return PersistenceBlocked();
+                changeReservationPersisted = true;
+                reservedCategory = "Network";
+                NetworkRepairExecutionResult networkResult = await _networkExecutor.EvaluateAndExecuteAsync(settings, cancellationToken).ConfigureAwait(false);
+                _outcomeRecorder.Record(networkResult);
+                if (networkResult.Attempted)
                 {
-                    if (!ReserveChange(now, "Network"))
-                        return PersistenceBlocked();
-                    changeReservationPersisted = true;
-                    NetworkRepairExecutionResult networkResult = await _networkExecutor.ExecuteAsync(networkPlan, cancellationToken).ConfigureAwait(false);
-                    _outcomeRecorder.Record(networkResult);
                     PersistOutcomeBestEffort(now, "Network", networkResult.Summary);
-                    if (networkResult.Attempted)
-                        return new IntegratedMaintenanceResult(true, networkResult.Verified, "Network", networkResult.Summary);
+                    return new IntegratedMaintenanceResult(true, networkResult.Verified, "Network", networkResult.Summary);
                 }
+                if (!RestoreNoChangeState(now, state.LastChangeUtc, networkResult.Summary)) return PersistenceBlockedAfterReservation();
+                changeReservationPersisted = false;
+                reservedCategory = string.Empty;
 
-                StorageOptimizationPlan storagePlan = await _storageExecutor.EvaluateAsync(cancellationToken).ConfigureAwait(false);
-                if (storagePlan.ExecutionWarranted)
+                if (!ReserveChange(now, "Storage")) return PersistenceBlocked();
+                changeReservationPersisted = true;
+                reservedCategory = "Storage";
+                StorageOptimizationExecutionResult storageResult = await _storageExecutor.EvaluateAndExecuteAsync(cancellationToken).ConfigureAwait(false);
+                _outcomeRecorder.Record(storageResult);
+                if (storageResult.Attempted)
                 {
-                    if (!ReserveChange(now, "Storage"))
-                        return PersistenceBlocked();
-                    changeReservationPersisted = true;
-                    StorageOptimizationExecutionResult storageResult = await _storageExecutor.ExecuteAsync(storagePlan, cancellationToken).ConfigureAwait(false);
-                    _outcomeRecorder.Record(storageResult);
                     PersistOutcomeBestEffort(now, "Storage", storageResult.Summary);
-                    if (storageResult.Attempted)
-                        return new IntegratedMaintenanceResult(true, storageResult.Verified, "Storage", storageResult.Summary);
+                    return new IntegratedMaintenanceResult(true, storageResult.Verified, "Storage", storageResult.Summary);
                 }
-
-                if (!TrySaveState(new MaintenanceState(now, state.LastChangeUtc, string.Empty,
-                    "No verified automatic maintenance action is currently warranted.")))
-                    return IntegratedMaintenanceResult.NotRun("No maintenance action was warranted, but Sentinel could not persist the evaluation outcome. Future unattended changes will remain fail-closed.");
+                if (!RestoreNoChangeState(now, state.LastChangeUtc, storageResult.Summary)) return PersistenceBlockedAfterReservation();
+                changeReservationPersisted = false;
+                reservedCategory = string.Empty;
 
                 return IntegratedMaintenanceResult.NotRun("No verified automatic maintenance action is currently warranted.");
             }
@@ -141,7 +141,7 @@ namespace Sentinel.App.Services
             catch (Exception ex)
             {
                 return changeReservationPersisted
-                    ? new IntegratedMaintenanceResult(true, false, "Unknown",
+                    ? new IntegratedMaintenanceResult(true, false, reservedCategory,
                         $"Automatic maintenance encountered {ex.GetType().Name} after a durable change reservation. Sentinel will not claim that no change occurred and will preserve the cooldown until the outcome is verified.")
                     : IntegratedMaintenanceResult.NotRun($"Automatic maintenance stopped before any reserved system change ({ex.GetType().Name}).");
             }
@@ -151,14 +151,21 @@ namespace Sentinel.App.Services
         private bool ReserveChange(DateTimeOffset now, string category) =>
             TrySaveState(new MaintenanceState(now, now, category, "Change reserved before execution; final outcome pending verification."));
 
+        private bool RestoreNoChangeState(DateTimeOffset now, DateTimeOffset? priorLastChangeUtc, string summary) =>
+            TrySaveState(new MaintenanceState(now, priorLastChangeUtc, string.Empty, summary));
+
         private void PersistOutcomeBestEffort(DateTimeOffset now, string category, string summary)
         {
-            // Failure does not clear the prior reservation, so restart/cooldown remains fail-closed.
+            // Failure does not clear the durable reservation; the cooldown therefore remains fail-closed.
             _ = TrySaveState(new MaintenanceState(now, now, category, summary));
         }
 
-        private IntegratedMaintenanceResult PersistenceBlocked() =>
+        private static IntegratedMaintenanceResult PersistenceBlocked() =>
             IntegratedMaintenanceResult.NotRun("Sentinel blocked automatic maintenance because it could not durably reserve the change before execution.");
+
+        private static IntegratedMaintenanceResult PersistenceBlockedAfterReservation() =>
+            new(true, false, "Persistence",
+                "No executor reported a change, but Sentinel could not restore the prior cooldown state after its safety reservation. The reservation remains in place and Sentinel will not retry automatically.");
 
         private PersistenceReadResult<MaintenanceState> LoadState() => ReadState(_statePath, MaintenanceState.Empty);
         private PersistenceReadResult<RuntimeVerificationState> LoadVerificationState() => ReadState(_verificationPath, RuntimeVerificationState.Empty);
@@ -186,8 +193,7 @@ namespace Sentinel.App.Services
                 string directory = Path.GetDirectoryName(path)!;
                 Directory.CreateDirectory(directory);
                 temporaryPath = Path.Combine(directory, $".maintenance-state.{Guid.NewGuid():N}.tmp");
-                using (FileStream stream = new(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    4096, FileOptions.WriteThrough))
+                using (FileStream stream = new(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
                 using (StreamWriter writer = new(stream))
                 {
                     writer.Write(json);
