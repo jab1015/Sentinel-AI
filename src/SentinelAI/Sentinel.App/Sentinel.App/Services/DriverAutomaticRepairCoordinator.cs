@@ -1,15 +1,15 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Prepares and executes user-approved driver repairs. Windows Update is
-    /// preferred; machine-specific evidence and authoritative Microsoft/OEM research
-    /// are used when it cannot provide a compatible package. Sentinel never restarts
-    /// Windows without separate user approval.
+    /// Prepares and executes user-approved driver repairs. Automatic Windows Update
+    /// installation is offered only when Sentinel can bind one exact PnP device to
+    /// one exact Windows Update identity. Ambiguous title/fuzzy matches fail closed.
     /// </summary>
     public sealed class DriverAutomaticRepairCoordinator
     {
@@ -21,7 +21,6 @@ namespace Sentinel.App.Services
 
         public async Task<DriverRepairPlan> PrepareAsync(string deviceName)
         {
-            // Gather the technical evidence ourselves before asking the user for anything.
             DriverDiagnosticEvidence evidence = await _evidenceCollector.CollectAsync(deviceName);
 
             DriverRepairPlan windowsUpdatePlan = await Task.Run(() => PrepareWindowsUpdate(deviceName));
@@ -65,12 +64,18 @@ namespace Sentinel.App.Services
         public async Task<DriverRepairResult> ExecuteAsync(DriverRepairPlan plan)
         {
             ArgumentNullException.ThrowIfNull(plan);
-            if (!plan.Available || !plan.AutomaticInstallationVerified)
-                return new DriverRepairResult(false, false, "Automatic installation is not verified", "Sentinel did not install anything because this repair plan is research guidance, not a verified automatic installation package.");
+            if (!plan.Available || !plan.AutomaticInstallationVerified ||
+                string.IsNullOrWhiteSpace(plan.TargetDeviceInstanceId) ||
+                string.IsNullOrWhiteSpace(plan.UpdateId))
+            {
+                return DriverRepairResult.Failed(
+                    "Automatic installation is not verified",
+                    "Sentinel did not install anything because the repair is not bound to one verified device and one Windows Update identity.");
+            }
 
             SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
             if (!subscription.IsActive)
-                return new DriverRepairResult(false, false, "Subscription required", "Sentinel can monitor and investigate the device locally, but an active subscription is required before it installs a driver repair.");
+                return DriverRepairResult.Failed("Subscription required", "Sentinel can monitor and investigate the device locally, but an active subscription is required before it installs a driver repair.");
 
             return await Task.Run(() => Execute(plan)).ConfigureAwait(false);
         }
@@ -92,39 +97,143 @@ namespace Sentinel.App.Services
 
         private static DriverRepairPlan PrepareWindowsUpdate(string deviceName)
         {
-            string command = "$session=New-Object -ComObject Microsoft.Update.Session; $searcher=$session.CreateUpdateSearcher(); $result=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Driver'\"); $match=@($result.Updates | Where-Object {$_.Title -match 'Intel|Management Engine|Chipset'} | Select-Object -First 1); if ($match.Count -eq 0) { 'AVAILABLE=False' } else { $u=$match[0]; \"AVAILABLE=True`nTITLE=$($u.Title)`nREBOOT=$($u.RebootRequired)`nEULA=$($u.EulaAccepted)\" }";
+            string safeDeviceName = EscapePowerShellLiteral(deviceName);
+            string command =
+                "$deviceName='" + safeDeviceName + "'; " +
+                "$devices=@(Get-CimInstance Win32_PnPEntity -ErrorAction Stop | Where-Object {$_.Name -eq $deviceName}); " +
+                "if ($devices.Count -ne 1) { \"AVAILABLE=False`nREASON=DeviceIdentityAmbiguous\"; exit 0 }; " +
+                "$device=$devices[0]; $instance=[string]$device.PNPDeviceID; " +
+                "$driver=@(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | Where-Object {$_.DeviceID -eq $instance} | Select-Object -First 1); " +
+                "$version=if($driver.Count -gt 0){[string]$driver[0].DriverVersion}else{''}; " +
+                "$session=New-Object -ComObject Microsoft.Update.Session; $searcher=$session.CreateUpdateSearcher(); " +
+                "$result=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Driver'\"); " +
+                "$matches=@($result.Updates | Where-Object {[string]$_.DriverModel -eq $deviceName}); " +
+                "if ($matches.Count -ne 1) { \"AVAILABLE=False`nREASON=UpdateIdentityAmbiguousOrMissing`nDEVICEID=$instance\"; exit 0 }; " +
+                "$u=$matches[0]; " +
+                "\"AVAILABLE=True`nTITLE=$($u.Title)`nMODEL=$($u.DriverModel)`nUPDATEID=$($u.Identity.UpdateID)`nREVISION=$($u.Identity.RevisionNumber)`nDEVICEID=$instance`nVERSION=$version`nREBOOT=$($u.RebootRequired)\"";
+
             ProcessResult result = RunPowerShell(command, TimeSpan.FromSeconds(45));
-            if (!result.Success) return DriverRepairPlan.Unavailable(deviceName, "Sentinel could not complete the Windows Update driver search. It will continue with authoritative Microsoft and manufacturer research.");
+            if (!result.Success)
+                return DriverRepairPlan.Unavailable(deviceName, "Sentinel could not complete the Windows Update driver search. It will continue with authoritative Microsoft and manufacturer research.");
+
             bool available = GetValue(result.Output, "AVAILABLE").Equals("True", StringComparison.OrdinalIgnoreCase);
-            if (!available) return DriverRepairPlan.Unavailable(deviceName, "Windows Update did not offer a compatible driver repair. Sentinel will continue with authoritative Microsoft and manufacturer research.");
+            if (!available)
+                return DriverRepairPlan.Unavailable(deviceName, "Windows Update did not expose exactly one driver package that Sentinel could bind to the diagnosed device. Sentinel will not guess; it will continue with authoritative Microsoft and manufacturer research.");
+
+            string model = GetValue(result.Output, "MODEL");
+            string deviceId = GetValue(result.Output, "DEVICEID");
+            string updateId = GetValue(result.Output, "UPDATEID");
+            string revisionText = GetValue(result.Output, "REVISION");
+            if (!string.Equals(model, deviceName, StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(deviceId) || string.IsNullOrWhiteSpace(updateId) ||
+                !int.TryParse(revisionText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int revision))
+            {
+                return DriverRepairPlan.Unavailable(deviceName, "Windows Update returned incomplete device/package identity evidence. Sentinel will not install an ambiguous driver.");
+            }
+
             string title = GetValue(result.Output, "TITLE");
-            return new DriverRepairPlan(true, true, false, false, deviceName, title, "Windows Update", string.Empty, 100, "Microsoft-signed Windows Update driver package", "Sentinel found a compatible signed driver through Windows Update. It can download and install this package after your approval. It will not restart the computer without separate approval.");
+            string version = GetValue(result.Output, "VERSION");
+            return new DriverRepairPlan(
+                true, true, false, false, deviceName, title, "Windows Update", string.Empty, 100,
+                "Windows Update package bound to the exact diagnosed device identity",
+                "Sentinel found exactly one Windows Update driver whose DriverModel matches the diagnosed device. The approval is bound to the device instance and Windows Update ID/revision and will be revalidated immediately before installation.")
+            {
+                TargetDeviceInstanceId = deviceId,
+                UpdateId = updateId,
+                UpdateRevision = revision,
+                PreInstallDriverVersion = version
+            };
         }
 
         private static DriverRepairResult Execute(DriverRepairPlan plan)
         {
-            string safeTitle = EscapePowerShellLiteral(plan.PackageTitle);
-            string command = "$title='" + safeTitle + "'; $session=New-Object -ComObject Microsoft.Update.Session; $searcher=$session.CreateUpdateSearcher(); $result=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Driver'\"); $update=@($result.Updates | Where-Object {$_.Title -eq $title} | Select-Object -First 1); if ($update.Count -eq 0) { 'RESULT=NotFound'; exit 3 }; $u=$update[0]; if (-not $u.EulaAccepted) {$u.AcceptEula()}; $collection=New-Object -ComObject Microsoft.Update.UpdateColl; [void]$collection.Add($u); $downloader=$session.CreateUpdateDownloader(); $downloader.Updates=$collection; $download=$downloader.Download(); if ($download.ResultCode -notin 2,3) { \"RESULT=DownloadFailed`nCODE=$($download.ResultCode)\"; exit 4 }; $installer=$session.CreateUpdateInstaller(); $installer.Updates=$collection; $install=$installer.Install(); \"RESULT=Installed`nCODE=$($install.ResultCode)`nREBOOT=$($install.RebootRequired)\"";
+            string safeDeviceId = EscapePowerShellLiteral(plan.TargetDeviceInstanceId);
+            string safeUpdateId = EscapePowerShellLiteral(plan.UpdateId);
+            string safeModel = EscapePowerShellLiteral(plan.DeviceName);
+            int revision = plan.UpdateRevision;
+
+            string command =
+                "$deviceId='" + safeDeviceId + "'; $updateId='" + safeUpdateId + "'; $model='" + safeModel + "'; $revision=" + revision.ToString(CultureInfo.InvariantCulture) + "; " +
+                "$devices=@(Get-CimInstance Win32_PnPEntity -ErrorAction Stop | Where-Object {$_.PNPDeviceID -eq $deviceId}); " +
+                "if($devices.Count -ne 1){'RESULT=DeviceChanged'; exit 5}; " +
+                "$session=New-Object -ComObject Microsoft.Update.Session; $searcher=$session.CreateUpdateSearcher(); " +
+                "$result=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Driver'\"); " +
+                "$updates=@($result.Updates | Where-Object {$_.Identity.UpdateID -eq $updateId -and $_.Identity.RevisionNumber -eq $revision -and [string]$_.DriverModel -eq $model}); " +
+                "if($updates.Count -ne 1){'RESULT=UpdateChanged'; exit 6}; $u=$updates[0]; " +
+                "if(-not $u.EulaAccepted){$u.AcceptEula()}; $collection=New-Object -ComObject Microsoft.Update.UpdateColl; [void]$collection.Add($u); " +
+                "$downloader=$session.CreateUpdateDownloader(); $downloader.Updates=$collection; $download=$downloader.Download(); " +
+                "if($download.ResultCode -ne 2){\"RESULT=DownloadFailed`nDOWNLOADCODE=$($download.ResultCode)\"; exit 4}; " +
+                "$installer=$session.CreateUpdateInstaller(); $installer.Updates=$collection; $install=$installer.Install(); " +
+                "$per=$install.GetUpdateResult(0); " +
+                "\"RESULT=InstallReturned`nCODE=$($install.ResultCode)`nHRESULT=$($per.HResult)`nPERCODE=$($per.ResultCode)`nREBOOT=$($install.RebootRequired)\"";
+
             ProcessResult result = RunPowerShell(command, CommandTimeout);
-            if (!result.Success || !GetValue(result.Output, "RESULT").Equals("Installed", StringComparison.OrdinalIgnoreCase))
-                return new DriverRepairResult(false, false, "Driver repair was not completed", "Sentinel did not install the driver. No restart was requested. Review Windows Update and the Activity Center for details.");
+            if (!result.Success || !GetValue(result.Output, "RESULT").Equals("InstallReturned", StringComparison.OrdinalIgnoreCase))
+                return DriverRepairResult.Failed("Driver repair was not completed", "Sentinel did not verify a completed driver installation. No success claim was recorded.");
+
+            string overallCode = GetValue(result.Output, "CODE");
+            string perCode = GetValue(result.Output, "PERCODE");
             bool restartRequired = GetValue(result.Output, "REBOOT").Equals("True", StringComparison.OrdinalIgnoreCase);
-            return new DriverRepairResult(true, restartRequired, restartRequired ? "Driver installed — restart required" : "Driver installed", restartRequired ? "Sentinel installed the signed driver. Save your work, then restart when you are ready. Sentinel will verify the device after Windows starts again." : "Sentinel installed the signed driver. Sentinel will refresh local evidence and verify the device now.");
+
+            // Windows Update Agent OperationResultCode: 2=Succeeded, 3=SucceededWithErrors.
+            // Partial success is not promoted to a successful repair.
+            if (overallCode == "3" || perCode == "3")
+                return new DriverRepairResult(false, restartRequired, "Driver installation partially completed", "Windows Update reported success with errors. Sentinel will not mark the device repaired until post-restart/post-install verification succeeds.", DriverRepairOutcome.Partial);
+            if (overallCode != "2" || perCode != "2")
+                return DriverRepairResult.Failed("Driver installation failed", $"Windows Update did not report success (overall {overallCode}, package {perCode}). Sentinel did not mark the repair complete.");
+
+            if (restartRequired)
+                return new DriverRepairResult(true, true, "Driver installed — restart required", "Windows Update reported a successful installation, but the repair is not considered fully verified until the computer restarts and Sentinel rechecks the exact device.", DriverRepairOutcome.RebootRequired);
+
+            VerificationResult verification = VerifyPostInstall(plan);
+            if (!verification.Verified)
+                return new DriverRepairResult(false, false, "Driver installed but verification is incomplete", verification.Summary, DriverRepairOutcome.Unverified);
+
+            return new DriverRepairResult(true, false, "Driver installed and verified", verification.Summary, DriverRepairOutcome.Verified);
+        }
+
+        private static VerificationResult VerifyPostInstall(DriverRepairPlan plan)
+        {
+            string safeDeviceId = EscapePowerShellLiteral(plan.TargetDeviceInstanceId);
+            string safeUpdateId = EscapePowerShellLiteral(plan.UpdateId);
+            string command =
+                "$deviceId='" + safeDeviceId + "'; $updateId='" + safeUpdateId + "'; " +
+                "$device=@(Get-CimInstance Win32_PnPEntity -ErrorAction Stop | Where-Object {$_.PNPDeviceID -eq $deviceId}); " +
+                "if($device.Count -ne 1){'VERIFIED=False'; exit 0}; " +
+                "$driver=@(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | Where-Object {$_.DeviceID -eq $deviceId} | Select-Object -First 1); " +
+                "$session=New-Object -ComObject Microsoft.Update.Session; $searcher=$session.CreateUpdateSearcher(); $r=$searcher.Search(\"IsInstalled=0 and IsHidden=0 and Type='Driver'\"); " +
+                "$stillOffered=@($r.Updates | Where-Object {$_.Identity.UpdateID -eq $updateId}).Count -gt 0; " +
+                "$version=if($driver.Count -gt 0){[string]$driver[0].DriverVersion}else{''}; " +
+                "\"VERIFIED=$(((-not $stillOffered) -and $device[0].ConfigManagerErrorCode -eq 0))`nVERSION=$version`nCODE=$($device[0].ConfigManagerErrorCode)\"";
+
+            ProcessResult result = RunPowerShell(command, TimeSpan.FromSeconds(45));
+            if (!result.Success || !GetValue(result.Output, "VERIFIED").Equals("True", StringComparison.OrdinalIgnoreCase))
+                return new(false, "Windows Update returned success, but Sentinel could not verify that the exact device is healthy and the approved update is no longer pending.");
+
+            string version = GetValue(result.Output, "VERSION");
+            return new(true, string.IsNullOrWhiteSpace(version)
+                ? "Sentinel verified that the exact device is healthy and the approved update is no longer pending."
+                : $"Sentinel verified that the exact device is healthy and the approved update is no longer pending. Current driver version: {version}.");
         }
 
         private static ProcessResult RunPowerShell(string command, TimeSpan timeout)
         {
-            try
+            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+            ProcessStartInfo startInfo = new()
             {
-                string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo { FileName = "powershell.exe", Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}", UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
-                if (!process.Start()) return new(false, string.Empty);
-                string output = process.StandardOutput.ReadToEnd(); _ = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit((int)timeout.TotalMilliseconds)) { process.Kill(true); return new(false, output); }
-                return new(process.ExitCode == 0, output.Trim());
-            }
-            catch { return new(false, string.Empty); }
+                FileName = ResolvePowerShellPath(),
+                Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            ProcessExecutionResult result = BoundedProcessRunner.RunAsync(startInfo, timeout).GetAwaiter().GetResult();
+            return new(result.Succeeded, result.StandardOutput.Trim(), result.Outcome, result.StandardError.Trim());
+        }
+
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system) ? "powershell.exe" : System.IO.Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
         }
 
         private static string GetValue(string output, string name)
@@ -139,11 +248,29 @@ namespace Sentinel.App.Services
         public sealed record DriverRepairPlan(bool Available, bool AutomaticInstallationVerified, bool ResearchPerformed, bool UserActionRequired, string DeviceName, string PackageTitle, string Source, string SourceUri, int ConfidencePercent, string TrustStatement, string Summary)
         {
             public string DiagnosticEvidence { get; init; } = string.Empty;
+            public string TargetDeviceInstanceId { get; init; } = string.Empty;
+            public string UpdateId { get; init; } = string.Empty;
+            public int UpdateRevision { get; init; }
+            public string PreInstallDriverVersion { get; init; } = string.Empty;
             public static DriverRepairPlan Unavailable(string deviceName, string summary, bool researchPerformed = false) => new(false, false, researchPerformed, false, deviceName, string.Empty, string.Empty, string.Empty, 0, string.Empty, summary);
             public static DriverRepairPlan Researched(string deviceName, string source, string sourceUri, int confidencePercent, string summary, bool userActionRequired) => new(false, false, true, userActionRequired, deviceName, string.Empty, source, sourceUri, confidencePercent, "Authoritative Microsoft or computer-manufacturer source", summary);
         }
 
-        public sealed record DriverRepairResult(bool Success, bool RestartRequired, string Title, string Summary);
-        private sealed record ProcessResult(bool Success, string Output);
+        public enum DriverRepairOutcome
+        {
+            Failed,
+            Partial,
+            RebootRequired,
+            Unverified,
+            Verified
+        }
+
+        public sealed record DriverRepairResult(bool Success, bool RestartRequired, string Title, string Summary, DriverRepairOutcome Outcome = DriverRepairOutcome.Failed)
+        {
+            public static DriverRepairResult Failed(string title, string summary) => new(false, false, title, summary, DriverRepairOutcome.Failed);
+        }
+
+        private sealed record ProcessResult(bool Success, string Output, ProcessExecutionOutcome Outcome, string Error);
+        private sealed record VerificationResult(bool Verified, string Summary);
     }
 }
