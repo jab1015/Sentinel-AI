@@ -5,9 +5,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +21,7 @@ namespace Sentinel.App.Services
     public sealed class ExternalInvestigationGateway
     {
         private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(20);
-        private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan CacheLifetime = TimeSpan.FromMinutes(10);
         private const int MaxBodyCharacters = 500_000;
         private readonly InvestigationCache _cache = new();
         private readonly SmartSentinelAiCoordinator _aiCoordinator = new();
@@ -33,12 +36,10 @@ namespace Sentinel.App.Services
             string topic = Classify(question, snapshot);
             SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
             if (!subscription.IsActive)
-            {
-                return ExternalInvestigationResult.SubscriptionRequired(
-                    topic,
-                    "Sentinel answered from free local evidence. An active subscription is required to investigate approved external sources or use cloud AI.");
-            }
-            string cacheKey = $"external:{topic}:{Normalize(question)}";
+                return ExternalInvestigationResult.SubscriptionRequired(topic, "Sentinel answered from free local evidence. An active subscription is required to investigate approved external sources or use cloud AI.");
+
+            string evidenceFingerprint = BuildEvidenceFingerprint(question, snapshot, topic);
+            string cacheKey = $"external:{topic}:{evidenceFingerprint}";
             if (_cache.TryGet(cacheKey, out ExternalInvestigationResult? cached) && cached is not null)
                 return cached with { FromCache = true };
 
@@ -50,12 +51,17 @@ namespace Sentinel.App.Services
                 supplementalEvidence = diagnostics.ToInvestigationSummary();
             }
 
-            IReadOnlyList<string> evidenceTerms = BuildEvidenceTerms(question, snapshot, topic);
+            IReadOnlyList<string> evidenceTerms = BuildEvidenceTerms(question, snapshot);
             IReadOnlyList<TrustedSource> sources = SourcesFor(topic);
             List<ExternalSourceEvidence> reached = new();
-            List<ExternalSourceEvidence> matched = new();
+            List<ExternalSourceEvidence> relevant = new();
 
-            using HttpClient client = new() { Timeout = NetworkTimeout };
+            using HttpClientHandler handler = new()
+            {
+                AllowAutoRedirect = false,
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
+            using HttpClient client = new(handler) { Timeout = NetworkTimeout };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
 
             foreach (TrustedSource source in sources)
@@ -64,15 +70,29 @@ namespace Sentinel.App.Services
                 try
                 {
                     using HttpRequestMessage request = new(HttpMethod.Get, source.Uri);
-                    using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken).ConfigureAwait(false);
+                    using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode) continue;
-                    string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                    if (body.Length > MaxBodyCharacters) body = body[..MaxBodyCharacters];
+                    if (!Uri.TryCreate(source.Uri, UriKind.Absolute, out Uri? expectedUri) ||
+                        response.RequestMessage?.RequestUri is not Uri actualUri ||
+                        !actualUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                        !actualUri.Host.Equals(expectedUri.Host, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string? body = await ReadBoundedBodyAsync(response, cancellationToken).ConfigureAwait(false);
+                    if (body is null) continue;
+
                     string searchable = NormalizeWebText(body);
-                    IReadOnlyList<string> matches = evidenceTerms.Where(term => searchable.Contains(term, StringComparison.OrdinalIgnoreCase)).Distinct(StringComparer.OrdinalIgnoreCase).Take(8).ToArray();
+                    IReadOnlyList<string> matches = evidenceTerms
+                        .Where(term => searchable.Contains(term, StringComparison.OrdinalIgnoreCase))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(8)
+                        .ToArray();
+
+                    // Keyword overlap establishes relevance only. It is never promoted to a
+                    // verified external conclusion without a claim-specific evidence parser.
                     ExternalSourceEvidence evidence = new(source.Name, source.Uri, source.Authority, true, matches.Count > 0, matches);
                     reached.Add(evidence);
-                    if (evidence.MatchedCurrentEvidence) matched.Add(evidence);
+                    if (matches.Count > 0) relevant.Add(evidence);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
                 catch { }
@@ -80,25 +100,29 @@ namespace Sentinel.App.Services
 
             ExternalInvestigationResult result;
             if (reached.Count == 0)
-                result = new ExternalInvestigationResult(topic, false, 0, "Sentinel could not reach an approved authoritative source. No external conclusion was accepted and no change was made.", Array.Empty<ExternalSourceEvidence>(), true, false, Array.Empty<string>());
-            else if (matched.Count == 0)
-                result = new ExternalInvestigationResult(topic, false, 0, $"Sentinel reached {reached.Count} approved authoritative source(s), but none contained enough information matching the current verified evidence. Sentinel did not accept an external conclusion.", reached, true, false, Array.Empty<string>());
+            {
+                result = new ExternalInvestigationResult(topic, false, 0,
+                    "Sentinel could not reach an approved authoritative source. No external conclusion was accepted and no change was made.",
+                    Array.Empty<ExternalSourceEvidence>(), true, false, Array.Empty<string>());
+            }
+            else if (relevant.Count == 0)
+            {
+                result = new ExternalInvestigationResult(topic, false, 0,
+                    $"Sentinel reached {reached.Count} approved authoritative source(s), but did not find material relevant to the current evidence. No external conclusion was accepted.",
+                    reached, true, false, Array.Empty<string>());
+            }
             else
             {
-                string[] matchedTerms = matched.SelectMany(x => x.MatchedTerms).Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
-                int sourceAuthority = matched.Max(x => x.Authority);
-                int corroborationBonus = Math.Min(8, (matched.Count - 1) * 4);
-                int termBonus = Math.Min(7, matchedTerms.Length);
-                int confidence = Math.Min(95, Math.Max(60, sourceAuthority - 15 + corroborationBonus + termBonus));
-                result = new ExternalInvestigationResult(topic, true, confidence,
-                    $"Sentinel found authoritative external material matching the current verified {topic} evidence. This supports further investigation but does not by itself authorize a repair.",
+                string[] matchedTerms = relevant.SelectMany(x => x.MatchedTerms).Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
+                result = new ExternalInvestigationResult(topic, false, 0,
+                    $"Sentinel found potentially relevant material on {relevant.Count} approved authoritative source(s). Keyword relevance is not treated as verified evidence; any conclusion remains advisory until Sentinel can bind a specific source passage to a specific local claim.",
                     reached, true, false, matchedTerms);
             }
 
             if (result.RequiresAiEscalation)
             {
                 bool highRisk = topic.Equals("security", StringComparison.OrdinalIgnoreCase) || topic.Equals("firewall", StringComparison.OrdinalIgnoreCase);
-                bool highComplexity = result.Sources.Count > 1 && !result.Verified;
+                bool highComplexity = result.Sources.Count > 1;
                 AiEscalationContext aiContext = new(
                     LocalEvidenceAvailable: evidenceTerms.Count > 0 || !string.IsNullOrWhiteSpace(supplementalEvidence),
                     LocalEvidenceInsufficient: true,
@@ -106,7 +130,7 @@ namespace Sentinel.App.Services
                     CachedVerifiedFindingAvailable: false,
                     ExternalResearchApplicable: true,
                     AuthoritativeResearchAttempted: true,
-                    AuthoritativeExternalConclusionVerified: result.Verified,
+                    AuthoritativeExternalConclusionVerified: false,
                     NeedsInterpretation: true,
                     NeedsUserExplanation: true,
                     HighComplexity: highComplexity,
@@ -119,14 +143,50 @@ namespace Sentinel.App.Services
                     string advisory = NormalizeAdvisoryForUser(ai.Answer);
                     result = result with
                     {
-                        Summary = result.Summary + $" Sentinel's AI analysis ({ai.ConfidencePercent}% confidence): {advisory}" +
-                                  " Any repair still requires Sentinel's local verification." + cacheNote
+                        Summary = result.Summary + $" Sentinel's AI advisory analysis ({ai.ConfidencePercent}% confidence): {advisory}" +
+                                  " The external material is relevant, not independently verified, and any repair still requires local verification." + cacheNote
                     };
                 }
             }
 
             _cache.Set(cacheKey, result, CacheLifetime);
             return result;
+        }
+
+        private static async Task<string?> ReadBoundedBodyAsync(HttpResponseMessage response, CancellationToken token)
+        {
+            if (response.Content.Headers.ContentLength is long length && length > MaxBodyCharacters * 4L)
+                return null;
+
+            await using Stream stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+            using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 8192, leaveOpen: false);
+            char[] buffer = new char[8192];
+            StringBuilder builder = new(Math.Min(MaxBodyCharacters, 32_768));
+            while (true)
+            {
+                int read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), token).ConfigureAwait(false);
+                if (read == 0) break;
+                if (builder.Length + read > MaxBodyCharacters) return null;
+                builder.Append(buffer, 0, read);
+            }
+            return builder.ToString();
+        }
+
+        private static string BuildEvidenceFingerprint(string question, SystemSnapshot snapshot, string topic)
+        {
+            string material = string.Join("\n", new[]
+            {
+                Normalize(question), topic,
+                snapshot.Timestamp.ToUniversalTime().ToString("yyyyMMddHHmm"),
+                snapshot.InvestigationReasonCode ?? string.Empty,
+                snapshot.InvestigationConclusion ?? string.Empty,
+                snapshot.InvestigationSummary ?? string.Empty,
+                snapshot.GuidanceEvidence ?? string.Empty,
+                snapshot.PrimaryFlaggedProcessName ?? string.Empty,
+                snapshot.PrimaryFlaggedConnectionRemoteEndpoint ?? string.Empty,
+                snapshot.PrimaryFlaggedServiceName ?? string.Empty
+            });
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).Substring(0, 24);
         }
 
         private static string ExtractLikelyDriverDeviceName(SystemSnapshot snapshot)
@@ -142,21 +202,19 @@ namespace Sentinel.App.Services
 
         private static string NormalizeAdvisoryForUser(string value)
         {
-            string text = value.Replace("**", string.Empty, StringComparison.Ordinal)
-                .Replace("##", string.Empty, StringComparison.Ordinal)
-                .Replace("###", string.Empty, StringComparison.Ordinal);
+            string text = value.Replace("**", string.Empty, StringComparison.Ordinal).Replace("##", string.Empty, StringComparison.Ordinal).Replace("###", string.Empty, StringComparison.Ordinal);
             text = Regex.Replace(text, @"(?m)^\s*[-*]\s+", "• ");
             text = Regex.Replace(text, @"\n{3,}", "\n\n").Trim();
             return text.Length <= 1800 ? text : text[..1800].TrimEnd() + "…";
         }
 
-        private static IReadOnlyList<string> BuildEvidenceTerms(string question, SystemSnapshot snapshot, string topic)
+        private static IReadOnlyList<string> BuildEvidenceTerms(string question, SystemSnapshot snapshot)
         {
             string combined = string.Join(' ', new[] { question, snapshot.InvestigationReasonCode ?? string.Empty, snapshot.InvestigationConclusion ?? string.Empty, snapshot.InvestigationSummary ?? string.Empty, snapshot.GuidanceTitle ?? string.Empty, snapshot.GuidanceEvidence ?? string.Empty });
             HashSet<string> stop = new(StringComparer.OrdinalIgnoreCase) { "sentinel","windows","computer","current","verified","evidence","issue","problem","found","what","when","where","which","with","from","that","this","have","does","could","would","about","your","there","their","them","then","than","into","still","need","needs","attention" };
-            List<string> terms = Regex.Matches(combined.ToLowerInvariant(), @"[a-z0-9][a-z0-9._-]{2,}").Select(m => m.Value).Where(x => !stop.Contains(x) && !int.TryParse(x, out _)).Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(x => x.Length).Take(18).ToList();
-            if (!terms.Contains(topic, StringComparer.OrdinalIgnoreCase)) terms.Add(topic);
-            return terms;
+            return Regex.Matches(combined.ToLowerInvariant(), @"[a-z0-9][a-z0-9._-]{2,}")
+                .Select(m => m.Value).Where(x => !stop.Contains(x) && !int.TryParse(x, out _))
+                .Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(x => x.Length).Take(18).ToArray();
         }
 
         private static string NormalizeWebText(string html)
