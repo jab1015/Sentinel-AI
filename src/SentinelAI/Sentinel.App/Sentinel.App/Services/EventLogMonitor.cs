@@ -20,7 +20,7 @@ namespace Sentinel.App.Services
             int errorCount = 0;
             DateTime? latestEventTime = null;
             string latestEventSource = "None";
-            string latestEventMessage = "No user-actionable Windows event evidence was detected.";
+            string latestEventMessage = "No Windows critical/error event evidence was detected.";
 
             bool systemLogAvailable = ReadLog("System", ref criticalCount, ref errorCount,
                 ref latestEventTime, ref latestEventSource, ref latestEventMessage);
@@ -61,10 +61,14 @@ namespace Sentinel.App.Services
                     if (record is null) break;
 
                     string description = GetSafeDescription(record);
-                    if (!IsUserActionable(record, description)) continue;
+                    if (IsKnownBenign(record.ProviderName ?? string.Empty, description)) continue;
 
+                    // Count unrelated critical/error evidence before any later classification.
+                    // Event-log severity alone does not prove a security incident, but dropping
+                    // these records would make the aggregate evidence false.
                     if (record.Level == 1) criticalCount++;
                     else if (record.Level == 2) errorCount++;
+                    else continue;
 
                     DateTime? eventTime = record.TimeCreated;
                     if (eventTime.HasValue && (!latestEventTime.HasValue || eventTime.Value > latestEventTime.Value))
@@ -80,19 +84,6 @@ namespace Sentinel.App.Services
             catch (EventLogNotFoundException) { return false; }
             catch (EventLogException) { return false; }
             catch (UnauthorizedAccessException) { return false; }
-        }
-
-        private static bool IsUserActionable(EventRecord record, string description)
-        {
-            // Suppression is per-record and happens before aggregation. A known-benign latest
-            // event can therefore never erase counts belonging to unrelated critical records.
-            if (IsKnownBenign(record.ProviderName ?? string.Empty, description)) return false;
-
-            // Ordinary Windows error entries remain diagnostic context and require corroboration;
-            // they are not elevated to a user-facing finding from Event Viewer severity alone.
-            if (record.Level == 2) return false;
-
-            return record.Level == 1;
         }
 
         internal static bool IsKnownBenign(string provider, string description)
