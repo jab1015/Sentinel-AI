@@ -4,7 +4,9 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -15,13 +17,6 @@ using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Creates and verifies a narrowly-scoped outbound Windows Firewall block for a
-    /// specific remote IP address. This service performs no threat classification;
-    /// callers must obtain policy approval before invoking it. If Sentinel detects
-    /// that connectivity was healthy before containment and materially degraded after
-    /// the new rule, the rule is automatically removed and the rollback is verified.
-    /// </summary>
     public sealed class FirewallContainmentService
     {
         private const string RulePrefix = "Sentinel AI Block";
@@ -30,24 +25,14 @@ namespace Sentinel.App.Services
         public async Task<FirewallContainmentResult> BlockEndpointAsync(string remoteEndpoint)
         {
             await ContainmentGate.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                return await BlockEndpointCoreAsync(remoteEndpoint).ConfigureAwait(false);
-            }
-            finally
-            {
-                ContainmentGate.Release();
-            }
+            try { return await BlockEndpointCoreAsync(remoteEndpoint).ConfigureAwait(false); }
+            finally { ContainmentGate.Release(); }
         }
 
         private async Task<FirewallContainmentResult> BlockEndpointCoreAsync(string remoteEndpoint)
         {
             if (!TryExtractRemoteAddress(remoteEndpoint, out IPAddress? address) || address is null)
-            {
-                return FirewallContainmentResult.Failure(
-                    "Containment target is invalid",
-                    "Sentinel could not identify a valid remote IP address to block.");
-            }
+                return FirewallContainmentResult.Failure("Containment target is invalid", "Sentinel could not identify a valid remote IP address to block.");
 
             string remoteIp = address.ToString();
             string ruleName = BuildRuleName(remoteIp);
@@ -56,136 +41,76 @@ namespace Sentinel.App.Services
 
             try
             {
-                if (await RuleExistsAsync(ruleName).ConfigureAwait(false))
+                FirewallRuleVerification existing = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                if (existing.Exists)
                 {
-                    bool existingVerified =
-                        await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
-                    return existingVerified
-                        ? new FirewallContainmentResult(
-                            Attempted: false,
-                            Succeeded: true,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Network destination already contained",
-                            Summary: $"Sentinel verified that the existing outbound firewall block for {remoteIp} already has the expected scope. No duplicate rule was created.",
-                            RolledBack: false,
-                            ConnectivityHealthy: before.IsHealthy)
-                        : new FirewallContainmentResult(
-                            Attempted: false,
-                            Succeeded: false,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Existing firewall rule requires review",
-                            Summary: "A rule with Sentinel's deterministic name already exists, but its expected block properties could not be verified. Sentinel made no firewall change.",
-                            RolledBack: false,
-                            ConnectivityHealthy: before.IsHealthy);
+                    return existing.IsExactBlock
+                        ? new FirewallContainmentResult(false, true, ruleName, remoteIp,
+                            "Network destination already contained",
+                            $"Sentinel verified an enabled outbound Windows Firewall Block rule for {remoteIp} with the exact expected address/program/port scope.",
+                            false, before.IsHealthy, FirewallContainmentOutcome.Successful)
+                        : new FirewallContainmentResult(false, false, ruleName, remoteIp,
+                            "Existing firewall rule conflicts with containment",
+                            $"A rule named {ruleName} already exists but does not exactly match Sentinel's required enabled outbound Block scope. Sentinel made no firewall change.",
+                            false, before.IsHealthy, FirewallContainmentOutcome.RuleConflict);
                 }
 
                 int addExitCode = await RunNetshElevatedAsync(
-                    $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={remoteIp} enable=yes profile=any");
+                    $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={remoteIp} enable=yes profile=any").ConfigureAwait(false);
 
                 if (addExitCode != 0)
-                {
-                    return FirewallContainmentResult.Failure(
-                        "Network block was not created",
-                        $"Windows Firewall returned exit code {addExitCode}. No successful containment claim was recorded.");
-                }
+                    return FirewallContainmentResult.Failure("Network block was not created", $"Windows Firewall returned exit code {addExitCode}. No successful containment claim was recorded.");
 
                 ruleCreated = true;
-                bool verified = await VerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
-                if (!verified)
+                FirewallRuleVerification verified = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                if (!verified.IsExactBlock)
                 {
                     FirewallContainmentResult cleanup = await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     return cleanup.Succeeded
-                        ? new FirewallContainmentResult(
-                            Attempted: true,
-                            Succeeded: false,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Unverified network block removed",
-                            Summary: "Windows created a firewall rule, but Sentinel could not verify every expected property. Sentinel removed the new rule and verified cleanup instead of leaving an unverified system change in place.",
-                            RolledBack: true,
-                            ConnectivityHealthy: cleanup.ConnectivityHealthy)
-                        : new FirewallContainmentResult(
-                            Attempted: true,
-                            Succeeded: false,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Unverified network block requires review",
-                            Summary: "Windows created a firewall rule, but Sentinel could not verify it or verify cleanup. Review Windows Firewall rules before relying on the containment result.",
-                            RolledBack: false,
-                            ConnectivityHealthy: false);
+                        ? new FirewallContainmentResult(true, false, ruleName, remoteIp,
+                            "Unverified network block removed",
+                            $"Windows created a rule, but exact enforcement verification failed ({verified.Detail}). Sentinel removed it and verified cleanup.",
+                            true, cleanup.ConnectivityHealthy, FirewallContainmentOutcome.VerificationFailed)
+                        : new FirewallContainmentResult(true, false, ruleName, remoteIp,
+                            "Unverified network block requires review",
+                            $"Windows created a rule, but exact enforcement verification failed ({verified.Detail}) and cleanup could not be verified.",
+                            false, false, FirewallContainmentOutcome.PartialContainment);
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
                 ConnectivityState after = await CheckConnectivityAsync().ConfigureAwait(false);
-
                 if (before.IsHealthy && !after.IsHealthy)
                 {
                     FirewallContainmentResult rollback = await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     return rollback.Succeeded
-                        ? new FirewallContainmentResult(
-                            Attempted: true,
-                            Succeeded: false,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Network block automatically undone",
-                            Summary: "Sentinel detected that internet connectivity became unavailable immediately after the block. The new firewall rule was automatically removed and the rollback was verified. Sentinel will continue investigating instead of leaving the computer offline.",
-                            RolledBack: true,
-                            ConnectivityHealthy: false)
-                        : new FirewallContainmentResult(
-                            Attempted: true,
-                            Succeeded: false,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Network block may have affected connectivity",
-                            Summary: "Sentinel detected a loss of connectivity after containment and attempted to undo the block, but removal could not be verified. User assistance is required to review Windows Firewall rules.",
-                            RolledBack: false,
-                            ConnectivityHealthy: false);
+                        ? new FirewallContainmentResult(true, false, ruleName, remoteIp,
+                            "Network block automatically undone",
+                            "Connectivity became unavailable immediately after containment. Sentinel removed the rule and verified rollback.",
+                            true, false, FirewallContainmentOutcome.VerificationFailed)
+                        : new FirewallContainmentResult(true, false, ruleName, remoteIp,
+                            "Network block may have affected connectivity",
+                            "Connectivity was lost and Sentinel could not verify rule removal. Windows Firewall requires review.",
+                            false, false, FirewallContainmentOutcome.PartialContainment);
                 }
 
-                return new FirewallContainmentResult(
-                    Attempted: true,
-                    Succeeded: true,
-                    RuleName: ruleName,
-                    RemoteIp: remoteIp,
-                    Title: "Suspicious network destination blocked",
-                    Summary: $"Sentinel created and verified a Windows Firewall outbound block for {remoteIp}. Connectivity remained available after containment.",
-                    RolledBack: false,
-                    ConnectivityHealthy: after.IsHealthy || !before.IsHealthy);
+                return new FirewallContainmentResult(true, true, ruleName, remoteIp,
+                    "Suspicious network destination blocked",
+                    $"Sentinel created and verified an enabled outbound Windows Firewall Block rule for {remoteIp}. Exact address, program/service, profile, protocol and port scope were re-read from the active firewall policy store.",
+                    false, after.IsHealthy || !before.IsHealthy, FirewallContainmentOutcome.Successful);
             }
             catch (Exception ex)
             {
                 if (ruleCreated)
                 {
-                    FirewallContainmentResult cleanup =
-                        await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
+                    FirewallContainmentResult cleanup = await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     if (cleanup.Succeeded)
-                    {
-                        return new FirewallContainmentResult(
-                            Attempted: true,
-                            Succeeded: false,
-                            RuleName: ruleName,
-                            RemoteIp: remoteIp,
-                            Title: "Unverified network block removed",
-                            Summary: $"Containment verification stopped unexpectedly ({ex.GetType().Name}). Sentinel removed the new firewall rule and verified rollback.",
-                            RolledBack: true,
-                            ConnectivityHealthy: cleanup.ConnectivityHealthy);
-                    }
-
-                    return new FirewallContainmentResult(
-                        Attempted: true,
-                        Succeeded: false,
-                        RuleName: ruleName,
-                        RemoteIp: remoteIp,
-                        Title: "Firewall containment requires review",
-                        Summary: $"Containment verification stopped unexpectedly ({ex.GetType().Name}), and Sentinel could not verify removal of the new rule. Review Windows Firewall before relying on this result.",
-                        RolledBack: false,
-                        ConnectivityHealthy: false);
+                        return new FirewallContainmentResult(true, false, ruleName, remoteIp,
+                            "Unverified network block removed",
+                            $"Containment verification stopped unexpectedly ({ex.GetType().Name}). Sentinel removed the new rule and verified rollback.",
+                            true, cleanup.ConnectivityHealthy, FirewallContainmentOutcome.VerificationFailed);
                 }
 
-                return FirewallContainmentResult.Failure(
-                    "Network containment could not complete",
+                return FirewallContainmentResult.Failure("Network containment could not complete",
                     $"Sentinel did not report the endpoint as blocked because execution did not complete ({ex.GetType().Name}).");
             }
         }
@@ -193,90 +118,118 @@ namespace Sentinel.App.Services
         public async Task<FirewallContainmentResult> RemoveBlockAsync(string remoteEndpoint)
         {
             await ContainmentGate.WaitAsync().ConfigureAwait(false);
-            try
-            {
-                return await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
-            }
-            finally
-            {
-                ContainmentGate.Release();
-            }
+            try { return await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false); }
+            finally { ContainmentGate.Release(); }
         }
 
         private async Task<FirewallContainmentResult> RemoveBlockCoreAsync(string remoteEndpoint)
         {
             if (!TryExtractRemoteAddress(remoteEndpoint, out IPAddress? address) || address is null)
-            {
-                return FirewallContainmentResult.Failure(
-                    "Containment target is invalid",
-                    "Sentinel could not identify the remote IP address for this block.");
-            }
+                return FirewallContainmentResult.Failure("Containment target is invalid", "Sentinel could not identify the remote IP address for this block.");
 
             string remoteIp = address.ToString();
             string ruleName = BuildRuleName(remoteIp);
-
             try
             {
-                int deleteExitCode = await RunNetshElevatedAsync(
-                    $"advfirewall firewall delete rule name=\"{ruleName}\"");
-
-                bool stillExists = await RuleExistsAsync(ruleName).ConfigureAwait(false);
-                if (deleteExitCode != 0 || stillExists)
-                {
-                    return FirewallContainmentResult.Failure(
-                        "Network block could not be removed",
-                        "Sentinel could not verify removal of the Windows Firewall rule.");
-                }
+                int deleteExitCode = await RunNetshElevatedAsync($"advfirewall firewall delete rule name=\"{ruleName}\"").ConfigureAwait(false);
+                FirewallRuleVerification remaining = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                if (deleteExitCode != 0 || remaining.Exists)
+                    return FirewallContainmentResult.Failure("Network block could not be removed", "Sentinel could not verify removal of the Windows Firewall rule.");
 
                 ConnectivityState connectivity = await CheckConnectivityAsync().ConfigureAwait(false);
-                return new FirewallContainmentResult(
-                    Attempted: true,
-                    Succeeded: true,
-                    RuleName: ruleName,
-                    RemoteIp: remoteIp,
-                    Title: "Network block removed",
-                    Summary: $"Sentinel removed and verified removal of the Windows Firewall block for {remoteIp}.",
-                    RolledBack: true,
-                    ConnectivityHealthy: connectivity.IsHealthy);
+                return new FirewallContainmentResult(true, true, ruleName, remoteIp,
+                    "Network block removed", $"Sentinel removed and verified removal of the Windows Firewall block for {remoteIp}.",
+                    true, connectivity.IsHealthy, FirewallContainmentOutcome.Successful);
             }
             catch (Exception ex)
             {
-                return FirewallContainmentResult.Failure(
-                    "Network block could not be removed",
-                    $"Sentinel could not verify removal of the firewall rule. {ex.Message}");
+                return FirewallContainmentResult.Failure("Network block could not be removed", $"Sentinel could not verify removal of the firewall rule ({ex.GetType().Name}).");
             }
+        }
+
+        private static async Task<FirewallRuleVerification> QueryAndVerifyRuleAsync(string ruleName, string remoteIp)
+        {
+            string safeName = EscapePowerShellLiteral(ruleName);
+            string command =
+                "$name='" + safeName + "'; " +
+                "$rules=@(Get-NetFirewallRule -PolicyStore ActiveStore -DisplayName $name -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -eq $name}); " +
+                "if($rules.Count -eq 0){'FOUND=0'; exit 0}; if($rules.Count -ne 1){\"FOUND=$($rules.Count)`nCONFLICT=True\"; exit 0}; " +
+                "$r=$rules[0]; $a=@($r | Get-NetFirewallAddressFilter); $p=@($r | Get-NetFirewallPortFilter); $app=@($r | Get-NetFirewallApplicationFilter); $svc=@($r | Get-NetFirewallServiceFilter); " +
+                "\"FOUND=1`nENABLED=$($r.Enabled)`nACTION=$($r.Action)`nDIRECTION=$($r.Direction)`nPROFILE=$($r.Profile)`nREMOTE=$(@($a.RemoteAddress) -join ',')`nLOCAL=$(@($a.LocalAddress) -join ',')`nPROTOCOL=$($p.Protocol)`nLOCALPORT=$(@($p.LocalPort) -join ',')`nREMOTEPORT=$(@($p.RemotePort) -join ',')`nPROGRAM=$($app.Program)`nSERVICE=$($svc.Service)\"";
+
+            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+            ProcessStartInfo startInfo = new()
+            {
+                FileName = ResolvePowerShellPath(),
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            ProcessExecutionResult result = await BoundedProcessRunner.RunAsync(startInfo, TimeSpan.FromSeconds(12)).ConfigureAwait(false);
+            if (!result.Succeeded)
+                return new(false, false, $"firewall query failed: {result.Outcome}");
+
+            Dictionary<string, string> values = ParseKeyValues(result.StandardOutput);
+            if (!values.TryGetValue("FOUND", out string? foundText) || !int.TryParse(foundText, out int found) || found == 0)
+                return new(false, false, "rule not found");
+            if (found != 1 || values.ContainsKey("CONFLICT"))
+                return new(true, false, "more than one rule has the deterministic Sentinel name");
+
+            bool enabled = values.TryGetValue("ENABLED", out string? enabledText) && enabledText.Equals("True", StringComparison.OrdinalIgnoreCase);
+            bool block = values.TryGetValue("ACTION", out string? action) && action.Equals("Block", StringComparison.OrdinalIgnoreCase);
+            bool outbound = values.TryGetValue("DIRECTION", out string? direction) && (direction.Equals("Outbound", StringComparison.OrdinalIgnoreCase) || direction.Equals("Out", StringComparison.OrdinalIgnoreCase));
+            bool profileAny = values.TryGetValue("PROFILE", out string? profile) && profile.Equals("Any", StringComparison.OrdinalIgnoreCase);
+            bool remoteExact = values.TryGetValue("REMOTE", out string? remote) && AddressListExactlyMatches(remote, remoteIp);
+            bool localAny = values.TryGetValue("LOCAL", out string? local) && IsAny(local);
+            bool protocolAny = values.TryGetValue("PROTOCOL", out string? protocol) && IsAny(protocol);
+            bool localPortAny = values.TryGetValue("LOCALPORT", out string? localPort) && IsAny(localPort);
+            bool remotePortAny = values.TryGetValue("REMOTEPORT", out string? remotePort) && IsAny(remotePort);
+            bool programAny = values.TryGetValue("PROGRAM", out string? program) && IsAny(program);
+            bool serviceAny = values.TryGetValue("SERVICE", out string? service) && IsAny(service);
+
+            bool exact = enabled && block && outbound && profileAny && remoteExact && localAny && protocolAny &&
+                         localPortAny && remotePortAny && programAny && serviceAny;
+            string detail = exact ? "exact enabled outbound Block rule verified" :
+                $"Enabled={enabled}; ActionBlock={block}; Outbound={outbound}; ProfileAny={profileAny}; RemoteExact={remoteExact}; ProgramAny={programAny}; ServiceAny={serviceAny}; ProtocolAny={protocolAny}; PortsAny={localPortAny && remotePortAny}";
+            return new(true, exact, detail);
+        }
+
+        private static bool AddressListExactlyMatches(string value, string expected)
+        {
+            string[] items = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return items.Length == 1 && IPAddress.TryParse(items[0], out IPAddress? parsed) &&
+                   parsed.ToString().Equals(expected, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsAny(string? value) =>
+            !string.IsNullOrWhiteSpace(value) &&
+            (value.Equals("Any", StringComparison.OrdinalIgnoreCase) || value.Equals("*", StringComparison.OrdinalIgnoreCase));
+
+        private static Dictionary<string, string> ParseKeyValues(string output)
+        {
+            Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int separator = line.IndexOf('=');
+                if (separator <= 0) continue;
+                values[line[..separator].Trim()] = line[(separator + 1)..].Trim();
+            }
+            return values;
         }
 
         private static async Task<ConnectivityState> CheckConnectivityAsync()
         {
-            if (!NetworkInterface.GetIsNetworkAvailable())
-            {
-                return new ConnectivityState(false, "Windows reports no active network connection.");
-            }
-
-            bool dnsOk = false;
-            bool tcpOk = false;
-
-            try
-            {
-                IPAddress[] addresses = await Dns.GetHostAddressesAsync("www.microsoft.com")
-                    .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-                dnsOk = addresses.Length > 0;
-            }
-            catch { }
-
+            if (!NetworkInterface.GetIsNetworkAvailable()) return new(false);
+            bool dnsOk = false, tcpOk = false;
+            try { dnsOk = (await Dns.GetHostAddressesAsync("www.microsoft.com").WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false)).Length > 0; } catch { }
             try
             {
                 using TcpClient client = new();
-                await client.ConnectAsync("www.microsoft.com", 443)
-                    .WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                await client.ConnectAsync("www.microsoft.com", 443).WaitAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
                 tcpOk = client.Connected;
             }
             catch { }
-
-            return new ConnectivityState(
-                dnsOk && tcpOk,
-                $"DNS={(dnsOk ? "available" : "unavailable")}; HTTPS={(tcpOk ? "available" : "unavailable")}");
+            return new(dnsOk && tcpOk);
         }
 
         private static async Task<int> RunNetshElevatedAsync(string arguments)
@@ -285,106 +238,48 @@ namespace Sentinel.App.Services
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "netsh.exe",
+                    FileName = ResolveSystemBinary("netsh.exe"),
                     Arguments = arguments,
                     UseShellExecute = true,
                     Verb = "runas",
                     WindowStyle = ProcessWindowStyle.Hidden
                 }
             };
-
             process.Start();
             await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
             return process.ExitCode;
         }
 
-        private static async Task<bool> VerifyRuleAsync(string ruleName, string remoteIp)
-        {
-            using Process process = new()
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "netsh.exe",
-                    Arguments = $"advfirewall firewall show rule name=\"{ruleName}\" verbose",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorRead = process.StandardError.ReadToEndAsync();
-            await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-            string output = await outputRead.ConfigureAwait(false);
-            _ = await errorRead.ConfigureAwait(false);
-
-            return process.ExitCode == 0 &&
-                   output.Contains(ruleName, StringComparison.OrdinalIgnoreCase) &&
-                   output.Contains(remoteIp, StringComparison.OrdinalIgnoreCase) &&
-                   output.Contains("Block", StringComparison.OrdinalIgnoreCase) &&
-                   output.Contains("Out", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static async Task WaitForExitBoundedAsync(Process process, TimeSpan timeout)
         {
-            try
-            {
-                await process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false);
-            }
+            try { await process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false); }
             catch (TimeoutException)
             {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                    // The process may have exited or elevation may prevent cleanup.
-                }
-
+                try { process.Kill(entireProcessTree: true); } catch { }
                 throw;
             }
         }
 
-        private static async Task<bool> RuleExistsAsync(string ruleName)
+        private static string ResolvePowerShellPath()
         {
-            using Process process = new()
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "netsh.exe",
-                    Arguments = $"advfirewall firewall show rule name=\"{ruleName}\"",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                }
-            };
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system) ? "powershell.exe" : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
 
-            process.Start();
-            Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorRead = process.StandardError.ReadToEndAsync();
-            await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-            string output = await outputRead.ConfigureAwait(false);
-            _ = await errorRead.ConfigureAwait(false);
-
-            return process.ExitCode == 0 &&
-                   output.Contains(ruleName, StringComparison.OrdinalIgnoreCase);
+        private static string ResolveSystemBinary(string name)
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system) ? name : Path.Combine(system, name);
         }
 
         private static bool TryExtractRemoteAddress(string value, out IPAddress? address)
         {
             address = null;
             if (string.IsNullOrWhiteSpace(value)) return false;
-
             string candidate = value.Trim();
             if (IPAddress.TryParse(candidate.Trim('[', ']'), out address)) return true;
-
             int separator = candidate.LastIndexOf(':');
             if (separator <= 0) return false;
-
             candidate = candidate[..separator].Trim('[', ']');
             return IPAddress.TryParse(candidate, out address);
         }
@@ -392,11 +287,22 @@ namespace Sentinel.App.Services
         private static string BuildRuleName(string remoteIp)
         {
             byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(remoteIp));
-            string suffix = Convert.ToHexString(hash)[..12];
-            return $"{RulePrefix} {suffix}";
+            return $"{RulePrefix} {Convert.ToHexString(hash)[..12]}";
         }
 
-        private sealed record ConnectivityState(bool IsHealthy, string Evidence);
+        private static string EscapePowerShellLiteral(string value) => (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
+
+        private sealed record ConnectivityState(bool IsHealthy);
+        private sealed record FirewallRuleVerification(bool Exists, bool IsExactBlock, string Detail);
+
+        public enum FirewallContainmentOutcome
+        {
+            Successful,
+            PartialContainment,
+            VerificationFailed,
+            OperationFailed,
+            RuleConflict
+        }
 
         public sealed record FirewallContainmentResult(
             bool Attempted,
@@ -406,10 +312,11 @@ namespace Sentinel.App.Services
             string Title,
             string Summary,
             bool RolledBack = false,
-            bool ConnectivityHealthy = true)
+            bool ConnectivityHealthy = true,
+            FirewallContainmentOutcome Outcome = FirewallContainmentOutcome.OperationFailed)
         {
             public static FirewallContainmentResult Failure(string title, string summary) =>
-                new(true, false, string.Empty, string.Empty, title, summary, false, false);
+                new(true, false, string.Empty, string.Empty, title, summary, false, false, FirewallContainmentOutcome.OperationFailed);
         }
     }
 }
