@@ -88,8 +88,6 @@ namespace Sentinel.App.Services
                         .Take(8)
                         .ToArray();
 
-                    // Keyword overlap establishes relevance only. It is never promoted to a
-                    // verified external conclusion without a claim-specific evidence parser.
                     ExternalSourceEvidence evidence = new(source.Name, source.Uri, source.Authority, true, matches.Count > 0, matches);
                     reached.Add(evidence);
                     if (matches.Count > 0) relevant.Add(evidence);
@@ -137,14 +135,21 @@ namespace Sentinel.App.Services
                     HighRisk: highRisk);
 
                 SmartAiResult ai = await _aiCoordinator.AnalyzeAsync("external-investigation", question, snapshot, result, aiContext, cancellationToken, supplementalEvidence).ConfigureAwait(false);
-                if (ai.UsedCloudAi && !string.IsNullOrWhiteSpace(ai.Answer))
+                if (ai.UsedCloudAi)
                 {
-                    string cacheNote = ai.FromCache ? " Reused a recent analysis with no new token request." : string.Empty;
-                    string advisory = NormalizeAdvisoryForUser(ai.Answer);
+                    // Cloud model prose is deliberately NOT copied into a security-state answer.
+                    // The model is an advisory reasoning layer, not the authority for whether
+                    // Sentinel blocked, repaired, quarantined, or verified anything. Only
+                    // deterministic application records may make those claims to the user.
+                    string cacheNote = ai.FromCache ? " A recent analysis for identical redacted evidence was reused without another provider request." : string.Empty;
+                    string advisoryOutcome = ai.RequiresMoreEvidence
+                        ? "The AI advisory also indicated that more verified evidence is needed before Sentinel can make a stronger conclusion."
+                        : "The AI advisory found the supplied evidence useful for interpretation, but it is not permitted to assert that Sentinel performed or verified a security action.";
                     result = result with
                     {
-                        Summary = result.Summary + $" Sentinel's AI advisory analysis ({ai.ConfidencePercent}% confidence): {advisory}" +
-                                  " The external material is relevant, not independently verified, and any repair still requires local verification." + cacheNote
+                        Summary = result.Summary + $" Sentinel's AI advisory analysis completed ({ai.ConfidencePercent}% heuristic confidence). {advisoryOutcome}" + cacheNote,
+                        AiAdvisoryUsed = true,
+                        AiRequiresMoreEvidence = ai.RequiresMoreEvidence
                     };
                 }
             }
@@ -200,14 +205,6 @@ namespace Sentinel.App.Services
             return "Management Engine Interface";
         }
 
-        private static string NormalizeAdvisoryForUser(string value)
-        {
-            string text = value.Replace("**", string.Empty, StringComparison.Ordinal).Replace("##", string.Empty, StringComparison.Ordinal).Replace("###", string.Empty, StringComparison.Ordinal);
-            text = Regex.Replace(text, @"(?m)^\s*[-*]\s+", "• ");
-            text = Regex.Replace(text, @"\n{3,}", "\n\n").Trim();
-            return text.Length <= 1800 ? text : text[..1800].TrimEnd() + "…";
-        }
-
         private static IReadOnlyList<string> BuildEvidenceTerms(string question, SystemSnapshot snapshot)
         {
             string combined = string.Join(' ', new[] { question, snapshot.InvestigationReasonCode ?? string.Empty, snapshot.InvestigationConclusion ?? string.Empty, snapshot.InvestigationSummary ?? string.Empty, snapshot.GuidanceTitle ?? string.Empty, snapshot.GuidanceEvidence ?? string.Empty });
@@ -253,7 +250,18 @@ namespace Sentinel.App.Services
     }
 
     public sealed record ExternalSourceEvidence(string SourceName, string Uri, int Authority, bool Reached, bool MatchedCurrentEvidence, IReadOnlyList<string> MatchedTerms);
-    public sealed record ExternalInvestigationResult(string Topic, bool Verified, int ConfidencePercent, string Summary, IReadOnlyList<ExternalSourceEvidence> Sources, bool RequiresAiEscalation, bool FromCache, IReadOnlyList<string> MatchedTerms, bool RequiresSubscription = false)
+    public sealed record ExternalInvestigationResult(
+        string Topic,
+        bool Verified,
+        int ConfidencePercent,
+        string Summary,
+        IReadOnlyList<ExternalSourceEvidence> Sources,
+        bool RequiresAiEscalation,
+        bool FromCache,
+        IReadOnlyList<string> MatchedTerms,
+        bool RequiresSubscription = false,
+        bool AiAdvisoryUsed = false,
+        bool AiRequiresMoreEvidence = false)
     {
         public static ExternalInvestigationResult NotVerified(string topic, string summary) => new(topic, false, 0, summary, Array.Empty<ExternalSourceEvidence>(), false, false, Array.Empty<string>());
         public static ExternalInvestigationResult SubscriptionRequired(string topic, string summary) => new(topic, false, 0, summary, Array.Empty<ExternalSourceEvidence>(), false, false, Array.Empty<string>(), true);
