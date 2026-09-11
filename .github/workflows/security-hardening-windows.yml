@@ -87,6 +87,15 @@ jobs:
       - name: Run investigation history acceptance harness
         run: dotnet run --project "tools/Sentinel.InvestigationHistoryAcceptanceHarness/Sentinel.InvestigationHistoryAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore diagnostic log acceptance harness
+        run: dotnet restore "tools/Sentinel.DiagnosticLogAcceptanceHarness/Sentinel.DiagnosticLogAcceptanceHarness.csproj"
+
+      - name: Build diagnostic log acceptance harness
+        run: dotnet build "tools/Sentinel.DiagnosticLogAcceptanceHarness/Sentinel.DiagnosticLogAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run diagnostic log acceptance harness
+        run: dotnet run --project "tools/Sentinel.DiagnosticLogAcceptanceHarness/Sentinel.DiagnosticLogAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore AI gateway security harness
         run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
 
