@@ -54,7 +54,7 @@ internal sealed class PrivilegedBrokerClient
             NewRequestId(),
             "terminate-process",
             ProcessId: processId,
-            ExpectedProcessStartUtcTicks: expectedStartUtc.UtcTicks,
+            ExpectedProcessStartUtcTicks: expectedStartUtc.UtcDateTime.Ticks,
             ExpectedImagePath: expectedImagePath,
             ExpectedImageSha256: expectedImageSha256,
             TerminateDescendants: terminateDescendants), DefaultTimeout, token);
@@ -160,7 +160,7 @@ internal sealed class PrivilegedBrokerClient
             await using FileStream stream = new(resultPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
             BrokerResult? result = await JsonSerializer.DeserializeAsync<BrokerResult>(stream, cancellationToken: token).ConfigureAwait(false);
             if (result is null || !result.RequestId.Equals(request.RequestId, StringComparison.Ordinal))
-                return BrokerInvocationResult.Failure("InvalidResult", "The broker result could not be authenticated to this request ID.");
+                return BrokerInvocationResult.Failure("InvalidResult", "The broker result could not be matched to this request ID.");
 
             return new(result.Succeeded, result.Code ?? string.Empty, result.Message ?? string.Empty, result.ItemId ?? string.Empty, result.Sha256 ?? string.Empty);
         }
