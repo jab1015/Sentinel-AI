@@ -98,11 +98,11 @@ namespace Sentinel.App.Services
             string result = value;
 
             result = Regex.Replace(result, @"(?im)\bAuthorization\s*:\s*[^\r\n]+", "Authorization: [redacted]");
-            result = Regex.Replace(result, @"(?im)\b(?:token|api[_ -]?key|password|passwd|secret|client[_ -]?secret)\s*[:=]\s*(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\r\n,;]+)", "credential=[redacted]");
+            result = Regex.Replace(result, @"(?im)\b(?:token|api[_ -]?key|password|passwd|secret|client[_ -]?secret)\s*[:=]\s*(?:""[^""\r\n]*""|'[^'\r\n]*'|[^\r\n,;]+)", "credential=[redacted]");
             result = Regex.Replace(result, @"(?i)\bBearer\s+[A-Za-z0-9._~+\-/]+=*", "Bearer [redacted]");
             result = Regex.Replace(result, @"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "[redacted-token]");
             result = Regex.Replace(result, @"(?i)\b(?:[A-Z]:\\Users\\)[^\\\s]+", @"C:\Users\[redacted-user]");
-            result = Regex.Replace(result, @"(?i)\b(?:user(name)?|account)\s*[:=]\s*(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|[^\s,;]+)", "user=[redacted]");
+            result = Regex.Replace(result, @"(?i)\b(?:user(name)?|account)\s*[:=]\s*(?:""[^""\r\n]*""|'[^'\r\n]*'|[^\s,;]+)", "user=[redacted]");
             result = Regex.Replace(result, @"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", "[redacted-email]", RegexOptions.IgnoreCase);
             result = Regex.Replace(result, @"\b[A-Fa-f0-9]{2}(?:[:-][A-Fa-f0-9]{2}){5}\b", "[redacted-mac]");
             result = Regex.Replace(result, @"(?i)\b(?:device|machine|hardware|serial)[ _-]?(?:id|identifier|number)?\s*[:=]\s*[^\s,;]+", "device-id=[redacted]");
