@@ -1,0 +1,43 @@
+name: Sentinel Security Hardening Windows
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore desktop app
+        run: dotnet restore "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -r win-x64
+
+      - name: Build desktop app
+        run: dotnet build "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
+
+      - name: Restore privileged broker
+        run: dotnet restore "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -r win-x64
+
+      - name: Build privileged broker
+        run: dotnet build "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
+
+      - name: Restore Authenticode acceptance harness
+        run: dotnet restore "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj"
+
+      - name: Build Authenticode acceptance harness
+        run: dotnet build "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run Authenticode acceptance harness
+        run: dotnet run --project "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj" -c Release --no-build
