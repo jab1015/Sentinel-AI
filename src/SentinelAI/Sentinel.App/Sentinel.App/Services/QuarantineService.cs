@@ -5,30 +5,25 @@
 
 using System;
 using System.IO;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Provides the verified foundation for quarantine, restore, and permanent
-    /// deletion operations. Every system-changing action is gated by
-    /// RemediationPolicy and explicit user approval, and success is reported only
-    /// after filesystem verification.
+    /// User-mode facade for protected quarantine operations. The desktop process never
+    /// receives a filesystem path to the protected payload and never performs restore
+    /// or delete from caller-supplied catalog paths. All mutation is delegated to the
+    /// allowlisted elevated broker, which owns the ProgramData quarantine boundary.
     /// </summary>
     public sealed class QuarantineService
     {
         private readonly RemediationPolicy _policy;
-        private readonly string _quarantineDirectory;
+        private readonly PrivilegedBrokerClient _broker = new();
 
-        public QuarantineService(RemediationPolicy? policy = null, string? quarantineDirectory = null)
+        public QuarantineService(RemediationPolicy? policy = null)
         {
             _policy = policy ?? new RemediationPolicy();
-            _quarantineDirectory = quarantineDirectory ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "SentinelAI",
-                "Quarantine");
         }
 
         public async Task<QuarantineResult> QuarantineAsync(
@@ -39,115 +34,91 @@ namespace Sentinel.App.Services
             CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
-            {
                 return Failed("Sentinel could not verify the file to quarantine.");
-            }
 
             var decision = _policy.Evaluate(new RemediationPolicy.RemediationRequest(
                 RemediationPolicy.RemediationAction.QuarantineFile,
                 RemediationPolicy.RemediationRisk.Moderate,
                 hasVerifiedEvidence,
                 isWindowsProtectedComponent,
-                RequiresElevation: false,
-                CanRequestElevation: false));
+                RequiresElevation: true,
+                CanRequestElevation: _broker.IsBrokerPresent));
 
-            if (!decision.Allowed)
-            {
-                return Failed(decision.Explanation);
-            }
-
+            if (!decision.Allowed) return Failed(decision.Explanation);
             if (decision.RequiresUserApproval && !userApproved)
-            {
                 return new QuarantineResult(false, true, false, null, null, decision.Explanation);
-            }
 
-            string originalFullPath = string.Empty;
-            string quarantinePath = string.Empty;
-            bool moved = false;
+            string originalFullPath;
+            try { originalFullPath = Path.GetFullPath(sourcePath); }
+            catch { return Failed("Sentinel could not canonicalize the file path safely."); }
 
-            try
+            string itemId = Guid.NewGuid().ToString("N");
+            BrokerInvocationResult result = await _broker.QuarantineFileAsync(originalFullPath, itemId, cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded)
+                return Failed($"Sentinel did not report quarantine success. {result.Message}", attempted: result.Code != "ElevationDenied");
+
+            BrokerQuarantineRecord? protectedRecord = await _broker.ReadProtectedRecordAsync(itemId, cancellationToken).ConfigureAwait(false);
+            if (protectedRecord is null ||
+                !protectedRecord.ItemId.Equals(itemId, StringComparison.OrdinalIgnoreCase) ||
+                !Path.GetFullPath(protectedRecord.OriginalPath).Equals(originalFullPath, StringComparison.OrdinalIgnoreCase) ||
+                !protectedRecord.Sha256.Equals(result.Sha256, StringComparison.OrdinalIgnoreCase) ||
+                File.Exists(originalFullPath))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                Directory.CreateDirectory(_quarantineDirectory);
-
-                originalFullPath = Path.GetFullPath(sourcePath);
-                string sourceHash = await ComputeSha256Async(originalFullPath, cancellationToken)
-                    .ConfigureAwait(false);
-                string quarantineName = $"{Guid.NewGuid():N}.sentinel";
-                quarantinePath = Path.Combine(_quarantineDirectory, quarantineName);
-
-                File.Move(originalFullPath, quarantinePath);
-                moved = true;
-
-                string quarantinedHash = await ComputeSha256Async(quarantinePath, cancellationToken)
-                    .ConfigureAwait(false);
-                bool verified =
-                    string.Equals(sourceHash, quarantinedHash, StringComparison.OrdinalIgnoreCase) &&
-                    File.Exists(quarantinePath) &&
-                    !File.Exists(originalFullPath);
-
-                if (!verified)
-                {
-                    bool rolledBack = TryRollbackMove(quarantinePath, originalFullPath);
-                    return Failed(rolledBack
-                        ? "The file changed during quarantine verification. Sentinel restored it to the original location and reported no success."
-                        : "The file changed during quarantine verification and Sentinel could not verify rollback. User review is required.",
-                        attempted: true);
-                }
-
-                return new QuarantineResult(
-                    true,
-                    false,
-                    true,
-                    new QuarantineRecord(originalFullPath, quarantinePath, quarantinedHash, DateTimeOffset.UtcNow),
-                    quarantinedHash,
-                    "Sentinel quarantined the approved file and verified its identity and removal from the original location.",
-                    Attempted: true);
+                return Failed("The privileged broker returned success, but Sentinel could not independently verify the protected quarantine record and removal from the original location.", attempted: true);
             }
-            catch (OperationCanceledException)
+
+            QuarantineRecord record = new(
+                protectedRecord.OriginalPath,
+                ProtectedReference(itemId),
+                protectedRecord.Sha256,
+                protectedRecord.QuarantinedAtUtc)
             {
-                bool rolledBack = !moved || TryRollbackMove(quarantinePath, originalFullPath);
-                return Failed(rolledBack
-                    ? "The quarantine action was canceled and Sentinel verified that no file remained stranded in quarantine."
-                    : "The quarantine action was canceled after the move, and Sentinel could not verify rollback. User review is required.",
-                    attempted: moved);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-            {
-                bool rolledBack = !moved || TryRollbackMove(quarantinePath, originalFullPath);
-                return Failed(rolledBack
-                    ? "Sentinel could not safely quarantine the file and verified that no incomplete move remained."
-                    : "Sentinel could not complete quarantine or verify rollback of the moved file. User review is required.",
-                    attempted: moved);
-            }
+                ItemId = itemId
+            };
+
+            return new QuarantineResult(true, false, true, record, record.Sha256,
+                "Sentinel moved the approved file into the protected quarantine store and verified the broker-owned record and removal from the original location.",
+                Attempted: true);
         }
 
-        public Task<QuarantineResult> RestoreAsync(
+        public async Task<QuarantineResult> RestoreAsync(
             QuarantineRecord record,
             bool userApproved,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(record);
+            BrokerQuarantineRecord? protectedRecord = await GetMatchingProtectedRecordAsync(record, cancellationToken).ConfigureAwait(false);
 
             var decision = _policy.Evaluate(new RemediationPolicy.RemediationRequest(
                 RemediationPolicy.RemediationAction.RestoreQuarantinedFile,
                 RemediationPolicy.RemediationRisk.Moderate,
-                HasVerifiedEvidence: File.Exists(record.QuarantinePath),
+                HasVerifiedEvidence: protectedRecord is not null,
                 IsWindowsProtectedComponent: false,
-                RequiresElevation: false,
-                CanRequestElevation: false));
+                RequiresElevation: true,
+                CanRequestElevation: _broker.IsBrokerPresent));
 
-            if (!decision.Allowed)
-            {
-                return Task.FromResult(Failed(decision.Explanation));
-            }
-
+            if (!decision.Allowed) return Failed(decision.Explanation);
             if (decision.RequiresUserApproval && !userApproved)
-            {
-                return Task.FromResult(new QuarantineResult(false, true, false, record, record.Sha256, decision.Explanation));
-            }
+                return new QuarantineResult(false, true, false, record, record.Sha256, decision.Explanation);
+            if (protectedRecord is null)
+                return Failed("The protected quarantine record could not be verified. Sentinel did not restore anything.");
 
-            return RestoreVerifiedAsync(record, cancellationToken);
+            BrokerInvocationResult result = await _broker.RestoreFileAsync(record.ItemId, cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded)
+                return Failed($"Sentinel did not verify restore success. {result.Message}", attempted: result.Code != "ElevationDenied");
+
+            bool restored = File.Exists(protectedRecord.OriginalPath);
+            string? restoredHash = restored
+                ? await PrivilegedBrokerClient.ComputeSha256Async(protectedRecord.OriginalPath, cancellationToken).ConfigureAwait(false)
+                : null;
+            BrokerQuarantineRecord? remaining = await _broker.ReadProtectedRecordAsync(record.ItemId, cancellationToken).ConfigureAwait(false);
+            bool verified = restored && remaining is null &&
+                            string.Equals(restoredHash, protectedRecord.Sha256, StringComparison.OrdinalIgnoreCase);
+
+            return verified
+                ? new QuarantineResult(true, false, true, record, protectedRecord.Sha256,
+                    "Sentinel restored the approved file, verified its hash at the original location, and verified that the protected quarantine record was removed.", true)
+                : Failed("The broker reported restore completion, but Sentinel could not verify the restored file identity and record removal.", attempted: true);
         }
 
         public async Task<QuarantineResult> DeletePermanentlyAsync(
@@ -156,183 +127,50 @@ namespace Sentinel.App.Services
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(record);
+            BrokerQuarantineRecord? protectedRecord = await GetMatchingProtectedRecordAsync(record, cancellationToken).ConfigureAwait(false);
 
             var decision = _policy.Evaluate(new RemediationPolicy.RemediationRequest(
                 RemediationPolicy.RemediationAction.DeleteQuarantinedFile,
                 RemediationPolicy.RemediationRisk.Moderate,
-                HasVerifiedEvidence: File.Exists(record.QuarantinePath),
+                HasVerifiedEvidence: protectedRecord is not null,
                 IsWindowsProtectedComponent: false,
-                RequiresElevation: false,
-                CanRequestElevation: false));
+                RequiresElevation: true,
+                CanRequestElevation: _broker.IsBrokerPresent));
 
-            if (!decision.Allowed)
-                return Failed(decision.Explanation);
-
+            if (!decision.Allowed) return Failed(decision.Explanation);
             if (decision.RequiresUserApproval && !userApproved)
                 return new QuarantineResult(false, true, false, record, record.Sha256, decision.Explanation);
+            if (protectedRecord is null)
+                return Failed("The protected quarantine record could not be verified. Sentinel did not delete anything.");
 
-            string deletionPath = record.QuarantinePath + $".delete-{Guid.NewGuid():N}";
-            bool isolatedForDeletion = false;
+            BrokerInvocationResult result = await _broker.DeleteFileAsync(record.ItemId, cancellationToken).ConfigureAwait(false);
+            if (!result.Succeeded)
+                return Failed($"Sentinel did not verify permanent deletion. {result.Message}", attempted: result.Code != "ElevationDenied");
 
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!File.Exists(record.QuarantinePath))
-                    return Failed("The quarantined file is no longer available to delete.");
-
-                File.Move(record.QuarantinePath, deletionPath);
-                isolatedForDeletion = true;
-
-                string currentHash = await ComputeSha256Async(deletionPath, cancellationToken)
-                    .ConfigureAwait(false);
-                if (!string.Equals(currentHash, record.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    bool rolledBack = TryRollbackMove(deletionPath, record.QuarantinePath);
-                    return Failed(rolledBack
-                        ? "The isolated file no longer matched its quarantine record. Sentinel restored it to quarantine and did not delete it."
-                        : "The isolated file did not match its record and Sentinel could not verify rollback. User review is required.",
-                        attempted: true);
-                }
-
-                File.Delete(deletionPath);
-                bool verified = !File.Exists(deletionPath) && !File.Exists(record.QuarantinePath);
-                return verified
-                    ? new QuarantineResult(
-                        true,
-                        false,
-                        true,
-                        record,
-                        record.Sha256,
-                        "Sentinel permanently deleted the approved quarantined file and verified that the isolated copy no longer exists.",
-                        Attempted: true)
-                    : Failed("Sentinel attempted permanent deletion but could not verify the result.", attempted: true);
-            }
-            catch (OperationCanceledException)
-            {
-                bool rolledBack = !isolatedForDeletion ||
-                    TryRollbackMove(deletionPath, record.QuarantinePath);
-                return Failed(rolledBack
-                    ? "Permanent deletion was canceled and Sentinel restored the file to quarantine."
-                    : "Permanent deletion was canceled and Sentinel could not verify restoration to quarantine. User review is required.",
-                    attempted: isolatedForDeletion);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-            {
-                bool rolledBack = !isolatedForDeletion ||
-                    TryRollbackMove(deletionPath, record.QuarantinePath);
-                return Failed(rolledBack
-                    ? "Sentinel could not safely delete the quarantined file and restored its isolated copy."
-                    : "Sentinel could not complete deletion or verify restoration of the isolated copy. User review is required.",
-                    attempted: isolatedForDeletion);
-            }
+            BrokerQuarantineRecord? remaining = await _broker.ReadProtectedRecordAsync(record.ItemId, cancellationToken).ConfigureAwait(false);
+            return remaining is null
+                ? new QuarantineResult(true, false, true, record, protectedRecord.Sha256,
+                    "Sentinel permanently deleted the approved protected quarantine item and verified that its broker-owned record is gone.", true)
+                : Failed("The broker reported deletion, but the protected quarantine record still exists. Sentinel did not report success.", attempted: true);
         }
 
-        private static async Task<QuarantineResult> RestoreVerifiedAsync(
-            QuarantineRecord record,
-            CancellationToken cancellationToken)
+        private async Task<BrokerQuarantineRecord?> GetMatchingProtectedRecordAsync(QuarantineRecord record, CancellationToken token)
         {
-            bool moved = false;
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
+            if (!Guid.TryParseExact(record.ItemId, "N", out _)) return null;
+            BrokerQuarantineRecord? protectedRecord = await _broker.ReadProtectedRecordAsync(record.ItemId, token).ConfigureAwait(false);
+            if (protectedRecord is null) return null;
 
-                if (!File.Exists(record.QuarantinePath))
-                    return Failed("The quarantined file is no longer available to restore.");
+            string original;
+            try { original = Path.GetFullPath(record.OriginalPath); }
+            catch { return null; }
 
-                if (File.Exists(record.OriginalPath))
-                    return Failed("Sentinel will not overwrite an existing file at the original location.");
-
-                string currentHash = await ComputeSha256Async(record.QuarantinePath, cancellationToken)
-                    .ConfigureAwait(false);
-                if (!string.Equals(currentHash, record.Sha256, StringComparison.OrdinalIgnoreCase))
-                    return Failed("The quarantined file no longer matches its verified record, so Sentinel will not restore it.");
-
-                string? parent = Path.GetDirectoryName(record.OriginalPath);
-                if (!string.IsNullOrWhiteSpace(parent))
-                    Directory.CreateDirectory(parent);
-
-                File.Move(record.QuarantinePath, record.OriginalPath);
-                moved = true;
-
-                string restoredHash = await ComputeSha256Async(record.OriginalPath, cancellationToken)
-                    .ConfigureAwait(false);
-                bool verified =
-                    string.Equals(restoredHash, record.Sha256, StringComparison.OrdinalIgnoreCase) &&
-                    File.Exists(record.OriginalPath) &&
-                    !File.Exists(record.QuarantinePath);
-
-                if (!verified)
-                {
-                    bool rolledBack = TryRollbackMove(record.OriginalPath, record.QuarantinePath);
-                    return Failed(rolledBack
-                        ? "The restored file did not match its quarantine record. Sentinel returned it to quarantine and reported no success."
-                        : "The restored file did not match its record and Sentinel could not verify rollback. User review is required.",
-                        attempted: true);
-                }
-
-                return new QuarantineResult(
-                    true,
-                    false,
-                    true,
-                    record,
-                    record.Sha256,
-                    "Sentinel restored the approved file and verified its identity and original location.",
-                    Attempted: true);
-            }
-            catch (OperationCanceledException)
-            {
-                bool rolledBack = !moved ||
-                    TryRollbackMove(record.OriginalPath, record.QuarantinePath);
-                return Failed(rolledBack
-                    ? "Restore was canceled and Sentinel verified that the file remained quarantined."
-                    : "Restore was canceled after the move and Sentinel could not verify rollback. User review is required.",
-                    attempted: moved);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
-            {
-                bool rolledBack = !moved ||
-                    TryRollbackMove(record.OriginalPath, record.QuarantinePath);
-                return Failed(rolledBack
-                    ? "Sentinel could not safely restore the file and verified that it remained quarantined."
-                    : "Sentinel could not complete restore or verify rollback. User review is required.",
-                    attempted: moved);
-            }
+            return Path.GetFullPath(protectedRecord.OriginalPath).Equals(original, StringComparison.OrdinalIgnoreCase) &&
+                   protectedRecord.Sha256.Equals(record.Sha256, StringComparison.OrdinalIgnoreCase)
+                ? protectedRecord
+                : null;
         }
 
-        private static bool TryRollbackMove(string quarantinePath, string originalPath)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(quarantinePath) ||
-                    string.IsNullOrWhiteSpace(originalPath) ||
-                    !File.Exists(quarantinePath) ||
-                    File.Exists(originalPath))
-                {
-                    return !File.Exists(quarantinePath) && File.Exists(originalPath);
-                }
-
-                File.Move(quarantinePath, originalPath);
-                return File.Exists(originalPath) && !File.Exists(quarantinePath);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
-        {
-            await using var stream = new FileStream(
-                path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                81920,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-            byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
-            return Convert.ToHexString(hash);
-        }
+        private static string ProtectedReference(string itemId) => "sentinel-quarantine://" + itemId;
 
         private static QuarantineResult Failed(string message, bool attempted = false) =>
             new(false, false, false, null, null, message, attempted);
@@ -341,7 +179,10 @@ namespace Sentinel.App.Services
             string OriginalPath,
             string QuarantinePath,
             string Sha256,
-            DateTimeOffset QuarantinedAtUtc);
+            DateTimeOffset QuarantinedAtUtc)
+        {
+            public string ItemId { get; init; } = string.Empty;
+        }
 
         public sealed record QuarantineResult(
             bool Succeeded,
