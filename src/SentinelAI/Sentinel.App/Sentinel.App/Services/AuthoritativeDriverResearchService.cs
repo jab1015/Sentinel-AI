@@ -10,7 +10,9 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace Sentinel.App.Services
@@ -19,6 +21,10 @@ namespace Sentinel.App.Services
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan NetworkTimeout = TimeSpan.FromSeconds(45);
+        private const int MaximumWebBodyBytes = 2 * 1024 * 1024;
+        private const int MaximumDellCatalogBytes = 64 * 1024 * 1024;
+        private const int MaximumExpandedFiles = 64;
+        private const long MaximumExpandedXmlBytes = 32L * 1024 * 1024;
         private const string DellCatalogUri = "https://downloads.dell.com/catalog/CatalogPC.cab";
 
         public Task<DriverResearchResult> ResearchAsync(string deviceName) => Task.Run(() => Research(deviceName));
@@ -55,8 +61,6 @@ namespace Sentinel.App.Services
                     false);
             }
 
-            // Platform/chipset devices should remain OEM-first. A component-vendor package
-            // may be generic and can be wrong for firmware-coupled hardware.
             bool platformDevice = IsPlatformDevice(deviceName);
             if (platformDevice && !string.IsNullOrWhiteSpace(oem.Uri) && (oemProbe.Reached || oem.BrowserAuthoritative))
             {
@@ -117,30 +121,34 @@ namespace Sentinel.App.Services
             {
                 Directory.CreateDirectory(work);
                 string cab = Path.Combine(work, "CatalogPC.cab");
-                using (HttpClient client = new() { Timeout = NetworkTimeout })
-                {
-                    client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
-                    File.WriteAllBytes(cab, client.GetByteArrayAsync(DellCatalogUri).GetAwaiter().GetResult());
-                }
+                if (!DownloadFileBounded(DellCatalogUri, cab, MaximumDellCatalogBytes)) return null;
 
-                using Process expand = new();
-                expand.StartInfo = new ProcessStartInfo
+                ProcessStartInfo expand = new()
                 {
-                    FileName = "expand.exe",
-                    Arguments = $"\"{cab}\" -F:* \"{work}\"",
+                    FileName = ResolveSystemBinary("expand.exe"),
                     UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
+                    CreateNoWindow = true
                 };
-                if (!expand.Start()) return null;
-                _ = expand.StandardOutput.ReadToEnd();
-                _ = expand.StandardError.ReadToEnd();
-                if (!expand.WaitForExit((int)CommandTimeout.TotalMilliseconds) || expand.ExitCode != 0) return null;
+                expand.ArgumentList.Add(cab);
+                expand.ArgumentList.Add("-F:*");
+                expand.ArgumentList.Add(work);
+                ProcessExecutionResult expansion = BoundedProcessRunner.RunAsync(expand, CommandTimeout, maxOutputChars: 64_000).GetAwaiter().GetResult();
+                if (!expansion.Succeeded) return null;
 
-                string? xmlPath = Directory.EnumerateFiles(work, "*.xml", SearchOption.TopDirectoryOnly).FirstOrDefault();
-                if (xmlPath is null) return null;
-                XDocument doc = XDocument.Load(xmlPath, LoadOptions.None);
+                FileInfo[] expanded = new DirectoryInfo(work).EnumerateFiles("*", SearchOption.TopDirectoryOnly).Take(MaximumExpandedFiles + 1).ToArray();
+                if (expanded.Length > MaximumExpandedFiles) return null;
+                FileInfo? xmlFile = expanded.FirstOrDefault(f => f.Extension.Equals(".xml", StringComparison.OrdinalIgnoreCase));
+                if (xmlFile is null || xmlFile.Length <= 0 || xmlFile.Length > MaximumExpandedXmlBytes) return null;
+
+                XmlReaderSettings xmlSettings = new()
+                {
+                    DtdProcessing = DtdProcessing.Prohibit,
+                    XmlResolver = null,
+                    MaxCharactersInDocument = MaximumExpandedXmlBytes
+                };
+                XDocument doc;
+                using (XmlReader reader = XmlReader.Create(xmlFile.FullName, xmlSettings))
+                    doc = XDocument.Load(reader, LoadOptions.None);
 
                 string device = Normalize(deviceName);
                 string hardware = NormalizeHardwareId(context.HardwareId);
@@ -156,9 +164,7 @@ namespace Sentinel.App.Services
                         AttributeOrElement(component, "DisplayName"),
                         AttributeOrElement(component, "Description"));
                     string searchable = Normalize(title + " " + component.Value);
-
-                    bool deviceMatch = MatchesDevice(searchable, device, hardware, xml);
-                    if (!deviceMatch) continue;
+                    if (!MatchesDevice(searchable, device, hardware, xml)) continue;
 
                     bool modelMatch = MatchesModel(xml, model, sku);
                     bool hardwareMatch = !string.IsNullOrWhiteSpace(hardware) && xml.Contains(hardware, StringComparison.OrdinalIgnoreCase);
@@ -190,6 +196,35 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static bool DownloadFileBounded(string uri, string destination, int maxBytes)
+        {
+            try
+            {
+                using HttpClient client = new() { Timeout = NetworkTimeout };
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
+                using HttpRequestMessage request = new(HttpMethod.Get, uri);
+                using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode) return false;
+                if (response.Content.Headers.ContentLength is long declared && declared > maxBytes) return false;
+
+                using Stream input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                using FileStream output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                byte[] buffer = new byte[64 * 1024];
+                int total = 0;
+                while (true)
+                {
+                    int read = input.Read(buffer, 0, buffer.Length);
+                    if (read == 0) break;
+                    total = checked(total + read);
+                    if (total > maxBytes) return false;
+                    output.Write(buffer, 0, read);
+                }
+                output.Flush(true);
+                return total > 0;
+            }
+            catch { return false; }
+        }
+
         private static bool MatchesDevice(string searchable, string device, string hardware, string xml)
         {
             if (!string.IsNullOrWhiteSpace(hardware) && xml.Contains(hardware, StringComparison.OrdinalIgnoreCase)) return true;
@@ -203,7 +238,6 @@ namespace Sentinel.App.Services
             if (!string.IsNullOrWhiteSpace(sku) && xml.Contains(sku, StringComparison.OrdinalIgnoreCase)) return true;
             if (string.IsNullOrWhiteSpace(model)) return false;
             if (xml.Contains(model, StringComparison.OrdinalIgnoreCase)) return true;
-
             string compactModel = new string(model.Where(char.IsLetterOrDigit).ToArray());
             string compactXml = new string(xml.Where(char.IsLetterOrDigit).ToArray());
             return compactModel.Length >= 4 && compactXml.Contains(compactModel, StringComparison.OrdinalIgnoreCase);
@@ -231,11 +265,8 @@ namespace Sentinel.App.Services
                 "Write-Output ('MANUFACTURER=' + $m); Write-Output ('MODEL=' + $model); Write-Output ('SERIAL=' + $serial); Write-Output ('SKU=' + $sku); Write-Output ('HARDWAREID=' + [string]$hw);";
             ProcessResult result = RunPowerShell(command, CommandTimeout);
             return new DeviceContext(
-                GetValue(result.Output, "MANUFACTURER"),
-                GetValue(result.Output, "MODEL"),
-                GetValue(result.Output, "SERIAL"),
-                GetValue(result.Output, "SKU"),
-                GetValue(result.Output, "HARDWAREID"));
+                GetValue(result.Output, "MANUFACTURER"), GetValue(result.Output, "MODEL"),
+                GetValue(result.Output, "SERIAL"), GetValue(result.Output, "SKU"), GetValue(result.Output, "HARDWAREID"));
         }
 
         private static OemSource BuildOemSource(DeviceContext context)
@@ -285,9 +316,24 @@ namespace Sentinel.App.Services
             {
                 using HttpClient client = new() { Timeout = NetworkTimeout };
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
-                using HttpResponseMessage response = client.GetAsync(uri).GetAwaiter().GetResult();
-                string body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-                return new(response.IsSuccessStatusCode, body);
+                using HttpRequestMessage request = new(HttpMethod.Get, uri);
+                using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+                if (!response.IsSuccessStatusCode) return new(false, string.Empty);
+                if (response.Content.Headers.ContentLength is long declared && declared > MaximumWebBodyBytes) return new(false, string.Empty);
+
+                using Stream input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                using MemoryStream bounded = new();
+                byte[] buffer = new byte[32 * 1024];
+                int total = 0;
+                while (true)
+                {
+                    int read = input.Read(buffer, 0, buffer.Length);
+                    if (read == 0) break;
+                    total = checked(total + read);
+                    if (total > MaximumWebBodyBytes) return new(false, string.Empty);
+                    bounded.Write(buffer, 0, read);
+                }
+                return new(true, Encoding.UTF8.GetString(bounded.ToArray()));
             }
             catch { return new(false, string.Empty); }
         }
@@ -302,27 +348,29 @@ namespace Sentinel.App.Services
             try
             {
                 string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
-                    FileName = "powershell.exe",
+                    FileName = ResolvePowerShellPath(),
                     Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                if (!process.Start()) return new(false, string.Empty);
-                string output = process.StandardOutput.ReadToEnd();
-                _ = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit((int)timeout.TotalMilliseconds))
-                {
-                    process.Kill(true);
-                    return new(false, output);
-                }
-                return new(process.ExitCode == 0, output.Trim());
+                ProcessExecutionResult result = BoundedProcessRunner.RunAsync(startInfo, timeout, maxOutputChars: 256_000).GetAwaiter().GetResult();
+                return new(result.Succeeded, result.StandardOutput.Trim());
             }
             catch { return new(false, string.Empty); }
+        }
+
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system) ? "powershell.exe" : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
+
+        private static string ResolveSystemBinary(string name)
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system) ? name : Path.Combine(system, name);
         }
 
         private static string GetValue(string output, string name)
