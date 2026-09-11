@@ -42,6 +42,15 @@ jobs:
       - name: Run Authenticode acceptance harness
         run: dotnet run --project "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore bounded process runner acceptance harness
+        run: dotnet restore "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj"
+
+      - name: Build bounded process runner acceptance harness
+        run: dotnet build "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run bounded process runner acceptance harness
+        run: dotnet run --project "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore AI gateway security harness
         run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
 
