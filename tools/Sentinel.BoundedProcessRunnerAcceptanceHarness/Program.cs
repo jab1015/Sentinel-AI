@@ -116,7 +116,21 @@ using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(700)))
 }
 Console.WriteLine("Caller cancellation: PASS");
 
-Console.WriteLine("--- Scenario 8: bounded output ---");
+Console.WriteLine("--- Scenario 8: descendant tree termination ---");
+string marker = Path.Combine(Path.GetTempPath(), "SentinelRunnerDescendant-" + Guid.NewGuid().ToString("N") + ".txt");
+string escapedMarker = marker.Replace("'", "''", StringComparison.Ordinal);
+string childScript = $"Start-Sleep -Seconds 3; Set-Content -LiteralPath '{escapedMarker}' -Value 'survived'";
+string childEncoded = Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(childScript));
+string parentScript = $"Start-Process powershell.exe -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','{childEncoded}'; Start-Sleep -Seconds 30";
+var treeTimeout = await BoundedProcessRunner.RunAsync(PowerShell(parentScript), TimeSpan.FromMilliseconds(900));
+Dump("descendant timeout", treeTimeout);
+Require(treeTimeout.Outcome == ProcessExecutionOutcome.TimedOut, $"Expected descendant scenario timeout, got {treeTimeout.Outcome}.");
+await Task.Delay(TimeSpan.FromSeconds(4));
+Require(!File.Exists(marker), "A descendant process survived timeout tree termination and wrote its marker file.");
+Console.WriteLine("Descendant process-tree termination: PASS");
+try { File.Delete(marker); } catch { }
+
+Console.WriteLine("--- Scenario 9: bounded output ---");
 var capped = await BoundedProcessRunner.RunAsync(
     PowerShell("[Console]::Out.Write(('X' * 200000)); [Console]::Error.Write(('Y' * 200000))"),
     TimeSpan.FromSeconds(10),
