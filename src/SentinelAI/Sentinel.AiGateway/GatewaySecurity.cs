@@ -266,7 +266,7 @@ internal sealed class GatewaySecurity
     private static byte[] Base64UrlDecode(string value)
     {
         string padded = value.Replace('-', '+').Replace('_', '/');
-        padded += padded.Length % 4 switch { 2 => "==", 3 => "=", 0 => string.Empty, _ => throw new FormatException() };
+        padded += (padded.Length % 4) switch { 2 => "==", 3 => "=", 0 => string.Empty, _ => throw new FormatException() };
         return Convert.FromBase64String(padded);
     }
 
