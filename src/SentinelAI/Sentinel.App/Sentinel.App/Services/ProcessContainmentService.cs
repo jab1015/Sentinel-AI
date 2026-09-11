@@ -6,6 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
@@ -16,9 +18,12 @@ namespace Sentinel.App.Services
         {
             "System", "Idle", "Registry", "smss", "csrss", "wininit", "winlogon",
             "services", "lsass", "svchost", "dwm", "explorer", "Sentinel.App",
-            "Memory Compression", "Secure System", "LsaIso", "fontdrvhost", "sihost",
-            "taskhostw", "conhost", "WmiPrvSE", "MsMpEng", "SecurityHealthService", "NisSrv"
+            "Sentinel.PrivilegedBroker", "Memory Compression", "Secure System", "LsaIso",
+            "fontdrvhost", "sihost", "taskhostw", "conhost", "WmiPrvSE", "MsMpEng",
+            "SecurityHealthService", "NisSrv"
         };
+
+        private readonly PrivilegedBrokerClient _broker = new();
 
         public async Task<ProcessContainmentResult> ContainAsync(string processName)
         {
@@ -33,7 +38,7 @@ namespace Sentinel.App.Services
             try { matches = Process.GetProcessesByName(normalizedName); }
             catch (Exception ex)
             {
-                return ProcessContainmentResult.Failure("Process could not be inspected", $"Sentinel could not safely enumerate the requested process. {ex.Message}");
+                return ProcessContainmentResult.Failure("Process could not be inspected", $"Sentinel could not safely enumerate the requested process ({ex.GetType().Name}).");
             }
 
             try
@@ -44,7 +49,11 @@ namespace Sentinel.App.Services
                 if (matches.Length != 1)
                     return ProcessContainmentResult.Failure("Process target is ambiguous", $"Sentinel found {matches.Length} running instances of {normalizedName}. It will not terminate multiple processes from a name-only approval.");
 
-                return await ContainAsync(normalizedName, matches[0].Id).ConfigureAwait(false);
+                DateTimeOffset start;
+                try { start = matches[0].StartTime.ToUniversalTime(); }
+                catch { return ProcessContainmentResult.Failure("Process identity could not be verified", "Sentinel could not read the target process creation time."); }
+
+                return await ContainAsync(normalizedName, matches[0].Id, start).ConfigureAwait(false);
             }
             finally
             {
@@ -70,119 +79,66 @@ namespace Sentinel.App.Services
             if (ProtectedProcessNames.Contains(normalizedName))
                 return ProcessContainmentResult.Failure("Process containment was blocked", $"Sentinel will not terminate protected Windows or Sentinel process {normalizedName}.");
 
-            Process target;
-            try { target = Process.GetProcessById(processId); }
+            if (!_broker.IsBrokerPresent)
+                return ProcessContainmentResult.Failure("Process containment unavailable", "Sentinel's privileged broker is not installed with this build. No termination was attempted.");
+
+            string imagePath;
+            string imageHash;
+            DateTimeOffset actualStartTimeUtc;
+
+            try
+            {
+                using Process target = Process.GetProcessById(processId);
+                string actualName = target.ProcessName;
+                if (!actualName.Equals(normalizedName, StringComparison.OrdinalIgnoreCase))
+                    return ProcessContainmentResult.Failure("Process identity changed", $"PID {processId} is now {actualName}, not the approved process {normalizedName}. Sentinel made no change.");
+
+                actualStartTimeUtc = target.StartTime.ToUniversalTime();
+                if (expectedStartTimeUtc.HasValue && actualStartTimeUtc != expectedStartTimeUtc.Value)
+                    return ProcessContainmentResult.Failure("Process instance changed", $"PID {processId} no longer identifies the exact process instance that was approved. Sentinel made no change.");
+
+                imagePath = Path.GetFullPath(target.MainModule?.FileName ?? string.Empty);
+                if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+                    return ProcessContainmentResult.Failure("Process image could not be verified", "Sentinel could not identify the executable backing the approved process instance.");
+
+                string? hash = await PrivilegedBrokerClient.ComputeSha256Async(imagePath).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(hash))
+                    return ProcessContainmentResult.Failure("Process image could not be verified", "Sentinel could not hash the executable backing the approved process instance.");
+                imageHash = hash;
+            }
             catch (ArgumentException)
             {
                 return new(false, true, normalizedName, processId, "Process is no longer running", "Sentinel rechecked the approved process instance and found that it had already exited. No change was needed.");
             }
             catch (Exception ex)
             {
-                return ProcessContainmentResult.Failure("Process could not be inspected", $"Sentinel could not safely inspect PID {processId}. {ex.Message}");
+                return ProcessContainmentResult.Failure("Process identity could not be verified", $"Sentinel could not establish exact process identity ({ex.GetType().Name}). No change was made.");
             }
 
-            using (target)
+            // Descendants are deliberately excluded from this approval. A future UI may
+            // request explicit tree scope, but name/PID approval alone never authorizes it.
+            BrokerInvocationResult result = await _broker.TerminateProcessAsync(
+                processId,
+                actualStartTimeUtc,
+                imagePath,
+                imageHash,
+                terminateDescendants: false,
+                CancellationToken.None).ConfigureAwait(false);
+
+            if (!result.Succeeded)
             {
-                string actualName;
-                try { actualName = target.ProcessName; }
-                catch (Exception ex)
+                if (result.Code.Equals("ProcessIdentityChanged", StringComparison.OrdinalIgnoreCase) ||
+                    result.Code.Equals("ProcessImageChanged", StringComparison.OrdinalIgnoreCase))
                 {
-                    return ProcessContainmentResult.Failure("Process identity could not be verified", $"Sentinel could not verify PID {processId}. {ex.Message}");
+                    return ProcessContainmentResult.Failure("Process identity changed before containment", "The privileged broker revalidated the process after elevation and found that it was no longer the exact approved instance. Sentinel made no change.");
                 }
 
-                if (!actualName.Equals(normalizedName, StringComparison.OrdinalIgnoreCase))
-                    return ProcessContainmentResult.Failure("Process identity changed", $"PID {processId} is now {actualName}, not the approved process {normalizedName}. Sentinel made no change.");
-
-                if (expectedStartTimeUtc.HasValue)
-                {
-                    DateTimeOffset actualStartTimeUtc;
-                    try { actualStartTimeUtc = target.StartTime.ToUniversalTime(); }
-                    catch (Exception ex)
-                    {
-                        return ProcessContainmentResult.Failure(
-                            "Process identity could not be verified",
-                            $"Sentinel could not verify the start time for PID {processId}. No change was made ({ex.GetType().Name}).");
-                    }
-
-                    if (actualStartTimeUtc != expectedStartTimeUtc.Value)
-                    {
-                        return ProcessContainmentResult.Failure(
-                            "Process instance changed",
-                            $"PID {processId} no longer identifies the exact process instance that was approved. Sentinel made no change.");
-                    }
-                }
+                return ProcessContainmentResult.Failure("Process could not be contained", $"Sentinel did not report containment success. {result.Message}");
             }
 
-            try
-            {
-                int exitCode = await RunTaskKillElevatedAsync(processId).ConfigureAwait(false);
-                if (exitCode != 0)
-                    return ProcessContainmentResult.Failure("Process could not be contained", $"Windows returned exit code {exitCode}. Sentinel did not report containment as successful.");
-
-                bool exited = await VerifyExitedAsync(processId).ConfigureAwait(false);
-                if (!exited)
-                    return ProcessContainmentResult.Failure("Process containment could not be verified", "The termination command completed, but Sentinel still detected the approved process instance.");
-
-                return new(true, true, normalizedName, processId, "Suspicious process contained", $"Sentinel stopped and verified termination of {normalizedName} (PID {processId}). Monitoring will continue for recurrence or persistence.");
-            }
-            catch (Exception ex)
-            {
-                return ProcessContainmentResult.Failure("Process containment could not complete", $"Sentinel did not report containment as successful because verification did not complete. {ex.Message}");
-            }
-        }
-
-        private static async Task<int> RunTaskKillElevatedAsync(int processId)
-        {
-            using Process process = new()
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "taskkill.exe",
-                    Arguments = $"/PID {processId} /T /F",
-                    UseShellExecute = true,
-                    Verb = "runas",
-                    WindowStyle = ProcessWindowStyle.Hidden
-                }
-            };
-            process.Start();
-            try
-            {
-                await process.WaitForExitAsync()
-                    .WaitAsync(TimeSpan.FromSeconds(30))
-                    .ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                    // The process may have exited or elevation may prevent cleanup.
-                }
-
-                throw;
-            }
-
-            return process.ExitCode;
-        }
-
-        private static async Task<bool> VerifyExitedAsync(int processId)
-        {
-            for (int attempt = 0; attempt < 5; attempt++)
-            {
-                if (!IsProcessRunning(processId)) return true;
-                await Task.Delay(500).ConfigureAwait(false);
-            }
-            return !IsProcessRunning(processId);
-        }
-
-        private static bool IsProcessRunning(int processId)
-        {
-            try { using Process process = Process.GetProcessById(processId); return !process.HasExited; }
-            catch (ArgumentException) { return false; }
-            catch { return true; }
+            return new(true, true, normalizedName, processId,
+                "Suspicious process contained",
+                $"Sentinel's privileged broker revalidated the exact process creation time, executable path, and executable hash after elevation, then terminated and verified the approved {normalizedName} process instance. Descendants were not included in this approval.");
         }
 
         private static string NormalizeProcessName(string value)
