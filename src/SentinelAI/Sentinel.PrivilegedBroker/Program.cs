@@ -1,36 +1,51 @@
 using System.Diagnostics;
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 
-const int ProtocolVersion = 1;
+const int ProtocolVersion = 2;
+const int MaximumRequestCharacters = 32_768;
 string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SentinelAI", "Broker");
 string storeRoot = Path.Combine(root, "QuarantineStore");
 string recordsRoot = Path.Combine(root, "QuarantineRecords");
 string transactionRoot = Path.Combine(root, "Transactions");
-string resultsRoot = Path.Combine(root, "Results");
 
 if (!IsAdministrator()) return 20;
-if (args.Length != 2 || !args[0].Equals("--request", StringComparison.Ordinal)) return 21;
+if (args.Length != 2 || !args[0].Equals("--pipe", StringComparison.Ordinal) ||
+    !Guid.TryParseExact(args[1], "N", out _)) return 21;
 
-BrokerRequest? request;
-try
-{
-    byte[] requestBytes = Convert.FromBase64String(args[1]);
-    if (requestBytes.Length > 32_768) return 22;
-    request = JsonSerializer.Deserialize<BrokerRequest>(requestBytes);
-}
-catch { return 22; }
-
-if (request is null || request.Version != ProtocolVersion || !Guid.TryParseExact(request.RequestId, "N", out _)) return 23;
-
+string pipeName = "SentinelAI.Broker." + args[1];
+BrokerResult finalResult;
 try
 {
     EnsureBrokerDirectories();
     RecoverQuarantineTransactions();
 
-    BrokerResult result = request.Operation switch
+    using NamedPipeServerStream pipe = new(
+        pipeName,
+        PipeDirection.InOut,
+        1,
+        PipeTransmissionMode.Byte,
+        PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+    await pipe.WaitForConnectionAsync().WaitAsync(TimeSpan.FromSeconds(30));
+    if (!IsAuthorizedSentinelClient(pipe, out string callerError))
+    {
+        await WritePipeResultAsync(pipe, BrokerResult.Fail(string.Empty, "UnauthorizedCaller", callerError));
+        return 24;
+    }
+
+    BrokerRequest? request = await ReadPipeRequestAsync(pipe);
+    if (request is null || request.Version != ProtocolVersion || !Guid.TryParseExact(request.RequestId, "N", out _))
+    {
+        await WritePipeResultAsync(pipe, BrokerResult.Fail(request?.RequestId ?? string.Empty, "InvalidRequest", "The broker request was malformed or used an unsupported protocol version."));
+        return 23;
+    }
+
+    finalResult = request.Operation switch
     {
         "quarantine-file" => Quarantine(request),
         "restore-quarantined-file" => Restore(request),
@@ -39,13 +54,57 @@ try
         _ => BrokerResult.Fail(request.RequestId, "UnsupportedOperation", "The requested privileged operation is not allowlisted.")
     };
 
-    WriteResult(result);
-    return result.Succeeded ? 0 : 30;
+    await WritePipeResultAsync(pipe, finalResult);
+    return finalResult.Succeeded ? 0 : 30;
 }
-catch (Exception ex)
+catch (TimeoutException) { return 25; }
+catch { return 31; }
+
+async Task<BrokerRequest?> ReadPipeRequestAsync(NamedPipeServerStream pipe)
 {
-    try { WriteResult(BrokerResult.Fail(request.RequestId, "BrokerFailure", ex.GetType().Name)); } catch { }
-    return 31;
+    using StreamReader reader = new(pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
+    string? line = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    if (string.IsNullOrWhiteSpace(line) || line.Length > MaximumRequestCharacters) return null;
+    try { return JsonSerializer.Deserialize<BrokerRequest>(line); }
+    catch { return null; }
+}
+
+async Task WritePipeResultAsync(NamedPipeServerStream pipe, BrokerResult result)
+{
+    using StreamWriter writer = new(pipe, new UTF8Encoding(false), bufferSize: 4096, leaveOpen: true) { AutoFlush = true };
+    await writer.WriteLineAsync(JsonSerializer.Serialize(result));
+}
+
+bool IsAuthorizedSentinelClient(NamedPipeServerStream pipe, out string error)
+{
+    error = string.Empty;
+    try
+    {
+        if (!GetNamedPipeClientProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out uint pid) || pid == 0)
+        {
+            error = "The broker could not identify the IPC client process.";
+            return false;
+        }
+
+        using Process client = Process.GetProcessById(unchecked((int)pid));
+        string actual = Path.GetFullPath(client.MainModule?.FileName ?? string.Empty);
+        string expected = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Sentinel.App.exe"));
+        if (!actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+        {
+            error = "The privileged request did not originate from the packaged Sentinel application executable.";
+            return false;
+        }
+
+        // The package install directory is protected by Windows. Requiring the actual
+        // pipe client PID to execute the sibling Sentinel.App.exe prevents an arbitrary
+        // same-user process from submitting an allowlisted request after launching the broker.
+        return true;
+    }
+    catch (Exception ex)
+    {
+        error = $"The IPC client identity could not be verified ({ex.GetType().Name}).";
+        return false;
+    }
 }
 
 void EnsureBrokerDirectories()
@@ -54,13 +113,8 @@ void EnsureBrokerDirectories()
     Directory.CreateDirectory(storeRoot);
     Directory.CreateDirectory(recordsRoot);
     Directory.CreateDirectory(transactionRoot);
-    Directory.CreateDirectory(resultsRoot);
-
-    // Root/records/results are readable but not writable by ordinary users. Payloads
-    // and transaction state are accessible only to SYSTEM and Administrators.
     SetAcl(root, usersRead: true);
     SetAcl(recordsRoot, usersRead: true);
-    SetAcl(resultsRoot, usersRead: true);
     SetAcl(storeRoot, usersRead: false);
     SetAcl(transactionRoot, usersRead: false);
 }
@@ -85,8 +139,7 @@ BrokerResult Quarantine(BrokerRequest req)
     string tempPayload = Path.Combine(storeRoot, itemId + ".tmp");
     File.Copy(sourcePath, tempPayload, overwrite: false);
     SetFileAclPrivate(tempPayload);
-    string copiedHash = ComputeSha256(tempPayload);
-    if (!hash.Equals(copiedHash, StringComparison.OrdinalIgnoreCase))
+    if (!hash.Equals(ComputeSha256(tempPayload), StringComparison.OrdinalIgnoreCase))
     {
         SafeDelete(tempPayload);
         SafeDelete(transactionPath);
@@ -114,7 +167,6 @@ BrokerResult Restore(BrokerRequest req)
 
     QuarantineRecord? record = ReadRecord(itemId);
     if (record is null) return BrokerResult.Fail(req.RequestId, "RecordMissing", "The protected quarantine record was not found.");
-
     string payloadPath = PayloadPath(itemId);
     if (!File.Exists(payloadPath)) return BrokerResult.Fail(req.RequestId, "PayloadMissing", "The quarantined payload was not found.");
     if (!ComputeSha256(payloadPath).Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -134,7 +186,6 @@ BrokerResult Restore(BrokerRequest req)
 
     QuarantineTransaction txn = new(itemId, "Restore", "Prepared", destination, record.Sha256, DateTimeOffset.UtcNow);
     WriteAtomicJson(TransactionPath(itemId), txn);
-
     string tempDestination = destination + ".sentinel-restore-" + Guid.NewGuid().ToString("N") + ".tmp";
     File.Copy(payloadPath, tempDestination, overwrite: false);
     if (!ComputeSha256(tempDestination).Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -147,7 +198,6 @@ BrokerResult Restore(BrokerRequest req)
     File.Move(tempDestination, destination);
     txn = txn with { Stage = "DestinationReady" };
     WriteAtomicJson(TransactionPath(itemId), txn);
-
     if (!File.Exists(destination) || !ComputeSha256(destination).Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
         return BrokerResult.Fail(req.RequestId, "RestoreVerificationFailed", "The restored file could not be verified. Recovery state was preserved.");
 
@@ -168,8 +218,7 @@ BrokerResult DeleteQuarantined(BrokerRequest req)
     if (!ComputeSha256(payloadPath).Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
         return BrokerResult.Fail(req.RequestId, "PayloadTampered", "The quarantined payload no longer matches its protected record.");
 
-    QuarantineTransaction txn = new(itemId, "Delete", "Prepared", record.OriginalPath, record.Sha256, DateTimeOffset.UtcNow);
-    WriteAtomicJson(TransactionPath(itemId), txn);
+    WriteAtomicJson(TransactionPath(itemId), new QuarantineTransaction(itemId, "Delete", "Prepared", record.OriginalPath, record.Sha256, DateTimeOffset.UtcNow));
     File.Delete(payloadPath);
     if (File.Exists(payloadPath)) return BrokerResult.Fail(req.RequestId, "DeleteVerificationFailed", "Permanent deletion could not be verified.");
     SafeDelete(RecordPath(itemId));
@@ -191,7 +240,6 @@ BrokerResult TerminateProcess(BrokerRequest req)
     string expectedPath = Path.GetFullPath(req.ExpectedImagePath);
     if (!actualPath.Equals(expectedPath, StringComparison.OrdinalIgnoreCase))
         return BrokerResult.Fail(req.RequestId, "ProcessImageChanged", "The process image path no longer matches the approved target.");
-
     string actualHash = ComputeSha256(actualPath);
     if (!actualHash.Equals(req.ExpectedImageSha256, StringComparison.OrdinalIgnoreCase))
         return BrokerResult.Fail(req.RequestId, "ProcessImageChanged", "The process image content no longer matches the approved target.");
@@ -199,7 +247,6 @@ BrokerResult TerminateProcess(BrokerRequest req)
     process.Kill(entireProcessTree: req.TerminateDescendants);
     if (!process.WaitForExit(10_000))
         return BrokerResult.Fail(req.RequestId, "TerminationUnverified", "The approved process did not exit within the verification window.");
-
     return BrokerResult.Ok(req.RequestId, string.Empty, actualHash,
         req.TerminateDescendants ? "The exact approved process instance and its descendants were terminated." : "The exact approved process instance was terminated.");
 }
@@ -229,10 +276,7 @@ void RecoverQuarantineTransactions()
                 SafeDelete(payloadPath);
                 SafeDelete(transactionPath);
             }
-            else if (!payloadExists && sourceExists)
-            {
-                SafeDelete(transactionPath);
-            }
+            else if (!payloadExists && sourceExists) SafeDelete(transactionPath);
         }
         else if (txn.Operation == "Restore")
         {
@@ -244,10 +288,7 @@ void RecoverQuarantineTransactions()
                 SafeDelete(recordPath);
                 SafeDelete(transactionPath);
             }
-            else if (!destinationExists && payloadExists)
-            {
-                SafeDelete(transactionPath);
-            }
+            else if (!destinationExists && payloadExists) SafeDelete(transactionPath);
         }
         else if (txn.Operation == "Delete" && !File.Exists(payloadPath))
         {
@@ -267,12 +308,6 @@ QuarantineRecord? ReadRecord(string itemId)
         return record is not null && record.ItemId.Equals(itemId, StringComparison.OrdinalIgnoreCase) ? record : null;
     }
     catch { return null; }
-}
-
-void WriteResult(BrokerResult result)
-{
-    string path = Path.Combine(resultsRoot, result.RequestId + ".json");
-    WriteAtomicJson(path, result);
 }
 
 void WriteAtomicJson<T>(string path, T value)
@@ -329,8 +364,11 @@ bool IsProtectedWindowsPath(string path)
     string full = Path.GetFullPath(path);
     string windows = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.Windows)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
     string programFiles = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-    string programFilesX86 = Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-    return full.StartsWith(windows, StringComparison.OrdinalIgnoreCase) || full.StartsWith(programFiles, StringComparison.OrdinalIgnoreCase) || (!string.IsNullOrWhiteSpace(programFilesX86) && full.StartsWith(programFilesX86, StringComparison.OrdinalIgnoreCase));
+    string programFilesX86Raw = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+    string programFilesX86 = string.IsNullOrWhiteSpace(programFilesX86Raw) ? string.Empty : Path.GetFullPath(programFilesX86Raw).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+    return full.StartsWith(windows, StringComparison.OrdinalIgnoreCase) ||
+           full.StartsWith(programFiles, StringComparison.OrdinalIgnoreCase) ||
+           (!string.IsNullOrWhiteSpace(programFilesX86) && full.StartsWith(programFilesX86, StringComparison.OrdinalIgnoreCase));
 }
 
 bool HasReparsePointInExistingPath(string path)
@@ -373,6 +411,10 @@ bool IsAdministrator()
     return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
 }
 
+[DllImport("kernel32.dll", SetLastError = true)]
+[return: MarshalAs(UnmanagedType.Bool)]
+static extern bool GetNamedPipeClientProcessId(IntPtr pipeHandle, out uint clientProcessId);
+
 public sealed record BrokerRequest(
     int Version,
     string RequestId,
@@ -385,13 +427,7 @@ public sealed record BrokerRequest(
     string? ExpectedImageSha256 = null,
     bool TerminateDescendants = false);
 
-public sealed record BrokerResult(
-    string RequestId,
-    bool Succeeded,
-    string Code,
-    string Message,
-    string ItemId,
-    string Sha256)
+public sealed record BrokerResult(string RequestId, bool Succeeded, string Code, string Message, string ItemId, string Sha256)
 {
     public static BrokerResult Ok(string requestId, string itemId, string sha256, string message) => new(requestId, true, "Success", message, itemId, sha256);
     public static BrokerResult Fail(string requestId, string code, string message) => new(requestId, false, code, message, string.Empty, string.Empty);
