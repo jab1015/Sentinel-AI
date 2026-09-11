@@ -21,9 +21,20 @@ internal static class AuthenticodeVerifier
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown", "The executable could not be opened for signature verification.");
 
+        string beforeHash;
+        try
+        {
+            beforeHash = ComputeSha256(path);
+        }
+        catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
+        {
+            return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown", "The executable could not be read completely for signature verification.");
+        }
+
         SignerMetadata signer = TryGetSigner(path);
         IntPtr fileInfoPointer = IntPtr.Zero;
         IntPtr pathPointer = IntPtr.Zero;
+        AuthenticodeVerificationResult result;
 
         try
         {
@@ -52,15 +63,16 @@ internal static class AuthenticodeVerifier
                 StateData = IntPtr.Zero,
                 UrlReference = IntPtr.Zero,
                 ProviderFlags = WinTrustProviderFlags.RevocationCheckChainExcludeRoot,
-                UiContext = WinTrustDataUiContext.Execute
+                UiContext = WinTrustDataUiContext.Execute,
+                SignatureSettings = IntPtr.Zero
             };
 
             int status = WinVerifyTrust(IntPtr.Zero, WinTrustActionGenericVerifyV2, ref trustData);
-            return MapStatus(status, signer.Publisher, signer.CertificateExpired);
+            result = MapStatus(status, signer.Publisher, signer.CertificateExpired);
         }
         catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            return new(AuthenticodeTrustStatus.VerificationError, signer.HasEmbeddedSignature, false, signer.Publisher, "Windows could not complete Authenticode verification.");
+            result = new(AuthenticodeTrustStatus.VerificationError, signer.HasEmbeddedSignature, false, signer.Publisher, "Windows could not complete Authenticode verification.");
         }
         finally
         {
@@ -69,6 +81,25 @@ internal static class AuthenticodeVerifier
             if (pathPointer != IntPtr.Zero)
                 Marshal.FreeCoTaskMem(pathPointer);
         }
+
+        string afterHash;
+        try
+        {
+            afterHash = ComputeSha256(path);
+        }
+        catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
+        {
+            return new(AuthenticodeTrustStatus.FileChangedDuringVerification, result.IsSigned, false, result.Publisher,
+                "The executable changed or became unreadable while Sentinel was verifying it.");
+        }
+
+        if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(beforeHash), Convert.FromHexString(afterHash)))
+        {
+            return new(AuthenticodeTrustStatus.FileChangedDuringVerification, result.IsSigned, false, result.Publisher,
+                "The executable changed while Sentinel was verifying it, so no trust decision was made.", afterHash);
+        }
+
+        return result with { VerifiedSha256 = afterHash };
     }
 
     internal static AuthenticodeVerificationResult MapStatus(int hresult, string publisher, bool signerCertificateExpired = false)
@@ -83,11 +114,18 @@ internal static class AuthenticodeVerifier
             0x800B010C => new(AuthenticodeTrustStatus.Revoked, true, false, publisher, "The signing certificate has been revoked."),
             0x800B0101 => new(AuthenticodeTrustStatus.Expired, true, false, publisher, "The signing certificate is expired and Windows did not validate an acceptable timestamp."),
             0x800B0111 => new(AuthenticodeTrustStatus.ExplicitlyDistrusted, true, false, publisher, "Windows explicitly distrusts this signer or signature."),
+            0x800B0109 or 0x800B010A => new(AuthenticodeTrustStatus.UntrustedSigner, true, false, publisher, "Windows could not build a trusted certificate chain for this signer."),
             0x800B0004 => new(AuthenticodeTrustStatus.UntrustedSigner, true, false, publisher, "Windows does not trust the signer for this executable."),
             0x80092026 => new(AuthenticodeTrustStatus.UntrustedSigner, true, false, publisher, "Local security policy rejected this signature."),
             0x800B0001 or 0x800B0002 or 0x800B0003 => new(AuthenticodeTrustStatus.VerificationError, true, false, publisher, "Windows could not evaluate this signature format or trust provider."),
             _ => new(AuthenticodeTrustStatus.InvalidSignature, !string.Equals(publisher, "Unsigned", StringComparison.OrdinalIgnoreCase), false, publisher, $"Authenticode verification failed with HRESULT 0x{code:X8}.")
         };
+    }
+
+    private static string ComputeSha256(string path)
+    {
+        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static SignerMetadata TryGetSigner(string path)
@@ -103,7 +141,8 @@ internal static class AuthenticodeVerifier
         }
         catch
         {
-            // Catalog-signed files may not expose an embedded signer here. WinVerifyTrust remains authoritative.
+            // Catalog-signed files may not expose an embedded signer here. WinVerifyTrust remains authoritative
+            // for embedded signatures; catalog lookup is tracked as a Windows-validation follow-up for A01.
             return new("Unsigned", false, false);
         }
     }
@@ -138,6 +177,7 @@ internal static class AuthenticodeVerifier
         internal IntPtr UrlReference;
         internal WinTrustProviderFlags ProviderFlags;
         internal WinTrustDataUiContext UiContext;
+        internal IntPtr SignatureSettings;
     }
 
     private enum WinTrustDataUiChoice : uint
@@ -185,7 +225,8 @@ internal enum AuthenticodeTrustStatus
     Revoked,
     Expired,
     ExplicitlyDistrusted,
-    VerificationError
+    VerificationError,
+    FileChangedDuringVerification
 }
 
 internal sealed record AuthenticodeVerificationResult(
@@ -193,4 +234,5 @@ internal sealed record AuthenticodeVerificationResult(
     bool IsSigned,
     bool IsTrusted,
     string Publisher,
-    string Explanation);
+    string Explanation,
+    string VerifiedSha256 = "");
