@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
-using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
@@ -23,7 +22,7 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class ActiveConnectionMonitor
     {
-        private const int NetstatTimeoutMilliseconds = 3000;
+        private static readonly TimeSpan NetstatTimeout = TimeSpan.FromSeconds(3);
         private const int MaximumHistoryEntries = 2000;
         private static readonly TimeSpan HistoryRetention = TimeSpan.FromMinutes(10);
         private readonly Dictionary<ConnectionHistoryKey, ConnectionHistoryEntry> _history = new();
@@ -99,9 +98,6 @@ namespace Sentinel.App.Services
                         if (!identity.ProcessName.Equals("Unknown process", StringComparison.OrdinalIgnoreCase))
                             attributedTcpCount++;
 
-                        // Retain every non-loopback established remote observation—including LAN/private
-                        // destinations and common ports—for later correlation. Port number and process name
-                        // are not trust boundaries and never authorize containment on their own.
                         RecordObservation(identity, remoteAddress, remotePort, inbound, privateRemote, observedAt);
 
                         ConnectionFinding? finding = Assess(identity, remoteAddress, remotePort, localPort, inbound, privateRemote);
@@ -227,33 +223,24 @@ namespace Sentinel.App.Services
 
         private static string[] ReadNetstatLines()
         {
-            using Process process = new()
+            ProcessStartInfo startInfo = new()
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netstat.exe"),
-                    Arguments = "-ano",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                }
+                FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "netstat.exe"),
+                Arguments = "-ano",
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
-            process.Start();
-            Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorRead = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(NetstatTimeoutMilliseconds))
+            ProcessExecutionResult result = BoundedProcessRunner.RunAsync(startInfo, NetstatTimeout)
+                .GetAwaiter().GetResult();
+            if (result.Outcome != ProcessExecutionOutcome.Succeeded ||
+                result.ExitCode != 0 ||
+                string.IsNullOrWhiteSpace(result.StandardOutput))
             {
-                TryTerminate(process);
                 return Array.Empty<string>();
             }
 
-            string output = outputRead.GetAwaiter().GetResult();
-            _ = errorRead.GetAwaiter().GetResult();
-            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output)) return Array.Empty<string>();
-
-            return output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            return result.StandardOutput.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
         }
 
         private static string[] SplitColumns(string line) => line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
@@ -277,10 +264,6 @@ namespace Sentinel.App.Services
 
             int assessedPort = inbound ? localPort : remotePort;
             bool uncommonPort = assessedPort is not (80 or 443 or 53 or 123 or 5228 or 8080 or 8443);
-
-            // A common port is retained in telemetry/history but is not independently suspicious.
-            // Likewise, System/svchost/services receive no name-based exemption; their observations
-            // remain available to correlation, but this weak single signal does not create a finding.
             if (!uncommonPort) return null;
 
             string endpoint = $"{remoteAddress}:{remotePort}";
@@ -342,19 +325,6 @@ namespace Sentinel.App.Services
                 return new ProcessIdentity(processId, process.ProcessName, path);
             }
             catch { return new ProcessIdentity(processId, "Unknown process", string.Empty); }
-        }
-
-        private static void TryTerminate(Process process)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(500);
-                }
-            }
-            catch { }
         }
 
         private static string ShortenPath(string path)
