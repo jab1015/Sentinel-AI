@@ -21,7 +21,7 @@ internal static class AuthenticodeVerifier
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown", "The executable could not be opened for signature verification.");
 
-        string publisher = TryGetPublisher(path);
+        SignerMetadata signer = TryGetSigner(path);
         IntPtr fileInfoPointer = IntPtr.Zero;
         IntPtr pathPointer = IntPtr.Zero;
 
@@ -56,11 +56,11 @@ internal static class AuthenticodeVerifier
             };
 
             int status = WinVerifyTrust(IntPtr.Zero, WinTrustActionGenericVerifyV2, ref trustData);
-            return MapStatus(status, publisher);
+            return MapStatus(status, signer.Publisher, signer.CertificateExpired);
         }
         catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            return new(AuthenticodeTrustStatus.VerificationError, false, false, publisher, "Windows could not complete Authenticode verification.");
+            return new(AuthenticodeTrustStatus.VerificationError, signer.HasEmbeddedSignature, false, signer.Publisher, "Windows could not complete Authenticode verification.");
         }
         finally
         {
@@ -71,11 +71,12 @@ internal static class AuthenticodeVerifier
         }
     }
 
-    internal static AuthenticodeVerificationResult MapStatus(int hresult, string publisher)
+    internal static AuthenticodeVerificationResult MapStatus(int hresult, string publisher, bool signerCertificateExpired = false)
     {
         uint code = unchecked((uint)hresult);
         return code switch
         {
+            0x00000000 when signerCertificateExpired => new(AuthenticodeTrustStatus.TrustedTimestamped, true, true, publisher, "Windows verified the executable and accepted its Authenticode timestamp even though the signing certificate is now expired."),
             0x00000000 => new(AuthenticodeTrustStatus.Trusted, true, true, publisher, "The executable has a valid Authenticode signature trusted by Windows."),
             0x800B0100 => new(AuthenticodeTrustStatus.Unsigned, false, false, publisher, "No Authenticode signature was found."),
             0x80096010 => new(AuthenticodeTrustStatus.ModifiedAfterSigning, true, false, publisher, "The executable content no longer matches its Authenticode signature."),
@@ -89,18 +90,21 @@ internal static class AuthenticodeVerifier
         };
     }
 
-    private static string TryGetPublisher(string path)
+    private static SignerMetadata TryGetSigner(string path)
     {
         try
         {
             using X509Certificate certificate = X509Certificate.CreateFromSignedFile(path);
             using X509Certificate2 certificate2 = new(certificate);
             string simpleName = certificate2.GetNameInfo(X509NameType.SimpleName, false);
-            return string.IsNullOrWhiteSpace(simpleName) ? "Unknown signer" : simpleName.Trim();
+            string publisher = string.IsNullOrWhiteSpace(simpleName) ? "Unknown signer" : simpleName.Trim();
+            bool expired = DateTime.UtcNow > certificate2.NotAfter.ToUniversalTime();
+            return new(publisher, true, expired);
         }
         catch
         {
-            return "Unsigned";
+            // Catalog-signed files may not expose an embedded signer here. WinVerifyTrust remains authoritative.
+            return new("Unsigned", false, false);
         }
     }
 
@@ -166,11 +170,14 @@ internal static class AuthenticodeVerifier
     {
         Execute = 0
     }
+
+    private sealed record SignerMetadata(string Publisher, bool HasEmbeddedSignature, bool CertificateExpired);
 }
 
 internal enum AuthenticodeTrustStatus
 {
     Trusted,
+    TrustedTimestamped,
     Unsigned,
     InvalidSignature,
     ModifiedAfterSigning,
