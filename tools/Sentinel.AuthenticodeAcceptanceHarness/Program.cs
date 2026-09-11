@@ -29,7 +29,11 @@ try
     Console.WriteLine("--- Scenario 3: tampered trusted executable ---");
     string tamperedPath = Path.Combine(tempRoot, "notepad-tampered.exe");
     File.Copy(trustedPath, tamperedPath, overwrite: true);
-    await File.AppendAllBytesAsync(tamperedPath, new byte[] { 0x53, 0x41, 0x49 });
+    await using (FileStream stream = new(tamperedPath, FileMode.Append, FileAccess.Write, FileShare.None))
+    {
+        await stream.WriteAsync(new byte[] { 0x53, 0x41, 0x49 });
+        await stream.FlushAsync();
+    }
     AuthenticodeVerificationResult tampered = AuthenticodeVerifier.Verify(tamperedPath);
     bool tamperedPass = !tampered.IsTrusted && tampered.Status != AuthenticodeTrustStatus.Trusted && tampered.Status != AuthenticodeTrustStatus.TrustedTimestamped;
     Console.WriteLine($"Tampered executable rejected: {(tamperedPass ? "PASS" : "FAIL")} ({tampered.Status})");
