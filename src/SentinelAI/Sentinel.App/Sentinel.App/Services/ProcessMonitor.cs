@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 
 namespace Sentinel.App.Services
 {
@@ -40,8 +39,6 @@ namespace Sentinel.App.Services
                         string processName = process.ProcessName;
                         long workingSet = process.WorkingSet64;
                         string path = GetProcessPath(process);
-                        SignatureAssessment signature = GetSignatureAssessment(path);
-                        string productName = GetProductName(path);
 
                         if (workingSet > highestWorkingSet)
                         {
@@ -49,23 +46,37 @@ namespace Sentinel.App.Services
                             highestMemoryProcessName = processName;
                         }
 
+                        // Signature verification is comparatively expensive and is only security-relevant
+                        // here for executables in locations an ordinary user can typically modify.
                         if (!IsUserWritableLocation(path)) continue;
 
+                        SignatureAssessment signature = GetSignatureAssessment(path);
                         bool temporaryLocation = IsTemporaryLocation(path);
                         if (IsKnownTrustedConsoleComponent(processName, path, signature)) continue;
 
                         if (temporaryLocation)
                         {
-                            string signer = signature.IsSigned ? $" Signed by {signature.Publisher}." : string.Empty;
-                            findings.Add(new ProcessFinding(processName, $"Running from a temporary location: {ShortenPath(path)}.{signer}", process.Id, GetStartTimeUtc(process)));
+                            findings.Add(new ProcessFinding(
+                                processName,
+                                BuildTemporaryLocationReason(path, signature),
+                                process.Id,
+                                GetStartTimeUtc(process)));
                         }
-                        else if (!signature.IsSigned)
+                        else if (signature.Status == AuthenticodeTrustStatus.Unsigned)
                         {
                             findings.Add(new ProcessFinding(processName, $"Unsigned executable in a user-writable location: {ShortenPath(path)}", process.Id, GetStartTimeUtc(process)));
                         }
+                        else if (!signature.IsTrusted)
+                        {
+                            findings.Add(new ProcessFinding(
+                                processName,
+                                $"Executable in a user-writable location has an untrusted Authenticode result ({DescribeStatus(signature.Status)}). Publisher: {signature.Publisher}. Location: {ShortenPath(path)}. {signature.Explanation}",
+                                process.Id,
+                                GetStartTimeUtc(process)));
+                        }
                         else if (!signature.IsTrustedPublisher)
                         {
-                            findings.Add(new ProcessFinding(processName, $"Signed by {signature.Publisher}, but running from a user-writable location: {ShortenPath(path)}", process.Id, GetStartTimeUtc(process)));
+                            findings.Add(new ProcessFinding(processName, $"Windows verified the executable signature, but the signer ({signature.Publisher}) is not on Sentinel's recognized-publisher list. Location: {ShortenPath(path)}", process.Id, GetStartTimeUtc(process)));
                         }
                     }
                     catch
@@ -91,96 +102,88 @@ namespace Sentinel.App.Services
             }
         }
 
-        private static string BuildHighMemoryReason(string processName, long workingSet, string path, SignatureAssessment signature, string productName)
+        private static string BuildTemporaryLocationReason(string path, SignatureAssessment signature)
         {
-            string memory = $"{workingSet / 1024d / 1024d / 1024d:0.00} GB";
-            string identity = string.IsNullOrWhiteSpace(productName) ? processName : productName;
-            string location = string.IsNullOrWhiteSpace(path) ? "Windows did not expose the executable path." : $"Location: {ShortenPath(path)}.";
-            string publisher = signature.IsSigned
-                ? $"Publisher/signature: {signature.Publisher}{(signature.IsTrusted ? " (signature chain verified)" : " (signature present; trust could not be fully verified)")}."
-                : "Publisher/signature: no verifiable digital signature was found.";
-
-            if (IsVmwareVirtualMachineProcess(processName, productName, signature.Publisher))
+            string signatureText = signature.Status switch
             {
-                return $"{identity} is the VMware virtual-machine process and is using {memory} of memory. {publisher} {location} This level of memory use can be expected while a virtual machine is running. No action is required unless the virtual machine is causing performance problems.";
-            }
-
-            return $"{identity} is using {memory} of memory. {publisher} {location} High memory use alone is a performance observation, not evidence of malware. Review only if the application is unexpected or the computer is experiencing performance problems.";
+                AuthenticodeTrustStatus.Trusted => $" Windows verified the Authenticode signature from {signature.Publisher}.",
+                AuthenticodeTrustStatus.TrustedTimestamped => $" Windows verified the timestamped Authenticode signature from {signature.Publisher}.",
+                AuthenticodeTrustStatus.Unsigned => " No Authenticode signature was found.",
+                _ => $" Authenticode result: {DescribeStatus(signature.Status)}. Publisher: {signature.Publisher}. {signature.Explanation}"
+            };
+            return $"Running from a temporary location: {ShortenPath(path)}.{signatureText}";
         }
-
-        private static bool IsVmwareVirtualMachineProcess(string processName, string productName, string publisher) =>
-            processName.Equals("vmware-vmx", StringComparison.OrdinalIgnoreCase) ||
-            productName.Contains("VMware", StringComparison.OrdinalIgnoreCase) ||
-            publisher.Contains("VMware", StringComparison.OrdinalIgnoreCase) ||
-            publisher.Contains("Broadcom", StringComparison.OrdinalIgnoreCase);
-
-        private static string GetProductName(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return string.Empty;
-            try
-            {
-                FileVersionInfo version = FileVersionInfo.GetVersionInfo(path);
-                return version.ProductName?.Trim() ?? string.Empty;
-            }
-            catch { return string.Empty; }
-        }
-
-        private static bool IsWindowsMemoryCompression(string processName) =>
-            processName.Equals("Memory Compression", StringComparison.OrdinalIgnoreCase) ||
-            processName.Equals("MemoryCompression", StringComparison.OrdinalIgnoreCase);
 
         private SignatureAssessment GetSignatureAssessment(string path)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return SignatureAssessment.Unsigned;
-            DateTime lastWriteTimeUtc;
-            try { lastWriteTimeUtc = File.GetLastWriteTimeUtc(path); }
-            catch { return SignatureAssessment.Unsigned; }
-            string cacheKey = $"{path}|{lastWriteTimeUtc.Ticks}";
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return SignatureAssessment.VerificationError;
+
+            FileInfo fileInfo;
+            try { fileInfo = new FileInfo(path); }
+            catch { return SignatureAssessment.VerificationError; }
+
+            // Bind cached trust to content, not just a path/mtime tuple. This avoids accepting a
+            // replacement file that preserves its timestamp. Only user-writable candidates reach here.
+            string contentHash;
+            try { contentHash = ComputeSha256(path); }
+            catch { return SignatureAssessment.VerificationError; }
+
+            string cacheKey = $"{path}|{fileInfo.Length}|{contentHash}";
             if (_signatureCache.TryGetValue(cacheKey, out SignatureAssessment? cached)) return cached;
-            SignatureAssessment assessment = InspectSignature(path);
+
+            AuthenticodeVerificationResult verification = AuthenticodeVerifier.Verify(path);
+            SignatureAssessment assessment = new(
+                verification.Status,
+                verification.IsSigned,
+                verification.IsTrusted,
+                verification.IsTrusted && IsTrustedPublisher(verification.Publisher),
+                verification.Publisher,
+                verification.Explanation);
+
             if (_signatureCache.Count >= 500) _signatureCache.Clear();
             _signatureCache[cacheKey] = assessment;
             return assessment;
         }
 
-        private static SignatureAssessment InspectSignature(string path)
+        private static string ComputeSha256(string path)
         {
-            try
-            {
-                using X509Certificate certificate = X509Certificate.CreateFromSignedFile(path);
-                using X509Certificate2 certificate2 = new(certificate);
-                using X509Chain chain = new();
-                chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
-                chain.ChainPolicy.VerificationFlags = X509VerificationFlags.NoFlag;
-                bool chainTrusted = chain.Build(certificate2);
-                string publisher = GetPublisherName(certificate2);
-                return new SignatureAssessment(true, chainTrusted, IsTrustedPublisher(publisher), publisher);
-            }
-            catch (CryptographicException) { return SignatureAssessment.Unsigned; }
-            catch { return SignatureAssessment.Unsigned; }
+            using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            byte[] digest = SHA256.HashData(stream);
+            return Convert.ToHexString(digest);
         }
 
         private static bool IsKnownTrustedConsoleComponent(string processName, string path, SignatureAssessment signature)
         {
-            if (!processName.Equals("OpenConsole", StringComparison.OrdinalIgnoreCase) || !signature.IsSigned ||
-                !signature.Publisher.Contains("Microsoft Corporation", StringComparison.OrdinalIgnoreCase)) return false;
+            if (!processName.Equals("OpenConsole", StringComparison.OrdinalIgnoreCase) ||
+                !signature.IsTrusted ||
+                !string.Equals(signature.Publisher, "Microsoft Corporation", StringComparison.OrdinalIgnoreCase))
+                return false;
+
             string normalizedPath = path.Replace('/', '\\');
             return normalizedPath.Contains("\\node_modules.asar.unpacked\\node-pty\\", StringComparison.OrdinalIgnoreCase) &&
                    normalizedPath.Contains("\\conpty\\OpenConsole.exe", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string GetPublisherName(X509Certificate2 certificate)
-        {
-            string simpleName = certificate.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
-            return string.IsNullOrWhiteSpace(simpleName) ? "an unknown publisher" : simpleName;
-        }
-
         private static bool IsTrustedPublisher(string publisher)
         {
             foreach (string trustedPublisher in TrustedPublisherNames)
-                if (publisher.Contains(trustedPublisher, StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(publisher, trustedPublisher, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
+
+        private static string DescribeStatus(AuthenticodeTrustStatus status) => status switch
+        {
+            AuthenticodeTrustStatus.Trusted => "trusted signature",
+            AuthenticodeTrustStatus.TrustedTimestamped => "trusted timestamped signature",
+            AuthenticodeTrustStatus.Unsigned => "unsigned",
+            AuthenticodeTrustStatus.InvalidSignature => "invalid signature",
+            AuthenticodeTrustStatus.ModifiedAfterSigning => "modified after signing",
+            AuthenticodeTrustStatus.UntrustedSigner => "untrusted signer",
+            AuthenticodeTrustStatus.Revoked => "revoked signer",
+            AuthenticodeTrustStatus.Expired => "expired signature",
+            AuthenticodeTrustStatus.ExplicitlyDistrusted => "explicitly distrusted signature",
+            _ => "verification error"
+        };
 
         private static string GetProcessPath(Process process)
         {
@@ -232,14 +235,28 @@ namespace Sentinel.App.Services
         }
 
         private static string ShortenPath(string path) => path.Length <= 90 ? path : "..." + path[^87..];
+
         private sealed record ProcessFinding(
             string ProcessName,
             string Reason,
             int ProcessId,
             DateTimeOffset? StartTimeUtc);
-        private sealed record SignatureAssessment(bool IsSigned, bool IsTrusted, bool IsTrustedPublisher, string Publisher)
+
+        private sealed record SignatureAssessment(
+            AuthenticodeTrustStatus Status,
+            bool IsSigned,
+            bool IsTrusted,
+            bool IsTrustedPublisher,
+            string Publisher,
+            string Explanation)
         {
-            public static SignatureAssessment Unsigned { get; } = new(false, false, false, "Unsigned");
+            public static SignatureAssessment VerificationError { get; } = new(
+                AuthenticodeTrustStatus.VerificationError,
+                false,
+                false,
+                false,
+                "Unknown",
+                "The executable could not be verified.");
         }
 
         public sealed record ProcessIntelligenceSnapshot(
