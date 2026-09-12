@@ -13,6 +13,7 @@ namespace Sentinel.App
     public sealed partial class MainWindow
     {
         private readonly AskSentinelResponseOrchestrator _askSentinelResponseOrchestrator = new();
+        private readonly AskSentinelResponseSafetyValidator _askSentinelResponseSafetyValidator = new();
         private readonly ExternalInvestigationGateway _externalInvestigationGateway = new();
         private readonly DriverAutomaticRepairCoordinator _driverRepairCoordinator = new();
         private readonly MaintenanceOutcomeRecorder _askSentinelOutcomeRecorder = new();
@@ -69,24 +70,14 @@ namespace Sentinel.App
                     AskSentinelProgressText.Text = "Checking current optimization status…";
                     AutomaticOptimizationResult optimization = await _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
                     UpdateOptimizationStatus(optimization);
-
-                    if (optimization.Baseline.IsEstablished && !optimization.Decision.OptimizationWarranted)
-                    {
-                        AskSentinelAnswerText.Text = "Sentinel analyzed this computer and found that it is running at optimal performance. No performance optimization is needed right now.";
-                        AskSentinelAnswerText.FontSize = 17;
-                        AskSentinelAnswerText.LineHeight = 25;
-                        AskSentinelAnswerBorder.Padding = new Thickness(20);
-                        AskSentinelAnswerBorder.CornerRadius = new CornerRadius(12);
-                        AskSentinelAnswerBorder.Visibility = Visibility.Visible;
-                        HideAskSentinelRepairActions();
-                        AskSentinelStatusText.Text = "Answered from Sentinel's current verified optimization check.";
-                        return;
-                    }
                 }
 
                 AskSentinelProgressText.Text = "Reviewing what Sentinel already knows…";
                 AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
                     _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
+                AskSentinelProvenanceLabel responseProvenance = response.UsedInvestigationHistory
+                    ? AskSentinelProvenanceLabel.VerifiedFact
+                    : AskSentinelProvenanceLabel.Observed;
 
                 if (optimizationQuestion && IsCurrentOptimizationStatusVerifiedHealthy())
                 {
@@ -95,8 +86,10 @@ namespace Sentinel.App
                         Answer = "Sentinel analyzed this computer and found that it is running at optimal performance. No performance optimization is needed right now.",
                         IsInsufficientEvidence = false,
                         UsedInvestigationHistory = true,
+                        PassedFinalSafetyValidation = false,
                         GroundingSummary = "Answer grounded in Sentinel's current verified automatic optimization status and maintenance history."
                     };
+                    responseProvenance = AskSentinelProvenanceLabel.VerifiedFact;
                 }
 
                 bool crashQuestion = IsCrashQuestion(question);
@@ -114,8 +107,10 @@ namespace Sentinel.App
                         {
                             Answer = external.Summary,
                             IsInsufficientEvidence = false,
+                            PassedFinalSafetyValidation = false,
                             GroundingSummary = "Answer limited to free local evidence because premium external investigation was not entitled."
                         };
+                        responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
                     else if (driverIssue)
                     {
@@ -125,18 +120,24 @@ namespace Sentinel.App
                         response = response with
                         {
                             Answer = BuildDriverConsumerAnswer(external, _preparedDriverRepairPlan),
+                            PassedFinalSafetyValidation = false,
                             GroundingSummary = "Sentinel combined verified local driver evidence, approved external research, and a locally verified repair check."
                         };
+                        responseProvenance = AskSentinelProvenanceLabel.Inferred;
                     }
                     else
                     {
                         response = response with
                         {
                             Answer = BuildConsumerExternalAnswer(external),
+                            PassedFinalSafetyValidation = false,
                             GroundingSummary = external.Verified
                                 ? "Sentinel combined verified local evidence with approved authoritative research."
                                 : "Sentinel checked approved sources but did not find enough verified information to make a stronger claim."
                         };
+                        responseProvenance = external.Verified
+                            ? AskSentinelProvenanceLabel.Inferred
+                            : AskSentinelProvenanceLabel.Advisory;
                     }
 
                     string sourceNames = external.Sources.Count == 0
@@ -149,6 +150,31 @@ namespace Sentinel.App
                         external.RequiresAiEscalation,
                         $"Topic: {external.Topic}; Confidence: {external.ConfidencePercent}%; Sources: {sourceNames}");
                     UpdateMaintenanceReport();
+                }
+
+                AskSentinelResponseSafetyValidator.ValidationResult finalValidation =
+                    _askSentinelResponseSafetyValidator.ValidateForDisplay(response, snapshot, responseProvenance);
+                if (!finalValidation.IsSafe)
+                {
+                    response = response with
+                    {
+                        Answer = finalValidation.Answer,
+                        IsInsufficientEvidence = true,
+                        UsedInvestigationHistory = false,
+                        UsedRecommendationGuard = false,
+                        PassedFinalSafetyValidation = true,
+                        GroundingSummary = $"Final display validation blocked the composed response: {finalValidation.Reason}"
+                    };
+                    driverIssue = false;
+                }
+                else
+                {
+                    response = response with
+                    {
+                        Answer = finalValidation.Answer,
+                        PassedFinalSafetyValidation = true,
+                        GroundingSummary = $"{finalValidation.Provenance}: {response.GroundingSummary}"
+                    };
                 }
 
                 AskSentinelAnswerText.Text = response.Answer;
