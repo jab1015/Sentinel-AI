@@ -48,13 +48,21 @@ namespace Sentinel.App.Services
                     .GetAwaiter()
                     .GetResult();
 
+                if (execution.OutputTruncated)
+                {
+                    return CrashDumpAnalysisResult.Failed(
+                        dumpPath,
+                        "Local crash-dump analysis exceeded Sentinel's bounded output capture. No faulting-module conclusion was accepted from incomplete debugger output.");
+                }
+
                 if (!execution.Succeeded)
                 {
                     string reason = execution.Outcome switch
                     {
                         ProcessExecutionOutcome.TimedOut => "Local crash-dump analysis exceeded the safety timeout.",
-                        ProcessExecutionOutcome.OutputLimitExceeded => "Local crash-dump analysis exceeded the bounded output limit.",
-                        ProcessExecutionOutcome.LaunchFailed => "The Microsoft debugger could not be started.",
+                        ProcessExecutionOutcome.Canceled => "Local crash-dump analysis was canceled before completion.",
+                        ProcessExecutionOutcome.OutputReadFailure => "Local crash-dump output could not be drained safely.",
+                        ProcessExecutionOutcome.LaunchFailure => "The Microsoft debugger could not be started.",
                         _ => "Local crash-dump analysis did not complete successfully."
                     };
                     return CrashDumpAnalysisResult.Failed(dumpPath, reason);
