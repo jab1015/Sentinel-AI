@@ -32,32 +32,35 @@ namespace Sentinel.App.Services
 
             try
             {
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
                     FileName = debugger,
                     UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
+                    CreateNoWindow = true
                 };
-                process.StartInfo.ArgumentList.Add("-z");
-                process.StartInfo.ArgumentList.Add(dumpPath);
-                process.StartInfo.ArgumentList.Add("-c");
-                process.StartInfo.ArgumentList.Add("!analyze -v; q");
+                startInfo.ArgumentList.Add("-z");
+                startInfo.ArgumentList.Add(dumpPath);
+                startInfo.ArgumentList.Add("-c");
+                startInfo.ArgumentList.Add("!analyze -v; q");
 
-                if (!process.Start())
-                    return CrashDumpAnalysisResult.Failed(dumpPath, "The Microsoft debugger could not be started.");
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, AnalysisTimeout, maxOutputChars: 250_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit((int)AnalysisTimeout.TotalMilliseconds))
+                if (!execution.Succeeded)
                 {
-                    try { process.Kill(entireProcessTree: true); } catch { }
-                    return CrashDumpAnalysisResult.Failed(dumpPath, "Local crash-dump analysis exceeded the safety timeout.");
+                    string reason = execution.Outcome switch
+                    {
+                        ProcessExecutionOutcome.TimedOut => "Local crash-dump analysis exceeded the safety timeout.",
+                        ProcessExecutionOutcome.OutputLimitExceeded => "Local crash-dump analysis exceeded the bounded output limit.",
+                        ProcessExecutionOutcome.LaunchFailed => "The Microsoft debugger could not be started.",
+                        _ => "Local crash-dump analysis did not complete successfully."
+                    };
+                    return CrashDumpAnalysisResult.Failed(dumpPath, reason);
                 }
 
-                string combined = output + Environment.NewLine + error;
+                string combined = execution.StandardOutput + Environment.NewLine + execution.StandardError;
                 string image = Extract(combined, @"(?im)^\s*IMAGE_NAME\s*:\s*(\S+)");
                 string module = Extract(combined, @"(?im)^\s*MODULE_NAME\s*:\s*(\S+)");
                 string probable = Extract(combined, @"(?im)^\s*Probably caused by\s*:\s*([^\r\n]+)");
@@ -137,9 +140,7 @@ namespace Sentinel.App.Services
                 if (sys.Success && !IsGeneric(sys.Groups[1].Value))
                     return sys.Groups[1].Value;
 
-                if (!string.IsNullOrWhiteSpace(value) &&
-                    value.IndexOf(' ') < 0 &&
-                    !IsGeneric(value))
+                if (!string.IsNullOrWhiteSpace(value) && value.IndexOf(' ') < 0 && !IsGeneric(value))
                     return value;
             }
             return string.Empty;
