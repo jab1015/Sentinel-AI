@@ -64,7 +64,8 @@ internal sealed record FileDecryptionResult(
     string ContainerPath,
     string OutputPath,
     long PlaintextBytes,
-    bool InvalidOutputRemains)
+    bool InvalidOutputRemains,
+    OwnedFileIdentity OutputIdentity)
 {
     internal static FileDecryptionResult Failure(
         string code,
@@ -72,5 +73,5 @@ internal sealed record FileDecryptionResult(
         string containerPath,
         string outputPath,
         bool invalidOutputRemains = false) =>
-        new(false, code, message, containerPath, outputPath, 0, invalidOutputRemains);
+        new(false, code, message, containerPath, outputPath, 0, invalidOutputRemains, default);
 }
