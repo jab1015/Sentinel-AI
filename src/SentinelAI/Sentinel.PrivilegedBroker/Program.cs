@@ -215,10 +215,59 @@ BrokerResult TerminateProcess(BrokerRequest req)
         req.TerminateDescendants ? "The exact approved process instance and its descendants were terminated." : "The exact approved process instance was terminated.");
 }
 
+BrokerFirewallRuleVerification QueryFirewallRuleForRemoval(string remoteIp)
+{
+    string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
+    string command =
+        "$name='" + ruleName.Replace("'", "''", StringComparison.Ordinal) + "'; " +
+        "$rules=@(Get-NetFirewallRule -PolicyStore ActiveStore -DisplayName $name -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -eq $name}); " +
+        "if($rules.Count -eq 0){'FOUND=0'; exit 0}; if($rules.Count -ne 1){\"FOUND=$($rules.Count)`nCONFLICT=True\"; exit 0}; " +
+        "$r=$rules[0]; $a=@($r | Get-NetFirewallAddressFilter); $p=@($r | Get-NetFirewallPortFilter); $app=@($r | Get-NetFirewallApplicationFilter); $svc=@($r | Get-NetFirewallServiceFilter); " +
+        "\"FOUND=1`nENABLED=$($r.Enabled)`nACTION=$($r.Action)`nDIRECTION=$($r.Direction)`nPROFILE=$($r.Profile)`nREMOTE=$(@($a.RemoteAddress) -join ',')`nLOCAL=$(@($a.LocalAddress) -join ',')`nPROTOCOL=$($p.Protocol)`nLOCALPORT=$(@($p.LocalPort) -join ',')`nREMOTEPORT=$(@($p.RemotePort) -join ',')`nPROGRAM=$($app.Program)`nSERVICE=$($svc.Service)\"";
+
+    string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+    string powershell = string.IsNullOrWhiteSpace(system)
+        ? "powershell.exe"
+        : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+    string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+    ProcessStartInfo startInfo = new()
+    {
+        FileName = powershell,
+        UseShellExecute = false,
+        CreateNoWindow = true
+    };
+    startInfo.ArgumentList.Add("-NoProfile");
+    startInfo.ArgumentList.Add("-NonInteractive");
+    startInfo.ArgumentList.Add("-EncodedCommand");
+    startInfo.ArgumentList.Add(encoded);
+
+    BoundedProcessResult result = BoundedProcessRunner.RunAsync(
+        startInfo,
+        TimeSpan.FromSeconds(12),
+        maxOutputChars: 32_000).GetAwaiter().GetResult();
+    if (!result.Succeeded)
+        return new(false, false, false, $"broker firewall verification failed safely ({result.Code}). {result.Detail}");
+
+    return BrokerFirewallPolicy.EvaluateRemovalEvidence(result.StandardOutput, remoteIp);
+}
+
 BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
 {
     if (!BrokerFirewallPolicy.TryNormalizeRemoteIp(req.RemoteIp, out string remoteIp))
         return BrokerResult.Fail(req.RequestId, "InvalidFirewallTarget", "A literal remote IP address is required for firewall containment.");
+
+    string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
+    if (!add)
+    {
+        BrokerFirewallRuleVerification verification = QueryFirewallRuleForRemoval(remoteIp);
+        if (!verification.QueryValid)
+            return BrokerResult.Fail(req.RequestId, "FirewallVerificationFailed", $"The elevated broker could not safely verify the firewall rule immediately before removal ({verification.Detail}). No firewall change was made.");
+        if (!verification.Exists)
+            return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
+                $"The elevated broker verified that the Sentinel firewall block for {remoteIp} is already absent. No firewall change was needed.");
+        if (!verification.IsExactBlock)
+            return BrokerResult.Fail(req.RequestId, "FirewallRuleConflict", $"The firewall rule changed before elevated removal or does not exactly match Sentinel's required enabled outbound Block scope ({verification.Detail}). The broker refused to delete it.");
+    }
 
     string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
     string netsh = string.IsNullOrWhiteSpace(system) ? "netsh.exe" : Path.Combine(system, "netsh.exe");
@@ -239,11 +288,10 @@ BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
     if (!result.Succeeded)
         return BrokerResult.Fail(req.RequestId, "FirewallMutationFailed", $"Windows Firewall mutation failed safely ({result.Code}). {result.Detail}");
 
-    string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
     return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
         add
             ? $"Windows accepted the exact allowlisted firewall block mutation for {remoteIp}. The desktop client must independently verify active policy before reporting containment success."
-            : $"Windows accepted the exact allowlisted firewall removal mutation for {remoteIp}. The desktop client must independently verify active policy before reporting removal success.");
+            : $"The elevated broker reverified the exact Sentinel firewall rule immediately before removal, Windows accepted the constrained removal mutation for {remoteIp}, and the desktop client must independently verify actual absence before reporting removal success.");
 }
 
 void SetAcl(string path, bool usersRead)
