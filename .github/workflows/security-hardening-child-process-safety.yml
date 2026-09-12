@@ -1,0 +1,27 @@
+name: Sentinel Child Process Safety Hardening
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  child-process-safety:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore child process safety harness
+        run: dotnet restore "tools/Sentinel.ChildProcessSafetyAcceptanceHarness/Sentinel.ChildProcessSafetyAcceptanceHarness.csproj"
+      - name: Build child process safety harness
+        run: dotnet build "tools/Sentinel.ChildProcessSafetyAcceptanceHarness/Sentinel.ChildProcessSafetyAcceptanceHarness.csproj" -c Release --no-restore
+      - name: Run child process safety harness
+        run: dotnet run --project "tools/Sentinel.ChildProcessSafetyAcceptanceHarness/Sentinel.ChildProcessSafetyAcceptanceHarness.csproj" -c Release --no-build
