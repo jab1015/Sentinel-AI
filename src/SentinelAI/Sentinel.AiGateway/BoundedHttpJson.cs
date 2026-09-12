@@ -6,7 +6,7 @@ internal static class BoundedHttpJson
     internal const int MaximumStoreResponseBytes = 256 * 1024;
     internal const int MaximumEntraResponseBytes = 128 * 1024;
 
-    internal static async Task<JsonDocument> ReadAsync(
+    internal static async Task<JsonDocument?> TryReadAsync(
         HttpContent content,
         int maximumBytes,
         int maximumDepth,
@@ -15,30 +15,49 @@ internal static class BoundedHttpJson
         if (maximumBytes <= 0) throw new ArgumentOutOfRangeException(nameof(maximumBytes));
         if (maximumDepth <= 0) throw new ArgumentOutOfRangeException(nameof(maximumDepth));
 
-        if (content.Headers.ContentLength is long declaredLength && declaredLength > maximumBytes)
-            throw new InvalidDataException("The upstream JSON response exceeded Sentinel's allowed size.");
-
-        await using Stream source = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using MemoryStream buffer = new(capacity: Math.Min(maximumBytes, 64 * 1024));
-        byte[] chunk = new byte[16 * 1024];
-        int total = 0;
-
-        while (true)
+        try
         {
-            int read = await source.ReadAsync(chunk.AsMemory(0, chunk.Length), cancellationToken).ConfigureAwait(false);
-            if (read == 0) break;
+            if (content.Headers.ContentLength is long declaredLength && declaredLength > maximumBytes)
+                return null;
 
-            total = checked(total + read);
-            if (total > maximumBytes)
-                throw new InvalidDataException("The upstream JSON response exceeded Sentinel's allowed size.");
+            await using Stream source = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using MemoryStream buffer = new(capacity: Math.Min(maximumBytes, 64 * 1024));
+            byte[] chunk = new byte[16 * 1024];
+            int total = 0;
 
-            await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            while (true)
+            {
+                int read = await source.ReadAsync(chunk.AsMemory(0, chunk.Length), cancellationToken).ConfigureAwait(false);
+                if (read == 0) break;
+
+                total = checked(total + read);
+                if (total > maximumBytes)
+                    return null;
+
+                await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+            }
+
+            buffer.Position = 0;
+            return await JsonDocument.ParseAsync(
+                buffer,
+                new JsonDocumentOptions { MaxDepth = maximumDepth },
+                cancellationToken).ConfigureAwait(false);
         }
-
-        buffer.Position = 0;
-        return await JsonDocument.ParseAsync(
-            buffer,
-            new JsonDocumentOptions { MaxDepth = maximumDepth },
-            cancellationToken).ConfigureAwait(false);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }
