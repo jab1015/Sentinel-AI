@@ -52,22 +52,29 @@ A finding is complete only after all required source, deterministic, adversarial
 
 ## Current checkpoint — 2026-09-12
 
-Pre-documentation code checkpoint: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b` (`fix(A17): route network repair through bounded runner`).
+Last fully proven documentation checkpoint: `3ef08da9226e33a222768938b3dff13373ba7f61`.
 
-### Exact-head CI evidence
+Pre-documentation continuation code checkpoint: `e810605486100b2f11c1d635f46158fc0e84246c` (`fix(A17): bound boot-performance diagnostics`).
 
-- Windows hardening workflow `34676187598`: **SUCCESS**.
-- Unsigned x64 package workflow `34676187667`: **SUCCESS**.
-- Desktop x64 Release build: PASS.
-- Broker x64 Release build: PASS.
-- Broker package-identity harness: PASS.
-- Ask Sentinel final-display safety harness: PASS in Windows CI.
-- Initial monitoring startup acceptance harness: PASS in Windows CI.
-- Security-health classification harness: present in current Windows CI.
-- Authenticode acceptance harness: PASS.
-- BoundedProcessRunner acceptance harness: PASS for 10 consecutive repetitions.
-- Quarantine-store adversarial harness: PASS.
-- System-image, cloud-redaction, event-filtering, investigation-history, diagnostic-log, and AI-gateway security harnesses: PASS.
+### Proven CI evidence
+
+Exact-head CI for `3ef08da9226e33a222768938b3dff13373ba7f61`:
+
+- Windows hardening workflow `34677065591`: **SUCCESS**.
+- Unsigned x64 package workflow `34677065599`: **SUCCESS**.
+- Driver-repair hardening workflow `34677065596`: **SUCCESS**.
+- Optimization-state hardening workflow `34677065594`: **SUCCESS**.
+
+### Current exact-head validation status
+
+At pre-documentation code checkpoint `e810605486100b2f11c1d635f46158fc0e84246c`, the following workflows were queued when this checkpoint was recorded and must not be reported as PASS until completed:
+
+- Windows hardening `34678219782`: **QUEUED**.
+- Unsigned x64 package `34678219781`: **QUEUED**.
+- External research hardening `34678219769`: **QUEUED**.
+- Network throughput hardening `34678219761`: **QUEUED**.
+- Driver-repair hardening `34678219778`: **QUEUED**.
+- Optimization-state hardening `34678219795`: **QUEUED**.
 
 This is internal deterministic/CI evidence only.
 
@@ -95,7 +102,7 @@ Source includes short-lived signed sessions, server-side tier enforcement, Store
 
 Original failure: registry/process/profile indicators could imply protection without proving active Defender/firewall state.
 
-Current implementation queries Defender status, Defender service/protection/passive/signature state, firewall service, and active firewall profiles. A deterministic classifier now fails closed for passive/disabled/stale/incomplete Defender states and stopped/partial/incomplete/impossible firewall states and is included in Windows CI.
+Current implementation queries Defender service/protection/passive/signature state, firewall service, and active firewall profiles. A deterministic classifier fails closed for passive/disabled/stale/incomplete Defender states and stopped/partial/incomplete/impossible firewall states and is included in Windows CI.
 
 Remaining: installed Windows/Defender variants, policy-managed/passive configurations, service transition/race behavior, stale/unavailable PowerShell evidence, and supported-Windows runtime validation.
 
@@ -116,20 +123,39 @@ Current verifier requires the expected enabled outbound exact-address Block rule
 Remaining: installed firewall-policy/runtime behavior, Group Policy interaction, concurrent rule mutation/removal, privilege/UAC paths, IPv4/IPv6 coverage as applicable, and actual containment/unblock verification.
 
 ### SAI-A09 / A17 — bounded subprocess ownership
-**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
+**STATUS: OPEN — FINAL SOURCE AUDIT / CI VALIDATION IN PROGRESS**
 
-Common runner drains both streams concurrently, enforces wall-clock timeout/cancellation, caps output, returns structured outcomes, and attempts descendant-tree termination. Windows CI repeats the acceptance harness 10 times.
+Common `BoundedProcessRunner` drains stdout/stderr concurrently, enforces wall-clock timeout/cancellation, caps captured output, returns structured outcomes, and attempts descendant-tree termination. Its Windows acceptance harness is repeated 10 times.
 
-A17 re-review found `NetworkRepairExecutor` still used custom `Process` ownership. Caller cancellation could escape while `ipconfig` remained alive. At `ed313049...` that path was moved to `BoundedProcessRunner`, eliminating that bypass from the network-repair path.
+The A17 re-audit found additional legacy direct-process paths after the earlier `NetworkRepairExecutor` correction. These paths could still defeat their nominal timeout because they performed blocking output reads or owned child cleanup independently. The continuation moved these read-only/diagnostic paths onto the common bounded runner:
 
-Remaining: access-denied/kill-failure and packaged runtime behavior where practical plus continued final audit for any other bypass launch helpers.
+- `NetworkRepairExecutor`
+- `CrashDumpAnalysisService`
+- `CommandLineMonitor`
+- `FirewallRuleMonitor`
+- `WmiPersistenceMonitor`
+- `DriverMonitor`
+- `DriverDiagnosticEvidenceCollector`
+- `WindowsServiceHealthAssessmentService`
+- `ScheduledTaskMonitor`
+- `AdvancedNetworkHealthAssessmentService`
+- `PowerPlanHealthAssessmentService`
+- `DeviceHealthAssessmentService`
+- `WindowsUpdateHealthAssessmentService`
+- `BootPerformanceHistoryService`
+
+`CrashDumpAnalysisService` also fails closed when debugger output is truncated rather than drawing a faulting-module conclusion from incomplete output.
+
+Remaining before source-complete status: exact-head Windows CI for this sweep, final static/call-path review for any remaining direct command helpers, and confirmation that user-facing shell activation is not being confused with owned diagnostic subprocesses. Runtime access-denied/kill-failure and packaged behavior remain after source closure.
 
 ### SAI-A10 / A11 — driver repair identity and success reporting
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
 Current source binds a candidate to exact PnP instance, hardware ID, Windows Update ID/revision, revalidates before install, rejects ambiguous/missing matches, and does not claim repair success when Windows Update reports failure or verification is absent/restart-pending.
 
-Remaining: dedicated deterministic adversarial matrix plus real Windows Update/device/runtime cases including ambiguity, disappearance/replacement, failed install, restart-required, cancellation, timeout, and post-install verification.
+A dedicated deterministic policy harness now covers missing/ambiguous device/update, wrong hardware identity, installer/per-update failure, nonzero HRESULT, restart-required, changed post-install identity, still-offered update, and unhealthy/missing post-install evidence. Dedicated and full Windows CI were green at the last fully proven checkpoint.
+
+Remaining: real Windows Update/device/runtime cases including ambiguity, disappearance/replacement, failed install, restart-required, cancellation, timeout, and post-install verification.
 
 ### SAI-A12 — startup behavior
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
@@ -171,24 +197,42 @@ Remaining: installed UI/runtime paths, all response replacement paths with real 
 Deterministic sensitive-format tests pass. Remaining adversarial formats and deployed logging/telemetry inspection.
 
 ### SAI-A21 — external research evidence
-**STATUS: OPEN — CODE/VALIDATION REMAINS**
+**STATUS: OPEN — STALE-CONTEXT VALIDATION REMAINS**
 
-External matches remain advisory rather than verified security facts, and final display safety prevents advisory/model text from asserting verified security actions. Passage-to-claim provenance, stale-cache semantics, and dedicated regression coverage remain incomplete.
+External source evidence remains advisory and cannot become verified local-machine or action evidence. The continuation added `ExternalResearchProvenancePolicy` and integrated it into the production gateway so a relevant external source must now carry bounded attributable passages tied to current evidence terms rather than only a page-level keyword hit. Passage count and size are bounded, duplicate terms/passages are suppressed, and a dedicated provenance harness covers attribution, missing terms, duplicate terms, null source, and passage-count/length caps.
+
+Remaining before source closure: exact-head provenance/Windows CI and focused stale-context/cache-key regression coverage proving changed current evidence cannot reuse an unrelated cached external result.
 
 ### SAI-A22 — bounded external/archive work
-**STATUS: OPEN — VALIDATION/REVIEW REMAINS**
+**STATUS: OPEN — CODE/VALIDATION REMAINS**
 
-Source has bounded response/archive/XML handling and bounded driver-catalog execution. Remaining malformed/oversized archives, decompression/file-count limits, redirect/source policy, timeout/cancellation, and resource-exhaustion adversarial tests.
+HTTP body reads and catalog downloads are bounded, XML parsing has character limits, and external command execution is time-bounded. The Dell CAB path still relies on `expand.exe` followed by post-expansion file-count/XML-size checks. Those checks do not bound temporary disk consumption while expansion is in progress.
+
+Remaining: fail closed or replace automatic CAB expansion with a strongly bounded extraction design; malformed/oversized archive cases, expansion/resource exhaustion, redirects/source policy, cancellation, and cleanup validation.
 
 ### SAI-A23 — network collection coverage
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
 Polling limitations are explicit and netstat uses the bounded runner. Remaining short-lived TCP, UDP attribution, LAN/common-port correlation, IPv6/QUIC, process attribution, adapter churn, and event-driven coverage. Do not claim comprehensive independent network blocking.
 
-### SAI-A24 / A25 / A26 / A27 / A28 — correctness, persistence, diagnostics
-**STATUS: SOURCE/CI IMPROVED — RUNTIME/FAULT VALIDATION REQUIRED**
+### SAI-A24 — throughput correctness during adapter churn
+**STATUS: SOURCE IMPLEMENTED — EXACT-HEAD CI / RUNTIME VALIDATION REQUIRED**
 
-Current source includes per-adapter throughput baselines/reset handling, bounded history retention, serialized/redacted diagnostics with crash breadcrumbs/rotation, benign filtering before aggregate counting, and maintenance reservation/cooldown work. A25/A26/A27 deterministic harnesses pass. A24/A28 concurrency, persistence-failure and runtime behavior still require focused completion/re-review. Informational history failure must not be confused with safety-relevant cooldown/reservation persistence.
+The old aggregate calculation could sum byte deltas from adapters with differently aged baselines and divide the total by one longest interval. The continuation extracted `NetworkThroughputPolicy`: each surviving adapter now computes its own rate from its own timestamp baseline and valid counter delta, then Sentinel sums those rates. New adapters establish a baseline without producing a spike; reset/wrapped counters, non-positive time deltas, and invalid timer frequency fail closed.
+
+A dedicated harness covers different baseline ages, adapter addition, counter reset, backward timestamps, first sample, and invalid frequency. Exact-head dedicated/full Windows CI is queued at the current checkpoint. Installed adapter churn/sleep-wake/network-transition runtime validation remains.
+
+### SAI-A25 / A26 / A27 — bounded history and diagnostics
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
+
+Current source includes bounded investigation history retention/tail reads, serialized/redacted diagnostic logging with crash breadcrumbs/rotation, and benign filtering before aggregate counting. Deterministic harnesses pass. Remaining runtime/concurrency/fault validation where applicable.
+
+### SAI-A28 — maintenance persistence/cooldown
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
+
+Re-review found that corrupt/unreadable optimization cooldown state previously became an empty state and persistence failures were swallowed. Current source fails closed if state cannot be verified, durably reserves `LastAttemptUtc` before executor invocation, verifies the reservation write, and preserves that pre-action reservation if the post-action summary write fails. `OptimizationRuntimeStateStore` has deterministic coverage for missing, persisted, corrupt, locked-read, and locked-write state. Dedicated and full Windows CI were green at the last fully proven checkpoint.
+
+Remaining: real filesystem permission/failure behavior, concurrency/process-crash scenarios, restart recovery, and long-running runtime validation.
 
 ### SAI-A29 — architecture/test/release assurance
 **STATUS: BLOCKED — WINDOWS RUNTIME VALIDATION REQUIRED / BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED**
@@ -199,17 +243,18 @@ Remaining: final signed/Store-style package, clean install/upgrade/uninstall, ev
 
 ## Current work order
 
-1. Finish A07/A15 packaged broker/UAC adversarial runtime validation.
-2. Complete remaining A19 runtime/provenance validation.
-3. Complete A01 extended Authenticode runtime fixture/architecture matrix.
-4. Execute A05 Google Cloud + Store staging validation.
-5. Finish A06/A08/A10/A11/A13 and A17 runtime/adversarial evidence.
-6. Complete or safely leave disabled A14/A16.
-7. Complete A21/A22/A23/A24/A28.
-8. Complete A29 release qualification.
-9. Run fresh final-commit 1-hour and 8-hour stability/resource tests.
-10. Re-audit every High finding adversarially, then re-audit all 29 findings.
-11. Only then label the branch `READY FOR FINAL INDEPENDENT REVIEW`.
+1. Finish exact-head CI and final direct-subprocess audit for A17.
+2. Finish A21 stale-context/cache regression coverage.
+3. Close A22 CAB/archive resource-exhaustion boundary safely.
+4. Complete A24 installed adapter-churn/runtime validation and A23 remaining network limitations.
+5. Complete A07/A15 packaged broker/UAC adversarial runtime validation.
+6. Complete A19 runtime/provenance validation and A01 extended Authenticode runtime fixtures.
+7. Execute A05 Google Cloud + Microsoft Store entitlement staging validation.
+8. Keep A14/A16 safely disabled unless their complete safety contracts are implemented.
+9. Complete A29 release qualification.
+10. Run fresh final-commit 1-hour and 8-hour stability/resource tests.
+11. Re-audit every High finding adversarially, then re-audit all 29 findings.
+12. Only then label the branch `READY FOR FINAL INDEPENDENT REVIEW`.
 
 ## Premium Privacy Protection preservation gate
 
