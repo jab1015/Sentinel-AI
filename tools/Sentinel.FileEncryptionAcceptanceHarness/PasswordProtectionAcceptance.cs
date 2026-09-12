@@ -1,11 +1,9 @@
 using Sentinel.App.Services;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class PasswordProtectionAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         char[] password = "correct horse battery staple ✓".ToCharArray();
