@@ -202,24 +202,8 @@ namespace Sentinel.App.Services
             catch { return string.Empty; }
         }
 
-        private static bool IsUserWritableLocation(string path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return false;
-            try
-            {
-                string fullPath = Path.GetFullPath(path);
-                string temp = Path.GetFullPath(Path.GetTempPath());
-                string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                string downloads = Path.Combine(userProfile, "Downloads");
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                return IsWithinDirectory(fullPath, temp) ||
-                       IsWithinDirectory(fullPath, downloads) ||
-                       IsWithinDirectory(fullPath, appData) ||
-                       IsWithinDirectory(fullPath, localAppData);
-            }
-            catch { return false; }
-        }
+        private static bool IsUserWritableLocation(string path) =>
+            ProcessTrustLocationPolicy.IsTypicallyUserWritableLocation(path);
 
         private static bool IsTemporaryLocation(string path)
         {
