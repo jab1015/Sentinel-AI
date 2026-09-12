@@ -1,6 +1,6 @@
 # SAI-005 — Product Roadmap
 
-Version: 2.4  
+Version: 2.5  
 Status: Active — Production hardening roadmap  
 Last Updated: 2026-09-12
 
@@ -33,23 +33,29 @@ Status: **ACTIVE**
 
 Baseline: 29 findings (14 High, 15 Medium) from commit `1218f5d...`.
 
-Current source checkpoint before this documentation synchronization: `cd98180f8ecaf83272f821d2e7065d72d5953395`.
+Current source checkpoint before documentation synchronization: `7507e52b7619fcd45a15929d234745ab9f57ec82`.
 
-The last fully proven broad checkpoint remains `3ef08da9226e33a222768938b3dff13373ba7f61`. Later focused gates have passed, but the newest exact-head Windows, subprocess-boundary, driver-repair, external-research, optimization-state, and package-architecture workflows are currently queued and must not be treated as passing until complete.
+The last fully proven broad checkpoint remains `3ef08da9226e33a222768938b3dff13373ba7f61`. Later focused gates have passed, but the newest exact-head Windows, subprocess-boundary, driver-repair, external-research, optimization-state, A14 cleanup, network-throughput, and package-architecture workflows remain queued and must not be treated as passing until complete.
 
-Current accomplishments include bounded subprocess execution, quarantine recovery/cleanup hardening, package payload verification, broker package-identity binding, Authenticode improvements, final Ask Sentinel display-time claim validation, initial-monitoring startup regression protection, stricter firewall-containment verification, deterministic Defender/firewall health classification, DISM/SFC classification, redaction/history/diagnostic/event-filtering tests, AI gateway security harness coverage, bounded attributable external-research evidence, fail-closed safety-state persistence, and cross-process optimization execution serialization.
+Current accomplishments include bounded subprocess execution, quarantine recovery/cleanup hardening, package payload verification, broker package-identity binding, Authenticode improvements, final Ask Sentinel display-time claim validation, initial-monitoring startup regression protection, stricter firewall-containment verification, deterministic Defender/firewall health classification, DISM/SFC classification, redaction/history/diagnostic/event-filtering tests, AI gateway security harness coverage, bounded attributable external-research evidence, fail-closed safety-state persistence, cross-process optimization execution serialization, exact-handle temporary cleanup, and transactional service-restart recovery source implementation.
 
-The latest A17 source audit identified eight remaining direct service-process bypasses. Those paths—boot/startup correlation, storage assessment, storage execution, Windows Update repair, power-plan execution, storage-plan analysis, service repair, and network-health DNS diagnostics—have now been moved to the common `BoundedProcessRunner`. The audit was not relaxed. Exact-head source-audit and broad Windows evidence remain required before A09/A17 can move to source-complete status.
+A09/A17 subprocess ownership is routed through the common `BoundedProcessRunner` for the audited Sentinel-owned child-process paths. The source audit now permits only the two exact approved runner files and fails if either disappears, closing a future same-filename audit escape hatch. Exact-head audit and broad Windows evidence remain required before formal source closure.
 
-A10/A11 adversarial re-review also found that a healthy device and no-longer-offered update were not enough to prove a driver actually changed. Post-install repair verification now additionally requires a known pre-install driver version, a known post-install version, and an actual version change. Missing or unchanged versions fail closed and cannot produce a repaired/verified claim.
+A10/A11 post-install driver verification requires exact device/update identity, clean result/HRESULT/restart state, known before/after driver versions, and an actual version change before a verified repair claim.
 
-A21/A22 external-research hardening now includes bounded attributable passages, stale-cache controls, HTTPS/no-redirect authority validation, fail-closed CAB expansion policy, preflight rejection before Dell catalog download while unsafe expansion is disabled, and a catalog-to-package authority rule. Dell catalog package candidates must resolve to HTTPS `downloads.dell.com` on the expected port; HTTP, foreign hosts, alternate ports, credential-bearing URLs, and non-executable targets fail closed. CAB extraction remains disabled until expansion can be bounded before and during extraction.
+A14 temporary cleanup now uses a handle-resolved canonical temp root, exact-object handle reopening, final-path boundary verification, reparse/protected-object rejection, single-hard-link requirement, same-handle age/size checks, and delete-by-handle. Free-space telemetry is best-effort/non-authoritative so redirected or unusual temp-volume forms cannot turn a safe cleanup into a post-action exception. A14 is source-complete and requires installed adversarial runtime validation.
 
-A28 safety-state persistence now rejects corrupt, unreadable, oversized, inconsistent, and existing all-default state; verifies complete persisted records after flushed writes; preserves the pre-action reservation after post-action save failure; and holds a cross-process exclusive execution lease across cooldown evaluation, reservation, execution, and final persistence. Installed crash/filesystem/clock/fault validation still remains.
+A16 service restart now has dependency-aware broker execution, durable pre-action recovery state, verified final service state, rollback/recovery semantics, cancellation safeguards, and fail-closed dependency discovery. Recovery records remain when restoration cannot be proven. A16 is source-complete and requires installed service/UAC/crash/recovery validation.
 
-A29 continues to declare x86, x64, and ARM64. Direct architecture builds had succeeded while x86/ARM64 package payload PE verification failed. Desktop and broker project files now map package `Platform` to the corresponding .NET runtime identifier when packaging omits it. Architecture verification remains intact; the queued package jobs must prove whether additional WAP propagation work is needed. Cross-build or package success does not replace real architecture runtime qualification.
+A21/A22 external-research hardening includes bounded attributable passages, stale-cache controls, HTTPS/no-redirect authority validation, bounded streaming/body/XML work, fail-closed CAB expansion policy, preflight rejection before Dell catalog download while unsafe expansion is disabled, and catalog-to-package authority pinning. Dell package candidates must resolve to HTTPS `downloads.dell.com` on the expected port; HTTP, foreign hosts, alternate ports, credential-bearing URLs, and non-executable targets fail closed. Final static review found no additional reachable source defect; exact-head focused/broad gates remain required before formal source closure. CAB extraction stays disabled until expansion can be bounded before and during extraction.
 
-A14 temporary cleanup and A16 automatic service restart remain intentionally fail-closed/disabled until their full destructive-operation safety contracts can be implemented and validated.
+A24 throughput uses per-adapter baselines and intervals, establishes baselines for new adapters, and rejects reset/backward/invalid samples. Final static review found no additional source defect; exact-head dedicated/full Windows gates remain before formal source closure.
+
+A28 safety-state persistence rejects corrupt, unreadable, oversized, inconsistent, and existing all-default state; verifies complete persisted records after flushed writes; preserves the pre-action reservation after post-action save failure; and holds a cross-process exclusive execution lease across cooldown evaluation, reservation, execution, and final persistence.
+
+A29 continues to declare x86, x64, and ARM64. Desktop and broker project files map package `Platform` to the corresponding .NET runtime identifier when packaging omits it. Package verification still checks the actual PE machine architecture for both executables and has not been weakened. Queued package jobs must prove the current graph; real architecture runtime qualification remains mandatory regardless of cross-build/package results.
+
+At the current source checkpoint, no additional known production-code defect has been identified by the final static closure review. This is **not** a production-readiness claim: exact-head CI, installed Windows runtime, Google Cloud, Store/Partner Center, signed-package, architecture, adversarial, and stability evidence remain outstanding.
 
 Exit criteria:
 
@@ -165,18 +171,16 @@ Do not market Secure Delete as "guaranteed forensically unrecoverable" unless sp
 
 ## Current Next Milestones
 
-1. Complete exact-head Windows/subprocess/driver/external-research/optimization/package architecture gates and repair any real failures.
-2. Finish A21/A22 remaining full-path resource review while keeping CAB extraction disabled.
+1. Let exact-head Windows/subprocess/driver/external-research/optimization/A14/network/package-architecture gates complete; repair only real failures.
+2. Promote A09/A17, A21/A22, and A24 to source-complete only when their exact-head gates support it.
 3. Finish broker packaged/UAC adversarial runtime validation (A07/A15).
 4. Complete remaining Ask Sentinel installed/runtime validation (A19).
 5. Complete Authenticode extended runtime matrix (A01).
 6. Execute AI gateway Google Cloud/Store staging validation (A05).
-7. Finish A06/A08/A10/A11/A13/A17 runtime evidence.
-8. Complete or safely leave disabled A14/A16.
-9. Complete A23/A24/A28 installed runtime validation.
-10. Complete A29 release qualification, including real x86/x64/ARM64 runtime qualification for every architecture shipped.
-11. Fresh 1-hour/8-hour stability plus High-finding and full 29-finding re-audits.
-12. Only then begin Phase F Premium Privacy Protection unless explicitly authorized earlier.
+7. Complete A14/A16 installed destructive-operation/recovery validation and remaining Windows runtime matrices.
+8. Complete A29 release qualification, including signed Store evidence and real x86/x64/ARM64 runtime qualification for every architecture shipped.
+9. Fresh 1-hour/8-hour stability plus High-finding and full 29-finding re-audits.
+10. Only then begin Phase F Premium Privacy Protection unless explicitly authorized earlier.
 
 ---
 
