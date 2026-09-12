@@ -12,11 +12,14 @@ internal sealed class GatewaySecurity
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ConcurrentDictionary<string, DateTimeOffset> _seenRequests = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _providerConcurrency;
+    private readonly object _replayGate = new();
+    private readonly int _maximumReplayEntries;
 
     internal GatewaySecurity(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
         _providerConcurrency = new SemaphoreSlim(ReadInt("SENTINEL_AI_MAX_CONCURRENT_PROVIDER_REQUESTS", 8, 1, 64));
+        _maximumReplayEntries = ReadInt("SENTINEL_AI_MAX_REPLAY_ENTRIES", 50_000, 100, 250_000);
     }
 
     internal async Task<string?> GetCollectionsCreationTicketAsync(CancellationToken cancellationToken)
@@ -185,10 +188,19 @@ internal sealed class GatewaySecurity
         if (!Guid.TryParse(requestId, out _))
             return SessionValidationResult.Denied("A valid unique request ID is required.");
 
-        PruneReplayCache();
         string replayKey = payload.TokenId + ":" + requestId;
-        if (!_seenRequests.TryAdd(replayKey, DateTimeOffset.UtcNow.Add(ReplayLifetime)))
-            return SessionValidationResult.Denied("This request has already been processed.");
+        lock (_replayGate)
+        {
+            PruneReplayCacheLocked();
+            if (_seenRequests.ContainsKey(replayKey))
+                return SessionValidationResult.Denied("This request has already been processed.");
+
+            if (_seenRequests.Count >= _maximumReplayEntries)
+                return SessionValidationResult.Unavailable("Gateway replay protection is at capacity and failed closed.");
+
+            if (!_seenRequests.TryAdd(replayKey, DateTimeOffset.UtcNow.Add(ReplayLifetime)))
+                return SessionValidationResult.Denied("This request has already been processed.");
+        }
 
         return SessionValidationResult.Allowed(payload.Subject, advancedRequested && advancedAuthorized ? "Advanced" : "Basic");
     }
@@ -243,9 +255,9 @@ internal sealed class GatewaySecurity
             : null;
     }
 
-    private void PruneReplayCache()
+    private void PruneReplayCacheLocked()
     {
-        if (_seenRequests.Count < 2_000) return;
+        if (_seenRequests.Count < Math.Min(2_000, _maximumReplayEntries)) return;
         DateTimeOffset now = DateTimeOffset.UtcNow;
         foreach ((string key, DateTimeOffset expires) in _seenRequests)
             if (expires <= now) _seenRequests.TryRemove(key, out _);
