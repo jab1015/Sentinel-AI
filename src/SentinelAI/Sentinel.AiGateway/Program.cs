@@ -166,8 +166,18 @@ app.MapPost("/v1/analyze", async (
     int tierMaximum = advanced
         ? ReadInt("SENTINEL_AI_ADVANCED_MAX_TOTAL_TOKENS", 2_500, 256, 4_000)
         : ReadInt("SENTINEL_AI_BASIC_MAX_TOTAL_TOKENS", 900, 192, 1_500);
-    int requestedBudget = Math.Clamp(request.MaximumTotalTokens, 1, tierMaximum);
-    int maxOutputTokens = Math.Clamp(requestedBudget / 3, 192, advanced ? 700 : 400);
+
+    const int MinimumTotalTokenBudget = 192;
+    if (request.MaximumTotalTokens < MinimumTotalTokenBudget || request.MaximumTotalTokens > tierMaximum)
+    {
+        return Results.BadRequest(new
+        {
+            error = $"The requested total token budget must be between {MinimumTotalTokenBudget} and {tierMaximum} for this tier."
+        });
+    }
+
+    int requestedBudget = request.MaximumTotalTokens;
+    int maxOutputTokens = Math.Min(advanced ? 700 : 400, Math.Max(64, requestedBudget / 3));
 
     string? apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")?.Trim();
     if (string.IsNullOrWhiteSpace(apiKey))
@@ -268,6 +278,13 @@ app.MapPost("/v1/analyze", async (
 
         int inputTokens = ReadUsage(root, "input_tokens");
         int outputTokens = ReadUsage(root, "output_tokens");
+        long totalTokens = (long)inputTokens + outputTokens;
+        if (inputTokens <= 0 || outputTokens < 0 || totalTokens > requestedBudget)
+        {
+            Console.Error.WriteLine($"OPENAI_GATEWAY_TOKEN_BUDGET_VIOLATION input={inputTokens} output={outputTokens} budget={requestedBudget}");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
         bool moreEvidence = IndicatesMoreEvidence(answer);
         int confidence = moreEvidence ? 55 : 75;
 
