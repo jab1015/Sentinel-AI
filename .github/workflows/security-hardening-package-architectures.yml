@@ -22,9 +22,9 @@ jobs:
       matrix:
         include:
           - platform: x86
-            expectedMachine: 0x014c
+            expectedMachine: '0x014c'
           - platform: ARM64
-            expectedMachine: 0xaa64
+            expectedMachine: '0xaa64'
     steps:
       - uses: actions/checkout@v4
 
