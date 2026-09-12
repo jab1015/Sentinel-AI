@@ -29,6 +29,7 @@ internal sealed class SentinelVaultService : IDisposable
     private DateTimeOffset _lastActivityUtc;
     private VaultState _state = VaultState.Locked;
     private long _lockEpoch;
+    private CancellationTokenSource? _operationEpochCancellation;
     private bool _disposed;
 
     internal VaultState State
@@ -80,6 +81,8 @@ internal sealed class SentinelVaultService : IDisposable
                 ThrowIfDisposed();
                 if (_state != VaultState.Unlocking || _lockEpoch != unlockEpoch)
                     throw new OperationCanceledException("Vault initialization was invalidated by a lock transition.");
+                _operationEpochCancellation?.Dispose();
+                _operationEpochCancellation = new CancellationTokenSource();
                 _vaultMasterKey = vmk;
                 vmk = Array.Empty<byte>();
                 _vaultId = vaultId;
@@ -170,6 +173,8 @@ internal sealed class SentinelVaultService : IDisposable
                 ThrowIfDisposed();
                 if (_state != VaultState.Unlocking || _lockEpoch != unlockEpoch)
                     return VaultUnlockResult.Fail("LockStateChanged");
+                _operationEpochCancellation?.Dispose();
+                _operationEpochCancellation = new CancellationTokenSource();
                 _vaultMasterKey = accepted;
                 accepted = null;
                 _vaultId = envelope.VaultId;
@@ -200,6 +205,34 @@ internal sealed class SentinelVaultService : IDisposable
         {
             if (accepted is not null) CryptographicOperations.ZeroMemory(accepted);
             CryptographicOperations.ZeroMemory(body);
+        }
+    }
+
+    internal VaultOperationSession AcquireOperationSession()
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_state != VaultState.Unlocked || _vaultMasterKey is null || _vaultId == Guid.Empty || _operationEpochCancellation is null)
+                throw new InvalidOperationException("The Sentinel Vault is locked.");
+            _lastActivityUtc = DateTimeOffset.UtcNow;
+            return new VaultOperationSession(_lockEpoch, _vaultId, _operationEpochCancellation.Token);
+        }
+    }
+
+    internal bool IsOperationSessionValid(VaultOperationSession session)
+    {
+        lock (_gate)
+        {
+            return !_disposed &&
+                   _state == VaultState.Unlocked &&
+                   _vaultMasterKey is not null &&
+                   _operationEpochCancellation is not null &&
+                   _vaultId != Guid.Empty &&
+                   _vaultId == session.VaultId &&
+                   _lockEpoch == session.LockEpoch &&
+                   _operationEpochCancellation.Token == session.CancellationToken &&
+                   !session.CancellationToken.IsCancellationRequested;
         }
     }
 
@@ -285,13 +318,15 @@ internal sealed class SentinelVaultService : IDisposable
     {
         if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
         byte[]? key;
+        CancellationTokenSource? operations;
         lock (_gate)
         {
             ThrowIfDisposed();
             if (_state != VaultState.Unlocked || _vaultMasterKey is null) return false;
             if (nowUtc - _lastActivityUtc < timeout) return false;
-            key = TransitionToLockedUnderGate();
+            key = TransitionToLockedUnderGate(out operations);
         }
+        CancelOperations(operations);
         if (key is not null) CryptographicOperations.ZeroMemory(key);
         return true;
     }
@@ -299,11 +334,13 @@ internal sealed class SentinelVaultService : IDisposable
     internal void Lock()
     {
         byte[]? key;
+        CancellationTokenSource? operations;
         lock (_gate)
         {
             if (_state == VaultState.Locked && _vaultMasterKey is null) return;
-            key = TransitionToLockedUnderGate();
+            key = TransitionToLockedUnderGate(out operations);
         }
+        CancelOperations(operations);
         if (key is not null) CryptographicOperations.ZeroMemory(key);
     }
 
@@ -319,16 +356,25 @@ internal sealed class SentinelVaultService : IDisposable
         lock (_gate) _disposed = true;
     }
 
-    private byte[]? TransitionToLockedUnderGate()
+    private byte[]? TransitionToLockedUnderGate(out CancellationTokenSource? operations)
     {
         _lockEpoch = checked(_lockEpoch + 1);
         _state = VaultState.Locking;
         byte[]? key = _vaultMasterKey;
+        operations = _operationEpochCancellation;
+        _operationEpochCancellation = null;
         _vaultMasterKey = null;
         _vaultId = Guid.Empty;
         _lastActivityUtc = default;
         _state = VaultState.Locked;
         return key;
+    }
+
+    private static void CancelOperations(CancellationTokenSource? operations)
+    {
+        if (operations is null) return;
+        try { operations.Cancel(); }
+        finally { operations.Dispose(); }
     }
 
     private byte[] CopyUnlockedMasterKey(out Guid vaultId)
@@ -454,6 +500,11 @@ internal enum VaultState
     RecoveryRequired,
     Corrupt
 }
+
+internal readonly record struct VaultOperationSession(
+    long LockEpoch,
+    Guid VaultId,
+    CancellationToken CancellationToken);
 
 internal sealed record VaultMasterKeyEnvelope(
     int Version,
