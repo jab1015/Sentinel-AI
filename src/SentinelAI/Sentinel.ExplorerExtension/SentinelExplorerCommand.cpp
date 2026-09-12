@@ -247,7 +247,7 @@ namespace
     {
     public:
         ExplorerCommand() { ++g_objectCount; }
-        ~ExplorerCommand() override { --g_objectCount; }
+        ~ExplorerCommand() { --g_objectCount; }
 
         IFACEMETHODIMP QueryInterface(REFIID iid, void** object) override
         {
@@ -357,7 +357,7 @@ namespace
     {
     public:
         CommandClassFactory() { ++g_objectCount; }
-        ~CommandClassFactory() override { --g_objectCount; }
+        ~CommandClassFactory() { --g_objectCount; }
 
         IFACEMETHODIMP QueryInterface(REFIID iid, void** object) override
         {
