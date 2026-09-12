@@ -1,0 +1,44 @@
+name: Sentinel Architecture Hardening
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-architecture:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86
+            rid: win-x86
+          - platform: x64
+            rid: win-x64
+          - platform: ARM64
+            rid: win-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore desktop ${{ matrix.platform }}
+        run: dotnet restore "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -r ${{ matrix.rid }}
+
+      - name: Build desktop ${{ matrix.platform }} Release
+        run: dotnet build "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -c Release -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --no-restore
+
+      - name: Restore broker ${{ matrix.platform }}
+        run: dotnet restore "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -r ${{ matrix.rid }}
+
+      - name: Build broker ${{ matrix.platform }} Release
+        run: dotnet build "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -c Release -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --no-restore
