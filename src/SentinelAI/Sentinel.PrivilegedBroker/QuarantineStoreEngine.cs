@@ -453,8 +453,13 @@ internal sealed class QuarantineStoreEngine
             bool destinationExists = File.Exists(txn.Path);
             bool payloadExists = File.Exists(payloadPath);
             bool tempExists = !string.IsNullOrWhiteSpace(txn.TempPath) && File.Exists(txn.TempPath);
+            RecordReadResult protectedRecord = ReadRecord(itemId);
+            bool transactionBoundToRecord = protectedRecord.Status == RecordStatus.Valid &&
+                protectedRecord.Record is not null &&
+                PathsEqual(protectedRecord.Record.OriginalPath, txn.Path) &&
+                protectedRecord.Record.Sha256.Equals(txn.Sha256, StringComparison.OrdinalIgnoreCase);
 
-            if (destinationExists && txn.Stage.Equals("DestinationAclReady", StringComparison.Ordinal))
+            if (destinationExists && txn.Stage.Equals("DestinationAclReady", StringComparison.Ordinal) && transactionBoundToRecord)
             {
                 using FileStream recoveredDestination = OpenStableFile(
                     txn.Path,
@@ -495,7 +500,7 @@ internal sealed class QuarantineStoreEngine
             if (destinationExists)
             {
                 issues.Add(new("IncompleteRestore", transactionPath,
-                    "A restore destination exists but the transaction does not prove exact-object verification and ACL completion. Protected state was preserved."));
+                    "A restore destination exists but the transaction does not prove record binding, exact-object verification, and ACL completion. Protected state was preserved."));
                 return;
             }
 
@@ -710,16 +715,6 @@ internal sealed class QuarantineStoreEngine
         if (!hash.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase)) { error = "The protected payload hash no longer matches its record."; return false; }
         error = string.Empty;
         return true;
-    }
-
-    private static bool VerifyPathHash(string path, string expectedSha256)
-    {
-        try
-        {
-            using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return Convert.ToHexString(SHA256.HashData(stream)).Equals(expectedSha256, StringComparison.OrdinalIgnoreCase);
-        }
-        catch { return false; }
     }
 
     private RecordReadResult ReadRecord(string itemId)
