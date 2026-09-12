@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\BoundedProcessRunner.cs" Link="BoundedProcessRunner.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\ChildProcessSafetyPolicy.cs" Link="ChildProcessSafetyPolicy.cs" />
   </ItemGroup>
 </Project>
