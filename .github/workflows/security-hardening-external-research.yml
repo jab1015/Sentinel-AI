@@ -1,0 +1,27 @@
+name: Sentinel External Research Hardening
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  external-research-provenance:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore provenance harness
+        run: dotnet restore "tools/Sentinel.ExternalResearchProvenanceAcceptanceHarness/Sentinel.ExternalResearchProvenanceAcceptanceHarness.csproj"
+      - name: Build provenance harness
+        run: dotnet build "tools/Sentinel.ExternalResearchProvenanceAcceptanceHarness/Sentinel.ExternalResearchProvenanceAcceptanceHarness.csproj" -c Release --no-restore
+      - name: Run provenance harness
+        run: dotnet run --project "tools/Sentinel.ExternalResearchProvenanceAcceptanceHarness/Sentinel.ExternalResearchProvenanceAcceptanceHarness.csproj" -c Release --no-build
