@@ -104,7 +104,7 @@ internal sealed class VaultItemExportService
                 "ExportFailed:" + decrypted.Code,
                 itemId,
                 destination,
-                decrypted.OutputRemains);
+                decrypted.InvalidOutputRemains);
 
         try
         {
