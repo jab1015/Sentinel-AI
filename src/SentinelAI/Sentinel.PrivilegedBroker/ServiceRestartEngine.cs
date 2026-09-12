@@ -118,9 +118,10 @@ internal sealed class ServiceRestartEngine
 
             if (!ControlService(service, ServiceControlStop, out _))
             {
+                int error = Marshal.GetLastWin32Error();
                 ServiceRestartResult rollback = EnsureRunningHandle(service, normalized);
                 if (rollback.Succeeded) DeleteTransaction(transactionPath);
-                return Win32FailureWithRollback("StopFailed", "Windows rejected the verified service stop request.", rollback);
+                return Win32FailureWithRollback("StopFailed", "Windows rejected the verified service stop request.", error, rollback);
             }
 
             if (!WaitForState(service, ServiceStopped, StopTimeout))
@@ -136,9 +137,10 @@ internal sealed class ServiceRestartEngine
 
             if (!StartServiceW(service, 0, null))
             {
+                int error = Marshal.GetLastWin32Error();
                 ServiceRestartResult rollback = EnsureRunningHandle(service, normalized);
                 if (rollback.Succeeded) DeleteTransaction(transactionPath);
-                return Win32FailureWithRollback("StartFailed", "Windows rejected the service restart request after stop.", rollback);
+                return Win32FailureWithRollback("StartFailed", "Windows rejected the service restart request after stop.", error, rollback);
             }
 
             if (!WaitForState(service, ServiceRunning, StartTimeout))
@@ -281,20 +283,17 @@ internal sealed class ServiceRestartEngine
 
         int error = Marshal.GetLastWin32Error();
         if (error != ErrorMoreData || bytesNeeded == 0)
-        {
-            if (count == 0) return Array.Empty<string>();
-            throw new Win32Exception(error);
-        }
+            throw new Win32Exception(error, "Active dependent-service state could not be verified.");
 
         IntPtr buffer = Marshal.AllocHGlobal(checked((int)bytesNeeded));
         try
         {
             if (!EnumDependentServicesW(service, ServiceActive, buffer, bytesNeeded, out _, out count))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Active dependent-service state could not be verified.");
 
             int size = Marshal.SizeOf<ENUM_SERVICE_STATUS>();
-            string[] names = new string[count];
-            for (int i = 0; i < count; i++)
+            string[] names = new string[checked((int)count)];
+            for (int i = 0; i < names.Length; i++)
             {
                 ENUM_SERVICE_STATUS entry = Marshal.PtrToStructure<ENUM_SERVICE_STATUS>(IntPtr.Add(buffer, checked(i * size)));
                 names[i] = Marshal.PtrToStringUni(entry.lpServiceName) ?? "unknown";
@@ -338,15 +337,12 @@ internal sealed class ServiceRestartEngine
     private static ServiceRestartResult Win32Failure(string code, string message) =>
         ServiceRestartResult.Fail(code, $"{message} (Win32 {Marshal.GetLastWin32Error()}).");
 
-    private static ServiceRestartResult Win32FailureWithRollback(string code, string message, ServiceRestartResult rollback)
-    {
-        int error = Marshal.GetLastWin32Error();
-        return ServiceRestartResult.Fail(
+    private static ServiceRestartResult Win32FailureWithRollback(string code, string message, int error, ServiceRestartResult rollback) =>
+        ServiceRestartResult.Fail(
             rollback.Succeeded ? code + "RolledBack" : code + "RollbackPending",
             rollback.Succeeded
                 ? $"{message} (Win32 {error}) Sentinel restored and verified the original running state."
                 : $"{message} (Win32 {error}) The original running state could not be verified; durable recovery remains pending.");
-    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SERVICE_STATUS
