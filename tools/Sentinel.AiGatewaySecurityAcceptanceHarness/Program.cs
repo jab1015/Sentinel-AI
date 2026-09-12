@@ -15,6 +15,8 @@ void Check(bool condition, string name)
 
 string? basicToken = security.IssueSession("Basic", "acceptance-basic");
 Check(!string.IsNullOrWhiteSpace(basicToken), "Basic session issued");
+Check(security.IssueSession("Unknown", "acceptance-unknown") is null, "Unknown session tier is rejected");
+Check(security.IssueSession("Basic", "   ") is null, "Blank session subject is rejected");
 
 string basicRequest = Guid.NewGuid().ToString();
 SessionValidationResult basic = security.ValidateSession("Bearer " + basicToken, basicRequest, "Basic");
@@ -34,6 +36,10 @@ SessionValidationResult alternateReplay = security.ValidateSession(
     "Basic");
 Check(alternateFirst.Authorized && !alternateReplay.Authorized && alternateReplay.Reason.Contains("already", StringComparison.OrdinalIgnoreCase),
     "Equivalent GUID encodings share one replay identity");
+
+SessionValidationResult unknownTier = security.ValidateSession("Bearer " + basicToken, Guid.NewGuid().ToString(), "Unknown");
+Check(!unknownTier.Authorized && unknownTier.Reason.Contains("unsupported", StringComparison.OrdinalIgnoreCase),
+    "Unknown requested AI tier is rejected");
 
 SessionValidationResult upgrade = security.ValidateSession("Bearer " + basicToken, Guid.NewGuid().ToString(), "Advanced");
 Check(!upgrade.Authorized, "Basic session cannot authorize Advanced request");
