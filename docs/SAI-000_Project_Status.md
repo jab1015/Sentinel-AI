@@ -1,6 +1,6 @@
 # SAI-000 — Project Status
 
-Version: 2.0  
+Version: 2.1  
 Status: Active — Production security hardening  
 Last Updated: 2026-09-12
 
@@ -14,7 +14,7 @@ Sentinel AI is in an active production-security hardening program based on asses
 
 - Production branch: `main`
 - Hardening branch: `security/production-hardening-1218f5d`
-- Current hardening checkpoint before this documentation update: `d8ac4af17a6451cb4f82e86ce45b64523f1ed303`
+- Current hardening documentation checkpoint before the premium-privacy roadmap update: `d7d1289d97cd01f61ee8467bdcbb503455c50e3b`
 - Findings: 29 total — 14 High, 15 Medium
 - Release posture: **NOT production-hardened; DO NOT MERGE yet**
 
@@ -26,10 +26,10 @@ Sentinel AI is being strengthened from a monitoring/explanation application into
 
 ## Current Proven CI Checkpoint
 
-At `d8ac4af17a6451cb4f82e86ce45b64523f1ed303`:
+At the current hardening checkpoint:
 
-- Windows hardening workflow: **PASS** — latest exact-head PR run `34671410981`; earlier exact-head run `34671409289` also completed successfully.
-- Unsigned x64 package workflow: **PASS** — exact-head run `34671410865`.
+- Windows hardening workflow: PASS at the documented exact-head checkpoint.
+- Unsigned x64 package workflow: PASS at the documented exact-head checkpoint.
 - Desktop x64 Release build: PASS.
 - Privileged broker x64 Release build: PASS.
 - Broker package-identity policy harness: PASS.
@@ -44,7 +44,7 @@ These are commit-bound CI results, not production-release approval.
 
 - Bounded subprocess ownership with concurrent output draining, wall-clock timeout/cancellation, output caps, and descendant-tree termination.
 - Quarantine protected-store transaction/recovery semantics hardened; forged recovery state fails closed; restore uses handle-based identity controls; cleanup failures preserve recovery evidence and do not report false success.
-- Privileged broker uses a versioned allowlisted protocol, peer PID checks, exact target identity checks, and now Windows package-full-name binding between broker and client.
+- Privileged broker uses a versioned allowlisted protocol, peer PID checks, exact target identity checks, and Windows package-full-name binding between broker and client.
 - Package CI proves both `Sentinel.App.exe` and `Sentinel.PrivilegedBroker.exe` are present in the generated unsigned x64 MSIX.
 - Installed-runtime validation script corrected to query the real package identity and manifest publisher identity.
 - Authenticode, DISM/SFC classification, cloud redaction, history retention, diagnostics, event filtering, network subprocess collection, and AI gateway source boundaries have been materially hardened.
@@ -58,6 +58,27 @@ These are commit-bound CI results, not production-release approval.
 5. Continue the remaining 29-finding remediation and adversarial re-review.
 6. Perform final signed/package, clean install/upgrade/uninstall, supported Windows/architecture, startup/background, Defender/firewall, recovery, resource, and 1-hour/8-hour stability gates.
 
+## Planned Premium Privacy Protection
+
+A post-hardening premium feature phase is now formally recorded in `SAI-005_Product_Roadmap.md`.
+
+Planned subscription-only capabilities include:
+
+- modern File Explorer integration
+- Inspect with Sentinel AI
+- Secure Delete for explicitly selected user files with strict target validation and verification-oriented results
+- attributable-copy/history discovery with carefully scoped cleanup actions
+- strong authenticated file encryption
+- Windows-account-protected encryption
+- portable password encryption
+- independent recovery keys
+- Sentinel Vault
+- optional future Windows Hello/TPM integration after dedicated review
+
+These features are **PLANNED ONLY** and must not interrupt the current 29-finding remediation or release qualification. They must be built on the validated broker, package-identity, entitlement, quarantine/filesystem-safety, and crash-recovery foundations.
+
+The privacy feature set must be aggressive about protecting the selected user's data while remaining conservative about unrelated Windows/system data. A single-file action must not automatically remove unrelated restore/history sets or manipulate system-managed paging/hibernation files.
+
 ## Important Open Runtime Boundaries
 
 Quarantine CI is materially stronger, but standard-user ACL resistance, reparse/junction/hardlink attacks, crash checkpoints, disk-full/access-denied, destination races, broker-killed-mid-operation, and installed package/UAC behavior still require real Windows evidence.
@@ -67,6 +88,8 @@ Broker package identity is source/CI validated, but installed elevated broker id
 ## Definition of Done
 
 A security finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are all satisfied. Final release additionally requires a complete re-audit of all 29 findings and commit-bound release/stability evidence.
+
+Premium privacy work begins only after the current release-hardening foundation is independently reviewed and accepted.
 
 ---
 
