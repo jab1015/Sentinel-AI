@@ -202,9 +202,14 @@ namespace Sentinel.App.Services
                 return new(false, "Windows Update returned success, but Sentinel could not verify that the exact hardware-bound device is healthy and the approved update is no longer pending.");
 
             string version = GetValue(result.Output, "VERSION");
-            return new(true, string.IsNullOrWhiteSpace(version)
-                ? "Sentinel verified that the exact hardware-bound device is healthy and the approved update is no longer pending."
-                : $"Sentinel verified that the exact hardware-bound device is healthy and the approved update is no longer pending. Current driver version: {version}.");
+            if (!DriverRepairVerificationPolicy.HasDriverVersionChanged(plan.PreInstallDriverVersion, version))
+            {
+                return new(false,
+                    "Windows Update returned success, but Sentinel could not verify that the installed driver version changed from the pre-install version. The device will not be reported as repaired.");
+            }
+
+            return new(true,
+                $"Sentinel verified that the exact hardware-bound device is healthy, the approved update is no longer pending, and the installed driver version changed from {plan.PreInstallDriverVersion} to {version}.");
         }
 
         private static ProcessResult RunPowerShell(string command, TimeSpan timeout)
