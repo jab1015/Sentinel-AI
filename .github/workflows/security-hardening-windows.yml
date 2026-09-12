@@ -51,6 +51,15 @@ jobs:
       - name: Run Ask Sentinel final display safety harness
         run: dotnet run --project "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj" -c Release --no-build
 
+      - name: Restore initial monitoring startup acceptance harness
+        run: dotnet restore "tools/Sentinel.InitialMonitoringStartupAcceptanceHarness/Sentinel.InitialMonitoringStartupAcceptanceHarness.csproj"
+
+      - name: Build initial monitoring startup acceptance harness
+        run: dotnet build "tools/Sentinel.InitialMonitoringStartupAcceptanceHarness/Sentinel.InitialMonitoringStartupAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run initial monitoring startup acceptance harness
+        run: dotnet run --project "tools/Sentinel.InitialMonitoringStartupAcceptanceHarness/Sentinel.InitialMonitoringStartupAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore Authenticode acceptance harness
         run: dotnet restore "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj"
 
