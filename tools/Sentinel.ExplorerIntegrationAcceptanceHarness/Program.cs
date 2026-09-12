@@ -54,6 +54,18 @@ File.WriteAllText(selectedFile, "safe test content");
 
 try
 {
+    Require(
+        ExplorerSelectionObjectValidator.TryReopenAndResolve(selectedFile, out string reopenedFile) &&
+        Path.GetFullPath(selectedFile).Equals(reopenedFile, StringComparison.OrdinalIgnoreCase),
+        "Sentinel could not reopen and resolve the selected file by Windows handle.");
+    Require(
+        ExplorerSelectionObjectValidator.TryReopenAndResolve(selectedRoot, out string reopenedDirectory) &&
+        Path.GetFullPath(selectedRoot).Equals(reopenedDirectory, StringComparison.OrdinalIgnoreCase),
+        "Sentinel could not reopen and resolve the selected directory by Windows handle.");
+    Require(
+        !ExplorerSelectionObjectValidator.TryReopenAndResolve(Path.Combine(selectedRoot, "missing.txt"), out _),
+        "Exact-object validation accepted a missing filesystem object.");
+
     ExplorerHandoffService service = new(handoffRoot);
     long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
@@ -84,7 +96,7 @@ try
     string missingPath = Path.Combine(selectedRoot, "missing.txt");
     WriteRecord(handoffRoot, missingId, RecordJson("inspect", now, missingPath));
     Require(!service.TryConsume(missingId, out _, out reason),
-        "Explorer handoff accepted a filesystem item that Sentinel could not reopen.");
+        "Explorer handoff accepted a filesystem item that Sentinel could not locate.");
 
     Guid extraFieldId = Guid.NewGuid();
     string extraField = $"{{\"Version\":1,\"Command\":\"inspect\",\"CreatedUnixMs\":{now},\"Items\":[{JsonSerializer.Serialize(selectedFile)}],\"BrokerToken\":\"forbidden\"}}";
@@ -106,7 +118,7 @@ try
 
     Console.WriteLine("Exact activation arguments: PASS");
     Console.WriteLine("One-time bounded handoff: PASS");
-    Console.WriteLine("Filesystem revalidation: PASS");
+    Console.WriteLine("Exact file/directory handle reopen: PASS");
     Console.WriteLine("Strict JSON / destructive-command rejection: PASS");
     Console.WriteLine("Stale/oversized/item-count rejection: PASS");
     Console.WriteLine("RESULT: PASS");
