@@ -1,0 +1,87 @@
+name: Sentinel Package Architecture Hardening
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  package-architecture:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86
+            expectedMachine: 0x014c
+          - platform: ARM64
+            expectedMachine: 0xaa64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Locate MSBuild
+        id: msbuild
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe was not found." }
+          $path = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($path)) { throw "MSBuild.exe was not found." }
+          "path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Build unsigned ${{ matrix.platform }} MSIX staging package
+        shell: pwsh
+        run: |
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj" /restore /m /p:Configuration=Release /p:Platform=${{ matrix.platform }} /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify ${{ matrix.platform }} package payload architecture
+        shell: pwsh
+        run: |
+          $packageRoot = "src\SentinelAI\Sentinel.App\Sentinel.App (Package)"
+          $msixes = @(Get-ChildItem "$packageRoot\AppPackages" -Recurse -File -Filter "*.msix" -ErrorAction Stop |
+            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($msixes.Count -ne 1) { throw "Expected exactly one application MSIX, found $($msixes.Count)." }
+
+          $makeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -File -ErrorAction Stop |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $makeAppx) { throw "MakeAppx.exe was not found." }
+
+          $unpackRoot = Join-Path $env:RUNNER_TEMP "sentinel-msix-${{ matrix.platform }}"
+          if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $unpackRoot | Out-Null
+          & $makeAppx.FullName unpack /p $msixes[0].FullName /d $unpackRoot /o
+          if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed to unpack the generated MSIX." }
+
+          $apps = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.App.exe")
+          $brokers = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.PrivilegedBroker.exe")
+          if ($apps.Count -ne 1) { throw "Expected one Sentinel.App.exe, found $($apps.Count)." }
+          if ($brokers.Count -ne 1) { throw "Expected one Sentinel.PrivilegedBroker.exe, found $($brokers.Count)." }
+
+          function Get-PeMachine([string]$Path) {
+            $bytes = [System.IO.File]::ReadAllBytes($Path)
+            if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw "$Path is not a valid PE file." }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) { throw "$Path has an invalid PE header offset." }
+            if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45 -or $bytes[$peOffset + 2] -ne 0 -or $bytes[$peOffset + 3] -ne 0) { throw "$Path has an invalid PE signature." }
+            return [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          }
+
+          $expected = [Convert]::ToUInt16('${{ matrix.expectedMachine }}'.Substring(2), 16)
+          foreach ($binary in @($apps[0], $brokers[0])) {
+            $machine = Get-PeMachine $binary.FullName
+            if ($machine -ne $expected) {
+              throw "$($binary.Name) machine 0x$($machine.ToString('x4')) did not match expected ${{ matrix.expectedMachine }} for ${{ matrix.platform }}."
+            }
+            Write-Host "$($binary.Name): machine 0x$($machine.ToString('x4')) verified for ${{ matrix.platform }}"
+          }
