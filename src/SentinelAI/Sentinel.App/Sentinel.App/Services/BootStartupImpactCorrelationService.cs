@@ -74,8 +74,6 @@ namespace Sentinel.App.Services
                 long totalDegradationMs = matches.Sum(item => Math.Max(item.DegradationTimeMs, 0));
                 long maximumDegradationMs = matches.Max(item => Math.Max(item.DegradationTimeMs, 0));
 
-                // Repeated degradation evidence is intentionally required. One event
-                // can be caused by updates, first-run initialization, or transient I/O.
                 bool repeatedImpact = matches.Length >= 2 && maximumDegradationMs >= 1000;
 
                 correlated.Add(new CorrelatedStartupImpact(
@@ -193,30 +191,24 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using Process process = new()
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
 
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(5), maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(5000))
-                {
-                    try { process.Kill(); } catch { }
-                    return new CommandResult(-1, output, "Startup-impact diagnostic timed out.");
-                }
+                string error = execution.Outcome == ProcessExecutionOutcome.TimedOut
+                    ? "Startup-impact diagnostic timed out."
+                    : execution.StandardError;
 
-                return new CommandResult(process.ExitCode, output, error);
+                return new CommandResult(execution.ExitCode ?? -1, execution.StandardOutput, error);
             }
             catch (Exception ex)
             {
