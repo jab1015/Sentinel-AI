@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace Sentinel.App.Services
@@ -66,9 +67,7 @@ namespace Sentinel.App.Services
                 summary);
         }
 
-        private static ServiceHealthConcern DetermineConcern(
-            ServiceExpectation expectation,
-            ServiceQueryResult query)
+        private static ServiceHealthConcern DetermineConcern(ServiceExpectation expectation, ServiceQueryResult query)
         {
             if (!query.Exists)
                 return ServiceHealthConcern.Unverified;
@@ -77,95 +76,76 @@ namespace Sentinel.App.Services
                 return ServiceHealthConcern.Disabled;
 
             if (query.State.Equals("Stopped", StringComparison.OrdinalIgnoreCase) &&
-                (expectation.Importance == ServiceImportance.Security ||
-                 expectation.Importance == ServiceImportance.Core))
-            {
+                (expectation.Importance == ServiceImportance.Security || expectation.Importance == ServiceImportance.Core))
                 return ServiceHealthConcern.UnexpectedlyStopped;
-            }
 
             return ServiceHealthConcern.None;
         }
 
         private static ServiceQueryResult QueryService(string serviceName)
         {
-            try
-            {
-                using Process process = new()
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "sc.exe",
-                        Arguments = $"query {serviceName}",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
-                };
-
-                process.Start();
-                string queryOutput = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(3000);
-
-                if (process.ExitCode != 0)
-                    return new ServiceQueryResult(false, "Unknown", "Unknown");
-
-                string state = queryOutput.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)
-                    ? "Running"
-                    : queryOutput.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)
-                        ? "Stopped"
-                        : "Unknown";
-
-                string startMode = QueryStartMode(serviceName);
-                return new ServiceQueryResult(true, state, startMode);
-            }
-            catch
-            {
+            ProcessExecutionResult query = RunSc("query", serviceName);
+            if (!query.Succeeded)
                 return new ServiceQueryResult(false, "Unknown", "Unknown");
-            }
+
+            string queryOutput = query.StandardOutput;
+            string state = queryOutput.Contains("RUNNING", StringComparison.OrdinalIgnoreCase)
+                ? "Running"
+                : queryOutput.Contains("STOPPED", StringComparison.OrdinalIgnoreCase)
+                    ? "Stopped"
+                    : "Unknown";
+
+            string startMode = QueryStartMode(serviceName);
+            return new ServiceQueryResult(true, state, startMode);
         }
 
         private static string QueryStartMode(string serviceName)
         {
+            ProcessExecutionResult query = RunSc("qc", serviceName);
+            if (!query.Succeeded)
+                return "Unknown";
+
+            string output = query.StandardOutput;
+            if (output.Contains("DISABLED", StringComparison.OrdinalIgnoreCase)) return "Disabled";
+            if (output.Contains("AUTO_START", StringComparison.OrdinalIgnoreCase)) return "Automatic";
+            if (output.Contains("DEMAND_START", StringComparison.OrdinalIgnoreCase)) return "Manual";
+            return "Unknown";
+        }
+
+        private static ProcessExecutionResult RunSc(string verb, string serviceName)
+        {
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "sc.exe",
-                        Arguments = $"qc {serviceName}",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? "sc.exe" : Path.Combine(system, "sc.exe"),
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
-
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                process.WaitForExit(3000);
-
-                if (output.Contains("DISABLED", StringComparison.OrdinalIgnoreCase)) return "Disabled";
-                if (output.Contains("AUTO_START", StringComparison.OrdinalIgnoreCase)) return "Automatic";
-                if (output.Contains("DEMAND_START", StringComparison.OrdinalIgnoreCase)) return "Manual";
-                return "Unknown";
+                startInfo.ArgumentList.Add(verb);
+                startInfo.ArgumentList.Add(serviceName);
+                return BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(3), maxOutputChars: 64_000)
+                    .GetAwaiter()
+                    .GetResult();
             }
             catch
             {
-                return "Unknown";
+                return new ProcessExecutionResult(
+                    ProcessExecutionOutcome.LaunchFailed,
+                    -1,
+                    string.Empty,
+                    string.Empty,
+                    false,
+                    false,
+                    false,
+                    "sc.exe query failed before execution completed.");
             }
         }
 
-        private sealed record ServiceExpectation(
-            string Name,
-            string DisplayName,
-            ServiceImportance Importance);
-
-        private sealed record ServiceQueryResult(
-            bool Exists,
-            string State,
-            string StartMode);
+        private sealed record ServiceExpectation(string Name, string DisplayName, ServiceImportance Importance);
+        private sealed record ServiceQueryResult(bool Exists, string State, string StartMode);
     }
 
     public sealed record WindowsServiceHealthAssessment(
