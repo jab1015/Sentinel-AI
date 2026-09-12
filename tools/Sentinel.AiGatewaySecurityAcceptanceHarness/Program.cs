@@ -66,6 +66,34 @@ using (ByteArrayContent malformed = new(Encoding.UTF8.GetBytes("{not-json}")))
     Check(malformedDocument is null, "Malformed upstream JSON fails closed");
 }
 
+Environment.SetEnvironmentVariable("SENTINEL_AI_MAX_REPLAY_ENTRIES", "100");
+var boundedReplay = new GatewaySecurity(new FakeHttpClientFactory());
+string? replayCapacityToken = boundedReplay.IssueSession("Basic", "capacity-test");
+bool acceptedToCapacity = !string.IsNullOrWhiteSpace(replayCapacityToken);
+if (acceptedToCapacity)
+{
+    for (int i = 0; i < 100; i++)
+    {
+        SessionValidationResult accepted = boundedReplay.ValidateSession(
+            "Bearer " + replayCapacityToken,
+            Guid.NewGuid().ToString(),
+            "Basic");
+        if (!accepted.Authorized)
+        {
+            acceptedToCapacity = false;
+            break;
+        }
+    }
+}
+Check(acceptedToCapacity, "Replay cache accepts requests through its configured capacity");
+SessionValidationResult replayCapacity = boundedReplay.ValidateSession(
+    "Bearer " + replayCapacityToken,
+    Guid.NewGuid().ToString(),
+    "Basic");
+Check(!replayCapacity.Available && !replayCapacity.Authorized && replayCapacity.Reason.Contains("capacity", StringComparison.OrdinalIgnoreCase),
+    "Replay cache fails closed at configured capacity");
+Environment.SetEnvironmentVariable("SENTINEL_AI_MAX_REPLAY_ENTRIES", null);
+
 Environment.SetEnvironmentVariable("SENTINEL_GATEWAY_SESSION_SIGNING_KEY", "too-short");
 var misconfigured = new GatewaySecurity(new FakeHttpClientFactory());
 Check(misconfigured.IssueSession("Basic", "test") is null, "Weak signing key fails closed");
