@@ -42,6 +42,15 @@ jobs:
       - name: Run privileged broker identity harness
         run: dotnet run --project "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj" -c Release --no-build
 
+      - name: Restore Ask Sentinel final display safety harness
+        run: dotnet restore "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj"
+
+      - name: Build Ask Sentinel final display safety harness
+        run: dotnet build "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj" -c Release --no-restore
+
+      - name: Run Ask Sentinel final display safety harness
+        run: dotnet run --project "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj" -c Release --no-build
+
       - name: Restore Authenticode acceptance harness
         run: dotnet restore "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj"
 
