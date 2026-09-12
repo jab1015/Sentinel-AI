@@ -21,6 +21,12 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Restore AI gateway
+        run: dotnet restore "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj"
+
+      - name: Build AI gateway
+        run: dotnet build "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj" -c Release --no-restore
+
       - name: Restore desktop app
         run: dotnet restore "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -r win-x64
 
