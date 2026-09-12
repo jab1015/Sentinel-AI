@@ -22,9 +22,8 @@ if (!Directory.Exists(productionRoot)) throw new InvalidOperationException("Prod
 // A17 is a production-wide boundary, not a Services-directory convention. Any code that
 // directly creates or starts a System.Diagnostics.Process can bypass the common timeout,
 // cancellation, process-tree termination, concurrent drain, and output-bound guarantees.
-// Keep the exception deliberately narrow: the runner itself must own Process directly.
 Regex directProcessOwnership = new(
-    @"\bProcess\s*\.\s*Start\s*\(|\bnew\s+Process\s*\(|\bnew\s+Process\s*\{|\bProcess\s+\w+\s*=\s*new\s*\(",
+    @"\bProcess\s*\.\s*Start\s*\(|\bnew\s+(?:System\.Diagnostics\.)?Process\s*\(|\bnew\s+(?:System\.Diagnostics\.)?Process\s*\{|\bProcess\s+\w+\s*=\s*new\s*\(",
     RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
 List<string> violations = new();
@@ -35,14 +34,37 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
         continue;
 
     string text = File.ReadAllText(file);
-    if (directProcessOwnership.IsMatch(text))
-        violations.Add(Path.GetRelativePath(root, file));
+    if (!directProcessOwnership.IsMatch(text))
+        continue;
+
+    string relative = Path.GetRelativePath(root, file);
+    if (relative.EndsWith(Path.Combine("Services", "PrivilegedBrokerClient.cs"), StringComparison.OrdinalIgnoreCase))
+    {
+        // UAC elevation requires ShellExecute/runas and therefore cannot use the redirected-output
+        // runner. This is the one production exception, and it must retain its independently audited
+        // bounded IPC/process lifecycle rather than becoming a generic subprocess escape hatch.
+        string[] requiredSafetyMarkers =
+        {
+            "UseShellExecute = true",
+            "Verb = \"runas\"",
+            "GetNamedPipeServerProcessId",
+            "connectedPid != process.Id",
+            "WaitForExitAsync(token).WaitAsync(timeout, token)",
+            "TerminateBroker(process)",
+            "process.Kill(entireProcessTree: true)",
+            "process.WaitForExit(5_000)"
+        };
+        if (requiredSafetyMarkers.All(marker => text.Contains(marker, StringComparison.Ordinal)))
+            continue;
+    }
+
+    violations.Add(relative);
 }
 
 if (violations.Count > 0)
 {
     StringBuilder message = new();
-    message.AppendLine("Direct subprocess ownership remains outside BoundedProcessRunner:");
+    message.AppendLine("Direct subprocess ownership remains outside an audited bounded runner:");
     foreach (string violation in violations.OrderBy(v => v, StringComparer.OrdinalIgnoreCase))
         message.AppendLine(" - " + violation);
     throw new InvalidOperationException(message.ToString());
