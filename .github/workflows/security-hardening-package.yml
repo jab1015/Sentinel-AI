@@ -34,8 +34,17 @@ jobs:
       - name: Build unsigned x64 MSIX staging package
         shell: pwsh
         run: |
-          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj" /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj" /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=msbuild-package.log;verbosity=diagnostic"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload package MSBuild diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-msbuild-diagnostics
+          path: msbuild-package.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Verify privileged broker is packaged
         shell: pwsh
