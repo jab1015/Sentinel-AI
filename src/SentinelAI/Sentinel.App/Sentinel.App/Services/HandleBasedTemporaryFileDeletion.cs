@@ -184,8 +184,8 @@ internal static class HandleBasedTemporaryFileDeletion
         public long AllocationSize;
         public long EndOfFile;
         public uint NumberOfLinks;
-        [MarshalAs(UnmanagedType.Bool)] public bool DeletePending;
-        [MarshalAs(UnmanagedType.Bool)] public bool Directory;
+        [MarshalAs(UnmanagedType.U1)] public bool DeletePending;
+        [MarshalAs(UnmanagedType.U1)] public bool Directory;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -198,7 +198,7 @@ internal static class HandleBasedTemporaryFileDeletion
     [StructLayout(LayoutKind.Sequential)]
     private struct FILE_DISPOSITION_INFO
     {
-        [MarshalAs(UnmanagedType.Bool)] public bool DeleteFile;
+        [MarshalAs(UnmanagedType.U1)] public bool DeleteFile;
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
