@@ -112,6 +112,8 @@ internal sealed class PrivilegedBrokerClient
     {
         if (!File.Exists(_brokerPath))
             return BrokerInvocationResult.Failure("BrokerUnavailable", "Sentinel's privileged broker is not installed with this build.");
+        if (timeout <= TimeSpan.Zero)
+            return BrokerInvocationResult.Failure("InvalidRequest", "The privileged request timeout was invalid.");
 
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(request);
         if (payload.Length is <= 0 or > MaximumRequestBytes)
@@ -119,6 +121,10 @@ internal sealed class PrivilegedBrokerClient
 
         string pipeToken = Guid.NewGuid().ToString("N");
         string pipeName = "SentinelAI.Broker." + pipeToken;
+
+        using CancellationTokenSource operationDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        operationDeadline.CancelAfter(timeout);
+        CancellationToken operationToken = operationDeadline.Token;
 
         using Process process = new()
         {
@@ -156,7 +162,7 @@ internal sealed class PrivilegedBrokerClient
 
         try
         {
-            await pipe.ConnectAsync(token).WaitAsync(TimeSpan.FromSeconds(20), token).ConfigureAwait(false);
+            await pipe.ConnectAsync(operationToken).WaitAsync(TimeSpan.FromSeconds(20), operationToken).ConfigureAwait(false);
             if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out uint connectedPid) || connectedPid != process.Id)
             {
                 TerminateBroker(process);
@@ -167,8 +173,8 @@ internal sealed class PrivilegedBrokerClient
             using StreamReader reader = new(pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
 
             string requestJson = Encoding.UTF8.GetString(payload);
-            await writer.WriteLineAsync(requestJson).WaitAsync(timeout, token).ConfigureAwait(false);
-            string? responseJson = await reader.ReadLineAsync().WaitAsync(timeout, token).ConfigureAwait(false);
+            await writer.WriteLineAsync(requestJson).WaitAsync(operationToken).ConfigureAwait(false);
+            string? responseJson = await reader.ReadLineAsync().WaitAsync(operationToken).ConfigureAwait(false);
 
             if (string.IsNullOrWhiteSpace(responseJson) || Encoding.UTF8.GetByteCount(responseJson) > MaximumRequestBytes)
             {
@@ -183,18 +189,23 @@ internal sealed class PrivilegedBrokerClient
                 return BrokerInvocationResult.Failure("InvalidResult", "The broker result could not be matched to this request ID.");
             }
 
-            await process.WaitForExitAsync(token).WaitAsync(timeout, token).ConfigureAwait(false);
+            await process.WaitForExitAsync(operationToken).ConfigureAwait(false);
             return new(result.Succeeded, result.Code ?? string.Empty, result.Message ?? string.Empty, result.ItemId ?? string.Empty, result.Sha256 ?? string.Empty);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             TerminateBroker(process);
             return BrokerInvocationResult.Failure("Canceled", "The privileged operation was canceled. Sentinel terminated the broker request and will verify system state before making any success claim.");
         }
+        catch (OperationCanceledException)
+        {
+            TerminateBroker(process);
+            return BrokerInvocationResult.Failure("Timeout", "The privileged operation exceeded its single wall-clock verification window. Sentinel terminated the broker request and did not report success.");
+        }
         catch (TimeoutException)
         {
             TerminateBroker(process);
-            return BrokerInvocationResult.Failure("Timeout", "The privileged operation exceeded its verification window. Sentinel terminated the broker request and did not report success.");
+            return BrokerInvocationResult.Failure("Timeout", "The privileged operation could not establish its authenticated IPC channel within the bounded connection window. Sentinel terminated the broker request and did not report success.");
         }
         catch (IOException)
         {
