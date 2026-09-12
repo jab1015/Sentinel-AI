@@ -84,9 +84,16 @@ internal sealed class GatewaySecurity
             return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification is temporarily unavailable.");
         }
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = await JsonDocument.ParseAsync(stream,
-            new JsonDocumentOptions { MaxDepth = 32 }, cancellationToken).ConfigureAwait(false);
+        using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+            response.Content,
+            BoundedHttpJson.MaximumStoreResponseBytes,
+            maximumDepth: 32,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null)
+        {
+            Console.Error.WriteLine("STORE_ENTITLEMENT_QUERY_INVALID_OR_OVERSIZED_RESPONSE");
+            return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification returned invalid data.");
+        }
 
         if (!document.RootElement.TryGetProperty("items", out JsonElement items) ||
             items.ValueKind != JsonValueKind.Array)
@@ -220,8 +227,17 @@ internal sealed class GatewaySecurity
             return null;
         }
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using JsonDocument document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+            response.Content,
+            BoundedHttpJson.MaximumEntraResponseBytes,
+            maximumDepth: 16,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null)
+        {
+            Console.Error.WriteLine("ENTRA_TOKEN_INVALID_OR_OVERSIZED_RESPONSE");
+            return null;
+        }
+
         return document.RootElement.TryGetProperty("access_token", out JsonElement accessToken)
             ? accessToken.GetString()
             : null;
