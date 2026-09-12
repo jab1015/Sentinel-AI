@@ -73,11 +73,19 @@ internal sealed class PasswordFileKeyProtector : IFileKeyProtector, IDisposable
             try
             {
                 using AesGcm aes = new(kek, TagSize);
-                aes.Encrypt(nonce, dataEncryptionKey.Span, ciphertext, tag, BuildAad(parameters));
-                byte[] wrapped = new byte[DekSize + TagSize];
-                ciphertext.CopyTo(wrapped, 0);
-                tag.CopyTo(wrapped, DekSize);
-                return new WrappedFileKeyRecord(1, ModeId, WrappingAlgorithmArgon2idAesGcm, parameters, wrapped);
+                byte[] aad = BuildAad(parameters);
+                try
+                {
+                    aes.Encrypt(nonce, dataEncryptionKey.Span, ciphertext, tag, aad);
+                    byte[] wrapped = new byte[DekSize + TagSize];
+                    ciphertext.CopyTo(wrapped, 0);
+                    tag.CopyTo(wrapped, DekSize);
+                    return new WrappedFileKeyRecord(1, ModeId, WrappingAlgorithmArgon2idAesGcm, parameters, wrapped);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(aad);
+                }
             }
             finally
             {
@@ -88,6 +96,8 @@ internal sealed class PasswordFileKeyProtector : IFileKeyProtector, IDisposable
         finally
         {
             CryptographicOperations.ZeroMemory(kek);
+            CryptographicOperations.ZeroMemory(salt);
+            CryptographicOperations.ZeroMemory(nonce);
         }
     }
 
@@ -112,11 +122,11 @@ internal sealed class PasswordFileKeyProtector : IFileKeyProtector, IDisposable
 
         byte[] kek = await DeriveKekAsync(salt, memoryKiB, iterations, parallelism, cancellationToken).ConfigureAwait(false);
         byte[] plaintext = new byte[DekSize];
+        byte[] aad = BuildAad(record.Parameters);
         try
         {
             using AesGcm aes = new(kek, TagSize);
-            aes.Decrypt(nonce, record.WrappedDek.AsSpan(0, DekSize), record.WrappedDek.AsSpan(DekSize, TagSize), plaintext,
-                BuildAad(record.Parameters));
+            aes.Decrypt(nonce, record.WrappedDek.AsSpan(0, DekSize), record.WrappedDek.AsSpan(DekSize, TagSize), plaintext, aad);
             return plaintext;
         }
         catch (CryptographicException)
@@ -126,6 +136,7 @@ internal sealed class PasswordFileKeyProtector : IFileKeyProtector, IDisposable
         }
         finally
         {
+            CryptographicOperations.ZeroMemory(aad);
             CryptographicOperations.ZeroMemory(kek);
             CryptographicOperations.ZeroMemory(salt);
             CryptographicOperations.ZeroMemory(nonce);
@@ -146,19 +157,37 @@ internal sealed class PasswordFileKeyProtector : IFileKeyProtector, IDisposable
         int parallelism,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         byte[] passwordBytes = EncodePasswordUtf8();
         try
         {
-            using Argon2id argon2 = new(passwordBytes)
+            byte[] saltCopy = salt.ToArray();
+            try
             {
-                Salt = salt.ToArray(),
-                MemorySize = memoryKiB,
-                Iterations = iterations,
-                DegreeOfParallelism = parallelism
-            };
+                Task<byte[]> derivation = Task.Run(() =>
+                {
+                    using Argon2id argon2 = new(passwordBytes)
+                    {
+                        Salt = saltCopy,
+                        MemorySize = memoryKiB,
+                        Iterations = iterations,
+                        DegreeOfParallelism = parallelism
+                    };
+                    return argon2.GetBytes(KekSize);
+                });
 
-            Task<byte[]> derivation = argon2.GetBytesAsync(KekSize);
-            return await derivation.WaitAsync(cancellationToken).ConfigureAwait(false);
+                byte[] result = await derivation.ConfigureAwait(false);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    CryptographicOperations.ZeroMemory(result);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return result;
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(saltCopy);
+            }
         }
         finally
         {
