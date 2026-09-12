@@ -105,10 +105,17 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
             bool exactTargetSet = actualTargets.SetEquals(expectedShellTargets) &&
                                   actualTargets.Count == expectedShellTargets.Count;
             bool failClosedInput = text.Contains("string.IsNullOrWhiteSpace(target) || !AllowedTargets.Contains(target)", StringComparison.Ordinal);
+            bool trustedFileResolution =
+                text.Contains("TryResolveSystemFile(\"Taskmgr.exe\"", StringComparison.Ordinal) &&
+                text.Contains("TryResolveSystemFile(\"services.msc\"", StringComparison.Ordinal) &&
+                text.Contains("Path.Combine(Environment.SystemDirectory, fileName)", StringComparison.Ordinal) &&
+                text.Contains("Path.IsPathFullyQualified(resolvedPath) && File.Exists(resolvedPath)", StringComparison.Ordinal);
+            bool resolvedLaunch = text.Contains("FileName = resolvedTarget", StringComparison.Ordinal);
             bool shellOnly = text.Contains("UseShellExecute = true", StringComparison.Ordinal);
             bool directStart = text.Contains("Process.Start(new ProcessStartInfo", StringComparison.Ordinal);
+            bool noBareFileLaunch = !text.Contains("FileName = target", StringComparison.Ordinal);
 
-            if (exactTargetSet && failClosedInput && shellOnly && directStart)
+            if (exactTargetSet && failClosedInput && trustedFileResolution && resolvedLaunch && shellOnly && directStart && noBareFileLaunch)
                 continue;
         }
 
