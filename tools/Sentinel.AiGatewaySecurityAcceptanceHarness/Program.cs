@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using System.Text;
 
 Environment.SetEnvironmentVariable("SENTINEL_GATEWAY_SESSION_SIGNING_KEY", "acceptance-harness-signing-key-32-bytes-minimum");
 
@@ -40,6 +41,31 @@ Check(!anonymous.Authorized, "Anonymous analyze request is rejected");
 SessionValidationResult badRequestId = security.ValidateSession("Bearer " + basicToken, "not-a-guid", "Basic");
 Check(!badRequestId.Authorized, "Malformed request ID is rejected");
 
+using (StringContent validJson = new("{\"ok\":true}", Encoding.UTF8, "application/json"))
+using (var validDocument = await BoundedHttpJson.TryReadAsync(validJson, 1024, 8, CancellationToken.None))
+{
+    Check(validDocument?.RootElement.TryGetProperty("ok", out var ok) == true && ok.GetBoolean(), "Bounded upstream JSON accepts valid bounded content");
+}
+
+using (ByteArrayContent declaredOversized = new(new byte[2048]))
+{
+    declaredOversized.Headers.ContentLength = 2048;
+    using var oversizedDocument = await BoundedHttpJson.TryReadAsync(declaredOversized, 1024, 8, CancellationToken.None);
+    Check(oversizedDocument is null, "Declared oversized upstream JSON is rejected before parse");
+}
+
+using (var streamedOversized = new StreamContent(new NonSeekableRepeatingStream((byte)'A', 2048)))
+{
+    using var oversizedDocument = await BoundedHttpJson.TryReadAsync(streamedOversized, 1024, 8, CancellationToken.None);
+    Check(oversizedDocument is null, "Chunked oversized upstream JSON is rejected while streaming");
+}
+
+using (ByteArrayContent malformed = new(Encoding.UTF8.GetBytes("{not-json}")))
+{
+    using var malformedDocument = await BoundedHttpJson.TryReadAsync(malformed, 1024, 8, CancellationToken.None);
+    Check(malformedDocument is null, "Malformed upstream JSON fails closed");
+}
+
 Environment.SetEnvironmentVariable("SENTINEL_GATEWAY_SESSION_SIGNING_KEY", "too-short");
 var misconfigured = new GatewaySecurity(new FakeHttpClientFactory());
 Check(misconfigured.IssueSession("Basic", "test") is null, "Weak signing key fails closed");
@@ -56,4 +82,46 @@ sealed class RejectNetworkHandler : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+}
+
+sealed class NonSeekableRepeatingStream : Stream
+{
+    private readonly byte _value;
+    private int _remaining;
+
+    internal NonSeekableRepeatingStream(byte value, int length)
+    {
+        _value = value;
+        _remaining = length;
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        if (_remaining <= 0) return 0;
+        int read = Math.Min(count, _remaining);
+        Array.Fill(buffer, _value, offset, read);
+        _remaining -= read;
+        return read;
+    }
+
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_remaining <= 0) return ValueTask.FromResult(0);
+        int read = Math.Min(buffer.Length, _remaining);
+        buffer.Span[..read].Fill(_value);
+        _remaining -= read;
+        return ValueTask.FromResult(read);
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }
