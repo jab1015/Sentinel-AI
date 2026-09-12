@@ -1,0 +1,27 @@
+name: Sentinel Optimization State Hardening
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  optimization-state:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore optimization state harness
+        run: dotnet restore "tools/Sentinel.OptimizationStateAcceptanceHarness/Sentinel.OptimizationStateAcceptanceHarness.csproj"
+      - name: Build optimization state harness
+        run: dotnet build "tools/Sentinel.OptimizationStateAcceptanceHarness/Sentinel.OptimizationStateAcceptanceHarness.csproj" -c Release --no-restore
+      - name: Run optimization state harness
+        run: dotnet run --project "tools/Sentinel.OptimizationStateAcceptanceHarness/Sentinel.OptimizationStateAcceptanceHarness.csproj" -c Release --no-build
