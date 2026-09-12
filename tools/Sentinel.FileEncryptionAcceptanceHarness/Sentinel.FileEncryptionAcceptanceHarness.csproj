@@ -22,5 +22,8 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultFileKeyProtector.cs" Link="VaultFileKeyProtector.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultItemStoreService.cs" Link="VaultItemStoreService.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultItemExportService.cs" Link="VaultItemExportService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteContracts.cs" Link="SecureDeleteContracts.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteTargetValidator.cs" Link="SecureDeleteTargetValidator.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\StorageCapabilityDetector.cs" Link="StorageCapabilityDetector.cs" />
   </ItemGroup>
 </Project>
