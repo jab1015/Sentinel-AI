@@ -237,7 +237,7 @@ sealed class FaultingReadStream : Stream
         {
             _returnedPrefix = true;
             byte[] prefix = Encoding.UTF8.GetBytes("{\"partial\":");
-            prefix.CopyTo(buffer);
+            prefix.AsSpan().CopyTo(buffer.Span);
             return ValueTask.FromResult(prefix.Length);
         }
 
