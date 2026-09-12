@@ -221,7 +221,7 @@ Run("legacy destination-ready restore state fails closed", () =>
         Require(File.Exists(source) && File.ReadAllText(source) == "legacy-content", "Legacy recovery altered the existing destination.");
         Require(File.Exists(engine.PayloadPathForTest(id)) && File.Exists(engine.RecordPathForTest(id)) && File.Exists(engine.TransactionPathForTest(id)),
             "Legacy DestinationReady state was auto-finalized without exact-object ACL proof.");
-        Require(issues.Any(i => i.Code == "IncompleteRestore"), "Legacy DestinationReady state was not surfaced as recovery-required.");
+        Require(issues.Any(i => i.Code == "TransactionRecordMismatch"), "Legacy DestinationReady state was not rejected by recovery preflight.");
     }
     finally { Cleanup(root); }
 });
