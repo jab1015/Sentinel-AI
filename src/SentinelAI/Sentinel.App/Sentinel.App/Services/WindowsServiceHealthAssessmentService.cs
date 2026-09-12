@@ -60,25 +60,16 @@ namespace Sentinel.App.Services
                     ? "Sentinel found a Windows service state that warrants correlation before any repair is attempted."
                     : "One or more service states could not be fully verified. Sentinel will not change Windows based on incomplete evidence.";
 
-            return new WindowsServiceHealthAssessment(
-                evidence,
-                concerns,
-                repairInvestigationWarranted,
-                summary);
+            return new WindowsServiceHealthAssessment(evidence, concerns, repairInvestigationWarranted, summary);
         }
 
         private static ServiceHealthConcern DetermineConcern(ServiceExpectation expectation, ServiceQueryResult query)
         {
-            if (!query.Exists)
-                return ServiceHealthConcern.Unverified;
-
-            if (query.StartMode.Equals("Disabled", StringComparison.OrdinalIgnoreCase))
-                return ServiceHealthConcern.Disabled;
-
+            if (!query.Exists) return ServiceHealthConcern.Unverified;
+            if (query.StartMode.Equals("Disabled", StringComparison.OrdinalIgnoreCase)) return ServiceHealthConcern.Disabled;
             if (query.State.Equals("Stopped", StringComparison.OrdinalIgnoreCase) &&
                 (expectation.Importance == ServiceImportance.Security || expectation.Importance == ServiceImportance.Core))
                 return ServiceHealthConcern.UnexpectedlyStopped;
-
             return ServiceHealthConcern.None;
         }
 
@@ -102,8 +93,7 @@ namespace Sentinel.App.Services
         private static string QueryStartMode(string serviceName)
         {
             ProcessExecutionResult query = RunSc("qc", serviceName);
-            if (!query.Succeeded)
-                return "Unknown";
+            if (!query.Succeeded) return "Unknown";
 
             string output = query.StandardOutput;
             if (output.Contains("DISABLED", StringComparison.OrdinalIgnoreCase)) return "Disabled";
@@ -132,15 +122,7 @@ namespace Sentinel.App.Services
             }
             catch
             {
-                return new ProcessExecutionResult(
-                    ProcessExecutionOutcome.LaunchFailed,
-                    -1,
-                    string.Empty,
-                    string.Empty,
-                    false,
-                    false,
-                    false,
-                    "sc.exe query failed before execution completed.");
+                return ProcessExecutionResult.LaunchFailure("sc.exe query failed before execution completed.");
             }
         }
 
