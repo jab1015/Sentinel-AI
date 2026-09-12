@@ -40,6 +40,7 @@ internal sealed class FileEncryptionService
         byte[] noncePrefix = RandomNumberGenerator.GetBytes(NoncePrefixSize);
         long plaintextLength = 0;
         bool outputCreated = false;
+        OwnedFileIdentity outputIdentity = default;
 
         try
         {
@@ -62,6 +63,9 @@ internal sealed class FileEncryptionService
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 outputCreated = true;
+                if (!ExactOwnedOutputCleanup.TryCapture(encrypted, output, out outputIdentity))
+                    throw new InvalidDataException("Sentinel could not bind the encrypted output to a stable filesystem identity.");
+
                 await encrypted.WriteAsync(header.HeaderBytes, cancellationToken).ConfigureAwait(false);
                 await encrypted.WriteAsync(header.HeaderTag, cancellationToken).ConfigureAwait(false);
                 await SentinelEncryptedContainerV1.EncryptPayloadAsync(
@@ -74,7 +78,7 @@ internal sealed class FileEncryptionService
             FileContainerVerificationResult verification = await VerifyAsync(output, keyProtectors, cancellationToken).ConfigureAwait(false);
             if (!verification.Succeeded)
             {
-                bool remains = !TryDeleteOwnedOutput(output);
+                bool remains = !TryDeleteOwnedOutput(output, outputIdentity);
                 return FileEncryptionResult.Failure(
                     "PostWriteVerificationFailed",
                     $"The encrypted output failed reopen/authentication verification ({verification.Code}). The original file was kept.",
@@ -88,32 +92,32 @@ internal sealed class FileEncryptionService
         }
         catch (OperationCanceledException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileEncryptionResult.Failure("Canceled", "Encryption was canceled. The original file was kept.", source, output, plaintextLength, remains);
         }
         catch (UnauthorizedAccessException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileEncryptionResult.Failure("AccessDenied", "Windows denied access during encryption. The original file was kept.", source, output, plaintextLength, remains);
         }
         catch (IOException ex)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileEncryptionResult.Failure("IoFailure", $"Encryption stopped safely after an I/O failure ({ex.GetType().Name}). The original file was kept.", source, output, plaintextLength, remains);
         }
         catch (CryptographicException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileEncryptionResult.Failure("CryptographicFailure", "Authenticated encryption or key protection could not complete. The original file was kept.", source, output, plaintextLength, remains);
         }
         catch (InvalidDataException ex)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileEncryptionResult.Failure("InvalidContainerState", ex.Message, source, output, plaintextLength, remains);
         }
         catch (Exception ex)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileEncryptionResult.Failure("UnexpectedFailure", $"Encryption stopped safely ({ex.GetType().Name}). The original file was kept.", source, output, plaintextLength, remains);
         }
         finally
@@ -192,6 +196,7 @@ internal sealed class FileEncryptionService
             return FileDecryptionResult.Failure("OutputDirectoryUnavailable", "The plaintext output directory does not exist.", container, output);
 
         bool outputCreated = false;
+        OwnedFileIdentity outputIdentity = default;
         try
         {
             await using FileStream input = new(
@@ -207,6 +212,9 @@ internal sealed class FileEncryptionService
                 FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 outputCreated = true;
+                if (!ExactOwnedOutputCleanup.TryCapture(plaintext, output, out outputIdentity))
+                    throw new InvalidDataException("Sentinel could not bind the plaintext output to a stable filesystem identity.");
+
                 await SentinelEncryptedContainerV1.VerifyOrDecryptPayloadAsync(input, plaintext, opened, cancellationToken).ConfigureAwait(false);
                 await plaintext.FlushAsync(cancellationToken).ConfigureAwait(false);
                 plaintext.Flush(flushToDisk: true);
@@ -216,37 +224,37 @@ internal sealed class FileEncryptionService
         }
         catch (OperationCanceledException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("Canceled", "Decryption was canceled; no plaintext output was accepted.", container, output, remains);
         }
         catch (FileKeyUnavailableException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("KeyUnavailable", "None of the supplied key protectors could unlock this container.", container, output, remains);
         }
         catch (InvalidDataException ex)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("InvalidContainer", ex.Message, container, output, remains);
         }
         catch (CryptographicException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("AuthenticationFailed", "The container failed authenticated decryption; no plaintext output was accepted.", container, output, remains);
         }
         catch (UnauthorizedAccessException)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("AccessDenied", "Windows denied access during decryption.", container, output, remains);
         }
         catch (IOException ex)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("IoFailure", $"Decryption stopped safely after an I/O failure ({ex.GetType().Name}).", container, output, remains);
         }
         catch (Exception ex)
         {
-            bool remains = outputCreated && !TryDeleteOwnedOutput(output);
+            bool remains = outputCreated && !TryDeleteOwnedOutput(output, outputIdentity);
             return FileDecryptionResult.Failure("UnexpectedFailure", $"Decryption stopped safely ({ex.GetType().Name}).", container, output, remains);
         }
     }
@@ -320,13 +328,12 @@ internal sealed class FileEncryptionService
         }
     }
 
-    private static bool TryDeleteOwnedOutput(string path)
+    private static bool TryDeleteOwnedOutput(string path, OwnedFileIdentity identity)
     {
-        try
-        {
-            if (File.Exists(path)) File.Delete(path);
-            return !File.Exists(path);
-        }
-        catch { return false; }
+        if (identity.IsEmpty)
+            return false;
+        if (!ExactOwnedOutputCleanup.TryDeleteSameObject(path, identity))
+            return false;
+        return !File.Exists(path);
     }
 }
