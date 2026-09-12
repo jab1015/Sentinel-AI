@@ -9,5 +9,6 @@
   <ItemGroup>
     <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\QuarantineStoreEngine.cs" Link="QuarantineStoreEngine.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\QuarantineRecoveryGuard.cs" Link="QuarantineRecoveryGuard.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\BoundedProtectedJsonFile.cs" Link="BoundedProtectedJsonFile.cs" />
   </ItemGroup>
 </Project>
