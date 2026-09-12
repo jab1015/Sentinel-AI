@@ -41,7 +41,8 @@ function Resolve-PowerShellHost {
 
 function Quote-ProcessArgument([string]$Value) {
     if ($null -eq $Value) { return '""' }
-    return '"' + $Value.Replace('\', '\').Replace('"', '\"') + '"'
+    if ($Value.Contains('"')) { throw "Regression script path contains an unsupported quote character." }
+    return '"' + $Value + '"'
 }
 
 function Invoke-IsolatedSuite([string]$Path, [TimeSpan]$Timeout) {
