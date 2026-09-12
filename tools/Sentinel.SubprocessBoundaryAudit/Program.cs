@@ -15,6 +15,27 @@ static string FindRepoRoot()
     throw new InvalidOperationException("Repository root could not be located.");
 }
 
+static bool TryParseQuotedInitializerValues(string body, out HashSet<string> values)
+{
+    values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    foreach (string rawLine in body.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+    {
+        string line = rawLine.Trim();
+        if (line.Length == 0) continue;
+        if (line.EndsWith(',', StringComparison.Ordinal))
+            line = line[..^1].TrimEnd();
+        if (line.Length < 2 || line[0] != '"' || line[^1] != '"')
+            return false;
+
+        string value = line[1..^1];
+        if (value.Contains('\\') || value.Contains('"'))
+            return false;
+        if (!values.Add(value))
+            return false;
+    }
+    return values.Count > 0;
+}
+
 string root = FindRepoRoot();
 string productionRoot = Path.Combine(root, "src", "SentinelAI");
 if (!Directory.Exists(productionRoot)) throw new InvalidOperationException("Production source directory was not found.");
@@ -93,15 +114,9 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
             text,
             @"AllowedTargets\s*=\s*new\s*\([^)]*\)\s*\{(?<body>.*?)\};",
             RegexOptions.Singleline | RegexOptions.CultureInvariant);
-        if (initializer.Success)
+        if (initializer.Success &&
+            TryParseQuotedInitializerValues(initializer.Groups["body"].Value, out HashSet<string> actualTargets))
         {
-            HashSet<string> actualTargets = Regex.Matches(
-                    initializer.Groups["body"].Value,
-                    "\"(?<value>(?:\\.|[^\"\\])*)\"",
-                    RegexOptions.CultureInvariant)
-                .Select(match => Regex.Unescape(match.Groups["value"].Value))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
             bool exactTargetSet = actualTargets.SetEquals(expectedShellTargets) &&
                                   actualTargets.Count == expectedShellTargets.Count;
             bool failClosedInput = text.Contains("string.IsNullOrWhiteSpace(target) || !AllowedTargets.Contains(target)", StringComparison.Ordinal);
