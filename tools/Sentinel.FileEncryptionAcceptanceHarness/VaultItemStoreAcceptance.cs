@@ -1,10 +1,8 @@
 using Sentinel.App.Services;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class VaultItemStoreAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         string root = Path.Combine(Path.GetTempPath(), "SentinelVaultItemStoreHarness", Guid.NewGuid().ToString("N"));
