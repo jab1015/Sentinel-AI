@@ -42,7 +42,8 @@ A checkbox is marked complete only after required source, build, runtime, and ex
 ## Current checkpoint — 2026-09-11
 
 Hardening branch: `security/production-hardening-1218f5d`.
-Latest commit verified by the main Windows security workflow before this documentation checkpoint: `11d3e0f5fcdc381b544db6dacaead8529c3a1959` (`security(A09-A23): route netstat collection through bounded runner`).
+Latest package-evidence commit at this checkpoint: `4939bcf6c678cb2515272a189371c01b1182ca33` (`ci(package): verify broker inside generated MSIX`).
+Latest commit verified by the main Windows security workflow before the package-validation sequence: `11d3e0f5fcdc381b544db6dacaead8529c3a1959` (`security(A09-A23): route netstat collection through bounded runner`).
 
 ### Main Windows hardening gate
 
@@ -64,18 +65,22 @@ Commit-bound evidence accumulated on the hardening branch includes:
 
 These PASS results materially improve assurance but do not by themselves close findings that still require packaged runtime, adversarial Windows, Store, Google Cloud, architecture, or long-duration evidence.
 
-### Store/MSIX package gate — CURRENT BLOCKER
+### Store/MSIX package gate — PASS FOR UNSIGNED x64 CI PACKAGE
 
-GitHub Actions package run `34659474286` at commit `11d3e0f5fcdc381b544db6dacaead8529c3a1959` completed **FAILURE**.
+**STATUS: PASS for the independent unsigned x64 package-build/payload gate. This is not final Store-signed release qualification.**
 
-- `Locate MSBuild`: PASS.
-- `Build unsigned x64 MSIX staging package`: FAIL.
-- `Verify privileged broker is packaged`: SKIPPED because package build failed first.
-- `Record package inventory`: SKIPPED.
-
-The packaging project currently contains a project reference to `Sentinel.PrivilegedBroker`, but that reference alone is not accepted as proof that `Sentinel.PrivilegedBroker.exe` is present in the final MSIX payload.
-
-**Immediate next action:** retrieve the failed package job log for job `103458782033`, identify the exact MSBuild/MSIX error, correct only the proven cause, rerun the package gate, then explicitly verify that both `Sentinel.App.exe` and `Sentinel.PrivilegedBroker.exe` are present in the package output. Do not mark A29 or the privileged boundary release-ready until this passes.
+- Finding: The package workflow failed before package inventory could prove the privileged broker shipped.
+- Root cause: `Sentinel.App (Package).wapproj` set `GenerateTemporaryStoreCertificate=True` while the CI invocation explicitly set `AppxPackageSigningEnabled=false`. Visual Studio AppX target `_RemoveDisposableSigningCertificate` therefore invoked `RemoveDisposableSigningCertificate` without a `CertificateThumbprint`, producing `MSB4044`.
+- Files changed: `.github/workflows/security-hardening-package.yml`; `src/SentinelAI/Sentinel.App/Sentinel.App (Package)/Sentinel.App (Package).wapproj`.
+- Security behavior before: The package gate stopped after MSIX staging work and never produced accepted CI evidence that the final generated application package contained the privileged broker.
+- Security behavior after: Temporary Store certificate generation is disabled for the unsigned CI package. The workflow builds the x64 MSIX, locates the generated application MSIX, unpacks that exact package with Microsoft `MakeAppx.exe`, requires exactly one `Sentinel.App.exe` and exactly one `Sentinel.PrivilegedBroker.exe`, hashes the MSIX and both executables, and uploads a payload-inventory artifact.
+- Tests added: Diagnostic MSBuild log capture; generated-MSIX unpack and exact executable-count verification; package/MSIX/application/broker SHA-256 inventory artifact.
+- Tests passed: Run `34663107498` proved the minimal certificate fix allows the unsigned x64 package build to complete. Run `34663342919` at commit `4939bcf6c678cb2515272a189371c01b1182ca33` completed **SUCCESS**, including `Build unsigned x64 MSIX staging package`, `Verify generated MSIX payload`, `Upload package payload inventory`, and `Record package inventory`.
+- Package evidence: generated MSIX SHA-256 `B0392ACE0F2C35474B20AF762EA0401AA1F8759120BF6ABBD442FB40DE163B3D`; unpacked `Sentinel.App.exe` SHA-256 `A78E3ED29B961298341B796A8CA92C443B50791F26608E59D8700E9FABE90E70`; unpacked `Sentinel.PrivilegedBroker.exe` SHA-256 `578198BA009E4DB5ACB4732E08637D77C0703640E277BB5235BB0B2B8DF8DAE8`. Artifact `package-payload-inventory` ID `10288417134`, retained for 30 days by the workflow.
+- Tests failed: The earlier diagnostic run intentionally reproduced the original failure and captured `MSB4044`; no failure occurred in the final package-payload gate above.
+- Remaining concerns: The package is an unsigned CI staging package. Store-signed provenance, clean install, upgrade, uninstall, packaged runtime/UAC behavior, shipped architectures, and final release qualification remain open.
+- Related findings discovered: none from the proven package failure itself; package provenance/runtime evidence remains relevant to SAI-A07/SAI-A15/SAI-A29.
+- Recommended next action: Continue A02/A03/A04 quarantine hardening, then execute packaged broker/UAC adversarial validation and final Store/release qualification.
 
 ## Finding records
 
@@ -109,13 +114,13 @@ The packaging project currently contains a project reference to `Sentinel.Privil
 
 ### SAI-A15 / SAI-A07 — privileged execution boundary and process identity
 
-**STATUS: NEEDS MORE WORK**
+**STATUS: NEEDS MORE WORK — PACKAGE PRESENCE PROVEN**
 
 - Finding: Privileged actions lacked a consistent execution boundary and process termination could lose exact target identity across UAC delay.
 - Security behavior after: The hardening branch uses a versioned allowlisted named-pipe broker protocol, current-user pipe restriction, named-pipe peer PID verification, sibling Sentinel application executable verification, and execution-time process start/path/hash validation for termination. Cancellation/timeout paths do not report success and terminate the launched broker child where possible.
-- Build evidence: Desktop and broker x64 Release builds pass in Windows CI.
-- Remaining concerns: Adversarial Windows runtime validation for unauthorized same-user callers, package install path assumptions, UAC accept/deny, broker signing/provenance, ACL behavior, cancellation races, and target changes during approval. The MSIX package gate must also prove the broker is actually shipped.
-- Recommended next action: Clear package gate, then add broker IPC/UAC adversarial runtime fixtures against the packaged build.
+- Build/package evidence: Desktop and broker x64 Release builds pass in Windows CI. Run `34663342919` unpacked the generated x64 MSIX and proved both `Sentinel.App.exe` and `Sentinel.PrivilegedBroker.exe` are inside the package payload.
+- Remaining concerns: Adversarial Windows runtime validation for unauthorized same-user callers, executable/client spoofing, malformed/extra fields, arbitrary-command attempts, UAC accept/deny, broker signing/provenance, ACL behavior, cancellation races, PID reuse/target changes during approval, and packaged install-path behavior.
+- Recommended next action: Add broker IPC/UAC adversarial runtime fixtures against the packaged build.
 
 ### SAI-A09 / SAI-A17 — bounded subprocess ownership
 
@@ -187,25 +192,24 @@ Source remediation includes per-adapter throughput baselines/reset handling, bou
 
 ### SAI-A29 — architecture/test/release assurance
 
-**STATUS: NEEDS MORE WORK — PACKAGE GATE BLOCKED**
+**STATUS: NEEDS MORE WORK — UNSIGNED x64 PACKAGE GATE PASSES; RELEASE QUALIFICATION OPEN**
 
-The main Windows security gate is green, but the independent Store/MSIX package gate fails during the unsigned x64 package build before broker inventory can run. A project reference to the broker exists in the WAP project, but package presence has not been proven. A29 cannot close until the package gate passes and release qualification evidence is commit-bound.
+The independent x64 package gate now builds and unpacks the generated MSIX and proves both the desktop app and privileged broker are in the actual package payload. This removes the immediate package-build blocker but does not constitute production sign-off. A29 remains open until final-commit signed/Store-style package, clean install/upgrade/uninstall, shipped-architecture, supported-Windows, standard/admin/UAC, startup/background, Defender/firewall, recovery/failure, resource, and fresh 1-hour/8-hour stability evidence is commit-bound.
 
 ## Remaining work before independent Astra re-evaluation
 
-1. Fix the Store/MSIX packaging build and prove `Sentinel.PrivilegedBroker.exe` is actually in the package payload.
-2. Finish A02/A03/A04 quarantine boundary adversarial validation and any remaining handle/file-identity TOCTOU corrections.
-3. Finish A07/A15 broker IPC/UAC/package runtime validation.
-4. Implement/validate a safe handle-based A14 cleanup primitive or keep the feature explicitly disabled for release.
-5. Implement/validate dependency-aware A16 service remediation or keep automatic restart explicitly disabled for release.
-6. Close A19 by validating the final response after all UI composition/replacement.
-7. Add hostile A22 archive/response tests and remaining A21 evidence/cache tests.
-8. Validate A23/A24 network/throughput behavior on real Windows and document unavoidable coverage limitations honestly.
-9. Complete Google Cloud + Microsoft Store external validation for A05 and inspect deployed logs/redaction for A20.
-10. Perform adversarial re-audit of all original High findings, then all 29 findings.
-11. Run signed/package install-update-uninstall, supported Windows/architecture, startup/background/UAC/Defender/firewall/sleep-wake/network-loss/crash-recovery tests.
-12. Run fresh commit-bound 1-hour and 8-hour stability/resource tests.
-13. Only after those gates are satisfied, hand the resulting final commit to Astra for an independent production/security re-evaluation.
+1. Finish A02/A03/A04 quarantine boundary adversarial validation and remaining handle/file-identity TOCTOU/crash-recovery corrections.
+2. Finish A07/A15 broker IPC/UAC/package runtime validation.
+3. Implement/validate a safe handle-based A14 cleanup primitive or keep the feature explicitly disabled for release.
+4. Implement/validate dependency-aware A16 service remediation or keep automatic restart explicitly disabled for release.
+5. Close A19 by validating the final response after all UI composition/replacement.
+6. Add hostile A22 archive/response tests and remaining A21 evidence/cache tests.
+7. Validate A23/A24 network/throughput behavior on real Windows and document unavoidable coverage limitations honestly.
+8. Complete Google Cloud + Microsoft Store external validation for A05 and inspect deployed logs/redaction for A20.
+9. Perform adversarial re-audit of all original High findings, then all 29 findings.
+10. Run signed/package install-update-uninstall, supported Windows/architecture, startup/background/UAC/Defender/firewall/sleep-wake/network-loss/crash-recovery tests.
+11. Run fresh commit-bound 1-hour and 8-hour stability/resource tests.
+12. Only after those gates are satisfied, hand the resulting final commit to Astra for an independent production/security re-evaluation.
 
 ## Release closure rules
 
