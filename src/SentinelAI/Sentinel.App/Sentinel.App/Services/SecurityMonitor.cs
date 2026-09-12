@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Sentinel AI
  * Copyright (c) 2026 Modern Methods.
  */
@@ -43,25 +43,24 @@ namespace Sentinel.App.Services
                 return "Unavailable";
 
             Dictionary<string, string> values = ParseKeyValues(result.StandardOutput);
-            if (!TryGetBool(values, "AMServiceEnabled", out bool serviceEnabled) ||
-                !TryGetBool(values, "AntivirusEnabled", out bool antivirusEnabled) ||
-                !TryGetBool(values, "RealTimeProtectionEnabled", out bool realtimeEnabled))
-                return "Unavailable";
-
+            bool? serviceEnabled = TryGetNullableBool(values, "AMServiceEnabled");
+            bool? antivirusEnabled = TryGetNullableBool(values, "AntivirusEnabled");
+            bool? realTimeEnabled = TryGetNullableBool(values, "RealTimeProtectionEnabled");
             values.TryGetValue("RunningMode", out string? runningMode);
-            bool passive = !string.IsNullOrWhiteSpace(runningMode) &&
-                           runningMode.Contains("Passive", StringComparison.OrdinalIgnoreCase);
 
-            if (passive)
-                return "Passive";
-            if (!serviceEnabled || !antivirusEnabled || !realtimeEnabled)
-                return "Disabled or inactive";
-
+            int? signatureAgeDays = null;
             if (values.TryGetValue("SignatureAge", out string? signatureAgeText) &&
-                int.TryParse(signatureAgeText, out int signatureAgeDays) && signatureAgeDays > 3)
-                return "Enabled (signatures stale)";
+                int.TryParse(signatureAgeText, out int parsedSignatureAge))
+            {
+                signatureAgeDays = parsedSignatureAge;
+            }
 
-            return "Enabled";
+            return SecurityHealthClassificationPolicy.ClassifyDefender(
+                serviceEnabled,
+                antivirusEnabled,
+                realTimeEnabled,
+                runningMode,
+                signatureAgeDays);
         }
 
         private static string GetFirewallStatus()
@@ -96,15 +95,11 @@ namespace Sentinel.App.Services
                 }
             }
 
-            if (!service.Equals("Running", StringComparison.OrdinalIgnoreCase))
-                return "Disabled or inactive";
-            if (expectedCount < 3 || profileCount != expectedCount)
-                return "Unavailable";
-            if (enabledCount == profileCount)
-                return "Enabled";
-            if (enabledCount == 0)
-                return "Disabled";
-            return $"Partial ({enabledCount} of {profileCount} active profiles enabled)";
+            return SecurityHealthClassificationPolicy.ClassifyFirewall(
+                service,
+                expectedCount,
+                profileCount,
+                enabledCount);
         }
 
         private static ProcessExecutionResult RunPowerShell(string command)
@@ -140,10 +135,11 @@ namespace Sentinel.App.Services
             return values;
         }
 
-        private static bool TryGetBool(IReadOnlyDictionary<string, string> values, string key, out bool value)
+        private static bool? TryGetNullableBool(IReadOnlyDictionary<string, string> values, string key)
         {
-            value = false;
-            return values.TryGetValue(key, out string? text) && bool.TryParse(text, out value);
+            if (!values.TryGetValue(key, out string? text) || !bool.TryParse(text, out bool value))
+                return null;
+            return value;
         }
 
         public readonly record struct SecurityStatusSnapshot(string DefenderStatus, string FirewallStatus);
