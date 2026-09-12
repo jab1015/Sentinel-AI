@@ -38,7 +38,7 @@ internal sealed class RecoveryKeyMaterial : IDisposable
         string checksum = groups[^1];
         if (checksum.Length != ChecksumCharacters) return false;
 
-        string encodedSecret = string.Concat(groups, 0, groups.Length - 1);
+        string encodedSecret = string.Join(string.Empty, groups, 0, groups.Length - 1);
         if (encodedSecret.Length != EncodedSecretCharacters || !TryDecodeBase32(encodedSecret, out byte[] secret))
             return false;
 
