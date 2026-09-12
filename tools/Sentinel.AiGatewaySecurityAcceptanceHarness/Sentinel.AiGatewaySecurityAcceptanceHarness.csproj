@@ -8,5 +8,6 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/GatewaySecurity.cs" Link="GatewaySecurity.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/BoundedHttpJson.cs" Link="BoundedHttpJson.cs" />
   </ItemGroup>
 </Project>
