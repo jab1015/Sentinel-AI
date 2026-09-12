@@ -28,6 +28,13 @@ internal static class BoundedProcessRunner
         if (startInfo.UseShellExecute)
             return ProcessExecutionResult.LaunchFailure("BoundedProcessRunner requires UseShellExecute=false so output ownership is explicit.");
 
+        if (ChildProcessSafetyPolicy.IsBlocked(
+            new ChildProcessSafetyPolicy.ProcessStartInfoLike(startInfo.FileName ?? string.Empty),
+            out string blockedReason))
+        {
+            return ProcessExecutionResult.LaunchFailure(blockedReason);
+        }
+
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
 
