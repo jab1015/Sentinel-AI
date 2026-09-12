@@ -118,6 +118,46 @@ FirewallRuleVerification incompleteResult = FirewallRuleVerificationPolicy.Evalu
 Require(incompleteResult.QueryValid && incompleteResult.Exists && !incompleteResult.IsExactBlock,
     "Incomplete firewall scope evidence was incorrectly accepted.");
 
+string[] approvedServices = { "BITS", "bits", "wuauserv", "Spooler" };
+foreach (string service in approvedServices)
+    Require(ServiceRestartEngine.TryNormalizeServiceName(service, out string normalized) && !string.IsNullOrWhiteSpace(normalized),
+        $"Allowlisted service was rejected: {service}");
+
+string[] rejectedServices =
+{
+    "WinDefend",
+    "WdNisSvc",
+    "MpsSvc",
+    "SecurityHealthService",
+    "EventLog",
+    "RpcSs",
+    "BITS & net user attacker /add",
+    "../BITS",
+    "*",
+    "",
+    "   "
+};
+foreach (string service in rejectedServices)
+    Require(!ServiceRestartEngine.TryNormalizeServiceName(service, out _), $"Non-allowlisted or injected service target was accepted: '{service}'");
+
+string recoveryRoot = Path.Combine(Path.GetTempPath(), "SentinelServiceRestartHarness", Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(recoveryRoot);
+try
+{
+    ServiceRestartEngine emptyRecovery = new(recoveryRoot);
+    Require(emptyRecovery.RecoverPending().Succeeded, "Empty service-restart recovery directory should be safe.");
+
+    string malformedRecord = Path.Combine(recoveryRoot, $"service-restart-{Guid.NewGuid():N}.json");
+    File.WriteAllText(malformedRecord, "{}");
+    ServiceRestartResult malformedRecovery = emptyRecovery.RecoverPending();
+    Require(!malformedRecovery.Succeeded && malformedRecovery.Code == "RecoveryRecordInvalid",
+        "Malformed service restart recovery state did not fail closed.");
+}
+finally
+{
+    try { if (Directory.Exists(recoveryRoot)) Directory.Delete(recoveryRoot, true); } catch { }
+}
+
 Console.WriteLine("Same packaged broker/client identity: PASS");
 Console.WriteLine("Different/missing package identity rejected: PASS");
 Console.WriteLine("Firewall literal-IP validation: PASS");
@@ -126,4 +166,6 @@ Console.WriteLine("Firewall mutation argument shape fixed/allowlisted: PASS");
 Console.WriteLine("Firewall exact enabled outbound Block verification: PASS");
 Console.WriteLine("Disabled/Allow/wrong-direction/wrong-scope rules rejected: PASS");
 Console.WriteLine("Malformed firewall query output distinguished from verified rule absence: PASS");
+Console.WriteLine("Service restart allowlist and injection rejection: PASS");
+Console.WriteLine("Malformed service restart recovery fails closed: PASS");
 Console.WriteLine("RESULT: PASS");
