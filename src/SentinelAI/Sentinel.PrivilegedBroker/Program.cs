@@ -219,11 +219,13 @@ BrokerFirewallRuleVerification QueryFirewallRuleForMutation(string remoteIp)
 {
     string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
     string command =
+        "$ErrorActionPreference='Stop'; try { " +
         "$name='" + ruleName.Replace("'", "''", StringComparison.Ordinal) + "'; " +
-        "$rules=@(Get-NetFirewallRule -PolicyStore ActiveStore -DisplayName $name -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -eq $name}); " +
+        "$rules=@(Get-NetFirewallRule -PolicyStore ActiveStore -DisplayName $name -ErrorAction Stop | Where-Object {$_.DisplayName -eq $name}); " +
         "if($rules.Count -eq 0){'FOUND=0'; exit 0}; if($rules.Count -ne 1){\"FOUND=$($rules.Count)`nCONFLICT=True\"; exit 0}; " +
-        "$r=$rules[0]; $a=@($r | Get-NetFirewallAddressFilter); $p=@($r | Get-NetFirewallPortFilter); $app=@($r | Get-NetFirewallApplicationFilter); $svc=@($r | Get-NetFirewallServiceFilter); " +
-        "\"FOUND=1`nENABLED=$($r.Enabled)`nACTION=$($r.Action)`nDIRECTION=$($r.Direction)`nPROFILE=$($r.Profile)`nREMOTE=$(@($a.RemoteAddress) -join ',')`nLOCAL=$(@($a.LocalAddress) -join ',')`nPROTOCOL=$($p.Protocol)`nLOCALPORT=$(@($p.LocalPort) -join ',')`nREMOTEPORT=$(@($p.RemotePort) -join ',')`nPROGRAM=$($app.Program)`nSERVICE=$($svc.Service)\"";
+        "$r=$rules[0]; $a=@($r | Get-NetFirewallAddressFilter -ErrorAction Stop); $p=@($r | Get-NetFirewallPortFilter -ErrorAction Stop); $app=@($r | Get-NetFirewallApplicationFilter -ErrorAction Stop); $svc=@($r | Get-NetFirewallServiceFilter -ErrorAction Stop); " +
+        "\"FOUND=1`nENABLED=$($r.Enabled)`nACTION=$($r.Action)`nDIRECTION=$($r.Direction)`nPROFILE=$($r.Profile)`nREMOTE=$(@($a.RemoteAddress) -join ',')`nLOCAL=$(@($a.LocalAddress) -join ',')`nPROTOCOL=$($p.Protocol)`nLOCALPORT=$(@($p.LocalPort) -join ',')`nREMOTEPORT=$(@($p.RemotePort) -join ',')`nPROGRAM=$($app.Program)`nSERVICE=$($svc.Service)\"; " +
+        "} catch { Write-Error 'SENTINEL_FIREWALL_QUERY_FAILED'; exit 70 }";
 
     string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
     string powershell = string.IsNullOrWhiteSpace(system)
