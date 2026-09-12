@@ -252,10 +252,11 @@ internal sealed class SentinelVaultService : IDisposable
             byte[] wrapped = new byte[ItemKeySize + ItemTagSize];
             ciphertext.CopyTo(wrapped, 0);
             tag.CopyTo(wrapped, ItemKeySize);
+            byte[] durableNonce = nonce.ToArray();
             Touch();
             return new VaultItemKeyLease(
                 itemKey,
-                new VaultWrappedItemKey(VaultFormatVersion, vaultId, itemId, nonce, wrapped));
+                new VaultWrappedItemKey(VaultFormatVersion, vaultId, itemId, durableNonce, wrapped));
         }
         catch
         {
