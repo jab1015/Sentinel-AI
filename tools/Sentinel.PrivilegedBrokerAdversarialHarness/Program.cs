@@ -34,6 +34,23 @@ Require(!BrokerIdentityPolicy.SamePackage(null, packageA), "Missing broker packa
 Require(!BrokerIdentityPolicy.SamePackage(packageA, string.Empty), "Empty client package identity was accepted.");
 Require(!BrokerIdentityPolicy.SamePackage("   ", packageA), "Whitespace broker package identity was accepted.");
 
+string[] protectedProcesses =
+{
+    "System", "Idle", "Registry", "smss", "csrss", "wininit", "winlogon", "services", "lsass",
+    "svchost", "dwm", "explorer", "Sentinel.App", "Sentinel.PrivilegedBroker", "Memory Compression",
+    "Secure System", "LsaIso", "fontdrvhost", "sihost", "taskhostw", "conhost", "WmiPrvSE", "MsMpEng",
+    "SecurityHealthService", "NisSrv"
+};
+foreach (string processName in protectedProcesses)
+{
+    Require(BrokerProcessTerminationPolicy.IsProtected(processName), $"Protected process was not blocked by broker policy: {processName}");
+    Require(BrokerProcessTerminationPolicy.IsProtected(processName.ToUpperInvariant() + ".exe"), $"Protected process .exe/case normalization failed: {processName}");
+}
+Require(BrokerProcessTerminationPolicy.IsProtected(null), "Missing process identity did not fail closed.");
+Require(BrokerProcessTerminationPolicy.IsProtected("   "), "Blank process identity did not fail closed.");
+Require(!BrokerProcessTerminationPolicy.IsProtected("notepad"), "Ordinary non-protected process was blocked unexpectedly.");
+Require(!BrokerProcessTerminationPolicy.IsProtected("sample-worker.exe"), "Ordinary .exe process was blocked unexpectedly.");
+
 Require(BrokerFirewallPolicy.TryNormalizeRemoteIp("203.0.113.10", out string ipv4) && ipv4 == "203.0.113.10", "Literal IPv4 target was rejected or changed unexpectedly.");
 Require(BrokerFirewallPolicy.TryNormalizeRemoteIp("2001:db8::10", out string ipv6) && ipv6.Contains(':', StringComparison.Ordinal), "Literal IPv6 target was rejected.");
 
@@ -143,6 +160,7 @@ finally
 
 Console.WriteLine("Same packaged broker/client identity: PASS");
 Console.WriteLine("Different/missing package identity rejected: PASS");
+Console.WriteLine("Broker protected-process policy: PASS");
 Console.WriteLine("Firewall literal-IP validation: PASS");
 Console.WriteLine("Firewall injection/non-literal targets rejected: PASS");
 Console.WriteLine("Firewall mutation argument shape fixed/allowlisted: PASS");
