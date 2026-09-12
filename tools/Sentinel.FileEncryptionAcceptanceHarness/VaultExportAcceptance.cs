@@ -123,7 +123,7 @@ internal static class VaultExportAcceptance
             Console.WriteLine("Vault export metadata/ciphertext immutability: PASS");
             Console.WriteLine("Vault export collision / internal-destination refusal: PASS");
             Console.WriteLine("Vault locked / unknown / pending item refusal: PASS");
-            Console.WriteLine("Vault lock revokes in-flight export and removes exact-owned plaintext: PASS");
+            Console.WriteLine("Vault lock revokes in-flight export after DEK unwrap and removes exact-owned plaintext: PASS");
         }
         finally
         {
@@ -156,7 +156,7 @@ internal static class VaultExportAcceptance
             interruptedDestination,
             CancellationToken.None);
 
-        WaitForPlaintextWriteToBegin(interruptedDestination, inFlight, TimeSpan.FromSeconds(30));
+        WaitForPlaintextOutputCreation(interruptedDestination, inFlight, TimeSpan.FromSeconds(30));
         vault.Lock();
 
         VaultExportResult interrupted = inFlight.WaitAsync(TimeSpan.FromSeconds(30))
@@ -179,7 +179,7 @@ internal static class VaultExportAcceptance
             "Vault could not reopen after the in-flight export lock transition.");
     }
 
-    private static void WaitForPlaintextWriteToBegin(
+    private static void WaitForPlaintextOutputCreation(
         string destination,
         Task exportTask,
         TimeSpan timeout)
@@ -187,7 +187,11 @@ internal static class VaultExportAcceptance
         Stopwatch stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < timeout)
         {
-            if (TryGetLength(destination, out long length) && length > 0)
+            // FileEncryptionService unwraps/authenticates the container DEK before it creates
+            // the plaintext output. Observing this exact destination therefore proves the
+            // lock transition occurs after DEK recovery without relying on share-sensitive
+            // file-length metadata or an arbitrary timing delay.
+            if (File.Exists(destination))
                 return;
             if (exportTask.IsCompleted)
                 break;
@@ -198,27 +202,8 @@ internal static class VaultExportAcceptance
             exportTask.GetAwaiter().GetResult();
         throw new InvalidOperationException(
             exportTask.IsCompleted
-                ? "In-flight export completed before the harness observed a plaintext write; revocation was not exercised."
-                : "Timed out waiting for an in-flight plaintext export to begin.");
-    }
-
-    private static bool TryGetLength(string path, out long length)
-    {
-        length = 0;
-        try
-        {
-            if (!File.Exists(path)) return false;
-            length = new FileInfo(path).Length;
-            return true;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
+                ? "In-flight export completed before the harness observed plaintext output creation; revocation was not exercised."
+                : "Timed out waiting for an in-flight plaintext export to create its owned output.");
     }
 
     private static void WriteBoundedLargeFixture(string path, long length)
