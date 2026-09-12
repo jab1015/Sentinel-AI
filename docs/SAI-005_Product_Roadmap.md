@@ -1,6 +1,6 @@
 # SAI-005 — Product Roadmap
 
-Version: 2.1  
+Version: 2.2  
 Status: Active — Production hardening roadmap  
 Last Updated: 2026-09-12
 
@@ -33,13 +33,22 @@ Status: **ACTIVE**
 
 Baseline: 29 findings (14 High, 15 Medium) from commit `1218f5d...`.
 
-Current accomplishments include bounded subprocess execution, quarantine recovery/cleanup hardening, package payload verification, broker package-identity binding, Authenticode improvements, deterministic DISM/SFC classification, redaction/history/diagnostic/event-filtering tests, and AI gateway security harness coverage.
+Current proven code checkpoint before the latest documentation synchronization: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`.
+
+Exact-head Windows hardening run `34676187598` and package run `34676187667` both passed at that checkpoint. These are deterministic/CI gates only, not production approval.
+
+Current accomplishments include bounded subprocess execution, quarantine recovery/cleanup hardening, package payload verification, broker package-identity binding, Authenticode improvements, final Ask Sentinel display-time claim validation, initial-monitoring startup regression protection, stricter firewall-containment verification, deterministic Defender/firewall health classification, DISM/SFC classification, redaction/history/diagnostic/event-filtering tests, and AI gateway security harness coverage.
+
+A17 re-review also found and corrected a remaining custom network-repair process path: `NetworkRepairExecutor` now uses the common bounded runner so cancellation/timeout cannot legitimately report completion while leaving its child outside the shared process-ownership boundary.
+
+A14 temporary cleanup and A16 automatic service restart remain intentionally fail-closed/disabled until their full destructive-operation safety contracts can be implemented and validated.
 
 Exit criteria:
 
 - Every High and Medium finding corrected or explicitly disabled/fail-closed where a safe capability is not ready.
 - Required deterministic, adversarial, packaged-runtime, cloud, Store, and architecture-specific evidence attached to each finding.
-- Full 29-finding adversarial re-audit completed.
+- Full High-finding adversarial re-audit and full 29-finding final re-audit completed.
+- Fresh final-commit 1-hour and 8-hour stability/resource evidence completed.
 
 ## Phase B — Active Protection
 
@@ -57,12 +66,12 @@ Objectives:
 
 ## Phase C — Ask Sentinel Trust Boundary
 
-Status: **ACTIVE**
+Status: **SOURCE IMPLEMENTED — RUNTIME VALIDATION REMAINS**
 
-- Preserve natural-language investigation and explanations.
-- Final displayed answer must pass deterministic claim/provenance validation after every response replacement/composition path.
-- Separate VERIFIED FACT, OBSERVED, INFERRED, ACTION VERIFIED, and ADVISORY semantics.
-- AI prose must never invent blocked/quarantined/repaired/Defender/firewall outcomes.
+- Final displayed answers now pass deterministic validation after response replacement/composition.
+- Post-orchestrator replacements do not inherit an earlier validation state.
+- Advisory/inferred prose cannot assert blocked/quarantined/repaired/Defender/firewall outcomes without verified action evidence.
+- Installed/runtime response paths and final provenance UX still require validation.
 
 ## Phase D — Cloud and Entitlement Validation
 
@@ -93,55 +102,71 @@ Required before release sign-off:
 
 ## Phase F — Premium Privacy Protection
 
-Status: **PLANNED — DO NOT IMPLEMENT UNTIL CURRENT HARDENING/RELEASE GATES ARE CLOSED**
+Status: **PLANNED — DO NOT IMPLEMENT UNTIL CURRENT HARDENING/RELEASE GATES ARE CLOSED OR EXPLICITLY AUTHORIZED**
+
+This phase is intentionally preserved during production hardening.
 
 Subscription-only roadmap:
 
 - File Explorer context-menu integration: Inspect with Sentinel AI, Secure Delete, Encrypt File, Add to Sentinel Vault.
-- A thin, non-privileged Explorer extension that only activates Sentinel with selected-item context; all protected work remains in the app/broker architecture.
-- Secure Delete for user-selected files using supported Windows/storage mechanisms, with exact target revalidation, protected-location safeguards, media-aware behavior, explicit confirmation, and verification-oriented result reporting.
-- Safe discovery of attributable local copies/references such as Sentinel-created artifacts, File History/Previous Versions indicators, search references, temporary/recovery copies, and cloud-sync indicators where attribution is reliable.
-- No automatic removal of unrelated system data, broad restore/history sets, or system-managed paging/hibernation files as a side effect of deleting one selected file.
-- Strong authenticated file encryption using a reviewed standard design such as AES-256-GCM with a fresh random data key per item and authenticated metadata.
-- Windows-account protection using current-user DPAPI key wrapping.
-- Portable password protection using a maintained, reviewed password KDF such as Argon2id when supportable.
-- Independent high-entropy recovery-key support with explicit user confirmation before optional deletion of the plaintext original.
-- Sentinel Vault with a vault master-key hierarchy protecting per-item keys, automatic locking, Windows-session-lock integration, password/account/recovery options, and optional Windows Hello/TPM integration only after dedicated design review.
-- Safe encryption transaction: create and verify a new encrypted container before offering to remove the plaintext source; never destroy the only known-good copy if encryption verification fails.
-- Existing server-side subscription/entitlement architecture remains authoritative for premium access, while broker/file-identity safety checks remain mandatory regardless of entitlement.
-- Independent privacy/crypto review before release, including corruption, wrong-key, recovery, crash, cancellation, large-file, storage-type, BitLocker, package, and upgrade scenarios.
+- A thin, non-privileged Explorer extension that only identifies selected shell items and activates Sentinel; it must not directly encrypt, delete, call cloud services, validate subscriptions, scan, or invoke privileged broker actions.
+- Secure Delete for explicitly selected user files using supported Windows/storage mechanisms, exact target identity and immediate revalidation, canonicalization, protected-location checks, reparse/junction/link defenses, object-race resistance, media-aware behavior, explicit confirmation, transactional/fail-closed behavior, post-operation verification, and structured evidence.
+- Media-aware treatment of HDD, SATA SSD, NVMe/flash-backed storage, NTFS, BitLocker, and cloud-synchronized locations without claiming physical-media certainty Windows/firmware cannot prove.
+- Privacy results must distinguish **VERIFIED**, **REQUESTED**, **REMAINS**, and **CANNOT PROVE**.
+- Attributable-copy/history discovery is separate from deletion. Potential sources include Sentinel-created artifacts, File History/Previous Versions indicators, application recovery/temp copies where attribution is reliable, Windows Search/Recent/Jump List references, and cloud-sync indicators.
+- Broader recovery/history operations that affect unrelated information must be reported, not silently executed as part of one-file deletion.
+- Normal single-file Secure Delete must not directly modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`, wipe unrelated restore/history sets, or modify system databases merely because a selected file may once have been represented there.
+- Strong authenticated encryption using AES-256-GCM rather than a Sentinel-specific cipher. Each item uses a fresh cryptographically random data-encryption key, unique nonce material, authenticated metadata, versioned container format, and corruption detection. Large files require a reviewed streaming/chunked format.
+- Safe encryption transaction: validate source, create separate encrypted output, complete encryption, flush, reopen/authenticate/verify, and only then permit optional plaintext removal. Encryption or verification failure keeps the original. Plaintext-removal failure keeps the encrypted copy and reports that plaintext remains.
+- Windows-account mode uses current-user Windows data protection for wrapping independent file keys rather than machine-wide protection by default.
+- Portable password mode uses a maintained reviewed KDF, preferring Argon2id when supportable, with random salt, versioned parameters, no plaintext password storage, and authenticated metadata.
+- Independent high-entropy recovery keys support Copy, Save, and Print. Recovery secrets are not silently uploaded/escrowed. Users must understand recovery configuration before `Encrypt + Secure Delete Original` is enabled.
+- Sentinel Vault uses a vault master key to wrap independent per-item keys rather than one raw content key for all files. It includes automatic timeout/session locking, Windows-account/password/recovery modes, encrypted sensitive metadata where practical, and optional future Windows Hello/TPM only after dedicated review.
+- Avoid plaintext temporary extraction from the vault wherever practical.
+- Existing server-side subscription/entitlement architecture remains authoritative for premium access. Explorer contains no reusable entitlement secret, and entitlement never substitutes for filesystem/object safety validation.
+- Independent privacy/cryptographic review and Windows runtime/storage validation are mandatory before release.
 
 ### Phase F implementation order
 
 1. Complete current production hardening and release qualification.
 2. Add and validate harmless `Inspect with Sentinel AI` Explorer integration.
-3. Design and independently review the encrypted-container/recovery format.
-4. Implement encryption and recovery modes.
-5. Implement Sentinel Vault.
-6. Implement selected-file Secure Delete using the proven broker and exact-target safeguards.
-7. Add attributable-copy discovery and carefully scoped cleanup actions.
-8. Complete independent privacy/crypto and Windows runtime validation before marketing claims are finalized.
+3. Specify and independently review the encrypted-container/recovery format.
+4. Implement encryption core.
+5. Implement recovery modes.
+6. Implement Sentinel Vault.
+7. Implement Secure Delete for the selected primary file using proven exact-target safeguards.
+8. Add attributable-copy discovery and carefully scoped cleanup.
+9. Add advanced privacy options only where safely supported.
+10. Complete independent privacy/crypto review and Windows runtime/storage validation.
 
-### Result semantics
+### Minimum Phase F validation matrix
 
-Privacy features must distinguish:
+Encryption: normal encrypt/decrypt, wrong password/account, recovery key, corrupt/truncated ciphertext/metadata, large/empty files, cancellation, crash, disk full, destination collision, concurrency, and format compatibility.
 
-- **VERIFIED** — Sentinel directly verified the result.
-- **REQUESTED** — Sentinel requested a supported Windows/storage action but cannot independently prove lower-level physical effects.
-- **REMAINS** — an attributable local/external copy remains.
-- **CANNOT PROVE** — the platform or storage hardware does not expose enough information for Sentinel to prove absence.
+Vault: lock/unlock, automatic/session lock, wrong credentials, recovery, abrupt termination, corrupted metadata, and package upgrade.
 
-The product goal is maximum safe privacy protection with transparent evidence, not unsupported guarantees.
+Secure Delete/privacy: ordinary/long/Unicode paths, link/reparse/race cases, protected Windows paths, synchronized folders, HDD/SSD/NVMe/BitLocker, cancellation, access denied, crash, unavailable volume, and declined confirmation.
+
+Explorer: clean install, upgrade/uninstall, Explorer restart, multi-select, unsupported item types, and shell-crash resistance.
+
+Subscription: unsubscribed, expired, revoked, tampered capability, backend/offline failure, and Store unavailable.
+
+### Marketing boundary
+
+Do not market Secure Delete as "guaranteed forensically unrecoverable" unless specific platform/media evidence actually proves that claim. Preferred positioning remains `Secure Delete`, `Maximum safe privacy removal`, `Verified removal where Sentinel can prove it`, and `Storage-aware secure deletion`.
 
 ## Current Next Milestones
 
-1. Broker packaged/UAC adversarial validation (A07/A15).
-2. Final Ask Sentinel claim boundary (A19).
-3. Authenticode extended runtime matrix (A01).
-4. AI gateway staging/Store validation (A05).
-5. Remaining findings and full re-audit.
-6. Final release qualification.
-7. Only then begin Phase F Premium Privacy Protection.
+1. Finish broker packaged/UAC adversarial runtime validation (A07/A15).
+2. Complete remaining Ask Sentinel installed/runtime validation (A19).
+3. Complete Authenticode extended runtime matrix (A01).
+4. Execute AI gateway Google Cloud/Store staging validation (A05).
+5. Finish A06/A08/A10/A11/A13/A17 runtime evidence.
+6. Complete or safely leave disabled A14/A16.
+7. Complete A21/A22/A23/A24/A28.
+8. Complete A29 release qualification.
+9. Fresh 1-hour/8-hour stability plus High-finding and full 29-finding re-audits.
+10. Only then begin Phase F Premium Privacy Protection unless explicitly authorized earlier.
 
 ---
 
