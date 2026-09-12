@@ -88,6 +88,11 @@
       <SkipGetTargetFrameworkProperties>True</SkipGetTargetFrameworkProperties>
       <ReferenceOutputAssembly>False</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\..\Sentinel.ExplorerExtension\Sentinel.ExplorerExtension.vcxproj">
+      <ReferenceOutputAssembly>False</ReferenceOutputAssembly>
+      <SetPlatform Condition="'$(Platform)' == 'x86'">Platform=Win32</SetPlatform>
+      <SetPlatform Condition="'$(Platform)' != 'x86'">Platform=$(Platform)</SetPlatform>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
