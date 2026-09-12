@@ -77,8 +77,9 @@ string[] deleteArgs = BrokerFirewallPolicy.BuildDeleteArguments("203.0.113.10");
 Require(deleteArgs.SequenceEqual(new[]
 {
     "advfirewall", "firewall", "delete", "rule",
-    $"name={BrokerFirewallPolicy.BuildRuleName("203.0.113.10")}"
-}), "Firewall removal arguments differ from the fixed allowlisted shape.");
+    $"name={BrokerFirewallPolicy.BuildRuleName("203.0.113.10")}",
+    "dir=out", "remoteip=203.0.113.10"
+}), "Firewall removal arguments are not constrained to the deterministic name, outbound direction, and exact remote IP.");
 
 const string testIp = "203.0.113.10";
 FirewallRuleVerification exact = FirewallRuleVerificationPolicy.Evaluate(ExactFirewallEvidence(testIp), testIp);
