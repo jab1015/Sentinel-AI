@@ -216,21 +216,22 @@ namespace Sentinel.App.Services
             try
             {
                 if (!TryCreatePinnedHttpsUri(uri, out Uri? expectedUri)) return false;
+                using CancellationTokenSource deadline = new(NetworkTimeout);
                 using HttpClientHandler handler = new() { AllowAutoRedirect = false };
-                using HttpClient client = new(handler) { Timeout = NetworkTimeout };
+                using HttpClient client = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
                 using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
-                using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+                using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).GetAwaiter().GetResult();
                 if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri)) return false;
                 if (response.Content.Headers.ContentLength is long declared && declared > maxBytes) return false;
 
-                using Stream input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                using Stream input = response.Content.ReadAsStreamAsync(deadline.Token).GetAwaiter().GetResult();
                 using FileStream output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
                 byte[] buffer = new byte[64 * 1024];
                 int total = 0;
                 while (true)
                 {
-                    int read = input.Read(buffer, 0, buffer.Length);
+                    int read = input.ReadAsync(buffer.AsMemory(0, buffer.Length), deadline.Token).AsTask().GetAwaiter().GetResult();
                     if (read == 0) break;
                     total = checked(total + read);
                     if (total > maxBytes) return false;
@@ -332,21 +333,22 @@ namespace Sentinel.App.Services
             try
             {
                 if (!TryCreatePinnedHttpsUri(uri, out Uri? expectedUri)) return new(false, string.Empty);
+                using CancellationTokenSource deadline = new(NetworkTimeout);
                 using HttpClientHandler handler = new() { AllowAutoRedirect = false };
-                using HttpClient client = new(handler) { Timeout = NetworkTimeout };
+                using HttpClient client = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
                 using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
-                using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
+                using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).GetAwaiter().GetResult();
                 if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri)) return new(false, string.Empty);
                 if (response.Content.Headers.ContentLength is long declared && declared > MaximumWebBodyBytes) return new(false, string.Empty);
 
-                using Stream input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+                using Stream input = response.Content.ReadAsStreamAsync(deadline.Token).GetAwaiter().GetResult();
                 using MemoryStream bounded = new();
                 byte[] buffer = new byte[32 * 1024];
                 int total = 0;
                 while (true)
                 {
-                    int read = input.Read(buffer, 0, buffer.Length);
+                    int read = input.ReadAsync(buffer.AsMemory(0, buffer.Length), deadline.Token).AsTask().GetAwaiter().GetResult();
                     if (read == 0) break;
                     total = checked(total + read);
                     if (total > MaximumWebBodyBytes) return new(false, string.Empty);
@@ -362,7 +364,8 @@ namespace Sentinel.App.Services
             expectedUri = null;
             if (!Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) ||
                 !parsed.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                string.IsNullOrWhiteSpace(parsed.Host))
+                string.IsNullOrWhiteSpace(parsed.Host) ||
+                !string.IsNullOrEmpty(parsed.UserInfo))
             {
                 return false;
             }
