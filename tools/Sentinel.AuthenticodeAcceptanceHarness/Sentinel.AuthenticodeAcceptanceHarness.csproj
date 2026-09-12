@@ -10,5 +10,6 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\AuthenticodeVerifier.cs" Link="AuthenticodeVerifier.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\ProcessTrustLocationPolicy.cs" Link="ProcessTrustLocationPolicy.cs" />
   </ItemGroup>
 </Project>
