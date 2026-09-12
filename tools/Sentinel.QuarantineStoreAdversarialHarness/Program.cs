@@ -237,8 +237,9 @@ Run("destination-acl-ready recovery requires exact stable object", () =>
         var q = engine.Quarantine(id, source);
         Require(q.Succeeded, "Quarantine failed.");
         File.WriteAllText(source, "acl-ready-content");
+        string tempPath = Path.Combine(Path.GetDirectoryName(source)!, $".{Path.GetFileName(source)}.sentinel-restore-{id}-{Guid.NewGuid():N}.tmp");
         File.WriteAllText(engine.TransactionPathForTest(id), JsonSerializer.Serialize(
-            new QuarantineTransaction(id, "Restore", "DestinationAclReady", source, string.Empty, q.Sha256, DateTimeOffset.UtcNow)));
+            new QuarantineTransaction(id, "Restore", "DestinationAclReady", source, tempPath, q.Sha256, DateTimeOffset.UtcNow)));
 
         var issues = engine.Recover();
         Require(File.Exists(source) && File.ReadAllText(source) == "acl-ready-content", "Recovery altered the committed restored destination.");
@@ -271,7 +272,7 @@ Run("forged destination-acl-ready path cannot finalize same-hash victim", () =>
         Require(File.Exists(victim) && File.ReadAllText(victim) == "same-content", "Forged recovery altered the same-hash victim.");
         Require(File.Exists(engine.PayloadPathForTest(id)) && File.Exists(engine.RecordPathForTest(id)) && File.Exists(engine.TransactionPathForTest(id)),
             "Forged DestinationAclReady transaction discarded protected quarantine state.");
-        Require(issues.Any(i => i.Code == "IncompleteRestore"), "Forged DestinationAclReady path was not surfaced as recovery-required.");
+        Require(issues.Any(i => i.Code == "TransactionRecordMismatch"), "Forged DestinationAclReady path was not rejected by recovery preflight.");
     }
     finally { Cleanup(root); }
 });
