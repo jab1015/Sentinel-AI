@@ -97,9 +97,13 @@ internal static class BrokerPipeMessageIO
 
     internal static async Task WriteBoundedLineAsync(Stream stream, string message, CancellationToken cancellationToken = default)
     {
-        byte[] payload = StrictUtf8.GetBytes(message + "\n");
-        if (payload.Length > MaximumMessageBytes)
+        int messageBytes = StrictUtf8.GetByteCount(message);
+        if (messageBytes >= MaximumMessageBytes)
             throw new InvalidDataException("Broker response exceeded the maximum message size.");
+
+        byte[] payload = new byte[messageBytes + 1];
+        StrictUtf8.GetBytes(message.AsSpan(), payload.AsSpan(0, messageBytes));
+        payload[messageBytes] = (byte)'\n';
 
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(WriteTimeout);
