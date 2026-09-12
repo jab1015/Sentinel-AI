@@ -213,13 +213,35 @@ internal sealed class QuarantineStoreEngine
         WriteAtomicJson(TransactionPath(itemId), txn, overwrite: true);
         Hit(QuarantineCheckpoint.RestoreDestinationReady);
 
-        string resolvedDestination = GetFinalPath(temp.SafeFileHandle);
-        if (!PathsEqual(resolvedDestination, destination))
-            return Fail("RestoreIdentityMismatch", "The restored object resolved to an unexpected path. Recovery state was preserved.");
-        temp.Position = 0;
-        restoredHash = Convert.ToHexString(SHA256.HashData(temp));
-        if (!restoredHash.Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
-            return Fail("RestoreVerificationFailed", "The restored object did not match the protected payload after the atomic rename.");
+        if (!GetFileInformationByHandle(temp.SafeFileHandle, out ByHandleFileInformation renamedIdentity))
+            return Fail("RestoreIdentityMismatch", Win32("Sentinel could not read the renamed restore file identity."));
+        if (renamedIdentity.NumberOfLinks != 1)
+            return Fail("RestoreIdentityMismatch", "The restored object unexpectedly has multiple hard links. Recovery state was preserved.");
+
+        try
+        {
+            using FileStream destinationStream = new(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            if (!GetFileInformationByHandle(destinationStream.SafeFileHandle, out ByHandleFileInformation destinationIdentity) ||
+                destinationIdentity.VolumeSerialNumber != renamedIdentity.VolumeSerialNumber ||
+                destinationIdentity.FileIndexHigh != renamedIdentity.FileIndexHigh ||
+                destinationIdentity.FileIndexLow != renamedIdentity.FileIndexLow ||
+                destinationIdentity.NumberOfLinks != 1)
+            {
+                return Fail("RestoreIdentityMismatch", "The restored destination path did not resolve to the exact renamed file identity. Recovery state was preserved.");
+            }
+
+            string resolvedDestination = GetFinalPath(destinationStream.SafeFileHandle);
+            if (!PathsEqual(resolvedDestination, destination))
+                return Fail("RestoreIdentityMismatch", "The restored destination path resolved to an unexpected location. Recovery state was preserved.");
+
+            restoredHash = Convert.ToHexString(SHA256.HashData(destinationStream));
+            if (!restoredHash.Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
+                return Fail("RestoreVerificationFailed", "The restored object did not match the protected payload after the atomic rename.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Fail("RestoreIdentityMismatch", $"Sentinel could not reopen and verify the restored destination ({ex.GetType().Name}). Recovery state was preserved.");
+        }
 
         _restoreInheritedAcl(destination);
         payload.Dispose();
