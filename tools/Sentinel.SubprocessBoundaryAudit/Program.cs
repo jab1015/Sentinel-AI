@@ -29,11 +29,26 @@ HashSet<string> allowedRunnerPaths = new(StringComparer.OrdinalIgnoreCase)
     Path.GetFullPath(Path.Combine(root, "src", "SentinelAI", "Sentinel.PrivilegedBroker", "BoundedProcessRunner.cs"))
 };
 
+string auditedShellLaunchPath = Path.GetFullPath(Path.Combine(
+    root, "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "WindowsShellLaunchService.cs"));
+
 foreach (string allowedRunnerPath in allowedRunnerPaths)
 {
     if (!File.Exists(allowedRunnerPath))
         throw new InvalidOperationException($"Expected bounded subprocess runner was not found: {Path.GetRelativePath(root, allowedRunnerPath)}");
 }
+if (!File.Exists(auditedShellLaunchPath))
+    throw new InvalidOperationException("Expected audited Windows shell-launch service was not found.");
+
+HashSet<string> expectedShellTargets = new(StringComparer.OrdinalIgnoreCase)
+{
+    "taskmgr.exe",
+    "ms-settings:windowsupdate",
+    "windowsdefender:",
+    "windowsdefender://network",
+    "services.msc",
+    "ms-settings:storagesense"
+};
 
 List<string> violations = new();
 foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchOption.AllDirectories))
@@ -47,6 +62,36 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
         continue;
 
     string relative = Path.GetRelativePath(root, file);
+
+    if (fullFile.Equals(auditedShellLaunchPath, StringComparison.OrdinalIgnoreCase))
+    {
+        Match initializer = Regex.Match(
+            text,
+            @"AllowedTargets\s*=\s*new\s*\([^)]*\)\s*\{(?<body>.*?)\};",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        if (initializer.Success)
+        {
+            HashSet<string> actualTargets = Regex.Matches(
+                    initializer.Groups["body"].Value,
+                    "\"(?<value>(?:\\.|[^\"\\])*)\"",
+                    RegexOptions.CultureInvariant)
+                .Select(match => Regex.Unescape(match.Groups["value"].Value))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            bool exactTargetSet = actualTargets.SetEquals(expectedShellTargets) &&
+                                  actualTargets.Count == expectedShellTargets.Count;
+            bool failClosedInput = text.Contains("string.IsNullOrWhiteSpace(target) || !AllowedTargets.Contains(target)", StringComparison.Ordinal);
+            bool shellOnly = text.Contains("UseShellExecute = true", StringComparison.Ordinal);
+            bool directStart = text.Contains("Process.Start(new ProcessStartInfo", StringComparison.Ordinal);
+
+            if (exactTargetSet && failClosedInput && shellOnly && directStart)
+                continue;
+        }
+
+        violations.Add(relative + " (audited shell-launch contract changed)");
+        continue;
+    }
+
     if (relative.EndsWith(Path.Combine("Services", "PrivilegedBrokerClient.cs"), StringComparison.OrdinalIgnoreCase))
     {
         string[] requiredSafetyMarkers =
@@ -89,7 +134,7 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
 if (violations.Count > 0)
 {
     StringBuilder message = new();
-    message.AppendLine("Direct subprocess ownership remains outside an audited bounded runner:");
+    message.AppendLine("Direct subprocess ownership remains outside an audited bounded runner or exact shell-launch owner:");
     foreach (string violation in violations.OrderBy(v => v, StringComparer.OrdinalIgnoreCase))
         message.AppendLine(" - " + violation);
     throw new InvalidOperationException(message.ToString());
