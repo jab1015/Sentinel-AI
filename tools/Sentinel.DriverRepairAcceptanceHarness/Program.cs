@@ -23,12 +23,18 @@ Require(DriverRepairVerificationPolicy.ClassifyInstall("2", "2", unchecked((int)
 DriverInstallDecision reboot = DriverRepairVerificationPolicy.ClassifyInstall("2", "2", "0", true);
 Require(!reboot.MayVerifyNow && reboot.RestartRequired && reboot.Disposition == DriverInstallDisposition.RestartRequired, "restart-required result not marked verified");
 
-Require(DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, 0), "healthy exact post-install state accepted");
-Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(false, true, true, false, 0), "verification process failure rejected");
-Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, false, true, false, 0), "changed device rejected post-install");
-Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, false, false, 0), "changed hardware identity rejected post-install");
-Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, true, 0), "approved update still offered rejected post-install");
-Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, 28), "device problem code rejected post-install");
-Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, null), "missing device health evidence rejected post-install");
+Require(DriverRepairVerificationPolicy.HasDriverVersionChanged("1.0.0.0", "1.0.1.0"), "changed driver version accepted as evidence");
+Require(!DriverRepairVerificationPolicy.HasDriverVersionChanged("1.0.0.0", "1.0.0.0"), "unchanged driver version rejected");
+Require(!DriverRepairVerificationPolicy.HasDriverVersionChanged("", "1.0.1.0"), "missing pre-install driver version rejected");
+Require(!DriverRepairVerificationPolicy.HasDriverVersionChanged("1.0.0.0", ""), "missing post-install driver version rejected");
+
+Require(DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, 0, "1.0.0.0", "1.0.1.0"), "healthy exact post-install state with changed version accepted");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(false, true, true, false, 0, "1.0.0.0", "1.0.1.0"), "verification process failure rejected");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, false, true, false, 0, "1.0.0.0", "1.0.1.0"), "changed device rejected post-install");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, false, false, 0, "1.0.0.0", "1.0.1.0"), "changed hardware identity rejected post-install");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, true, 0, "1.0.0.0", "1.0.1.0"), "approved update still offered rejected post-install");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, 28, "1.0.0.0", "1.0.1.0"), "device problem code rejected post-install");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, null, "1.0.0.0", "1.0.1.0"), "missing device health evidence rejected post-install");
+Require(!DriverRepairVerificationPolicy.IsPostInstallVerified(true, true, true, false, 0, "1.0.0.0", "1.0.0.0"), "unchanged driver version rejected post-install");
 
 Console.WriteLine("Sentinel driver repair A10/A11 acceptance harness passed.");
