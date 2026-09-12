@@ -26,11 +26,23 @@ Regex directProcessOwnership = new(
     @"\bProcess\s*\.\s*Start\s*\(|\bnew\s+(?:System\.Diagnostics\.)?Process\s*\(|\bnew\s+(?:System\.Diagnostics\.)?Process\s*\{|\bProcess\s+\w+\s*=\s*new\s*\(",
     RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+HashSet<string> allowedRunnerPaths = new(StringComparer.OrdinalIgnoreCase)
+{
+    Path.GetFullPath(Path.Combine(root, "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "BoundedProcessRunner.cs")),
+    Path.GetFullPath(Path.Combine(root, "src", "SentinelAI", "Sentinel.PrivilegedBroker", "BoundedProcessRunner.cs"))
+};
+
+foreach (string allowedRunnerPath in allowedRunnerPaths)
+{
+    if (!File.Exists(allowedRunnerPath))
+        throw new InvalidOperationException($"Expected bounded subprocess runner was not found: {Path.GetRelativePath(root, allowedRunnerPath)}");
+}
+
 List<string> violations = new();
 foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchOption.AllDirectories))
 {
-    string name = Path.GetFileName(file);
-    if (name.Equals("BoundedProcessRunner.cs", StringComparison.OrdinalIgnoreCase))
+    string fullFile = Path.GetFullPath(file);
+    if (allowedRunnerPaths.Contains(fullFile))
         continue;
 
     string text = File.ReadAllText(file);
