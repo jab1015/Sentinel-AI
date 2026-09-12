@@ -14,5 +14,7 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FileEncryptionService.cs" Link="FileEncryptionService.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\WindowsCurrentUserFileKeyProtector.cs" Link="WindowsCurrentUserFileKeyProtector.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\PasswordFileKeyProtector.cs" Link="PasswordFileKeyProtector.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RecoveryKeyMaterial.cs" Link="RecoveryKeyMaterial.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RecoveryKeyFileKeyProtector.cs" Link="RecoveryKeyFileKeyProtector.cs" />
   </ItemGroup>
 </Project>
