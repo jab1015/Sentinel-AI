@@ -220,7 +220,7 @@ internal sealed class QuarantineStoreEngine
 
         try
         {
-            using FileStream destinationStream = new(destination, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using FileStream destinationStream = new(destination, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             if (!GetFileInformationByHandle(destinationStream.SafeFileHandle, out ByHandleFileInformation destinationIdentity) ||
                 destinationIdentity.VolumeSerialNumber != renamedIdentity.VolumeSerialNumber ||
                 destinationIdentity.FileIndexHigh != renamedIdentity.FileIndexHigh ||
