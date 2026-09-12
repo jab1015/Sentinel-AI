@@ -5,6 +5,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
@@ -21,9 +22,8 @@ namespace Sentinel.App.Services
         {
             bool networkAvailable = NetworkInterface.GetIsNetworkAvailable();
             bool loopbackOk = TestLoopback();
-            CommandResult winsock = Run("netsh.exe", "winsock show catalog");
-            bool winsockReadable = winsock.ExitCode == 0 &&
-                !string.IsNullOrWhiteSpace(winsock.Output);
+            CommandResult winsock = Run("netsh.exe", "winsock", "show", "catalog");
+            bool winsockReadable = winsock.ExitCode == 0 && !string.IsNullOrWhiteSpace(winsock.Output);
 
             CommandResult dns = Run("nslookup.exe", "www.microsoft.com");
             bool dnsWorking = dns.ExitCode == 0 &&
@@ -31,8 +31,7 @@ namespace Sentinel.App.Services
                 !dns.Output.Contains("can't find", StringComparison.OrdinalIgnoreCase) &&
                 !dns.Output.Contains("server failed", StringComparison.OrdinalIgnoreCase);
 
-            bool repairInvestigationWarranted =
-                networkAvailable && (!dnsWorking || !winsockReadable);
+            bool repairInvestigationWarranted = networkAvailable && (!dnsWorking || !winsockReadable);
 
             string summary;
             if (!networkAvailable)
@@ -69,56 +68,43 @@ namespace Sentinel.App.Services
             }
             catch (PingException)
             {
-                // ICMP can be restricted even when TCP/IP is healthy, so verify a
-                // local socket can still be created before declaring failure.
                 try
                 {
                     using Socket socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                     return true;
                 }
-                catch
-                {
-                    return false;
-                }
+                catch { return false; }
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
-        private static CommandResult Run(string fileName, string arguments)
+        private static CommandResult Run(string fileName, params string[] arguments)
         {
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? fileName : Path.Combine(system, fileName),
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
+                foreach (string argument in arguments)
+                    startInfo.ArgumentList.Add(argument);
 
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(5), maxOutputChars: 128_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(5000))
-                {
-                    try { process.Kill(); } catch { }
-                    return new CommandResult(-1, output, "Network diagnostic timed out.");
-                }
-
-                return new CommandResult(process.ExitCode, output, error);
+                return new CommandResult(
+                    execution.Succeeded ? 0 : execution.ExitCode ?? -1,
+                    execution.StandardOutput,
+                    execution.StandardError.Length > 0 ? execution.StandardError : execution.Detail);
             }
             catch (Exception ex)
             {
-                return new CommandResult(-1, string.Empty, ex.Message);
+                return new CommandResult(-1, string.Empty, ex.GetType().Name);
             }
         }
 
