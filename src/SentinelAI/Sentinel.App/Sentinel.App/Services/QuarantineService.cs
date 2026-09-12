@@ -58,9 +58,11 @@ namespace Sentinel.App.Services
                 return Failed($"Sentinel did not report quarantine success. {result.Message}", attempted: result.Code != "ElevationDenied");
 
             BrokerQuarantineRecord? protectedRecord = await _broker.ReadProtectedRecordAsync(itemId, cancellationToken).ConfigureAwait(false);
+            string? protectedOriginalFullPath = TryGetFullPath(protectedRecord?.OriginalPath);
             if (protectedRecord is null ||
+                protectedOriginalFullPath is null ||
                 !protectedRecord.ItemId.Equals(itemId, StringComparison.OrdinalIgnoreCase) ||
-                !Path.GetFullPath(protectedRecord.OriginalPath).Equals(originalFullPath, StringComparison.OrdinalIgnoreCase) ||
+                !protectedOriginalFullPath.Equals(originalFullPath, StringComparison.OrdinalIgnoreCase) ||
                 !protectedRecord.Sha256.Equals(result.Sha256, StringComparison.OrdinalIgnoreCase) ||
                 File.Exists(originalFullPath))
             {
@@ -160,14 +162,24 @@ namespace Sentinel.App.Services
             BrokerQuarantineRecord? protectedRecord = await _broker.ReadProtectedRecordAsync(record.ItemId, token).ConfigureAwait(false);
             if (protectedRecord is null) return null;
 
-            string original;
-            try { original = Path.GetFullPath(record.OriginalPath); }
-            catch { return null; }
+            string? original = TryGetFullPath(record.OriginalPath);
+            string? protectedOriginal = TryGetFullPath(protectedRecord.OriginalPath);
+            if (original is null || protectedOriginal is null) return null;
 
-            return Path.GetFullPath(protectedRecord.OriginalPath).Equals(original, StringComparison.OrdinalIgnoreCase) &&
+            return protectedOriginal.Equals(original, StringComparison.OrdinalIgnoreCase) &&
                    protectedRecord.Sha256.Equals(record.Sha256, StringComparison.OrdinalIgnoreCase)
                 ? protectedRecord
                 : null;
+        }
+
+        private static string? TryGetFullPath(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            try { return Path.GetFullPath(value); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return null;
+            }
         }
 
         private static string ProtectedReference(string itemId) => "sentinel-quarantine://" + itemId;
