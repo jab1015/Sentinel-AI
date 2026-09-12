@@ -177,8 +177,9 @@ internal sealed class QuarantineStoreEngine
             return Fail("RestoreCollision", "A file appeared at the original location while Sentinel was preparing the restore. Sentinel did not overwrite it.");
 
         string tempDestination = Path.Combine(parent, $".{Path.GetFileName(destination)}.sentinel-restore-{itemId}-{Guid.NewGuid():N}.tmp");
+        string transactionPath = TransactionPath(itemId);
         QuarantineTransaction txn = new(itemId, "Restore", "Prepared", destination, tempDestination, record.Sha256, DateTimeOffset.UtcNow);
-        WriteAtomicJson(TransactionPath(itemId), txn, overwrite: false);
+        WriteAtomicJson(transactionPath, txn, overwrite: false);
         Hit(QuarantineCheckpoint.RestoreIntentPersisted);
 
         using SafeFileHandle tempHandle = CreateFileW(
@@ -203,14 +204,14 @@ internal sealed class QuarantineStoreEngine
         _makePrivate(tempDestination);
 
         txn = txn with { Stage = "TempReady" };
-        WriteAtomicJson(TransactionPath(itemId), txn, overwrite: true);
+        WriteAtomicJson(transactionPath, txn, overwrite: true);
         Hit(QuarantineCheckpoint.RestoreTemporaryCopyReady);
 
         if (!TryRenameOpenFile(temp.SafeFileHandle, destination, out string renameError))
             return Fail("RestoreRenameFailed", renameError);
 
         txn = txn with { Stage = "DestinationReady" };
-        WriteAtomicJson(TransactionPath(itemId), txn, overwrite: true);
+        WriteAtomicJson(transactionPath, txn, overwrite: true);
         Hit(QuarantineCheckpoint.RestoreDestinationReady);
 
         if (!GetFileInformationByHandle(temp.SafeFileHandle, out ByHandleFileInformation renamedIdentity))
@@ -249,8 +250,17 @@ internal sealed class QuarantineStoreEngine
             return Fail("PayloadDeleteFailed", payloadDeleteError);
         Hit(QuarantineCheckpoint.RestorePayloadDeleted);
 
-        SafeDeleteRecord(RecordPath(itemId));
-        SafeDeleteTransaction(TransactionPath(itemId));
+        string recordPath = RecordPath(itemId);
+        if (!TryDeleteMetadataFile(recordPath, out string recordCleanupError))
+        {
+            RefreshHealthReport(new[] { new QuarantineStoreIssue("MetadataCleanupFailed", recordPath, recordCleanupError) });
+            return Fail("MetadataCleanupFailed", recordCleanupError + " The transaction was preserved for recovery.");
+        }
+        if (!TryDeleteMetadataFile(transactionPath, out string transactionCleanupError))
+        {
+            RefreshHealthReport(new[] { new QuarantineStoreIssue("MetadataCleanupFailed", transactionPath, transactionCleanupError) });
+            return Fail("MetadataCleanupFailed", transactionCleanupError + " The transaction marker remains and requires recovery.");
+        }
         RefreshHealthReport();
         return Ok(itemId, record.Sha256, "The exact verified quarantine payload was restored without overwriting an existing file, and the protected copy was removed.");
     }
@@ -271,7 +281,8 @@ internal sealed class QuarantineStoreEngine
         if (!TryVerifyExactPayload(payloadPath, record.Sha256, out string verifyError))
             return Fail("PayloadTampered", verifyError);
 
-        WriteAtomicJson(TransactionPath(itemId), new QuarantineTransaction(
+        string transactionPath = TransactionPath(itemId);
+        WriteAtomicJson(transactionPath, new QuarantineTransaction(
             itemId, "Delete", "Prepared", record.OriginalPath, string.Empty, record.Sha256, DateTimeOffset.UtcNow), overwrite: false);
         Hit(QuarantineCheckpoint.DeleteIntentPersisted);
 
@@ -279,8 +290,17 @@ internal sealed class QuarantineStoreEngine
             return Fail("DeleteVerificationFailed", deleteError);
         Hit(QuarantineCheckpoint.DeletePayloadDeleted);
 
-        SafeDeleteRecord(RecordPath(itemId));
-        SafeDeleteTransaction(TransactionPath(itemId));
+        string recordPath = RecordPath(itemId);
+        if (!TryDeleteMetadataFile(recordPath, out string recordCleanupError))
+        {
+            RefreshHealthReport(new[] { new QuarantineStoreIssue("MetadataCleanupFailed", recordPath, recordCleanupError) });
+            return Fail("MetadataCleanupFailed", recordCleanupError + " The transaction was preserved for recovery.");
+        }
+        if (!TryDeleteMetadataFile(transactionPath, out string transactionCleanupError))
+        {
+            RefreshHealthReport(new[] { new QuarantineStoreIssue("MetadataCleanupFailed", transactionPath, transactionCleanupError) });
+            return Fail("MetadataCleanupFailed", transactionCleanupError + " The transaction marker remains and requires recovery.");
+        }
         RefreshHealthReport();
         return Ok(itemId, record.Sha256, "The exact protected quarantine payload was permanently deleted and verified absent.");
     }
@@ -731,6 +751,26 @@ internal sealed class QuarantineStoreEngine
         }
         catch
         {
+        }
+    }
+
+    private static bool TryDeleteMetadataFile(string path, out string error)
+    {
+        try
+        {
+            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+            {
+                error = "Protected quarantine metadata remained present after cleanup.";
+                return false;
+            }
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"Protected quarantine metadata cleanup failed ({ex.GetType().Name}).";
+            return false;
         }
     }
 
