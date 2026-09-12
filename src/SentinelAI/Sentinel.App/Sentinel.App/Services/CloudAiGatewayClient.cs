@@ -78,25 +78,29 @@ namespace Sentinel.App.Services
                 return CloudAiResult.Unavailable("The evidence package exceeds Sentinel's AI token budget, so no cloud request was sent.");
 
             bool wantsAdvanced = decision.ModelTier.ToString().Equals("Advanced", StringComparison.OrdinalIgnoreCase);
-            GatewaySessionResult sessionResult = await GetSessionAsync(wantsAdvanced, cancellationToken).ConfigureAwait(false);
-            if (!sessionResult.Succeeded || sessionResult.Session is null)
-            {
-                return sessionResult.RequiresSubscription
-                    ? CloudAiResult.SubscriptionRequired(sessionResult.Reason)
-                    : CloudAiResult.Unavailable(sessionResult.Reason);
-            }
-
-            string requestId = Guid.NewGuid().ToString();
-            CloudAiRequest request = new(
-                SchemaVersion: 1,
-                RequestId: requestId,
-                Purpose: evidence.Purpose,
-                ModelTier: wantsAdvanced ? "Advanced" : "Basic",
-                MaximumTotalTokens: decision.MaximumTotalTokens,
-                Evidence: evidence.Payload);
 
             try
             {
+                // Session bootstrap is part of the same untrusted network boundary as /v1/analyze.
+                // Timeouts, malformed/oversized JSON, transport failures, or Store bootstrap faults
+                // must fail closed to local analysis rather than escape into the Ask Sentinel UI.
+                GatewaySessionResult sessionResult = await GetSessionAsync(wantsAdvanced, cancellationToken).ConfigureAwait(false);
+                if (!sessionResult.Succeeded || sessionResult.Session is null)
+                {
+                    return sessionResult.RequiresSubscription
+                        ? CloudAiResult.SubscriptionRequired(sessionResult.Reason)
+                        : CloudAiResult.Unavailable(sessionResult.Reason);
+                }
+
+                string requestId = Guid.NewGuid().ToString();
+                CloudAiRequest request = new(
+                    SchemaVersion: 1,
+                    RequestId: requestId,
+                    Purpose: evidence.Purpose,
+                    ModelTier: wantsAdvanced ? "Advanced" : "Basic",
+                    MaximumTotalTokens: decision.MaximumTotalTokens,
+                    Evidence: evidence.Payload);
+
                 using HttpRequestMessage message = new(HttpMethod.Post, _endpoint)
                 {
                     Content = JsonContent.Create(request)
@@ -138,9 +142,17 @@ namespace Sentinel.App.Services
             {
                 return CloudAiResult.Unavailable("Secure AI gateway timed out. Sentinel continued without cloud AI.");
             }
-            catch
+            catch (HttpRequestException)
             {
                 return CloudAiResult.Unavailable("Secure AI gateway is temporarily unavailable. Sentinel continued without cloud AI.");
+            }
+            catch (JsonException)
+            {
+                return CloudAiResult.Unavailable("Secure AI gateway returned invalid data. Sentinel continued without cloud AI.");
+            }
+            catch (InvalidOperationException)
+            {
+                return CloudAiResult.Unavailable("Secure AI gateway session setup could not be completed safely. Sentinel continued without cloud AI.");
             }
         }
 
