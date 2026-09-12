@@ -43,7 +43,41 @@ internal static class VaultUnlockLockRaceAcceptance
             Require(vault.State == VaultState.Locked && vault.VaultId == Guid.Empty,
                 "Vault became unlocked after the session-lock race completed.");
 
+            VaultUnlockResult reopened = vault.UnlockAsync(
+                envelope,
+                new IFileKeyProtector[] { inner },
+                CancellationToken.None).GetAwaiter().GetResult();
+            Require(reopened.Succeeded, "Vault could not be reopened for operation-session testing.");
+
+            VaultOperationSession firstSession = vault.AcquireOperationSession();
+            Require(vault.IsOperationSessionValid(firstSession),
+                "Fresh Vault operation session was not valid.");
+            Require(!firstSession.CancellationToken.IsCancellationRequested,
+                "Fresh Vault operation session started canceled.");
+
+            vault.HandleWindowsSessionLocked();
+            Require(firstSession.CancellationToken.IsCancellationRequested,
+                "Windows session lock did not cancel the active Vault operation epoch.");
+            Require(!vault.IsOperationSessionValid(firstSession),
+                "A Vault operation session remained valid after session lock.");
+
+            VaultUnlockResult reopenedAgain = vault.UnlockAsync(
+                envelope,
+                new IFileKeyProtector[] { inner },
+                CancellationToken.None).GetAwaiter().GetResult();
+            Require(reopenedAgain.Succeeded, "Vault could not reopen after operation-epoch cancellation.");
+            VaultOperationSession secondSession = vault.AcquireOperationSession();
+            Require(vault.IsOperationSessionValid(secondSession),
+                "New Vault operation session was not valid after re-unlock.");
+            Require(!vault.IsOperationSessionValid(firstSession),
+                "Stale Vault operation session became valid again after re-unlock.");
+            Require(secondSession.LockEpoch != firstSession.LockEpoch,
+                "Vault lock epoch did not advance across lock/re-unlock.");
+            Require(secondSession.CancellationToken != firstSession.CancellationToken,
+                "Vault reused the prior operation cancellation token after re-unlock.");
+
             Console.WriteLine("Vault in-flight unlock invalidation on session lock: PASS");
+            Console.WriteLine("Vault operation epoch cancellation and stale-session rejection: PASS");
         }
         finally
         {
