@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: DESIGN COMPLETE — DESTRUCTIVE IMPLEMENTATION NOT STARTED  
-Version: 1.0  
+Status: SOURCE FOUNDATION IMPLEMENTED — DESTRUCTIVE IMPLEMENTATION NOT STARTED  
+Version: 1.1  
 Date: 2026-09-12
 
 ## Purpose
@@ -26,6 +26,26 @@ Secure Delete is not:
 - `SecureDeleteResult`
 - narrow privileged broker operation bound to exact object identity
 - `RelatedArtifactDiscoveryService`
+
+## Current source implementation
+
+Implemented on `feature/premium-privacy-foundation`:
+
+- `SecureDeleteContracts` defines explicit validation and storage-capability result semantics.
+- `SecureDeleteTargetValidator` is a non-destructive exact-target boundary. It requires a fully qualified filesystem path, reopens the object with reparse traversal disabled, rejects directories/reparse objects/multiple hard links/device namespaces/protected locations/system-critical files, resolves the final handle path, and binds stable volume/file identity.
+- `SecureDeleteTargetValidator.Revalidate` must prove the same volume/file ID and canonical path again immediately before any future destructive mutation; path replacement loses authorization.
+- `StorageCapabilityDetector` currently reports only mounted-volume/root/filesystem/location facts that can be obtained without guessing. Physical media type, BitLocker state, TRIM/unmap support, and cloud synchronization remain `Unknown` until reviewed platform/provider APIs provide trustworthy evidence.
+- Acceptance coverage is linked into the active privacy encryption/Vault harness for ordinary and empty files, Unicode paths, invalid/device namespaces, directory rejection, protected application location, system-critical filenames, hard links, target replacement, reparse-source contract, and conservative unknown media semantics.
+
+Not implemented yet:
+
+- no `SecureDeleteCoordinator` destructive transaction
+- no privileged Secure Delete broker operation
+- no overwrite/TRIM/deallocation action
+- no related-copy cleanup action
+- no destructive Explorer command
+
+This separation is intentional: source target authorization and capability reporting must qualify before destructive behavior is added.
 
 ## Exact-target authorization
 
@@ -62,6 +82,8 @@ A future broker request must contain a narrow operation identifier and sufficien
 - TRIM/unmap support indicators where safely queryable
 
 Unknown information remains Unknown.
+
+The current source foundation intentionally leaves physical-media, BitLocker, TRIM/unmap, and cloud-sync states Unknown rather than infer them from drive letters or filenames. More authoritative Windows/provider detection is a later source step and must include its own runtime fixtures.
 
 ## Media policy
 
@@ -174,4 +196,6 @@ Prohibited without exact independent proof:
 
 ## Qualification state
 
-DESIGN COMPLETE only. No destructive Secure Delete broker operation exists yet, by design. Exact-target implementation begins only after this design is reviewed against the hardened quarantine/broker patterns and must ship with adversarial tests from its first source commit.
+**SOURCE FOUNDATION IMPLEMENTED.** Exact-target binding/revalidation and conservative storage-capability reporting exist and are wired into the active privacy harness. The current privacy workflow result must still complete successfully before this foundation is called CI VERIFIED.
+
+**DESTRUCTIVE IMPLEMENTATION NOT STARTED.** No Secure Delete broker mutation, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. Destructive source work remains gated on qualification of this foundation and an independent review of the exact-target/broker transaction design.
