@@ -1,6 +1,6 @@
 # SAI-005 — Product Roadmap
 
-Version: 2.5  
+Version: 2.6  
 Status: Active — Production hardening roadmap  
 Last Updated: 2026-09-12
 
@@ -47,7 +47,7 @@ A14 temporary cleanup now uses a handle-resolved canonical temp root, exact-obje
 
 A16 service restart now has dependency-aware broker execution, durable pre-action recovery state, verified final service state, rollback/recovery semantics, cancellation safeguards, and fail-closed dependency discovery. Recovery records remain when restoration cannot be proven. A16 is source-complete and requires installed service/UAC/crash/recovery validation.
 
-A21/A22 external-research hardening includes bounded attributable passages, stale-cache controls, HTTPS/no-redirect authority validation, bounded streaming/body/XML work, fail-closed CAB expansion policy, preflight rejection before Dell catalog download while unsafe expansion is disabled, and catalog-to-package authority pinning. Dell package candidates must resolve to HTTPS `downloads.dell.com` on the expected port; HTTP, foreign hosts, alternate ports, credential-bearing URLs, and non-executable targets fail closed. Final static review found no additional reachable source defect; exact-head focused/broad gates remain required before formal source closure. CAB extraction stays disabled until expansion can be bounded before and during extraction.
+A21/A22 external-research hardening includes bounded attributable passages, stale-cache controls, HTTPS/no-redirect authority validation, bounded streaming/body/XML work, fail-closed CAB expansion policy, preflight rejection before Dell catalog download while unsafe expansion is disabled, and catalog-to-package authority pinning. Dell package candidates must resolve to HTTPS `downloads.dell.com/` on the expected port; HTTP, foreign hosts, alternate ports, credential-bearing URLs, and non-executable targets fail closed. Final static review found no additional reachable source defect; exact-head focused/broad gates remain required before formal source closure. CAB extraction stays disabled until expansion can be bounded before and during extraction.
 
 A24 throughput uses per-adapter baselines and intervals, establishes baselines for new adapters, and rejects reset/backward/invalid samples. Final static review found no additional source defect; exact-head dedicated/full Windows gates remain before formal source closure.
 
@@ -127,7 +127,8 @@ Subscription-only roadmap:
 - Secure Delete for explicitly selected user files using supported Windows/storage mechanisms, exact target identity and immediate revalidation, canonicalization, protected-location checks, reparse/junction/link defenses, object-race resistance, media-aware behavior, explicit confirmation, transactional/fail-closed behavior, post-operation verification, and structured evidence.
 - Media-aware treatment of HDD, SATA SSD, NVMe/flash-backed storage, NTFS, BitLocker, and cloud-synchronized locations without claiming physical-media certainty Windows/firmware cannot prove.
 - Privacy results must distinguish **VERIFIED**, **REQUESTED**, **REMAINS**, and **CANNOT PROVE**.
-- Attributable-copy/history discovery is separate from deletion. Potential sources include Sentinel-created artifacts, File History/Previous Versions indicators, application recovery/temp copies where attribution is reliable, Windows Search/Recent/Jump List references, and cloud-sync indicators.
+- Copy/history discovery should search as broadly as Windows and the user's configured storage services safely allow for all reasonably discoverable copies, versions, references, and Sentinel-created artifacts attributable to the selected file. Candidate matches should be classified as confirmed copy, likely attributable copy, metadata/reference only, or unverified candidate. Identity may use exact path/object evidence, content hashes where available and appropriate, reliable history/version relationships, and supported provider metadata. Fuzzy name similarity alone must never authorize deletion.
+- Attributable-copy/history discovery is separate from deletion. Potential sources include Sentinel-created artifacts, File History/Previous Versions indicators, application recovery/temp copies where attribution is reliable, Windows Search/Recent/Jump List references, and cloud-sync indicators. Discovery should report every supported location checked, what was found, and what could not be inspected or proven.
 - Broader recovery/history operations that affect unrelated information must be reported, not silently executed as part of one-file deletion.
 - Normal single-file Secure Delete must not directly modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`, wipe unrelated restore/history sets, or modify system databases merely because a selected file may once have been represented there.
 - Strong authenticated encryption using AES-256-GCM rather than a Sentinel-specific cipher. Each item uses a fresh cryptographically random data-encryption key, unique nonce material, authenticated metadata, versioned container format, and corruption detection. Large files require a reviewed streaming/chunked format.
@@ -149,7 +150,7 @@ Subscription-only roadmap:
 5. Implement recovery modes.
 6. Implement Sentinel Vault.
 7. Implement Secure Delete for the selected primary file using proven exact-target safeguards.
-8. Add attributable-copy discovery and carefully scoped cleanup.
+8. Add broad attributable-copy discovery and carefully scoped cleanup, with explicit reporting of every supported source searched and every unresolved limitation.
 9. Add advanced privacy options only where safely supported.
 10. Complete independent privacy/crypto review and Windows runtime/storage validation.
 
@@ -159,7 +160,7 @@ Encryption: normal encrypt/decrypt, wrong password/account, recovery key, corrup
 
 Vault: lock/unlock, automatic/session lock, wrong credentials, recovery, abrupt termination, corrupted metadata, and package upgrade.
 
-Secure Delete/privacy: ordinary/long/Unicode paths, link/reparse/race cases, protected Windows paths, synchronized folders, HDD/SSD/NVMe/BitLocker, cancellation, access denied, crash, unavailable volume, and declined confirmation.
+Secure Delete/privacy: ordinary/long/Unicode paths, link/reparse/race cases, protected Windows paths, synchronized folders, HDD/SSD/NVMe/BitLocker, cancellation, access denied, crash, unavailable volume, declined confirmation, confirmed duplicate discovery, likely-copy discovery, metadata-only references, unsupported providers, and false-positive resistance.
 
 Explorer: clean install, upgrade/uninstall, Explorer restart, multi-select, unsupported item types, and shell-crash resistance.
 
