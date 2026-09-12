@@ -22,7 +22,8 @@ namespace Sentinel.App.Services
     public sealed class CloudAiGatewayClient
     {
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
-        private static readonly TimeSpan SessionRefreshAge = TimeSpan.FromMinutes(8);
+        private static readonly TimeSpan SessionRefreshCeiling = TimeSpan.FromMinutes(8);
+        private static readonly TimeSpan SessionExpirySafetyMargin = TimeSpan.FromSeconds(30);
         private const string ProductionEndpoint =
             "https://sentinel-ai-gateway-49908265995.us-central1.run.app/v1/analyze";
 
@@ -152,14 +153,14 @@ namespace Sentinel.App.Services
         private async Task<GatewaySessionResult> GetSessionAsync(bool advanced, CancellationToken cancellationToken)
         {
             GatewaySession? cached = advanced ? _advancedSession : _basicSession;
-            if (cached is not null && DateTimeOffset.UtcNow - cached.CreatedAtUtc < SessionRefreshAge)
+            if (cached is not null && CanReuseSession(cached))
                 return GatewaySessionResult.Success(cached);
 
             await SessionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 cached = advanced ? _advancedSession : _basicSession;
-                if (cached is not null && DateTimeOffset.UtcNow - cached.CreatedAtUtc < SessionRefreshAge)
+                if (cached is not null && CanReuseSession(cached))
                     return GatewaySessionResult.Success(cached);
 
                 GatewaySessionResult result = advanced
@@ -185,7 +186,7 @@ namespace Sentinel.App.Services
             if (_gatewayRoot is null) return GatewaySessionResult.Unavailable("Secure AI gateway is not configured.");
             Uri uri = new(_gatewayRoot, "v1/session/free");
             using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(uri, new { schemaVersion = 1 }, cancellationToken).ConfigureAwait(false);
-            return await ReadSessionResponseAsync(response, requiresSubscription: false, cancellationToken).ConfigureAwait(false);
+            return await ReadSessionResponseAsync(response, requiresSubscription: false, expectedTier: "Basic", cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<GatewaySessionResult> CreateStoreSessionAsync(CancellationToken cancellationToken)
@@ -220,12 +221,13 @@ namespace Sentinel.App.Services
             if (sessionResponse.StatusCode == HttpStatusCode.Forbidden)
                 return GatewaySessionResult.SubscriptionRequired("Microsoft Store did not report an active paid Sentinel entitlement.");
 
-            return await ReadSessionResponseAsync(sessionResponse, requiresSubscription: true, cancellationToken).ConfigureAwait(false);
+            return await ReadSessionResponseAsync(sessionResponse, requiresSubscription: true, expectedTier: "Advanced", cancellationToken).ConfigureAwait(false);
         }
 
         private static async Task<GatewaySessionResult> ReadSessionResponseAsync(
             HttpResponseMessage response,
             bool requiresSubscription,
+            string expectedTier,
             CancellationToken cancellationToken)
         {
             if (!response.IsSuccessStatusCode)
@@ -238,14 +240,30 @@ namespace Sentinel.App.Services
 
             GatewaySessionResponse? body = await response.Content.ReadFromJsonAsync<GatewaySessionResponse>(
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken).ConfigureAwait(false);
-            if (body is null || string.IsNullOrWhiteSpace(body.AccessToken) || body.ExpiresInSeconds <= 0)
+            if (body is null || string.IsNullOrWhiteSpace(body.AccessToken) || body.AccessToken.Length > 16_384 ||
+                body.ExpiresInSeconds <= 0 || !string.Equals(body.Tier, expectedTier, StringComparison.OrdinalIgnoreCase))
                 return GatewaySessionResult.Unavailable("Secure gateway returned an invalid session.");
 
             return GatewaySessionResult.Success(new GatewaySession(
                 body.AccessToken,
-                body.Tier ?? "Basic",
+                expectedTier,
                 DateTimeOffset.UtcNow,
                 body.ExpiresInSeconds));
+        }
+
+        private static bool CanReuseSession(GatewaySession session)
+        {
+            if (session.ExpiresInSeconds <= 0)
+                return false;
+
+            TimeSpan serverLifetime = TimeSpan.FromSeconds(session.ExpiresInSeconds);
+            TimeSpan refreshAge = serverLifetime > SessionExpirySafetyMargin
+                ? serverLifetime - SessionExpirySafetyMargin
+                : TimeSpan.Zero;
+            if (refreshAge > SessionRefreshCeiling)
+                refreshAge = SessionRefreshCeiling;
+
+            return refreshAge > TimeSpan.Zero && DateTimeOffset.UtcNow - session.CreatedAtUtc < refreshAge;
         }
 
         private static void InvalidateSession(bool advanced)
