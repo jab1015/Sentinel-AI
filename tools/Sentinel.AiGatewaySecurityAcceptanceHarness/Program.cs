@@ -23,6 +23,18 @@ Check(basic.Available && basic.Authorized && basic.Tier == "Basic", "Basic sessi
 SessionValidationResult basicReplay = security.ValidateSession("Bearer " + basicToken, basicRequest, "Basic");
 Check(!basicReplay.Authorized && basicReplay.Reason.Contains("already", StringComparison.OrdinalIgnoreCase), "Replay is rejected");
 
+Guid alternateEncodingId = Guid.NewGuid();
+SessionValidationResult alternateFirst = security.ValidateSession(
+    "Bearer " + basicToken,
+    alternateEncodingId.ToString("D"),
+    "Basic");
+SessionValidationResult alternateReplay = security.ValidateSession(
+    "Bearer " + basicToken,
+    alternateEncodingId.ToString("N"),
+    "Basic");
+Check(alternateFirst.Authorized && !alternateReplay.Authorized && alternateReplay.Reason.Contains("already", StringComparison.OrdinalIgnoreCase),
+    "Equivalent GUID encodings share one replay identity");
+
 SessionValidationResult upgrade = security.ValidateSession("Bearer " + basicToken, Guid.NewGuid().ToString(), "Advanced");
 Check(!upgrade.Authorized, "Basic session cannot authorize Advanced request");
 
