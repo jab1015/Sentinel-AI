@@ -60,6 +60,15 @@ jobs:
             }
           }
 
+      - name: Restore quarantine-store adversarial harness
+        run: dotnet restore "tools/Sentinel.QuarantineStoreAdversarialHarness/Sentinel.QuarantineStoreAdversarialHarness.csproj"
+
+      - name: Build quarantine-store adversarial harness
+        run: dotnet build "tools/Sentinel.QuarantineStoreAdversarialHarness/Sentinel.QuarantineStoreAdversarialHarness.csproj" -c Release --no-restore
+
+      - name: Run quarantine-store adversarial harness
+        run: dotnet run --project "tools/Sentinel.QuarantineStoreAdversarialHarness/Sentinel.QuarantineStoreAdversarialHarness.csproj" -c Release --no-build
+
       - name: Restore system image health acceptance harness
         run: dotnet restore "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj"
 
