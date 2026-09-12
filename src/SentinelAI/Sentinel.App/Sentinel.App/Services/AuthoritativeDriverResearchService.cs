@@ -197,9 +197,7 @@ namespace Sentinel.App.Services
                     string version = FirstNonEmpty(AttributeOrElement(component, "vendorVersion"), AttributeOrElement(component, "dellVersion"), AttributeOrElement(component, "Version"));
                     string released = FirstNonEmpty(AttributeOrElement(component, "releaseDate"), AttributeOrElement(component, "dateTime"));
                     DateTime.TryParse(released, out DateTime releaseDate);
-                    string download = path.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                        ? path
-                        : "https://downloads.dell.com/" + path.TrimStart('/', '\\').Replace('\\', '/');
+                    if (!ExternalResearchProvenancePolicy.TryResolveDellPackageUri(path, out string download)) continue;
                     int score = (hardwareMatch ? 50 : 0) + (modelMatch ? 30 : 0) + (searchable.Contains("management engine", StringComparison.OrdinalIgnoreCase) ? 20 : 0);
                     matches.Add(new DellPackageMatch(title, version, released, download, releaseDate, score));
                 }
