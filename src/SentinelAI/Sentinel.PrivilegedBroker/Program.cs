@@ -213,25 +213,18 @@ BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
         ? BrokerFirewallPolicy.BuildAddArguments(remoteIp)
         : BrokerFirewallPolicy.BuildDeleteArguments(remoteIp);
 
-    using Process process = new();
-    process.StartInfo = new ProcessStartInfo
+    ProcessStartInfo startInfo = new()
     {
         FileName = netsh,
         UseShellExecute = false,
         CreateNoWindow = true
     };
     foreach (string argument in arguments)
-        process.StartInfo.ArgumentList.Add(argument);
+        startInfo.ArgumentList.Add(argument);
 
-    if (!process.Start())
-        return BrokerResult.Fail(req.RequestId, "FirewallLaunchFailed", "Windows Firewall command did not start.");
-    if (!process.WaitForExit(30_000))
-    {
-        try { process.Kill(entireProcessTree: true); } catch { }
-        return BrokerResult.Fail(req.RequestId, "FirewallTimeout", "Windows Firewall did not complete the requested mutation within the allowed time.");
-    }
-    if (process.ExitCode != 0)
-        return BrokerResult.Fail(req.RequestId, "FirewallMutationFailed", $"Windows Firewall returned exit code {process.ExitCode}.");
+    BoundedProcessResult result = BoundedProcessRunner.RunAsync(startInfo, TimeSpan.FromSeconds(30)).GetAwaiter().GetResult();
+    if (!result.Succeeded)
+        return BrokerResult.Fail(req.RequestId, "FirewallMutationFailed", $"Windows Firewall mutation failed safely ({result.Code}). {result.Detail}");
 
     string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
     return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
@@ -243,39 +236,39 @@ BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
 void SetAcl(string path, bool usersRead)
 {
     string icacls = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe");
-    using Process p = new();
-    p.StartInfo = new ProcessStartInfo { FileName = icacls, UseShellExecute = false, CreateNoWindow = true };
-    p.StartInfo.ArgumentList.Add(path);
-    p.StartInfo.ArgumentList.Add("/inheritance:r");
-    p.StartInfo.ArgumentList.Add("/grant:r");
-    p.StartInfo.ArgumentList.Add("*S-1-5-18:(OI)(CI)(F)");
-    p.StartInfo.ArgumentList.Add("*S-1-5-32-544:(OI)(CI)(F)");
-    if (usersRead) p.StartInfo.ArgumentList.Add("*S-1-5-32-545:(OI)(CI)(RX)");
-    if (!p.Start() || !p.WaitForExit(10_000) || p.ExitCode != 0) throw new InvalidOperationException("ACL configuration failed.");
+    ProcessStartInfo startInfo = new() { FileName = icacls, UseShellExecute = false, CreateNoWindow = true };
+    startInfo.ArgumentList.Add(path);
+    startInfo.ArgumentList.Add("/inheritance:r");
+    startInfo.ArgumentList.Add("/grant:r");
+    startInfo.ArgumentList.Add("*S-1-5-18:(OI)(CI)(F)");
+    startInfo.ArgumentList.Add("*S-1-5-32-544:(OI)(CI)(F)");
+    if (usersRead) startInfo.ArgumentList.Add("*S-1-5-32-545:(OI)(CI)(RX)");
+    BoundedProcessResult result = BoundedProcessRunner.RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 32_000).GetAwaiter().GetResult();
+    if (!result.Succeeded) throw new InvalidOperationException($"ACL configuration failed safely ({result.Code}).");
 }
 
 void SetFileAclPrivate(string path)
 {
     string icacls = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe");
-    using Process p = new();
-    p.StartInfo = new ProcessStartInfo { FileName = icacls, UseShellExecute = false, CreateNoWindow = true };
-    p.StartInfo.ArgumentList.Add(path);
-    p.StartInfo.ArgumentList.Add("/inheritance:r");
-    p.StartInfo.ArgumentList.Add("/grant:r");
-    p.StartInfo.ArgumentList.Add("*S-1-5-18:(F)");
-    p.StartInfo.ArgumentList.Add("*S-1-5-32-544:(F)");
-    if (!p.Start() || !p.WaitForExit(10_000) || p.ExitCode != 0) throw new InvalidOperationException("Payload ACL configuration failed.");
+    ProcessStartInfo startInfo = new() { FileName = icacls, UseShellExecute = false, CreateNoWindow = true };
+    startInfo.ArgumentList.Add(path);
+    startInfo.ArgumentList.Add("/inheritance:r");
+    startInfo.ArgumentList.Add("/grant:r");
+    startInfo.ArgumentList.Add("*S-1-5-18:(F)");
+    startInfo.ArgumentList.Add("*S-1-5-32-544:(F)");
+    BoundedProcessResult result = BoundedProcessRunner.RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 32_000).GetAwaiter().GetResult();
+    if (!result.Succeeded) throw new InvalidOperationException($"Payload ACL configuration failed safely ({result.Code}).");
 }
 
 void ResetFileAclInheritance(string path)
 {
     string icacls = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe");
-    using Process p = new();
-    p.StartInfo = new ProcessStartInfo { FileName = icacls, UseShellExecute = false, CreateNoWindow = true };
-    p.StartInfo.ArgumentList.Add(path);
-    p.StartInfo.ArgumentList.Add("/reset");
-    if (!p.Start() || !p.WaitForExit(10_000) || p.ExitCode != 0)
-        throw new InvalidOperationException("Restored file ACL inheritance could not be reset safely.");
+    ProcessStartInfo startInfo = new() { FileName = icacls, UseShellExecute = false, CreateNoWindow = true };
+    startInfo.ArgumentList.Add(path);
+    startInfo.ArgumentList.Add("/reset");
+    BoundedProcessResult result = BoundedProcessRunner.RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 32_000).GetAwaiter().GetResult();
+    if (!result.Succeeded)
+        throw new InvalidOperationException($"Restored file ACL inheritance could not be reset safely ({result.Code}).");
 }
 
 bool IsProtectedWindowsPath(string path)
