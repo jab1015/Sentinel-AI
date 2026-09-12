@@ -66,6 +66,19 @@ using (ByteArrayContent malformed = new(Encoding.UTF8.GetBytes("{not-json}")))
     Check(malformedDocument is null, "Malformed upstream JSON fails closed");
 }
 
+using (var stalled = new StreamContent(new BlockingReadStream()))
+{
+    DateTimeOffset started = DateTimeOffset.UtcNow;
+    using var stalledDocument = await BoundedHttpJson.TryReadAsync(
+        stalled,
+        1024,
+        8,
+        TimeSpan.FromMilliseconds(100),
+        CancellationToken.None);
+    TimeSpan elapsed = DateTimeOffset.UtcNow - started;
+    Check(stalledDocument is null && elapsed < TimeSpan.FromSeconds(2), "Stalled upstream body is bounded by one wall-clock deadline");
+}
+
 Environment.SetEnvironmentVariable("SENTINEL_AI_MAX_REPLAY_ENTRIES", "100");
 var boundedReplay = new GatewaySecurity(new FakeHttpClientFactory());
 string? replayCapacityToken = boundedReplay.IssueSession("Basic", "capacity-test");
@@ -146,6 +159,28 @@ sealed class NonSeekableRepeatingStream : Stream
         buffer.Span[..read].Fill(_value);
         _remaining -= read;
         return ValueTask.FromResult(read);
+    }
+
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
+sealed class BlockingReadStream : Stream
+{
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        return 0;
     }
 
     public override void Flush() { }
