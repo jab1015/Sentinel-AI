@@ -18,5 +18,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RecoveryKeyMaterial.cs" Link="RecoveryKeyMaterial.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RecoveryKeyFileKeyProtector.cs" Link="RecoveryKeyFileKeyProtector.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SentinelVaultService.cs" Link="SentinelVaultService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultMetadataStore.cs" Link="VaultMetadataStore.cs" />
   </ItemGroup>
 </Project>
