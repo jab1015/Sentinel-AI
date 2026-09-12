@@ -6,9 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
@@ -43,38 +43,23 @@ namespace Sentinel.App.Services
 
             try
             {
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
-                    FileName = "powershell.exe",
+                    FileName = ResolvePowerShellPath(),
                     Arguments = "-NoLogo -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress\"",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
 
-                if (!process.Start())
-                {
-                    return CommandLineSnapshot.Unavailable;
-                }
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
-                Task<string> errorRead = process.StandardError.ReadToEndAsync();
-                if (!process.WaitForExit(10000))
-                {
-                    try { process.Kill(entireProcessTree: true); } catch { }
+                if (!execution.Succeeded || string.IsNullOrWhiteSpace(execution.StandardOutput))
                     return CommandLineSnapshot.Unavailable;
-                }
 
-                string output = outputRead.GetAwaiter().GetResult();
-                _ = errorRead.GetAwaiter().GetResult();
-                if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    return CommandLineSnapshot.Unavailable;
-                }
-
-                using JsonDocument document = JsonDocument.Parse(output);
+                using JsonDocument document = JsonDocument.Parse(execution.StandardOutput);
                 IEnumerable<JsonElement> items = document.RootElement.ValueKind == JsonValueKind.Array
                     ? document.RootElement.EnumerateArray()
                     : new[] { document.RootElement };
@@ -84,9 +69,7 @@ namespace Sentinel.App.Services
                     string name = GetString(item, "Name");
                     string commandLine = GetString(item, "CommandLine");
                     if (string.IsNullOrWhiteSpace(commandLine))
-                    {
                         continue;
-                    }
 
                     reviewedCount++;
                     string normalized = $" {commandLine.ToLowerInvariant()} ";
@@ -96,13 +79,9 @@ namespace Sentinel.App.Services
 
                     string? reason = null;
                     if (encoded && (downloads || executes))
-                    {
                         reason = "An encoded command is combined with download or execution behavior.";
-                    }
                     else if (downloads && executes)
-                    {
                         reason = "The command combines network retrieval with direct execution behavior.";
-                    }
 
                     if (reason is not null)
                     {
@@ -127,10 +106,17 @@ namespace Sentinel.App.Services
                 primary?.CommandLineSummary ?? "None");
         }
 
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system)
+                ? "powershell.exe"
+                : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
+
         private static string GetString(JsonElement item, string propertyName)
         {
-            return item.TryGetProperty(propertyName, out JsonElement value) &&
-                   value.ValueKind == JsonValueKind.String
+            return item.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? string.Empty
                 : string.Empty;
         }
@@ -138,22 +124,14 @@ namespace Sentinel.App.Services
         private static bool ContainsAny(string value, IEnumerable<string> indicators)
         {
             foreach (string indicator in indicators)
-            {
-                if (value.Contains(indicator, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
+                if (value.Contains(indicator, StringComparison.OrdinalIgnoreCase)) return true;
             return false;
         }
 
         private static string NormalizeProcessName(string name)
         {
             string value = name.Trim();
-            return value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-                ? value[..^4]
-                : value;
+            return value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? value[..^4] : value;
         }
 
         private static string RedactAndShorten(string commandLine)
@@ -163,21 +141,12 @@ namespace Sentinel.App.Services
                 value,
                 @"(?i)(--?(?:password|passwd|pwd|token|api[-_]?key|secret|client[-_]?secret)\s*(?:=|\s)\s*)(?:""[^""]*""|'[^']*'|\S+)",
                 "$1<redacted>");
-            value = Regex.Replace(
-                value,
-                @"(?i)(authorization\s*[:=]\s*bearer\s+)\S+",
-                "$1<redacted>");
-            value = Regex.Replace(
-                value,
-                @"(?i)(-(?:enc|encodedcommand|e)\s+)\S+",
-                "$1<encoded-payload-redacted>");
+            value = Regex.Replace(value, @"(?i)(authorization\s*[:=]\s*bearer\s+)\S+", "$1<redacted>");
+            value = Regex.Replace(value, @"(?i)(-(?:enc|encodedcommand|e)\s+)\S+", "$1<encoded-payload-redacted>");
             return value.Length <= 180 ? value : value[..177] + "...";
         }
 
-        private sealed record CommandLineFinding(
-            string ProcessName,
-            string Reason,
-            string CommandLineSummary);
+        private sealed record CommandLineFinding(string ProcessName, string Reason, string CommandLineSummary);
 
         public sealed record CommandLineSnapshot(
             int ReviewedProcessCount,
