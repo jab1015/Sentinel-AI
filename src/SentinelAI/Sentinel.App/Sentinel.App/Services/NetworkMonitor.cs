@@ -13,9 +13,8 @@ namespace Sentinel.App.Services
 {
     public sealed class NetworkMonitor
     {
-        private const double BitsPerMegabit = 1_000_000d;
         private readonly object _sampleLock = new();
-        private readonly Dictionary<string, AdapterSample> _previousSamples = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, NetworkCounterSample> _previousSamples = new(StringComparer.OrdinalIgnoreCase);
 
         public bool IsConnected() => NetworkInterface.GetIsNetworkAvailable();
 
@@ -39,12 +38,12 @@ namespace Sentinel.App.Services
             {
                 NetworkInterface[] adapters = GetActiveAdapters();
                 long now = Stopwatch.GetTimestamp();
-                Dictionary<string, CurrentAdapterSample> current = new(StringComparer.OrdinalIgnoreCase);
+                Dictionary<string, NetworkCounterSample> current = new(StringComparer.OrdinalIgnoreCase);
 
                 foreach (NetworkInterface adapter in adapters)
                 {
                     IPv4InterfaceStatistics statistics = adapter.GetIPv4Statistics();
-                    current[adapter.Id] = new CurrentAdapterSample(
+                    current[adapter.Id] = new NetworkCounterSample(
                         statistics.BytesReceived,
                         statistics.BytesSent,
                         now);
@@ -52,45 +51,19 @@ namespace Sentinel.App.Services
 
                 lock (_sampleLock)
                 {
-                    long receivedDelta = 0;
-                    long sentDelta = 0;
-                    double longestElapsedSeconds = 0;
-                    int contributingAdapters = 0;
-
-                    foreach ((string adapterId, CurrentAdapterSample sample) in current)
-                    {
-                        if (_previousSamples.TryGetValue(adapterId, out AdapterSample? previous))
-                        {
-                            long timestampDelta = sample.Timestamp - previous.Timestamp;
-                            long adapterReceivedDelta = sample.BytesReceived - previous.BytesReceived;
-                            long adapterSentDelta = sample.BytesSent - previous.BytesSent;
-
-                            // Counter reset/wrap or clock anomaly establishes a new baseline for
-                            // this adapter only; it must not create a negative or positive spike.
-                            if (timestampDelta > 0 && adapterReceivedDelta >= 0 && adapterSentDelta >= 0)
-                            {
-                                receivedDelta += adapterReceivedDelta;
-                                sentDelta += adapterSentDelta;
-                                longestElapsedSeconds = Math.Max(longestElapsedSeconds,
-                                    timestampDelta / (double)Stopwatch.Frequency);
-                                contributingAdapters++;
-                            }
-                        }
-                    }
+                    NetworkThroughputCalculation calculation = NetworkThroughputPolicy.Calculate(
+                        _previousSamples,
+                        current,
+                        Stopwatch.Frequency);
 
                     _previousSamples.Clear();
-                    foreach ((string adapterId, CurrentAdapterSample sample) in current)
-                        _previousSamples[adapterId] = new AdapterSample(sample.BytesReceived, sample.BytesSent, sample.Timestamp);
+                    foreach ((string adapterId, NetworkCounterSample sample) in current)
+                        _previousSamples[adapterId] = sample;
 
-                    if (contributingAdapters == 0 || longestElapsedSeconds <= 0)
-                        return new NetworkThroughputSnapshot(0, 0, adapters.Length > 0);
-
-                    double downloadMbps = receivedDelta * 8d / longestElapsedSeconds / BitsPerMegabit;
-                    double uploadMbps = sentDelta * 8d / longestElapsedSeconds / BitsPerMegabit;
                     return new NetworkThroughputSnapshot(
-                        Math.Max(downloadMbps, 0),
-                        Math.Max(uploadMbps, 0),
-                        adapters.Length > 0);
+                        calculation.DownloadMbps,
+                        calculation.UploadMbps,
+                        calculation.IsConnected);
                 }
             }
             catch
@@ -123,9 +96,6 @@ namespace Sentinel.App.Services
 
             return true;
         }
-
-        private sealed record AdapterSample(long BytesReceived, long BytesSent, long Timestamp);
-        private readonly record struct CurrentAdapterSample(long BytesReceived, long BytesSent, long Timestamp);
 
         public readonly record struct NetworkThroughputSnapshot(
             double DownloadMbps,
