@@ -21,6 +21,7 @@ namespace Sentinel.App.Services
     {
         private const string RulePrefix = "Sentinel AI Block";
         private static readonly SemaphoreSlim ContainmentGate = new(1, 1);
+        private readonly PrivilegedBrokerClient _brokerClient = new();
 
         public async Task<FirewallContainmentResult> BlockEndpointAsync(string remoteEndpoint)
         {
@@ -55,11 +56,9 @@ namespace Sentinel.App.Services
                             false, before.IsHealthy, FirewallContainmentOutcome.RuleConflict);
                 }
 
-                int addExitCode = await RunNetshElevatedAsync(
-                    $"advfirewall firewall add rule name=\"{ruleName}\" dir=out action=block remoteip={remoteIp} enable=yes profile=any").ConfigureAwait(false);
-
-                if (addExitCode != 0)
-                    return FirewallContainmentResult.Failure("Network block was not created", $"Windows Firewall returned exit code {addExitCode}. No successful containment claim was recorded.");
+                BrokerInvocationResult mutation = await _brokerClient.BlockFirewallEndpointAsync(remoteIp).ConfigureAwait(false);
+                if (!mutation.Succeeded)
+                    return FirewallContainmentResult.Failure("Network block was not created", $"The privileged broker refused or failed the firewall mutation ({mutation.Code}). No successful containment claim was recorded.");
 
                 ruleCreated = true;
                 FirewallRuleVerification verified = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
@@ -131,9 +130,9 @@ namespace Sentinel.App.Services
             string ruleName = BuildRuleName(remoteIp);
             try
             {
-                int deleteExitCode = await RunNetshElevatedAsync($"advfirewall firewall delete rule name=\"{ruleName}\"").ConfigureAwait(false);
+                BrokerInvocationResult mutation = await _brokerClient.RemoveFirewallEndpointAsync(remoteIp).ConfigureAwait(false);
                 FirewallRuleVerification remaining = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
-                if (deleteExitCode != 0 || remaining.Exists)
+                if (!mutation.Succeeded || remaining.Exists)
                     return FirewallContainmentResult.Failure("Network block could not be removed", "Sentinel could not verify removal of the Windows Firewall rule.");
 
                 ConnectivityState connectivity = await CheckConnectivityAsync().ConfigureAwait(false);
@@ -232,44 +231,10 @@ namespace Sentinel.App.Services
             return new(dnsOk && tcpOk);
         }
 
-        private static async Task<int> RunNetshElevatedAsync(string arguments)
-        {
-            using Process process = new()
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = ResolveSystemBinary("netsh.exe"),
-                    Arguments = arguments,
-                    UseShellExecute = true,
-                    Verb = "runas",
-                    WindowStyle = ProcessWindowStyle.Hidden
-                }
-            };
-            process.Start();
-            await WaitForExitBoundedAsync(process, TimeSpan.FromSeconds(30)).ConfigureAwait(false);
-            return process.ExitCode;
-        }
-
-        private static async Task WaitForExitBoundedAsync(Process process, TimeSpan timeout)
-        {
-            try { await process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false); }
-            catch (TimeoutException)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                throw;
-            }
-        }
-
         private static string ResolvePowerShellPath()
         {
             string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
             return string.IsNullOrWhiteSpace(system) ? "powershell.exe" : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
-        }
-
-        private static string ResolveSystemBinary(string name)
-        {
-            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
-            return string.IsNullOrWhiteSpace(system) ? name : Path.Combine(system, name);
         }
 
         private static bool TryExtractRemoteAddress(string value, out IPAddress? address)
