@@ -9,6 +9,13 @@ internal static class BoundedHttpJson
     internal static readonly TimeSpan StoreBodyTimeout = TimeSpan.FromSeconds(10);
     internal static readonly TimeSpan EntraBodyTimeout = TimeSpan.FromSeconds(10);
 
+    internal static Task<JsonDocument?> TryReadAsync(
+        HttpContent content,
+        int maximumBytes,
+        int maximumDepth,
+        CancellationToken cancellationToken) =>
+        TryReadAsync(content, maximumBytes, maximumDepth, ProviderBodyTimeout, cancellationToken);
+
     internal static async Task<JsonDocument?> TryReadAsync(
         HttpContent content,
         int maximumBytes,
