@@ -1,7 +1,7 @@
 # SAI-000 — Project Status
 
-Version: 3.3  
-Status: Active — Production security hardening  
+Version: 3.4  
+Status: Active — Source/automated hardening qualified; physical validation pending  
 Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
@@ -10,99 +10,111 @@ Copyright (c) 2026 Modern Methods.
 
 ## Single Source of Truth
 
-Sentinel AI is in an active production-security hardening program based on assessment commit `1218f5d39e2e98f955179d7911b013636068d373`.
+Sentinel AI remains in the production-security hardening program established from assessment commit `1218f5d39e2e98f955179d7911b013636068d373`.
 
 - Production branch: `main`
 - Hardening branch: `security/production-hardening-1218f5d`
-- Last fully proven broad checkpoint: `3ef08da9226e33a222768938b3dff13373ba7f61`
-- Latest production-source/test hardening checkpoint before this documentation synchronization: `6943e9d93daa0a2f3863cb5c8d41510263c454be`
-- A05 replay correction: `f8fa7086f47e327b3d24cce5ba32fc7ab97d809a` binds replay identity to authenticated subject plus canonical request ID rather than short-lived token ID.
-- A05 replay-renewal regression: `08591c82177ee6313732d34f7abed4abcced7d13` pins replay rejection across session renewal while preserving isolation between different authenticated subjects.
-- Latest A08 firewall hardening: `a09a131dd830d0acad05dd2a959fcf55acb60053` and `a3f2945d9672af0caa68ff90ec2a8fd852b230f8` make desktop and broker firewall provider queries fail closed on provider/query errors; `6943e9d93daa0a2f3863cb5c8d41510263c454be` adds source acceptance coverage pinning that behavior.
+- Latest fully qualified production-source/test checkpoint before this documentation synchronization: `cff46692d1260349eae531632170fb687deed36f`
 - Findings: 29 total — 14 High, 15 Medium
-- Release posture: **NOT production-hardened; DO NOT MERGE yet**
+- Automated/source qualification: **12/12 required hardening workflows SUCCESS at exact checkpoint `cff46692...`**
+- Release posture: **NOT production ready; DO NOT MERGE**
 
-No finding is marked PASS from source changes, focused green CI, cross-builds, or unsigned package evidence alone. Runtime, packaged, Store, Google Cloud, adversarial, architecture, and stability evidence remain mandatory where applicable.
+No original finding is marked PASS solely because source code and CI are green. Installed Windows, signed package, Store/Partner Center, Google Cloud, real-architecture, adversarial, crash/failure, and stability evidence remain mandatory where applicable.
 
-## Proven CI Evidence
+## Exact-Head CI Qualification — `cff46692d1260349eae531632170fb687deed36f`
 
-Exact-head broad CI for `3ef08da9226e33a222768938b3dff13373ba7f61`:
+All required hardening workflows completed successfully:
 
-- Windows hardening `34677065591`: **PASS**.
-- Unsigned x64 package `34677065599`: **PASS**.
-- Driver-repair hardening `34677065596`: **PASS**.
-- Optimization-state hardening `34677065594`: **PASS**.
+- Sentinel Security Hardening Windows — run `34718588297`: **SUCCESS**
+- Sentinel Security Hardening Package — run `34718588319`: **SUCCESS**
+- Sentinel Architecture Hardening — run `34718588324`: **SUCCESS**
+- Sentinel Package Architecture Hardening — run `34718588318`: **SUCCESS**
+- Sentinel Subprocess Boundary Audit — run `34718588329`: **SUCCESS**
+- Sentinel Driver Repair Hardening — run `34718588291`: **SUCCESS**
+- Sentinel External Research Hardening — run `34718588312`: **SUCCESS**
+- Sentinel Child Process Safety Hardening — run `34718588299`: **SUCCESS**
+- Sentinel Investigation Cache Hardening — run `34718588302`: **SUCCESS**
+- Sentinel Network Throughput Hardening — run `34718588295`: **SUCCESS**
+- Sentinel Optimization State Hardening — run `34718588301`: **SUCCESS**
+- Sentinel A14 Temporary Cleanup Hardening — run `34718588338`: **SUCCESS**
 
-Focused evidence after that checkpoint:
+The broad Windows workflow built the AI gateway, desktop app, and privileged broker; passed broker identity/adversarial coverage, Ask Sentinel display safety, startup monitoring, security-health classification, Authenticode acceptance, ten consecutive BoundedProcessRunner reliability iterations, quarantine adversarial coverage, system-image health, cloud redaction, event-log filtering, investigation history, diagnostic logging, and AI-gateway security acceptance.
 
-- A21 external-research provenance `34678939880`: **PASS** on `92554edaf28d85e6221fcccf0734ef88751a689d` after correcting distinct-term passage attribution.
-- A22 child-process safety `34679015786`: **PASS** on `03048af9fecb1733cba3e57fc37ceb67d8964bb0`; unsafe CAB expansion is rejected before launch.
-- A21 investigation-cache `34679063934`: **PASS** on `019ddedfc5953c85e9f59d7c1595350d3ff833d3`; expired/stale evidence is not returned as current.
-- Earlier broad Windows hardening `34697575639` on `de08012e283f803c1d1cfb1da69da144176e5d74`: **SUCCESS**. This remains useful later-source evidence but is not exact-head proof for the current checkpoint.
+The Package Architecture workflow built x86 and ARM64 staging packages and verified the PE machine architecture of both `Sentinel.App.exe` and `Sentinel.PrivilegedBroker.exe` for each target. The x64 package workflow also remains green.
 
-## Current CI Qualification Checkpoint
+## Last Qualification Blockers Resolved
 
-At the latest observation, the workflow wave generated for source/test checkpoint `6943e9d93daa0a2f3863cb5c8d41510263c454be` was still **QUEUED/PENDING**. Queued/running work is not counted as PASS. The exact-head wave includes:
+- `f4b7f0c1210fdcd6c24dfb19f92526e2cc71853e` — **B: harness defect**. Legacy quarantine `DestinationReady` recovery was already rejected by semantic transaction/record preflight as `TransactionRecordMismatch`; the harness still expected the older `IncompleteRestore` code. The assertion was aligned without changing production recovery or permitting auto-finalization.
+- `75ee200c933f7c6c34c6a40d11ffb45ff1900f0c` — added retained A29 PE diagnostics without weakening the architecture gate.
+- `35e3d499b5280e651ad1e5950b0619910b23563e` — **D: workflow defect**. x86/ARM64 PE machine constants are now quoted YAML strings (`0x014c`, `0xaa64`) so the verifier receives the intended hexadecimal representation. Actual PE verification remains strict.
+- `bd66cca9f0d3dadd12f7c98038cff92f291c9eb7` — **B: harness fixture defect**. ACL-ready recovery fixtures now use transaction data consistent with the hardened semantic recovery preflight; forged state still fails closed as `TransactionRecordMismatch`.
+- `cff46692d1260349eae531632170fb687deed36f` — A20 cloud-boundary source acceptance is line-ending invariant so Windows checkout normalization cannot create a false test failure.
 
-- Driver Repair `34706604576`
-- External Research `34706604562`
-- Subprocess Boundary Audit `34706604574`
-- Network Throughput `34706604592`
-- Investigation Cache `34706604540`
-- A14 Temporary Cleanup `34706604599`
-- Security Hardening Windows `34706604532`
-- Optimization State `34706604550`
-- Architecture `34706604530`
-- Child Process Safety `34706604524`
-- Package Architecture `34706604570`
-- Security Hardening Package `34706604586`
+## Original Findings — Current Source Status
 
-Documentation synchronization after `6943e9d9...` may generate another workflow wave. That does not replace the need to interpret commit-bound results for the source/test checkpoint. Do not create production-source churn merely to reset the queue. A real failing job must be classified and corrected at root cause; an incomplete job is not a defect.
+### SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED
 
-## Latest Hardening Progress
+A01, A02, A03, A04, A06, A07, A08, A09, A10, A11, A12, A13, A14, A15, A16, A17, A18, A19, A20, A21, A22, A23, A24, A25, A26, A27, A28.
 
-- **SAI-A01:** Authenticode verification remains content-bound. Catalog API/hash/verification failures are classified as verification errors rather than incorrectly reported as proof that a file is unsigned. Runtime signature/revocation/catalog/architecture validation remains mandatory.
-- **SAI-A02/A03/A04:** quarantine and restore use protected transactional state, exact-object/hash/path/link validation, reparse defenses, crash recovery, no-overwrite restore, and protected cleanup semantics. Final static review has not identified another source defect; installed adversarial/runtime validation remains.
-- **SAI-A05:** gateway authentication/entitlement remains server-side. Replay identity is `authenticated subject + canonical request ID`, so renewing a session does not reset replay protection on one gateway instance. Regression coverage proves same-subject replay rejection across token renewal and different-subject isolation. Total token-budget enforcement also has dedicated regression coverage. Multi-instance replay/rate state, deployed IAM/Secret Manager/configuration, abuse/load behavior, Store entitlement states, and outage/restart behavior still require Google Cloud and Store/Partner Center validation.
-- **SAI-A06:** Defender/firewall health classification fails closed on incomplete, passive, disabled, stale, or contradictory evidence. Runtime Windows/Defender/firewall policy validation remains.
-- **SAI-A07/A15:** broker IPC is bounded and strict; success requires a clean broker exit in addition to a successful broker response. Installed UAC, identity, race, cancellation, malformed IPC, and hostile same-user validation remains.
-- **SAI-A08:** firewall mutation/verification has been strengthened again. Desktop and broker firewall provider queries now use terminating PowerShell errors and convert provider/query failures into nonzero child-process failure rather than apparent rule absence. The desktop parser rejects duplicate evidence keys. Add/remove operations retain exact-rule verification and fail-closed semantics. Source acceptance coverage pins these properties. Runtime Group Policy/concurrent mutation, IPv4/IPv6, UAC, and real containment/unblock validation remain mandatory.
-- **SAI-A09/A17:** all known direct service-process bypasses are migrated to `BoundedProcessRunner`. The production-wide source audit scans the production C# tree, exempts only the two exact approved bounded-runner paths, and separately audits the UAC broker client. Final static review found no additional direct subprocess bypass. Formal source closure still waits for exact-head subprocess-boundary and broad Windows CI.
-- **SAI-A10/A11:** driver repair remains bound to exact device/update identity and requires a real before/after version change plus post-install verification. Runtime device validation remains mandatory.
-- **SAI-A14:** exact-handle temporary cleanup is **SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED** with canonical handle-resolved boundaries, reparse/protected-object rejection, hard-link controls, same-handle age/size checks, and exact-handle deletion.
-- **SAI-A16:** transactional service restart is **SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED** with dependency-aware broker execution, durable recovery state before stop, verified final state, rollback/recovery semantics, and fail-closed dependency discovery.
-- **SAI-A19:** final Ask Sentinel displayed answers are revalidated so advisory/inferred text cannot claim security actions without verified action evidence. Runtime UI/adversarial-model validation remains.
-- **SAI-A20:** bounded upstream body handling fails closed on body read faults and cloud evidence redaction remains covered deterministically. Deployed telemetry/log inspection remains.
-- **SAI-A21/A22:** external research remains bounded, attributable, authority-pinned, redirect-restricted, stale-cache controlled, and fail-closed for unsupported CAB expansion. Final static review found no additional reachable source defect; exact-head focused/broad gates remain before formal source closure.
-- **SAI-A24:** throughput uses per-adapter baselines/intervals and rejects new/reset/invalid samples rather than creating false aggregate spikes. Formal source closure waits for exact-head dedicated/full Windows CI.
-- **SAI-A28:** optimization persistence fails closed on unsafe state and holds a cross-process lease across cooldown/reserve/execute/finalize. Runtime filesystem/crash/clock validation remains.
-- **SAI-A29:** x86, x64, and ARM64 remain declared. Package architecture verification still checks the actual PE machine architecture of both Sentinel executables; architectures must not be removed merely to make CI green.
+The formerly CI-gated A09, A17, A21, A22, and A24 are now promoted from OPEN because their required exact-head focused and broad automated gates are green and final static review has not identified an additional source defect.
 
-## Current Priority
+### BLOCKED — GOOGLE CLOUD VALIDATION REQUIRED
 
-1. Read the exact-head CI wave for `6943e9d93daa0a2f3863cb5c8d41510263c454be` as runners complete.
-2. If a workflow fails, inspect the exact failing job/log, classify the failure, reproduce narrowly, correct root cause without weakening assertions, and add regression coverage.
-3. Promote A09/A17, A21/A22, and A24 to source-complete only after their required exact-head focused/broad gates are green.
-4. Reconfirm A08 exact-head Windows/broker harness coverage after the new provider-query fail-closed changes; do not treat source acceptance alone as runtime proof.
-5. If exact-head CI is green and one final static/adversarial source sweep remains clean, declare the automated/source hardening side ready to begin physical validation — **not production ready**.
-6. Begin installed Windows runtime validation: broker/UAC, Authenticode fixtures, quarantine/recovery, Defender/firewall, A14 cleanup, A16 service restart/recovery, Ask Sentinel final claims, network churn, startup/lifecycle, driver/device behavior, crash/failure matrices, and install/update/uninstall.
-7. Execute A05 Google Cloud and Microsoft Store entitlement staging, including multi-instance replay/rate behavior and server-side entitlement enforcement.
-8. Complete signed Store release qualification and real x86/x64/ARM64 runtime qualification for every shipped architecture.
-9. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
+A05. Source includes signed short-lived sessions, subject-bound replay IDs, server-side tier/entitlement checks, rate/concurrency controls, bounded provider bodies, total-token budget enforcement, and server-side provider credentials. Remaining proof includes deployed Secret Manager/IAM, trusted proxy/client identity, multi-instance distributed replay/rate state, entitlement lifecycle, abuse/load/outage/restart behavior, logging/alerting, and spend controls.
 
-## Planned Premium Privacy Protection
+### BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED
 
-The post-hardening Premium Privacy Protection phase in `SAI-005_Product_Roadmap.md` remains authoritative and preserved. It includes supported Explorer integration, Inspect with Sentinel AI, media-aware Secure Delete, broad attributable-copy/history discovery, AES-256-GCM authenticated encryption, Windows-account and password modes, independent recovery keys, Sentinel Vault, optional future Windows Hello/TPM, server-side entitlement, and independent privacy/crypto review.
+A05 where Store entitlement is authoritative for paid cloud access, and A29 for signed/Store package provenance and release behavior.
 
-Broad attributable-copy discovery must search as broadly as Windows and configured storage services safely permit for reasonably discoverable copies, versions, history entries, references, and Sentinel-created artifacts related to the selected file. Candidates remain classified as **CONFIRMED COPY**, **LIKELY ATTRIBUTABLE COPY**, **METADATA / REFERENCE ONLY**, or **UNVERIFIED CANDIDATE**. Fuzzy filename similarity alone must never authorize deletion. Discovery and deletion remain separate operations, and Sentinel must report supported sources searched, items found/removed/remaining, sources it could not inspect, and facts it cannot prove.
+### BLOCKED — WINDOWS RUNTIME VALIDATION REQUIRED
 
-Privacy operations must use exact-object revalidation, protected-location/link/reparse/race defenses, fail-closed transactions, and VERIFIED / REQUESTED / REMAINS / CANNOT PROVE result semantics. A single-file action must not silently wipe unrelated restore/history/system data or directly manipulate `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`. Unsupported guarantees of forensic irrecoverability are prohibited.
+A29 remains blocked on real signed/package runtime across each architecture actually shipped. Every source-complete finding also retains its applicable installed Windows runtime matrix before PASS can be considered.
 
-**Do not implement Premium Privacy destructive/encryption features until current hardening/release gates are complete or explicit authorization is given.**
+### PASS — FULLY VERIFIED
+
+None yet. PASS is reserved for findings whose required runtime/external evidence is complete.
+
+## Key Hardening State
+
+- **A01:** Authenticode verification is content-bound; catalog failures fail closed; the process trust location policy now covers the full user profile plus redirected AppData/Temp. Extended signature/revocation/catalog/architecture fixtures remain runtime work.
+- **A02/A03/A04:** quarantine/restore uses protected transactional state, exact-object/hash/path/link checks, reparse defenses, ACL-ready restore semantics, no-overwrite restore, exact payload deletion, and guarded crash recovery. Legacy pre-ACL `DestinationReady` state fails closed.
+- **A05:** same-subject replay survives session renewal; total token budgets are server-enforced. Distributed cloud state and real Store/GCP deployment remain blockers.
+- **A06/A08:** Defender/firewall classification and provider queries fail closed on incomplete/provider-error evidence; firewall add/remove retains exact-rule verification.
+- **A07/A15:** broker IPC is bounded/strict and success requires a clean broker exit; installed UAC/identity/race/adversarial validation remains.
+- **A09/A17:** production-wide subprocess ownership is audited; diagnostic subprocesses are bounded; restart uses a bounded trusted-System32 owner; UI shell activation is centralized in a narrow allowlisted shell owner with file targets pinned to System32.
+- **A10/A11:** driver repair remains tied to exact device/update identity and requires verified before/after version change.
+- **A14:** temporary cleanup uses exact-handle identity and rejects unsafe reparse/link/protected targets.
+- **A16:** service restart is transactional with durable recovery and fail-closed dependency handling.
+- **A19:** final Ask Sentinel display cannot claim enforcement without verified action evidence.
+- **A20:** cloud response/session failure boundaries and redaction remain bounded and deterministic.
+- **A21/A22:** external research is authority-pinned, redirect-restricted, bounded, attributable, stale-cache controlled; unsupported CAB expansion remains disabled.
+- **A24:** throughput uses per-adapter baselines and rejects new/reset/invalid samples.
+- **A28:** optimization persistence is bounded, atomic/fail-closed, and cross-process leased.
+- **A29:** x86/x64/ARM64 package architecture checks verify actual app and broker PE machine values. Cross-build success is package evidence only, not real-device runtime proof.
+
+## Current Priority — Physical Qualification Phase
+
+1. Execute installed A07/A15 broker/UAC adversarial testing: valid packaged caller, unrelated same-user caller, copied/renamed/unpackaged caller, package mismatch, malformed/oversized/extra-field IPC, unsupported protocol/operation, arbitrary paths, PID reuse/target replacement, UAC accept/cancel, caller exit, no-connect/no-send/disconnect/hanging client, pipe races, second caller, and package-upgrade state.
+2. Execute A01 Authenticode runtime fixture matrix: embedded/catalog Microsoft signatures, unsigned/tampered/self-signed/untrusted, expiry/timestamp/revocation/offline behavior, replacement races, cache invalidation, and shipped architectures.
+3. Execute A02/A03/A04 installed quarantine adversarial/crash matrix including ACL resistance, reparse/junction/symlink/hardlink, source/destination replacement, orphan/corrupt state, disk full/access denied, broker termination, checkpoint crashes, and restart recovery.
+4. Execute real Defender/firewall, driver/device, A14 cleanup, A16 service restart, A19 UI claims, A24 network churn, A28 persistence, startup/lifecycle, install/upgrade/uninstall, sleep/wake, network-loss, and standard/admin matrices.
+5. Deploy A05 staging on Google Cloud and validate IAM, Secret Manager, proxy/client identity, distributed replay/rate controls, entitlement states, provider failures, concurrency/load, logging/alerts, and spend controls.
+6. Complete signed Store-style package and Partner Center qualification plus real x86/x64/ARM64 runtime for every architecture intended to ship.
+7. Run fresh final-commit 1-hour and 8-hour stability/resource tests.
+8. Re-audit every High finding and then all 29 findings, including vulnerabilities introduced by remediation.
+9. Only after those gates may the branch be considered for **READY FOR FINAL INDEPENDENT REVIEW**. Do not merge automatically.
+
+## Premium Privacy Protection
+
+Premium Privacy work is explicitly authorized but remains isolated on `feature/premium-privacy-foundation`. It must not be merged into this hardening qualification branch until the hardening baseline reaches READY FOR FINAL INDEPENDENT REVIEW or explicit earlier authorization is given.
+
+`docs/SAI-005_Product_Roadmap.md` remains authoritative for Explorer integration, AES-256-GCM encryption, Windows/password/recovery key modes, Sentinel Vault, storage-aware Secure Delete, broad attributable-copy discovery, and server-authoritative premium entitlement.
+
+Privacy safety rules remain unchanged: exact-object revalidation, protected/reparse/link/race defenses, separate verified encrypted output before optional plaintext removal, no unrestricted privileged delete primitive, discovery separate from deletion, no fuzzy-name automatic deletion, and VERIFIED / REQUESTED / REMAINS / CANNOT PROVE semantics. Sentinel must not claim guaranteed forensic irrecoverability where storage/media behavior cannot prove it.
 
 ## Definition of Done
 
-A finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are satisfied. Final release additionally requires signed/Store package qualification, supported Windows/architecture coverage, fresh final-commit stability runs, and a complete adversarial re-audit of all 29 findings.
+Source/automated hardening is now qualified at `cff46692d1260349eae531632170fb687deed36f`, but Sentinel AI is **not production ready**. Final completion still requires the applicable installed Windows, signed package, Store, Google Cloud, architecture, adversarial, crash/failure, stability, and full re-audit evidence described above.
 
 ---
 
