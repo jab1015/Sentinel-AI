@@ -195,6 +195,13 @@ internal sealed class PrivilegedBrokerClient
             }
 
             await process.WaitForExitAsync(operationToken).ConfigureAwait(false);
+            if (process.ExitCode != 0)
+            {
+                return BrokerInvocationResult.Failure(
+                    "BrokerExitFailure",
+                    $"The privileged broker returned a result but exited abnormally with code {process.ExitCode}. Sentinel did not accept the operation as successful.");
+            }
+
             return new(result.Succeeded, result.Code ?? string.Empty, result.Message ?? string.Empty, result.ItemId ?? string.Empty, result.Sha256 ?? string.Empty);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
