@@ -266,6 +266,13 @@ internal sealed class QuarantineStoreEngine
     internal IReadOnlyList<QuarantineStoreIssue> Recover()
     {
         EnsureDirectories();
+        IReadOnlyList<QuarantineStoreIssue> guardIssues = QuarantineRecoveryGuard.Validate(_root);
+        if (guardIssues.Count > 0)
+        {
+            RefreshHealthReport(guardIssues);
+            return guardIssues;
+        }
+
         List<QuarantineStoreIssue> issues = new();
         foreach (string transactionPath in Directory.EnumerateFiles(_transactionRoot, "*.json", SearchOption.TopDirectoryOnly))
         {
@@ -586,7 +593,7 @@ internal sealed class QuarantineStoreEngine
         {
             Span<byte> zeros = new byte[nameOffset + nameBytes.Length];
             Marshal.Copy(zeros.ToArray(), 0, buffer, zeros.Length);
-            Marshal.WriteByte(buffer, 0, 0); // ReplaceIfExists = FALSE
+            Marshal.WriteByte(buffer, 0, 0);
             Marshal.WriteIntPtr(buffer, rootOffset, parentHandle.DangerousGetHandle());
             Marshal.WriteInt32(buffer, lengthOffset, nameBytes.Length);
             Marshal.Copy(nameBytes, 0, IntPtr.Add(buffer, nameOffset), nameBytes.Length);
@@ -701,7 +708,6 @@ internal sealed class QuarantineStoreEngine
         }
         catch
         {
-            // Health reporting is advisory; never delete protected data because reporting failed.
         }
     }
 
