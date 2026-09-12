@@ -112,7 +112,7 @@ internal static class QuarantineRecoveryGuard
             return;
         }
 
-        if (txn.Stage is not ("Prepared" or "TempReady" or "DestinationReady"))
+        if (txn.Stage is not ("Prepared" or "TempReady" or "DestinationAclReady"))
         {
             issues.Add(Mismatch(transactionPath, "The restore transaction stage is not recognized."));
             return;
