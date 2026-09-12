@@ -48,8 +48,17 @@ jobs:
       - name: Build bounded process runner acceptance harness
         run: dotnet build "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-restore
 
-      - name: Run bounded process runner acceptance harness
-        run: dotnet run --project "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-build
+      - name: Run bounded process runner acceptance harness 10 times
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          1..10 | ForEach-Object {
+            Write-Host "=== BoundedProcessRunner reliability iteration $_ of 10 ==="
+            dotnet run --project "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-build
+            if ($LASTEXITCODE -ne 0) {
+              throw "BoundedProcessRunner acceptance harness failed on iteration $_ with exit code $LASTEXITCODE."
+            }
+          }
 
       - name: Restore system image health acceptance harness
         run: dotnet restore "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj"
