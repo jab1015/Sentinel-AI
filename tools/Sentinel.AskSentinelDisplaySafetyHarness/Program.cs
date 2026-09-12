@@ -34,9 +34,17 @@ string[] unsupportedActionClaims =
     "Sentinel blocked the attack.",
     "Sentinel quarantined the file.",
     "Sentinel repaired the issue.",
+    "Sentinel removed the malicious file.",
+    "Sentinel contained the connection.",
     "Microsoft Defender removed the malware.",
+    "Microsoft Defender blocked the malware.",
     "The firewall rule was applied.",
-    "The threat was quarantined."
+    "Windows Firewall blocked the endpoint.",
+    "The threat was quarantined.",
+    "The threat was eliminated.",
+    "The threat was removed.",
+    "The malware was blocked.",
+    "The file was removed."
 };
 
 foreach (string claim in unsupportedActionClaims)
