@@ -206,7 +206,7 @@ internal sealed class QuarantineStoreEngine
         WriteAtomicJson(TransactionPath(itemId), txn, overwrite: true);
         Hit(QuarantineCheckpoint.RestoreTemporaryCopyReady);
 
-        if (!TryRenameOpenFile(temp.SafeFileHandle, lease.ParentHandle, Path.GetFileName(destination), out string renameError))
+        if (!TryRenameOpenFile(temp.SafeFileHandle, destination, out string renameError))
             return Fail("RestoreRenameFailed", renameError);
 
         txn = txn with { Stage = "DestinationReady" };
@@ -582,19 +582,19 @@ internal sealed class QuarantineStoreEngine
         return true;
     }
 
-    private static bool TryRenameOpenFile(SafeFileHandle fileHandle, SafeFileHandle parentHandle, string fileName, out string error)
+    private static bool TryRenameOpenFile(SafeFileHandle fileHandle, string destination, out string error)
     {
-        byte[] nameBytes = Encoding.Unicode.GetBytes(fileName);
+        byte[] nameBytes = Encoding.Unicode.GetBytes(destination);
         int rootOffset = IntPtr.Size == 8 ? 8 : 4;
         int lengthOffset = rootOffset + IntPtr.Size;
         int nameOffset = lengthOffset + sizeof(int);
         IntPtr buffer = Marshal.AllocHGlobal(nameOffset + nameBytes.Length);
         try
         {
-            Span<byte> zeros = new byte[nameOffset + nameBytes.Length];
-            Marshal.Copy(zeros.ToArray(), 0, buffer, zeros.Length);
+            byte[] zeros = new byte[nameOffset + nameBytes.Length];
+            Marshal.Copy(zeros, 0, buffer, zeros.Length);
             Marshal.WriteByte(buffer, 0, 0);
-            Marshal.WriteIntPtr(buffer, rootOffset, parentHandle.DangerousGetHandle());
+            Marshal.WriteIntPtr(buffer, rootOffset, IntPtr.Zero);
             Marshal.WriteInt32(buffer, lengthOffset, nameBytes.Length);
             Marshal.Copy(nameBytes, 0, IntPtr.Add(buffer, nameOffset), nameBytes.Length);
             if (!SetFileInformationByHandle(fileHandle, FileRenameInfoClass, buffer, (uint)(nameOffset + nameBytes.Length)))
