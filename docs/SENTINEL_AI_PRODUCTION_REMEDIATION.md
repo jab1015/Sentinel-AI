@@ -18,10 +18,10 @@ A finding is complete only after all required source, deterministic, adversarial
 ## Current checkpoint
 
 - Last fully proven broad checkpoint: `3ef08da9226e33a222768938b3dff13373ba7f61`.
-- Latest production-source/test hardening checkpoint before documentation synchronization: `08591c82177ee6313732d34f7abed4abcced7d13`.
+- Latest production-source/test hardening checkpoint before documentation synchronization: `6943e9d93daa0a2f3863cb5c8d41510263c454be`.
 - A05 replay correction: `f8fa7086f47e327b3d24cce5ba32fc7ab97d809a`.
 - A05 replay-renewal regression: `08591c82177ee6313732d34f7abed4abcced7d13`.
-- Project-status synchronization commit immediately before this tracker update: `685f699c9c0d02b4230f252e5989ef319bea271f`.
+- Latest A08 firewall source corrections: `a09a131dd830d0acad05dd2a959fcf55acb60053` and `a3f2945d9672af0caa68ff90ec2a8fd852b230f8`; regression checkpoint `6943e9d93daa0a2f3863cb5c8d41510263c454be`.
 - Release posture: **NOT production-hardened; DO NOT MERGE**.
 
 ### Proven CI evidence
@@ -40,7 +40,7 @@ Additional focused evidence after that checkpoint:
 - A21 investigation-cache workflow `34679063934` on `019ddedfc5953c85e9f59d7c1595350d3ff833d3`: **SUCCESS**.
 - Earlier broad Windows hardening `34697575639` on `de08012e283f803c1d1cfb1da69da144176e5d74`: **SUCCESS**, useful as later-source evidence but not exact-head proof for the current checkpoint.
 
-The twelve workflows generated for source/test checkpoint `08591c82177ee6313732d34f7abed4abcced7d13` were **QUEUED** at the latest observation: Driver Repair `34705542002`, External Research `34705542087`, Package Architecture `34705541887`, Security Hardening Package `34705542096`, A14 Temporary Cleanup `34705542061`, Child Process Safety `34705541928`, Network Throughput `34705541946`, Optimization State `34705542030`, Architecture `34705542039`, Security Hardening Windows `34705541903`, Investigation Cache `34705542021`, and Subprocess Boundary Audit `34705542060`. Queued/running checks are not counted as PASS. Documentation commits after the source/test checkpoint may generate additional workflow waves; only commit-bound completed results count as evidence.
+The workflow wave generated for source/test checkpoint `6943e9d93daa0a2f3863cb5c8d41510263c454be` was **QUEUED/PENDING** at the latest observation: Driver Repair `34706604576`, External Research `34706604562`, Subprocess Boundary Audit `34706604574`, Network Throughput `34706604592`, Investigation Cache `34706604540`, A14 Temporary Cleanup `34706604599`, Security Hardening Windows `34706604532`, Optimization State `34706604550`, Architecture `34706604530`, Child Process Safety `34706604524`, Package Architecture `34706604570`, and Security Hardening Package `34706604586`. Queued/running checks are not counted as PASS. Documentation commits after the source/test checkpoint may generate additional workflow waves; only commit-bound completed results count as evidence.
 
 ## Original findings and live status
 
@@ -59,7 +59,7 @@ Protected records/transactions, record-derived restore identity, semantic recove
 ### SAI-A05 — AI gateway authentication and entitlement
 **STATUS: BLOCKED — GOOGLE CLOUD VALIDATION REQUIRED / BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED**
 
-Source includes signed short-lived sessions, server-side entitlement/tier checks, replay IDs, concurrency/rate controls, total token-budget enforcement, bounded upstream bodies, and server-side provider credentials. Replay identity is now bound to authenticated subject plus canonical request ID rather than token ID, preventing session renewal from resetting replay protection on one gateway instance. Regression coverage proves: first request is accepted, a renewed token for the same subject cannot reuse the request ID, and a different authenticated subject remains isolated. Dedicated regression coverage also pins total token-budget enforcement.
+Source includes signed short-lived sessions, server-side entitlement/tier checks, replay IDs, concurrency/rate controls, total token-budget enforcement, bounded upstream bodies, and server-side provider credentials. Replay identity is bound to authenticated subject plus canonical request ID rather than token ID, preventing session renewal from resetting replay protection on one gateway instance. Regression coverage proves: first request is accepted, a renewed token for the same subject cannot reuse the request ID, and a different authenticated subject remains isolated. Dedicated regression coverage also pins total token-budget enforcement.
 
 Remaining staging includes no/malformed/expired/modified authentication, replay/tier escalation, unsubscribed/expired/revoked entitlement, rate/high-concurrency/provider-timeout/secret-unavailable/Store-outage/restart tests, **multi-instance distributed replay/rate state**, IAM, Secret Manager, environment configuration, logging/alerts, and spend controls. In-process replay protection alone is not sufficient evidence for a multi-instance Google Cloud deployment.
 
@@ -76,7 +76,7 @@ Broker/client identity is bound to package full name, sibling path, peer PID, ex
 ### SAI-A08 — firewall verification false success
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Firewall mutation uses fixed-shape broker operations and literal IP validation. Verification requires the exact intended enabled outbound Block rule and fails closed on malformed/incomplete evidence; creation rolls back if exact post-verification fails and removal must verify actual absence. Remaining Group Policy/concurrent mutation, IPv4/IPv6, installed UAC path, and real containment/unblock verification.
+Firewall mutation uses fixed-shape broker operations and literal IP validation. Verification requires the exact intended enabled outbound Block rule and fails closed on malformed/incomplete evidence; creation rolls back if exact post-verification fails and removal must verify actual absence. Desktop and broker provider queries now force terminating PowerShell errors and translate query/provider failure to nonzero child-process failure instead of apparent rule absence. The desktop evidence parser rejects duplicate keys. Source acceptance coverage pins required `ActiveStore` rule lookup, address/port/application/service filter query behavior, explicit failure marker/nonzero exit, and absence of `SilentlyContinue` in the verification path. Remaining Group Policy/concurrent mutation, IPv4/IPv6, installed UAC path, and real containment/unblock verification.
 
 ### SAI-A09 — blocking subprocess reads defeat timeout
 **STATUS: OPEN — CODE NOT COMPLETE**
@@ -118,7 +118,7 @@ Covered with A07 broker hardening, bounded IPC, cumulative broker deadlines, and
 ### SAI-A17 — cancellation can leave child processes running
 **STATUS: OPEN — CODE NOT COMPLETE**
 
-The common `BoundedProcessRunner` provides wall-clock timeout, cancellation, child-tree ownership/termination, concurrent bounded stdout/stderr draining, bounded post-kill waits/reads, structured failure classification, and no false-success semantics. The eight known direct service-process bypasses are migrated. The production-wide source audit now exempts only the two exact approved `BoundedProcessRunner.cs` paths and fails if either expected runner disappears; a same-named production file cannot become a generic audit escape hatch. The UAC broker client is separately audited for bounded connect/send/read/exit behavior and clean-exit success verification.
+The common `BoundedProcessRunner` provides wall-clock timeout, cancellation, child-tree ownership/termination, concurrent bounded stdout/stderr draining, bounded post-kill waits/reads, structured failure classification, and no false-success semantics. The eight known direct service-process bypasses are migrated. The production-wide source audit exempts only the two exact approved `BoundedProcessRunner.cs` paths and fails if either expected runner disappears; a same-named production file cannot become a generic audit escape hatch. The UAC broker client is separately audited for bounded connect/send/read/exit behavior and clean-exit success verification.
 
 Remaining before source-complete status: exact-head subprocess-boundary CI and broad Windows build/integration. Runtime access-denied/kill-failure/package behavior remains after source closure. User-facing shell activation is not a Sentinel-owned diagnostic subprocess and is reviewed separately.
 
@@ -192,34 +192,37 @@ Even if cross-build/package gates become green, they provide build/package evide
 
 ## Current work order
 
-1. Read the exact-source/test workflow wave for `08591c82177ee6313732d34f7abed4abcced7d13` as runners complete; do not count queued/running as PASS.
+1. Read the exact-head workflow wave for `6943e9d93daa0a2f3863cb5c8d41510263c454be` as runners complete; do not count queued/running as PASS.
 2. For any failure: identify exact job/test, classify A-F, reproduce the smallest harness where possible, inspect the production path, fix production if wrong, change a harness only if demonstrably wrong, never weaken assertions, and add regression coverage.
 3. Move A09/A17, A21/A22, and A24 to source-complete only after their exact-head required gates are green.
-4. If exact-head source/automated gates are green and one final adversarial static sweep remains clean, declare the branch ready to begin physical validation — **not production ready and not ready to merge**.
-5. Complete A07/A15 installed broker/UAC adversarial validation and A01 extended Authenticode fixture/architecture matrix.
-6. Complete quarantine/recovery, Defender/firewall, A14 exact-handle cleanup, A16 transactional service-restart recovery, driver/device, network churn, startup/lifecycle, install/update/uninstall, and other Windows runtime matrices.
-7. Execute A05 Google Cloud + Microsoft Store entitlement staging, including multi-instance replay/rate state and server-side subscription enforcement.
-8. Complete A29 signed Store release qualification and real x86/x64/ARM64 runtime qualification for every architecture actually shipped.
-9. Run fresh final-commit 1-hour and 8-hour stability/resource tests.
-10. Re-audit every High finding adversarially, then all 29 findings.
-11. Only then label the branch `READY FOR FINAL INDEPENDENT REVIEW`.
+4. Reconfirm A08 under exact-head Windows/broker CI after the fail-closed provider-query changes.
+5. If exact-head source/automated gates are green and one final adversarial static sweep remains clean, declare the branch ready to begin physical validation — **not production ready and not ready to merge**.
+6. Complete A07/A15 installed broker/UAC adversarial validation and A01 extended Authenticode fixture/architecture matrix.
+7. Complete quarantine/recovery, Defender/firewall, A14 exact-handle cleanup, A16 transactional service-restart recovery, driver/device, network churn, startup/lifecycle, install/update/uninstall, and other Windows runtime matrices.
+8. Execute A05 Google Cloud + Microsoft Store entitlement staging, including multi-instance replay/rate state and server-side subscription enforcement.
+9. Complete A29 signed Store release qualification and real x86/x64/ARM64 runtime qualification for every architecture actually shipped.
+10. Run fresh final-commit 1-hour and 8-hour stability/resource tests.
+11. Re-audit every High finding adversarially, then all 29 findings.
+12. Only then label the branch `READY FOR FINAL INDEPENDENT REVIEW`.
 
 ## Premium Privacy Protection preservation gate
 
 The Premium Privacy Protection roadmap in `SAI-005_Product_Roadmap.md` and `SAI-000_Project_Status.md` remains authoritative and **PLANNED POST-HARDENING**. Current hardening must not remove, weaken, overwrite, or prematurely implement it.
 
-Planned subscription-only scope remains: File Explorer integration, Inspect with Sentinel AI, Secure Delete, Encrypt File, Sentinel Vault, attributable-copy/history discovery, Windows-account protection, password-portable encryption, independent recovery keys, optional future Windows Hello/TPM integration, and server-side premium entitlement.
+Planned subscription-only scope remains: File Explorer integration, Inspect with Sentinel AI, Secure Delete, Encrypt File, Sentinel Vault, broad attributable-copy/history discovery, Windows-account protection, password-portable encryption, independent recovery keys, optional future Windows Hello/TPM integration, and server-side premium entitlement.
 
-Secure Delete remains constrained to the strongest **safe** privacy deletion Sentinel can provide for an explicitly selected user file and reliably attributable copies/references. It must never become an unrestricted privileged delete primitive. Required controls include explicit user intent, exact target identity/immediate revalidation, canonical paths, protected-location checks, reparse/junction/link defenses, race resistance, storage/media awareness, fail-closed transactions, post-operation verification, and structured evidence. Media behavior must distinguish HDD, SATA SSD, NVMe/flash, NTFS, BitLocker, and cloud-sync realities. Results must distinguish **VERIFIED**, **REQUESTED**, **REMAINS**, and **CANNOT PROVE**. Attributable-copy/history discovery is separate from deletion. Normal single-file Secure Delete must not directly modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`, wipe unrelated restore/history sets, or silently alter system databases. Do not claim guaranteed forensic irrecoverability without proof.
+Secure Delete remains constrained to the strongest **safe** privacy deletion Sentinel can provide for an explicitly selected user file and reliably attributable copies/references. Discovery should search as broadly as Windows and configured storage services safely permit for reasonably discoverable copies, versions, history entries, references, and Sentinel-created artifacts related to the selected file. Candidate classes remain **CONFIRMED COPY**, **LIKELY ATTRIBUTABLE COPY**, **METADATA / REFERENCE ONLY**, and **UNVERIFIED CANDIDATE**; fuzzy filename similarity alone must never authorize deletion. Discovery and deletion remain separate operations.
+
+Secure Delete must never become an unrestricted privileged delete primitive. Required controls include explicit user intent, exact target identity/immediate revalidation, canonical paths, protected-location checks, reparse/junction/link defenses, race resistance, storage/media awareness, fail-closed transactions, post-operation verification, and structured evidence. Media behavior must distinguish HDD, SATA SSD, NVMe/flash, NTFS, BitLocker, and cloud-sync realities. Results must distinguish **VERIFIED**, **REQUESTED**, **REMAINS**, and **CANNOT PROVE**. Normal single-file Secure Delete must not directly modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`, wipe unrelated restore/history sets, or silently alter system databases. Do not claim guaranteed forensic irrecoverability without proof.
 
 Encryption remains AES-256-GCM with a fresh random per-item DEK, unique nonce material, authenticated metadata, a versioned container, corruption detection, and reviewed streaming/chunked large-file handling. Safe transaction order remains: validate source -> create separate encrypted output -> complete/flush -> reopen/authenticate/verify -> only then optionally remove plaintext. Failure preserves the original; plaintext-removal failure preserves the encrypted copy and reports that plaintext remains. Windows-account mode wraps independent keys with current-user protection. Password mode uses a maintained reviewed KDF, preferably Argon2id where supportable, with random salt/versioned parameters. Recovery keys are independent/high-entropy with Copy/Save/Print and no silent escrow. Sentinel Vault uses a master key to wrap independent per-item keys and supports automatic/session lock plus account/password/recovery modes. Avoid plaintext temporary extraction.
 
 Explorer integration remains thin and non-privileged: identify selected shell items and activate Sentinel only. It must not directly encrypt/delete, contact subscription services, scan, or invoke the broker. Sentinel must reopen/revalidate the target.
 
-Preferred future implementation order remains: harmless Explorer integration -> encrypted-container specification -> encryption core -> recovery -> Sentinel Vault -> primary Secure Delete -> attributable-copy discovery/cleanup -> advanced privacy -> independent crypto/privacy review -> Windows storage/runtime validation.
+Preferred future implementation order remains: harmless Explorer integration -> encrypted-container specification -> encryption core -> recovery -> Sentinel Vault -> primary Secure Delete -> broad attributable-copy discovery/cleanup -> advanced privacy -> independent crypto/privacy review -> Windows storage/runtime validation.
 
 ## Release closure rule
 
 **Current merge recommendation: DO NOT MERGE.**
 
-At source/test checkpoint `08591c82177ee6313732d34f7abed4abcced7d13`, the latest static/adversarial review has not identified another known production-code defect. That is not equivalent to source qualification or production readiness while exact-head workflows remain queued. Do not call Sentinel AI production-hardened because source changes exist or CI is green. Production readiness requires commit-bound proof across every required source, Windows runtime, package/Store, cloud, architecture, adversarial, and stability gate.
+At source/test checkpoint `6943e9d93daa0a2f3863cb5c8d41510263c454be`, the branch has additional A08 hardening and regression coverage beyond the previous checkpoint. That is not equivalent to source qualification or production readiness while exact-head workflows remain queued/pending. Do not call Sentinel AI production-hardened because source changes exist or CI is green. Production readiness requires commit-bound proof across every required source, Windows runtime, package/Store, cloud, architecture, adversarial, and stability gate.
