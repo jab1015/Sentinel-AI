@@ -69,8 +69,9 @@ namespace Sentinel.App.Services
                     "Sentinel could not verify the temporary directory volume. No files were deleted.");
             }
 
-            DriveInfo drive = new(driveRoot);
-            long freeBefore = SafeFreeSpace(drive);
+            // Capacity observation is supporting telemetry only. An unusual redirected/UNC
+            // temp root must not turn a safely completed exact-handle cleanup into an exception.
+            long freeBefore = SafeFreeSpace(driveRoot);
             DateTime cutoffUtc = DateTime.UtcNow - MinimumFileAge;
 
             int examined = 0;
@@ -135,8 +136,7 @@ namespace Sentinel.App.Services
                 }
             }, cancellationToken).ConfigureAwait(false);
 
-            drive = new DriveInfo(driveRoot);
-            long freeAfter = SafeFreeSpace(drive);
+            long freeAfter = SafeFreeSpace(driveRoot);
             long verifiedRecoveredBytes = Math.Max(freeAfter - freeBefore, 0);
 
             // Every FilesChanged count represents an exact object whose deletion disposition was
@@ -175,9 +175,9 @@ namespace Sentinel.App.Services
             else if (reasons.Count < 32) reasons[reason] = 1;
         }
 
-        private static long SafeFreeSpace(DriveInfo drive)
+        private static long SafeFreeSpace(string driveRoot)
         {
-            try { return Math.Max(drive.AvailableFreeSpace, 0); }
+            try { return Math.Max(new DriveInfo(driveRoot).AvailableFreeSpace, 0); }
             catch { return 0; }
         }
 
