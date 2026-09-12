@@ -1,10 +1,8 @@
 using Sentinel.App.Services;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class RecoveryKeyAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         byte[] dek = RandomNumberGenerator.GetBytes(32);
