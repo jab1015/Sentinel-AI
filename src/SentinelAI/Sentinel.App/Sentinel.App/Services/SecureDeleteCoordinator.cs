@@ -18,7 +18,7 @@ internal sealed class SecureDeleteCoordinator
 
     internal SecureDeleteCoordinator(Func<DateTimeOffset>? utcNow = null)
     {
-        _utcNow = utcNow ?? static () => DateTimeOffset.UtcNow;
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
     internal SecureDeletePreparationResult Prepare(SecureDeleteTargetIdentity approvedTarget)
