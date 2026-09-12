@@ -61,7 +61,7 @@ namespace Sentinel.App.Services
                 AllowAutoRedirect = false,
                 AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
             };
-            using HttpClient client = new(handler) { Timeout = NetworkTimeout };
+            using HttpClient client = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
             client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
 
             foreach (TrustedSource source in sources)
@@ -72,12 +72,14 @@ namespace Sentinel.App.Services
                     if (!TryCreatePinnedHttpsUri(source.Uri, out Uri? expectedUri) || expectedUri is null)
                         continue;
 
+                    using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    deadline.CancelAfter(NetworkTimeout);
                     using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
-                    using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                    using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri))
                         continue;
 
-                    string? body = await ReadBoundedBodyAsync(response, cancellationToken).ConfigureAwait(false);
+                    string? body = await ReadBoundedBodyAsync(response, deadline.Token).ConfigureAwait(false);
                     if (body is null) continue;
 
                     string searchable = NormalizeWebText(body);
@@ -185,7 +187,8 @@ namespace Sentinel.App.Services
             expectedUri = null;
             if (!Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) ||
                 !parsed.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                string.IsNullOrWhiteSpace(parsed.Host))
+                string.IsNullOrWhiteSpace(parsed.Host) ||
+                !string.IsNullOrEmpty(parsed.UserInfo))
                 return false;
 
             expectedUri = parsed;
