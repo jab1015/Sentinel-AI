@@ -117,6 +117,11 @@ internal sealed class RecoveryKeyMaterial : IDisposable
                 bits -= 5;
                 output.Append(Base32Alphabet[(int)((buffer >> bits) & 0x1f)]);
             }
+
+            // Retain only the bits that have not yet been emitted. Without this mask,
+            // already-emitted bits remain in the 32-bit accumulator and eventually
+            // overflow on subsequent shifts, corrupting long recovery-key encodings.
+            buffer &= bits == 0 ? 0u : (1u << bits) - 1;
         }
         if (bits > 0)
             output.Append(Base32Alphabet[(int)((buffer << (5 - bits)) & 0x1f)]);
