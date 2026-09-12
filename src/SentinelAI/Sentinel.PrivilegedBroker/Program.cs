@@ -215,7 +215,7 @@ BrokerResult TerminateProcess(BrokerRequest req)
         req.TerminateDescendants ? "The exact approved process instance and its descendants were terminated." : "The exact approved process instance was terminated.");
 }
 
-BrokerFirewallRuleVerification QueryFirewallRuleForRemoval(string remoteIp)
+BrokerFirewallRuleVerification QueryFirewallRuleForMutation(string remoteIp)
 {
     string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
     string command =
@@ -257,11 +257,22 @@ BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
         return BrokerResult.Fail(req.RequestId, "InvalidFirewallTarget", "A literal remote IP address is required for firewall containment.");
 
     string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
-    if (!add)
+    BrokerFirewallRuleVerification verification = QueryFirewallRuleForMutation(remoteIp);
+    if (!verification.QueryValid)
+        return BrokerResult.Fail(req.RequestId, "FirewallVerificationFailed", $"The elevated broker could not safely verify firewall state immediately before mutation ({verification.Detail}). No firewall change was made.");
+
+    if (add)
     {
-        BrokerFirewallRuleVerification verification = QueryFirewallRuleForRemoval(remoteIp);
-        if (!verification.QueryValid)
-            return BrokerResult.Fail(req.RequestId, "FirewallVerificationFailed", $"The elevated broker could not safely verify the firewall rule immediately before removal ({verification.Detail}). No firewall change was made.");
+        if (verification.Exists)
+        {
+            if (!verification.IsExactBlock)
+                return BrokerResult.Fail(req.RequestId, "FirewallRuleConflict", $"A firewall rule with Sentinel's deterministic name appeared before elevated creation but does not exactly match the required enabled outbound Block scope ({verification.Detail}). The broker refused to add another rule.");
+            return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
+                $"The elevated broker verified that the exact Sentinel firewall block for {remoteIp} is already present. No duplicate firewall rule was created.");
+        }
+    }
+    else
+    {
         if (!verification.Exists)
             return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
                 $"The elevated broker verified that the Sentinel firewall block for {remoteIp} is already absent. No firewall change was needed.");
@@ -290,7 +301,7 @@ BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
 
     return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
         add
-            ? $"Windows accepted the exact allowlisted firewall block mutation for {remoteIp}. The desktop client must independently verify active policy before reporting containment success."
+            ? $"The elevated broker verified rule absence immediately before creation and Windows accepted the exact allowlisted firewall block mutation for {remoteIp}. The desktop client must independently verify active policy before reporting containment success."
             : $"The elevated broker reverified the exact Sentinel firewall rule immediately before removal, Windows accepted the constrained removal mutation for {remoteIp}, and the desktop client must independently verify actual absence before reporting removal success.");
 }
 
