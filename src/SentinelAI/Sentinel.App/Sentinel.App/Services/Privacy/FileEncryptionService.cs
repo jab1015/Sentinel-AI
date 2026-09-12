@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -43,7 +44,6 @@ internal sealed class FileEncryptionService
     {
         if (!TryValidateDistinctPaths(sourcePath, destinationPath, out string source, out string destination, out string validationFailure))
             return FileEncryptionResult.Fail(validationFailure, destinationPath);
-
         if (!File.Exists(source))
             return FileEncryptionResult.Fail("SourceUnavailable", destination);
         if (File.Exists(destination) || Directory.Exists(destination))
@@ -58,7 +58,6 @@ internal sealed class FileEncryptionService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-
             FileKeyProtectionRecord keyRecord = _keyProtector.Wrap(dataEncryptionKey);
             ValidateKeyRecordForWrite(keyRecord);
 
@@ -77,15 +76,20 @@ internal sealed class FileEncryptionService
 
             byte[] headerBytes = BuildHeader(originalLength, chunkCount, noncePrefix, keyRecord, _chunkSize);
             byte[] headerTag = new byte[HeaderTagLength];
-            byte[] headerNonce = BuildHeaderNonce(noncePrefix);
             using (AesGcm headerAes = new(dataEncryptionKey, HeaderTagLength))
             {
-                headerAes.Encrypt(headerNonce, ReadOnlySpan<byte>.Empty, Span<byte>.Empty, headerTag, headerBytes);
+                headerAes.Encrypt(
+                    BuildHeaderNonce(noncePrefix),
+                    ReadOnlySpan<byte>.Empty,
+                    Span<byte>.Empty,
+                    headerTag,
+                    headerBytes);
             }
 
             byte[] headerHash = SHA256.HashData(Combine(headerBytes, headerTag));
             plaintextBuffer = new byte[_chunkSize];
             ciphertextBuffer = new byte[_chunkSize];
+            string? writeFailure = null;
 
             await using (FileStream output = new(
                 destination,
@@ -103,23 +107,24 @@ internal sealed class FileEncryptionService
                 uint index = 0;
                 using AesGcm aes = new(dataEncryptionKey, AuthenticationTagLength);
 
-                while (true)
+                while (writeFailure is null)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     int read = await ReadChunkAsync(sourceStream, plaintextBuffer, cancellationToken).ConfigureAwait(false);
                     if (read == 0) break;
                     if (index == uint.MaxValue)
-                        return FileEncryptionResult.Fail("TooManyChunks", destination);
+                    {
+                        writeFailure = "TooManyChunks";
+                        break;
+                    }
 
-                    byte[] nonce = BuildChunkNonce(noncePrefix, index);
-                    byte[] aad = BuildChunkAad(headerHash, index, read, originalLength);
                     byte[] tag = new byte[AuthenticationTagLength];
                     aes.Encrypt(
-                        nonce,
+                        BuildChunkNonce(noncePrefix, index),
                         plaintextBuffer.AsSpan(0, read),
                         ciphertextBuffer.AsSpan(0, read),
                         tag,
-                        aad);
+                        BuildChunkAad(headerHash, index, read, originalLength));
 
                     byte[] chunkHeader = new byte[8];
                     BinaryPrimitives.WriteUInt32LittleEndian(chunkHeader.AsSpan(0, 4), index);
@@ -132,11 +137,20 @@ internal sealed class FileEncryptionService
                     index++;
                 }
 
-                if (totalPlaintext != originalLength || index != chunkCount)
-                    return FileEncryptionResult.Fail("SourceChangedDuringEncryption", destination);
+                if (writeFailure is null && (totalPlaintext != originalLength || index != chunkCount))
+                    writeFailure = "SourceChangedDuringEncryption";
 
-                await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-                output.Flush(flushToDisk: true);
+                if (writeFailure is null)
+                {
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    output.Flush(flushToDisk: true);
+                }
+            }
+
+            if (writeFailure is not null)
+            {
+                bool partialRemains = !TryDeleteOwnIncompleteOutput(destination);
+                return FileEncryptionResult.Fail(writeFailure, destination, partialRemains);
             }
 
             FileContainerVerificationResult verification = await VerifyAsync(destination, cancellationToken).ConfigureAwait(false);
@@ -159,25 +173,12 @@ internal sealed class FileEncryptionService
             bool partialRemains = createdOutput && !TryDeleteOwnIncompleteOutput(destination);
             return FileEncryptionResult.Fail("Canceled", destination, partialRemains);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or
+                                   InvalidDataException or Win32Exception or ArgumentException or NotSupportedException or
+                                   PathTooLongException or OverflowException)
         {
             bool partialRemains = createdOutput && File.Exists(destination) && !TryDeleteOwnIncompleteOutput(destination);
-            return FileEncryptionResult.Fail("IoFailure", destination, partialRemains);
-        }
-        catch (UnauthorizedAccessException)
-        {
-            bool partialRemains = createdOutput && File.Exists(destination) && !TryDeleteOwnIncompleteOutput(destination);
-            return FileEncryptionResult.Fail("AccessDenied", destination, partialRemains);
-        }
-        catch (CryptographicException)
-        {
-            bool partialRemains = createdOutput && File.Exists(destination) && !TryDeleteOwnIncompleteOutput(destination);
-            return FileEncryptionResult.Fail("CryptographicFailure", destination, partialRemains);
-        }
-        catch (OverflowException)
-        {
-            bool partialRemains = createdOutput && File.Exists(destination) && !TryDeleteOwnIncompleteOutput(destination);
-            return FileEncryptionResult.Fail("LengthOverflow", destination, partialRemains);
+            return FileEncryptionResult.Fail("EncryptionFailed", destination, partialRemains);
         }
         finally
         {
@@ -192,10 +193,6 @@ internal sealed class FileEncryptionService
         string encryptedPath,
         CancellationToken cancellationToken = default)
     {
-        byte[]? dataEncryptionKey = null;
-        byte[]? plaintextBuffer = null;
-        byte[]? ciphertextBuffer = null;
-
         try
         {
             string path = Path.GetFullPath(encryptedPath);
@@ -206,25 +203,118 @@ internal sealed class FileEncryptionService
                 FileShare.Read,
                 _chunkSize,
                 FileOptions.Asynchronous | FileOptions.SequentialScan);
+            return await ProcessContainerAsync(stream, plaintextOutput: null, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return FileContainerVerificationResult.Fail("Canceled");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or
+                                   InvalidDataException or Win32Exception or ArgumentException or NotSupportedException or
+                                   PathTooLongException or OverflowException)
+        {
+            return FileContainerVerificationResult.Fail("InvalidOrUnavailableContainer");
+        }
+    }
 
+    internal async Task<FileDecryptionResult> DecryptAsync(
+        string encryptedPath,
+        string destinationPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryValidateDistinctPaths(encryptedPath, destinationPath, out string source, out string destination, out string validationFailure))
+            return FileDecryptionResult.Fail(validationFailure, destinationPath);
+        if (!File.Exists(source))
+            return FileDecryptionResult.Fail("SourceUnavailable", destination);
+        if (File.Exists(destination) || Directory.Exists(destination))
+            return FileDecryptionResult.Fail("DestinationExists", destination);
+
+        bool createdOutput = false;
+        try
+        {
+            FileContainerVerificationResult result;
+            await using (FileStream input = new(
+                source,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                _chunkSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await using (FileStream output = new(
+                destination,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                _chunkSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                createdOutput = true;
+                result = await ProcessContainerAsync(input, output, cancellationToken).ConfigureAwait(false);
+                if (result.Verified)
+                {
+                    await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    output.Flush(flushToDisk: true);
+                }
+            }
+
+            if (!result.Verified)
+            {
+                TryDeleteOwnIncompleteOutput(destination);
+                return FileDecryptionResult.Fail(result.Code, destination);
+            }
+
+            return new FileDecryptionResult(true, "VerifiedPlaintextCopy", destination, result.PlaintextBytes);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (createdOutput) TryDeleteOwnIncompleteOutput(destination);
+            return FileDecryptionResult.Fail("Canceled", destination);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or
+                                   InvalidDataException or Win32Exception or ArgumentException or NotSupportedException or
+                                   PathTooLongException or OverflowException)
+        {
+            if (createdOutput) TryDeleteOwnIncompleteOutput(destination);
+            return FileDecryptionResult.Fail("DecryptionFailed", destination);
+        }
+    }
+
+    private async Task<FileContainerVerificationResult> ProcessContainerAsync(
+        FileStream stream,
+        Stream? plaintextOutput,
+        CancellationToken cancellationToken)
+    {
+        byte[]? dataEncryptionKey = null;
+        byte[]? plaintextBuffer = null;
+        byte[]? ciphertextBuffer = null;
+
+        try
+        {
             ParsedHeader parsed = await ReadAndValidateHeaderAsync(stream, cancellationToken).ConfigureAwait(false);
-            FileKeyProtectionRecord? matching = parsed.KeyRecords
+            FileKeyProtectionRecord[] matchingRecords = parsed.KeyRecords
                 .Where(record => record.ProtectionModeId == _keyProtector.ProtectionModeId &&
                                  record.WrappingAlgorithmId == _keyProtector.WrappingAlgorithmId)
-                .SingleOrDefault();
-            if (matching is null)
+                .Take(2)
+                .ToArray();
+            if (matchingRecords.Length == 0)
                 return FileContainerVerificationResult.Fail("NoSupportedKeyRecord");
+            if (matchingRecords.Length != 1)
+                return FileContainerVerificationResult.Fail("DuplicateSupportedKeyRecord");
 
-            FileKeyUnwrapResult unwrap = _keyProtector.TryUnwrap(matching);
+            FileKeyUnwrapResult unwrap = _keyProtector.TryUnwrap(matchingRecords[0]);
             if (unwrap.Status != FileKeyUnwrapStatus.Success || unwrap.DataEncryptionKey is null)
                 return FileContainerVerificationResult.Fail("KeyUnwrap:" + unwrap.Status);
             dataEncryptionKey = unwrap.DataEncryptionKey;
 
-            byte[] headerNonce = BuildHeaderNonce(parsed.NoncePrefix);
             try
             {
                 using AesGcm headerAes = new(dataEncryptionKey, HeaderTagLength);
-                headerAes.Decrypt(headerNonce, ReadOnlySpan<byte>.Empty, parsed.HeaderTag, Span<byte>.Empty, parsed.HeaderBytes);
+                headerAes.Decrypt(
+                    BuildHeaderNonce(parsed.NoncePrefix),
+                    ReadOnlySpan<byte>.Empty,
+                    parsed.HeaderTag,
+                    Span<byte>.Empty,
+                    parsed.HeaderBytes);
             }
             catch (CryptographicException)
             {
@@ -257,121 +347,6 @@ internal sealed class FileEncryptionService
                 if (!await ReadExactlyAsync(stream, tag, cancellationToken).ConfigureAwait(false))
                     return FileContainerVerificationResult.Fail("TruncatedAuthenticationTag");
 
-                byte[] nonce = BuildChunkNonce(parsed.NoncePrefix, index);
-                byte[] aad = BuildChunkAad(headerHash, index, plaintextLength, parsed.OriginalLength);
-                try
-                {
-                    aes.Decrypt(
-                        nonce,
-                        ciphertextBuffer.AsSpan(0, plaintextLength),
-                        tag,
-                        plaintextBuffer.AsSpan(0, plaintextLength),
-                        aad);
-                }
-                catch (CryptographicException)
-                {
-                    return FileContainerVerificationResult.Fail("ChunkAuthenticationFailed");
-                }
-
-                totalPlaintext = checked(totalPlaintext + plaintextLength);
-            }
-
-            if (totalPlaintext != parsed.OriginalLength)
-                return FileContainerVerificationResult.Fail("PlaintextLengthMismatch");
-            if (stream.Position != stream.Length)
-                return FileContainerVerificationResult.Fail("TrailingData");
-
-            return new FileContainerVerificationResult(true, "Verified", parsed.OriginalLength, parsed.ChunkCount);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return FileContainerVerificationResult.Fail("Canceled");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PathTooLongException or OverflowException)
-        {
-            return FileContainerVerificationResult.Fail("InvalidOrUnavailableContainer");
-        }
-        finally
-        {
-            if (dataEncryptionKey is not null) CryptographicOperations.ZeroMemory(dataEncryptionKey);
-            if (plaintextBuffer is not null) CryptographicOperations.ZeroMemory(plaintextBuffer);
-            if (ciphertextBuffer is not null) CryptographicOperations.ZeroMemory(ciphertextBuffer);
-        }
-    }
-
-    internal async Task<FileDecryptionResult> DecryptAsync(
-        string encryptedPath,
-        string destinationPath,
-        CancellationToken cancellationToken = default)
-    {
-        if (!TryValidateDistinctPaths(encryptedPath, destinationPath, out string source, out string destination, out string validationFailure))
-            return FileDecryptionResult.Fail(validationFailure, destinationPath);
-        if (!File.Exists(source)) return FileDecryptionResult.Fail("SourceUnavailable", destination);
-        if (File.Exists(destination) || Directory.Exists(destination)) return FileDecryptionResult.Fail("DestinationExists", destination);
-
-        FileContainerVerificationResult preflight = await VerifyAsync(source, cancellationToken).ConfigureAwait(false);
-        if (!preflight.Verified) return FileDecryptionResult.Fail("VerificationFailed:" + preflight.Code, destination);
-
-        byte[]? dataEncryptionKey = null;
-        byte[]? plaintextBuffer = null;
-        byte[]? ciphertextBuffer = null;
-        bool createdOutput = false;
-
-        try
-        {
-            await using FileStream input = new(source, FileMode.Open, FileAccess.Read, FileShare.Read, _chunkSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            ParsedHeader parsed = await ReadAndValidateHeaderAsync(input, cancellationToken).ConfigureAwait(false);
-            FileKeyProtectionRecord? matching = parsed.KeyRecords
-                .Where(record => record.ProtectionModeId == _keyProtector.ProtectionModeId &&
-                                 record.WrappingAlgorithmId == _keyProtector.WrappingAlgorithmId)
-                .SingleOrDefault();
-            if (matching is null) return FileDecryptionResult.Fail("NoSupportedKeyRecord", destination);
-
-            FileKeyUnwrapResult unwrap = _keyProtector.TryUnwrap(matching);
-            if (unwrap.Status != FileKeyUnwrapStatus.Success || unwrap.DataEncryptionKey is null)
-                return FileDecryptionResult.Fail("KeyUnwrap:" + unwrap.Status, destination);
-            dataEncryptionKey = unwrap.DataEncryptionKey;
-
-            using (AesGcm headerAes = new(dataEncryptionKey, HeaderTagLength))
-            {
-                try
-                {
-                    headerAes.Decrypt(BuildHeaderNonce(parsed.NoncePrefix), ReadOnlySpan<byte>.Empty, parsed.HeaderTag,
-                        Span<byte>.Empty, parsed.HeaderBytes);
-                }
-                catch (CryptographicException)
-                {
-                    return FileDecryptionResult.Fail("HeaderAuthenticationFailed", destination);
-                }
-            }
-
-            byte[] headerHash = SHA256.HashData(Combine(parsed.HeaderBytes, parsed.HeaderTag));
-            plaintextBuffer = new byte[parsed.ChunkSize];
-            ciphertextBuffer = new byte[parsed.ChunkSize];
-            long total = 0;
-
-            await using FileStream output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, parsed.ChunkSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            createdOutput = true;
-            using AesGcm aes = new(dataEncryptionKey, AuthenticationTagLength);
-
-            for (uint expectedIndex = 0; expectedIndex < parsed.ChunkCount; expectedIndex++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                byte[] chunkHeader = new byte[8];
-                if (!await ReadExactlyAsync(input, chunkHeader, cancellationToken).ConfigureAwait(false))
-                    return FileDecryptionResult.Fail("TruncatedChunkHeader", destination);
-                uint index = BinaryPrimitives.ReadUInt32LittleEndian(chunkHeader.AsSpan(0, 4));
-                int plaintextLength = BinaryPrimitives.ReadInt32LittleEndian(chunkHeader.AsSpan(4, 4));
-                if (index != expectedIndex || !IsValidChunkLength(expectedIndex, plaintextLength, parsed))
-                    return FileDecryptionResult.Fail("InvalidChunkRecord", destination);
-                if (!await ReadExactlyAsync(input, ciphertextBuffer.AsMemory(0, plaintextLength), cancellationToken).ConfigureAwait(false))
-                    return FileDecryptionResult.Fail("TruncatedCiphertext", destination);
-                byte[] tag = new byte[AuthenticationTagLength];
-                if (!await ReadExactlyAsync(input, tag, cancellationToken).ConfigureAwait(false))
-                    return FileDecryptionResult.Fail("TruncatedAuthenticationTag", destination);
-
                 try
                 {
                     aes.Decrypt(
@@ -383,29 +358,20 @@ internal sealed class FileEncryptionService
                 }
                 catch (CryptographicException)
                 {
-                    return FileDecryptionResult.Fail("ChunkAuthenticationFailed", destination);
+                    return FileContainerVerificationResult.Fail("ChunkAuthenticationFailed");
                 }
 
-                await output.WriteAsync(plaintextBuffer.AsMemory(0, plaintextLength), cancellationToken).ConfigureAwait(false);
-                total = checked(total + plaintextLength);
+                if (plaintextOutput is not null)
+                    await plaintextOutput.WriteAsync(plaintextBuffer.AsMemory(0, plaintextLength), cancellationToken).ConfigureAwait(false);
+                totalPlaintext = checked(totalPlaintext + plaintextLength);
             }
 
-            if (total != parsed.OriginalLength || input.Position != input.Length)
-                return FileDecryptionResult.Fail("ContainerLengthMismatch", destination);
+            if (totalPlaintext != parsed.OriginalLength)
+                return FileContainerVerificationResult.Fail("PlaintextLengthMismatch");
+            if (stream.Position != stream.Length)
+                return FileContainerVerificationResult.Fail("TrailingData");
 
-            await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-            output.Flush(flushToDisk: true);
-            return new FileDecryptionResult(true, "VerifiedPlaintextCopy", destination, total);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            if (createdOutput) TryDeleteOwnIncompleteOutput(destination);
-            return FileDecryptionResult.Fail("Canceled", destination);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException or OverflowException)
-        {
-            if (createdOutput) TryDeleteOwnIncompleteOutput(destination);
-            return FileDecryptionResult.Fail("DecryptionFailed", destination);
+            return new FileContainerVerificationResult(true, "Verified", parsed.OriginalLength, parsed.ChunkCount);
         }
         finally
         {
@@ -424,7 +390,8 @@ internal sealed class FileEncryptionService
     {
         int recordLength = checked(2 + 2 + 2 + 4 + keyRecord.Parameters.Length + 4 + keyRecord.WrappedDataEncryptionKey.Length);
         int headerLength = checked(FixedHeaderLength + recordLength);
-        if (headerLength > MaximumHeaderLength) throw new CryptographicException("Header exceeded the supported limit.");
+        if (headerLength > MaximumHeaderLength)
+            throw new CryptographicException("Header exceeded the supported limit.");
 
         byte[] header = new byte[headerLength];
         int offset = 0;
@@ -447,7 +414,8 @@ internal sealed class FileEncryptionService
         BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(offset, 4), checked((uint)keyRecord.WrappedDataEncryptionKey.Length)); offset += 4;
         keyRecord.WrappedDataEncryptionKey.CopyTo(header, offset); offset += keyRecord.WrappedDataEncryptionKey.Length;
 
-        if (offset != headerLength) throw new CryptographicException("Header serialization length mismatch.");
+        if (offset != headerLength)
+            throw new CryptographicException("Header serialization length mismatch.");
         return header;
     }
 
@@ -476,7 +444,7 @@ internal sealed class FileEncryptionService
             throw new InvalidDataException("Container version, algorithm, or flags are unsupported.");
         if (headerLengthRaw < FixedHeaderLength || headerLengthRaw > MaximumHeaderLength)
             throw new InvalidDataException("Container header length is invalid.");
-        if (headerLengthRaw + HeaderTagLength > stream.Length)
+        if ((long)headerLengthRaw + HeaderTagLength > stream.Length)
             throw new InvalidDataException("Container header exceeds the physical file.");
         if (chunkSizeRaw is < MinimumChunkSize or > MaximumChunkSize)
             throw new InvalidDataException("Container chunk size is invalid.");
@@ -484,8 +452,7 @@ internal sealed class FileEncryptionService
             throw new InvalidDataException("Container length or key-record count is invalid.");
 
         int chunkSize = checked((int)chunkSizeRaw);
-        ulong expectedChunkCount = CalculateChunkCount(originalLength, chunkSize);
-        if (chunkCount != expectedChunkCount)
+        if (chunkCount != CalculateChunkCount(originalLength, chunkSize))
             throw new InvalidDataException("Container chunk count does not match the original length.");
 
         int headerLength = checked((int)headerLengthRaw);
@@ -502,7 +469,14 @@ internal sealed class FileEncryptionService
         if (!await ReadExactlyAsync(stream, headerTag, cancellationToken).ConfigureAwait(false))
             throw new InvalidDataException("Container header tag is truncated.");
 
-        return new ParsedHeader(headerBytes, headerTag, noncePrefix, chunkSize, originalLength, checked((uint)chunkCount), records);
+        return new ParsedHeader(
+            headerBytes,
+            headerTag,
+            noncePrefix,
+            chunkSize,
+            originalLength,
+            checked((uint)chunkCount),
+            records);
     }
 
     private static List<FileKeyProtectionRecord> ParseKeyRecords(byte[] headerBytes, ushort expectedCount)
@@ -511,49 +485,72 @@ internal sealed class FileEncryptionService
         int offset = FixedHeaderLength;
         for (int recordIndex = 0; recordIndex < expectedCount; recordIndex++)
         {
-            if (offset > headerBytes.Length - 10) throw new InvalidDataException("Key record is truncated.");
+            if (offset > headerBytes.Length - 10)
+                throw new InvalidDataException("Key record is truncated.");
+
             ushort recordVersion = BinaryPrimitives.ReadUInt16LittleEndian(headerBytes.AsSpan(offset, 2)); offset += 2;
             ushort protectionMode = BinaryPrimitives.ReadUInt16LittleEndian(headerBytes.AsSpan(offset, 2)); offset += 2;
             ushort wrappingAlgorithm = BinaryPrimitives.ReadUInt16LittleEndian(headerBytes.AsSpan(offset, 2)); offset += 2;
             uint parameterLengthRaw = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes.AsSpan(offset, 4)); offset += 4;
-            if (parameterLengthRaw > MaximumKeyRecordSection) throw new InvalidDataException("Key-record parameters are oversized.");
+            if (parameterLengthRaw > MaximumKeyRecordSection)
+                throw new InvalidDataException("Key-record parameters are oversized.");
+
             int parameterLength = checked((int)parameterLengthRaw);
-            if (offset > headerBytes.Length - parameterLength - 4) throw new InvalidDataException("Key-record parameters are truncated.");
-            byte[] parameters = headerBytes.AsSpan(offset, parameterLength).ToArray(); offset += parameterLength;
+            if (offset > headerBytes.Length - parameterLength - 4)
+                throw new InvalidDataException("Key-record parameters are truncated.");
+            byte[] parameters = headerBytes.AsSpan(offset, parameterLength).ToArray();
+            offset += parameterLength;
+
             uint wrappedLengthRaw = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes.AsSpan(offset, 4)); offset += 4;
-            if (wrappedLengthRaw is 0 or > MaximumKeyRecordSection) throw new InvalidDataException("Wrapped DEK length is invalid.");
+            if (wrappedLengthRaw is 0 or > MaximumKeyRecordSection)
+                throw new InvalidDataException("Wrapped DEK length is invalid.");
             int wrappedLength = checked((int)wrappedLengthRaw);
-            if (offset > headerBytes.Length - wrappedLength) throw new InvalidDataException("Wrapped DEK is truncated.");
-            byte[] wrappedDek = headerBytes.AsSpan(offset, wrappedLength).ToArray(); offset += wrappedLength;
-            records.Add(new FileKeyProtectionRecord(recordVersion, protectionMode, wrappingAlgorithm, parameters, wrappedDek));
+            if (offset > headerBytes.Length - wrappedLength)
+                throw new InvalidDataException("Wrapped DEK is truncated.");
+            byte[] wrappedDek = headerBytes.AsSpan(offset, wrappedLength).ToArray();
+            offset += wrappedLength;
+
+            records.Add(new FileKeyProtectionRecord(
+                recordVersion,
+                protectionMode,
+                wrappingAlgorithm,
+                parameters,
+                wrappedDek));
         }
 
-        if (offset != headerBytes.Length) throw new InvalidDataException("Key-record parsing did not end at HeaderLength.");
+        if (offset != headerBytes.Length)
+            throw new InvalidDataException("Key-record parsing did not end at HeaderLength.");
         return records;
     }
 
     private static bool IsValidChunkLength(uint index, int length, ParsedHeader parsed)
     {
-        if (length < 0 || length > parsed.ChunkSize) return false;
-        if (parsed.ChunkCount == 0) return false;
+        if (length < 0 || length > parsed.ChunkSize || parsed.ChunkCount == 0)
+            return false;
         long priorBytes = checked((long)index * parsed.ChunkSize);
         long remaining = parsed.OriginalLength - priorBytes;
-        if (remaining <= 0) return false;
+        if (remaining <= 0)
+            return false;
         int expected = checked((int)Math.Min(parsed.ChunkSize, remaining));
         return length == expected;
     }
 
     private static void ValidateKeyRecordForWrite(FileKeyProtectionRecord record)
     {
-        if (record.Parameters.Length > MaximumKeyRecordSection ||
+        if (record.Parameters is null || record.WrappedDataEncryptionKey is null ||
+            record.Parameters.Length > MaximumKeyRecordSection ||
             record.WrappedDataEncryptionKey.Length is 0 or > MaximumKeyRecordSection)
+        {
             throw new CryptographicException("Key-protection record exceeds supported bounds.");
+        }
     }
 
     private static ulong CalculateChunkCount(long originalLength, int chunkSize)
     {
-        if (originalLength < 0) throw new InvalidDataException("Negative source length is invalid.");
-        if (originalLength == 0) return 0;
+        if (originalLength < 0)
+            throw new InvalidDataException("Negative source length is invalid.");
+        if (originalLength == 0)
+            return 0;
         return checked((ulong)(((originalLength - 1) / chunkSize) + 1));
     }
 
@@ -563,7 +560,8 @@ internal sealed class FileEncryptionService
         while (total < buffer.Length)
         {
             int read = await stream.ReadAsync(buffer.AsMemory(total, buffer.Length - total), cancellationToken).ConfigureAwait(false);
-            if (read == 0) break;
+            if (read == 0)
+                break;
             total += read;
         }
         return total;
@@ -575,14 +573,15 @@ internal sealed class FileEncryptionService
         while (total < buffer.Length)
         {
             int read = await stream.ReadAsync(buffer[total..], cancellationToken).ConfigureAwait(false);
-            if (read == 0) return false;
+            if (read == 0)
+                return false;
             total += read;
         }
         return true;
     }
 
-    private static async Task<bool> ReadExactlyAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken) =>
-        await ReadExactlyAsync(stream, buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+    private static Task<bool> ReadExactlyAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken) =>
+        ReadExactlyAsync(stream, buffer.AsMemory(), cancellationToken);
 
     private static byte[] BuildHeaderNonce(byte[] noncePrefix)
     {
@@ -594,7 +593,8 @@ internal sealed class FileEncryptionService
 
     private static byte[] BuildChunkNonce(byte[] noncePrefix, uint index)
     {
-        if (index == uint.MaxValue) throw new CryptographicException("Reserved header nonce index cannot be used for data.");
+        if (index == uint.MaxValue)
+            throw new CryptographicException("Reserved header nonce index cannot be used for data.");
         byte[] nonce = new byte[12];
         noncePrefix.CopyTo(nonce, 0);
         BinaryPrimitives.WriteUInt32BigEndian(nonce.AsSpan(8, 4), index);
@@ -636,6 +636,7 @@ internal sealed class FileEncryptionService
                 failure = "InvalidPath";
                 return false;
             }
+
             source = Path.GetFullPath(sourcePath);
             destination = Path.GetFullPath(destinationPath);
             if (source.Equals(destination, StringComparison.OrdinalIgnoreCase))
@@ -656,10 +657,14 @@ internal sealed class FileEncryptionService
     {
         try
         {
-            if (File.Exists(path)) File.Delete(path);
+            if (File.Exists(path))
+                File.Delete(path);
             return !File.Exists(path);
         }
-        catch { return false; }
+        catch
+        {
+            return false;
+        }
     }
 
     private sealed record ParsedHeader(
