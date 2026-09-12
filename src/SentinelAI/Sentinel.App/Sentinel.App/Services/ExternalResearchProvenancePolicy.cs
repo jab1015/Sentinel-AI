@@ -19,6 +19,7 @@ namespace Sentinel.App.Services
     {
         public const int MaximumPassagesPerSource = 6;
         public const int MaximumPassageCharacters = 360;
+        private static readonly Uri DellDownloadAuthority = new("https://downloads.dell.com/");
 
         public static IReadOnlyList<ExternalResearchPassage> ExtractPassages(
             string? normalizedSourceText,
@@ -67,6 +68,46 @@ namespace Sentinel.App.Services
             return passages.Any(p =>
                 p.MatchedTerm.Equals(term.Trim(), StringComparison.OrdinalIgnoreCase) &&
                 !string.IsNullOrWhiteSpace(p.Passage));
+        }
+
+        /// <summary>
+        /// Resolves a package path emitted by Dell catalog content while preserving
+        /// authority attribution. Only HTTPS URLs hosted by downloads.dell.com on the
+        /// standard HTTPS port are allowed to be represented as Dell-hosted packages.
+        /// Relative catalog paths are anchored to that same authority.
+        /// </summary>
+        public static bool TryResolveDellPackageUri(string? catalogValue, out string downloadUri)
+        {
+            downloadUri = string.Empty;
+            if (string.IsNullOrWhiteSpace(catalogValue))
+                return false;
+
+            string value = catalogValue.Trim();
+            Uri candidate;
+
+            if (Uri.TryCreate(value, UriKind.Absolute, out Uri? absolute))
+            {
+                candidate = absolute;
+            }
+            else
+            {
+                string normalized = value.TrimStart('/', '\\').Replace('\\', '/');
+                if (normalized.Length == 0 || !Uri.TryCreate(DellDownloadAuthority, normalized, out Uri? relative))
+                    return false;
+                candidate = relative;
+            }
+
+            if (!candidate.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                !candidate.Host.Equals(DellDownloadAuthority.Host, StringComparison.OrdinalIgnoreCase) ||
+                candidate.Port != DellDownloadAuthority.Port ||
+                !string.IsNullOrEmpty(candidate.UserInfo) ||
+                !candidate.AbsolutePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            downloadUri = candidate.AbsoluteUri;
+            return true;
         }
 
         private static string ExtractWindow(string text, int matchIndex, int termLength)
