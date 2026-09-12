@@ -165,7 +165,7 @@ internal sealed class PrivilegedBrokerClient
             await pipe.ConnectAsync(operationToken).WaitAsync(TimeSpan.FromSeconds(20), operationToken).ConfigureAwait(false);
             if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out uint connectedPid) || connectedPid != process.Id)
             {
-                TerminateBroker(process);
+                _ = TerminateBroker(process);
                 return BrokerInvocationResult.Failure("BrokerIdentityMismatch", "The privileged IPC peer was not the broker process Sentinel launched.");
             }
 
@@ -178,14 +178,14 @@ internal sealed class PrivilegedBrokerClient
 
             if (string.IsNullOrWhiteSpace(responseJson) || Encoding.UTF8.GetByteCount(responseJson) > MaximumRequestBytes)
             {
-                TerminateBroker(process);
+                _ = TerminateBroker(process);
                 return BrokerInvocationResult.Failure("InvalidResult", "The broker returned an empty or oversized result.");
             }
 
             BrokerResult? result = JsonSerializer.Deserialize<BrokerResult>(responseJson);
             if (result is null || !result.RequestId.Equals(request.RequestId, StringComparison.Ordinal))
             {
-                TerminateBroker(process);
+                _ = TerminateBroker(process);
                 return BrokerInvocationResult.Failure("InvalidResult", "The broker result could not be matched to this request ID.");
             }
 
@@ -194,42 +194,68 @@ internal sealed class PrivilegedBrokerClient
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            TerminateBroker(process);
-            return BrokerInvocationResult.Failure("Canceled", "The privileged operation was canceled. Sentinel terminated the broker request and will verify system state before making any success claim.");
+            bool brokerExitVerified = TerminateBroker(process);
+            return BrokerInvocationResult.Failure(
+                "Canceled",
+                BuildTerminationMessage(
+                    "The privileged operation was canceled.",
+                    brokerExitVerified,
+                    "Sentinel will verify system state before making any success claim."));
         }
         catch (OperationCanceledException)
         {
-            TerminateBroker(process);
-            return BrokerInvocationResult.Failure("Timeout", "The privileged operation exceeded its single wall-clock verification window. Sentinel terminated the broker request and did not report success.");
+            bool brokerExitVerified = TerminateBroker(process);
+            return BrokerInvocationResult.Failure(
+                "Timeout",
+                BuildTerminationMessage(
+                    "The privileged operation exceeded its single wall-clock verification window.",
+                    brokerExitVerified,
+                    "Sentinel did not report success."));
         }
         catch (TimeoutException)
         {
-            TerminateBroker(process);
-            return BrokerInvocationResult.Failure("Timeout", "The privileged operation could not establish its authenticated IPC channel within the bounded connection window. Sentinel terminated the broker request and did not report success.");
+            bool brokerExitVerified = TerminateBroker(process);
+            return BrokerInvocationResult.Failure(
+                "Timeout",
+                BuildTerminationMessage(
+                    "The privileged operation could not establish its authenticated IPC channel within the bounded connection window.",
+                    brokerExitVerified,
+                    "Sentinel did not report success."));
         }
         catch (IOException)
         {
-            TerminateBroker(process);
+            _ = TerminateBroker(process);
             return BrokerInvocationResult.Failure("IpcFailure", "The authenticated privileged IPC channel failed. Sentinel made no success claim.");
         }
         catch (JsonException)
         {
-            TerminateBroker(process);
+            _ = TerminateBroker(process);
             return BrokerInvocationResult.Failure("InvalidResult", "The privileged broker returned malformed result data.");
         }
     }
 
-    private static void TerminateBroker(Process process)
+    private static string BuildTerminationMessage(string prefix, bool brokerExitVerified, string suffix) =>
+        brokerExitVerified
+            ? $"{prefix} Sentinel requested process-tree termination and verified the broker exited. {suffix}"
+            : $"{prefix} Sentinel requested process-tree termination but could not verify the broker exited. {suffix}";
+
+    private static bool TerminateBroker(Process process)
     {
         try
         {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(5_000);
-            }
+            if (process.HasExited)
+                return true;
+
+            process.Kill(entireProcessTree: true);
+            if (!process.WaitForExit(5_000))
+                return false;
+
+            return process.HasExited;
         }
-        catch { }
+        catch
+        {
+            return false;
+        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
