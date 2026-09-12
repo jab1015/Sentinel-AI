@@ -56,27 +56,34 @@ namespace Sentinel.App.Services
             await ExecutionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (!_stateStore.TryLoad(out OptimizationRuntimeState state))
+                if (!_stateStore.TryAcquireExecutionLease(out IDisposable? executionLease) || executionLease is null)
                     return new AutomaticOptimizationResult(false, baseline, decision, safety, null,
-                        "Automatic optimization was not run because Sentinel could not verify its persisted cooldown state. No change was attempted.");
+                        "Automatic optimization was not run because another Sentinel process may already own the optimization safety lease. No change was attempted.");
 
-                DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (state.LastAttemptUtc.HasValue && now - state.LastAttemptUtc.Value < MinimumExecutionInterval)
-                    return new AutomaticOptimizationResult(false, baseline, decision, safety, null,
-                        "A verified optimization was identified, but Sentinel recently performed or attempted an optimization and is waiting before making another automatic change.");
+                using (executionLease)
+                {
+                    if (!_stateStore.TryLoad(out OptimizationRuntimeState state))
+                        return new AutomaticOptimizationResult(false, baseline, decision, safety, null,
+                            "Automatic optimization was not run because Sentinel could not verify its persisted cooldown state. No change was attempted.");
 
-                OptimizationRuntimeState reservation = new(now, state.LastSucceededUtc, "Optimization attempt reserved before execution.");
-                if (!_stateStore.TrySave(reservation))
-                    return new AutomaticOptimizationResult(false, baseline, decision, safety, null,
-                        "Automatic optimization was not run because Sentinel could not durably reserve the attempt. No change was attempted.");
+                    DateTimeOffset now = DateTimeOffset.UtcNow;
+                    if (state.LastAttemptUtc.HasValue && now - state.LastAttemptUtc.Value < MinimumExecutionInterval)
+                        return new AutomaticOptimizationResult(false, baseline, decision, safety, null,
+                            "A verified optimization was identified, but Sentinel recently performed or attempted an optimization and is waiting before making another automatic change.");
 
-                OptimizationExecutionResult execution = await _storageExecutor.ExecuteAsync(decision, safety, cancellationToken).ConfigureAwait(false);
-                _outcomeRecorder.Record(execution);
+                    OptimizationRuntimeState reservation = new(now, state.LastSucceededUtc, "Optimization attempt reserved before execution.");
+                    if (!_stateStore.TrySave(reservation))
+                        return new AutomaticOptimizationResult(false, baseline, decision, safety, null,
+                            "Automatic optimization was not run because Sentinel could not durably reserve the attempt. No change was attempted.");
 
-                OptimizationRuntimeState completed = new(now, execution.Succeeded ? now : state.LastSucceededUtc, execution.Summary);
-                _ = _stateStore.TrySave(completed); // pre-action reservation remains authoritative if this write fails
+                    OptimizationExecutionResult execution = await _storageExecutor.ExecuteAsync(decision, safety, cancellationToken).ConfigureAwait(false);
+                    _outcomeRecorder.Record(execution);
 
-                return new AutomaticOptimizationResult(execution.Attempted, baseline, decision, safety, execution, execution.Summary);
+                    OptimizationRuntimeState completed = new(now, execution.Succeeded ? now : state.LastSucceededUtc, execution.Summary);
+                    _ = _stateStore.TrySave(completed); // pre-action reservation remains authoritative if this write fails
+
+                    return new AutomaticOptimizationResult(execution.Attempted, baseline, decision, safety, execution, execution.Summary);
+                }
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
