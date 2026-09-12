@@ -1,7 +1,7 @@
 # SAI-PRIV-001 — Encrypted Container Format
 
-Status: DESIGN COMPLETE — SOURCE IMPLEMENTATION NOT YET QUALIFIED  
-Version: 1.0  
+Status: DESIGN COMPLETE — SOURCE IMPLEMENTATION IN PROGRESS  
+Version: 1.1  
 Date: 2026-09-12
 
 ## Purpose
@@ -29,7 +29,7 @@ All integers are little-endian unless explicitly stated.
 |---|---:|---|
 | Magic | 8 bytes | ASCII `SNTLENC1` |
 | FormatVersion | 2 bytes | `1` |
-| HeaderLength | 4 bytes | Total authenticated header bytes following the fixed preamble |
+| HeaderLength | 4 bytes | Exact byte count from the first byte of `Magic` through the final wrapped-key-record byte; excludes the 16-byte `HeaderTag` |
 | AlgorithmId | 2 bytes | `1` = AES-256-GCM |
 | ChunkSize | 4 bytes | Plaintext bytes per full data chunk; v1 default 1 MiB |
 | OriginalLength | 8 bytes | Exact plaintext length |
@@ -38,19 +38,21 @@ All integers are little-endian unless explicitly stated.
 | KeyRecordCount | 2 bytes | Number of wrapped-key records |
 | Flags | 4 bytes | Reserved; unknown required flags fail closed |
 
-`HeaderLength` is bounded. Version 1 rejects headers larger than 256 KiB.
+The fixed preamble is exactly 50 bytes. `HeaderLength` includes those 50 bytes plus all serialized wrapped-key records, and excludes `HeaderTag`. This makes the authenticated header boundary self-delimiting without relying on provider-specific key-record parsing. Version 1 rejects `HeaderLength < 50`, headers larger than 256 KiB, lengths beyond the physical file, and any key-record parse that does not end exactly at `HeaderLength`.
 
 ### Wrapped-key records
 
-Each key record contains:
+Each key record is serialized in this exact order:
 
-- record version
-- protection mode identifier
-- wrapping/KDF algorithm identifier
-- bounded parameter length
-- bounded parameter bytes
-- bounded wrapped-DEK length
-- wrapped-DEK bytes
+| Field | Size |
+|---|---:|
+| RecordVersion | 2 bytes |
+| ProtectionModeId | 2 bytes |
+| WrappingAlgorithmId | 2 bytes |
+| ParameterLength | 4 bytes |
+| ParameterBytes | ParameterLength bytes |
+| WrappedDekLength | 4 bytes |
+| WrappedDekBytes | WrappedDekLength bytes |
 
 Version 1 protection modes are reserved as:
 
@@ -66,8 +68,8 @@ The content DEK is independent of every wrapping mode. Adding or removing a wrap
 The fixed preamble and all wrapped-key records are authenticated with AES-256-GCM using the file DEK, empty plaintext, and a dedicated header nonce:
 
 - nonce = `NoncePrefix || 0xFFFFFFFF`
-- AAD = every header byte before `HeaderTag`
-- `HeaderTag` = 16 bytes
+- AAD = the exact `HeaderLength` bytes from `Magic` through the final wrapped-key-record byte
+- `HeaderTag` = 16 bytes immediately following those bytes
 
 The reserved header nonce is never used for a data chunk.
 
@@ -86,14 +88,14 @@ Data nonce:
 
 `NoncePrefix || UInt32BigEndian(i)`
 
-Chunk AAD is:
+Chunk AAD is exactly 48 bytes:
 
-- SHA-256 of the authenticated header bytes including `HeaderTag`
-- chunk index
-- plaintext length
-- original plaintext length
+- bytes 0–31: SHA-256 of `HeaderBytes || HeaderTag`
+- bytes 32–35: chunk index as UInt32 big-endian
+- bytes 36–39: plaintext chunk length as Int32 little-endian
+- bytes 40–47: original plaintext length as Int64 little-endian
 
-The same file DEK is used only with unique nonces inside that container. Version 1 therefore limits data chunks to at most `UInt32.MaxValue` and rejects configurations that would exceed that limit.
+The same file DEK is used only with unique nonces inside that container. Version 1 permits at most `UInt32.MaxValue` data chunks, which means the greatest valid data chunk index is `UInt32.MaxValue - 1`; `0xFFFFFFFF` remains reserved exclusively for header authentication.
 
 ## Streaming rules
 
@@ -102,7 +104,9 @@ The same file DEK is used only with unique nonces inside that container. Version
 - Write exactly one record per expected chunk.
 - Flush the encrypted output before verification.
 - Reopen the encrypted output from disk.
-- Authenticate the header.
+- Parse bounded header/key-record lengths before proportional allocation.
+- Obtain the DEK through an authenticated key-protection record.
+- Authenticate the header before any plaintext result is accepted.
 - Authenticate every chunk in order.
 - Verify exact chunk count, exact original length, and EOF immediately after the final tag.
 - Extra trailing bytes are corruption and fail closed.
@@ -118,6 +122,8 @@ Only after this sequence may a separate plaintext-removal operation be offered.
 If encryption fails: keep the original.  
 If verification fails: keep the original and treat output as invalid.  
 If optional plaintext removal later fails: keep the verified encrypted copy and report that plaintext remains.
+
+A failed/canceled encryption may remove its own incomplete output. If cleanup of incomplete output fails, the structured result must explicitly report that an invalid partial artifact remains; it must never describe that artifact as an encrypted copy.
 
 ## Size limits
 
@@ -148,6 +154,7 @@ Any of the following produces a structured verification failure and no plaintext
 - unknown required flags
 - unsupported key record
 - duplicate/invalid key record structure
+- wrapped-key authentication failure
 - wrong chunk index
 - invalid chunk length
 - tag failure
@@ -174,4 +181,4 @@ Logs may contain bounded operation IDs, result codes, byte counts, algorithm/ver
 
 ## Qualification state
 
-DESIGN COMPLETE only. This document does not make encryption production-ready. Source implementation, corruption/adversarial harnesses, Windows runtime tests, crash/disk-full tests, key-mode tests, and independent cryptographic review remain required.
+DESIGN COMPLETE. P3 source implementation is now authorized against this v1.1 serialization contract. Source implementation, corruption/adversarial harnesses, Windows runtime tests, crash/disk-full tests, key-mode tests, and independent cryptographic review remain required before release qualification.
