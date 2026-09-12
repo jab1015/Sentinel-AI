@@ -108,9 +108,9 @@ internal static class BoundedProcessRunner
         }
 
         if (outcome == ProcessExecutionOutcome.TimedOut)
-            return new(outcome, TryGetExitCode(process), stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, "The child exceeded its wall-clock timeout and Sentinel terminated its process tree.");
+            return new(outcome, TryGetExitCode(process), stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, "The child exceeded its wall-clock timeout. Sentinel requested process-tree termination and did not accept the command as completed.");
         if (outcome == ProcessExecutionOutcome.Canceled)
-            return new(outcome, TryGetExitCode(process), stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, "The operation was canceled and Sentinel terminated its child process tree.");
+            return new(outcome, TryGetExitCode(process), stdout.Text, stderr.Text, stdout.Truncated || stderr.Truncated, "The operation was canceled. Sentinel requested child process-tree termination and did not accept the command as completed.");
 
         int exitCode = process.ExitCode;
         return new(
