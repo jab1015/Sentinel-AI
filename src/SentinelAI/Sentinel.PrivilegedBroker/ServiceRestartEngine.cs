@@ -21,9 +21,6 @@ internal sealed class ServiceRestartEngine
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(30);
 
-    // Keep privileged service mutation intentionally narrow. Expanding this set is a security
-    // decision and requires its own dependency/runtime validation; arbitrary service names are
-    // never accepted from desktop IPC.
     private static readonly HashSet<string> AllowedServices = new(StringComparer.OrdinalIgnoreCase)
     {
         "BITS",
@@ -33,9 +30,10 @@ internal sealed class ServiceRestartEngine
 
     private readonly string _transactionRoot;
 
-    internal ServiceRestartEngine(string transactionRoot)
+    internal ServiceRestartEngine(string brokerTransactionRoot)
     {
-        _transactionRoot = transactionRoot ?? throw new ArgumentNullException(nameof(transactionRoot));
+        if (string.IsNullOrWhiteSpace(brokerTransactionRoot)) throw new ArgumentNullException(nameof(brokerTransactionRoot));
+        _transactionRoot = Path.Combine(brokerTransactionRoot, "ServiceRestarts");
     }
 
     internal ServiceRestartResult RecoverPending()
@@ -56,9 +54,7 @@ internal sealed class ServiceRestartEngine
                 }
 
                 if (!transaction.OriginallyRunning)
-                {
                     return ServiceRestartResult.Fail("RecoveryRecordInvalid", "A pending service-restart record did not preserve a running-service state. Service restart remains blocked.");
-                }
 
                 ServiceRestartResult recovery = EnsureRunning(transaction.ServiceName);
                 if (!recovery.Succeeded)
@@ -81,8 +77,7 @@ internal sealed class ServiceRestartEngine
             return ServiceRestartResult.Fail("ServiceNotAllowlisted", "The requested Windows service is not in Sentinel's privileged restart allowlist.");
 
         ServiceRestartResult recovery = RecoverPending();
-        if (!recovery.Succeeded)
-            return recovery;
+        if (!recovery.Succeeded) return recovery;
 
         IntPtr scm = IntPtr.Zero;
         IntPtr service = IntPtr.Zero;
@@ -104,14 +99,9 @@ internal sealed class ServiceRestartEngine
 
             string[] activeDependents = GetActiveDependentServices(service);
             if (activeDependents.Length > 0)
-            {
-                return ServiceRestartResult.Fail(
-                    "ActiveDependents",
-                    $"Sentinel refused to restart {normalized} because active dependent services were detected: {string.Join(", ", activeDependents.Take(8))}.");
-            }
+                return ServiceRestartResult.Fail("ActiveDependents", $"Sentinel refused to restart {normalized} because active dependent services were detected: {string.Join(", ", activeDependents.Take(8))}.");
 
-            ServiceRestartTransaction transaction = new(
-                Guid.NewGuid().ToString("N"), normalized, OriginallyRunning: true, DateTimeOffset.UtcNow);
+            ServiceRestartTransaction transaction = new(Guid.NewGuid().ToString("N"), normalized, true, DateTimeOffset.UtcNow);
             transactionPath = PersistTransaction(transaction);
             if (transactionPath is null)
                 return ServiceRestartResult.Fail("ReservationFailed", "Sentinel could not durably reserve rollback state before stopping the service. No state change was made.");
@@ -128,11 +118,8 @@ internal sealed class ServiceRestartEngine
             {
                 ServiceRestartResult rollback = EnsureRunningHandle(service, normalized);
                 if (rollback.Succeeded) DeleteTransaction(transactionPath);
-                return ServiceRestartResult.Fail(
-                    rollback.Succeeded ? "StopTimeoutRolledBack" : "StopTimeoutRollbackPending",
-                    rollback.Succeeded
-                        ? "The service did not reach Stopped in time; Sentinel restored and verified its original running state."
-                        : "The service did not reach Stopped in time and Sentinel could not verify restoration. Durable recovery remains pending.");
+                return ServiceRestartResult.Fail(rollback.Succeeded ? "StopTimeoutRolledBack" : "StopTimeoutRollbackPending",
+                    rollback.Succeeded ? "The service did not reach Stopped in time; Sentinel restored and verified its original running state." : "The service did not reach Stopped in time and Sentinel could not verify restoration. Durable recovery remains pending.");
             }
 
             if (!StartServiceW(service, 0, null))
@@ -147,11 +134,8 @@ internal sealed class ServiceRestartEngine
             {
                 ServiceRestartResult rollback = EnsureRunningHandle(service, normalized);
                 if (rollback.Succeeded) DeleteTransaction(transactionPath);
-                return ServiceRestartResult.Fail(
-                    rollback.Succeeded ? "StartTimeoutRolledBack" : "StartTimeoutRollbackPending",
-                    rollback.Succeeded
-                        ? "The service restart did not verify in time; Sentinel restored and verified the original running state."
-                        : "The service restart did not verify and the original running state could not be restored. Durable recovery remains pending.");
+                return ServiceRestartResult.Fail(rollback.Succeeded ? "StartTimeoutRolledBack" : "StartTimeoutRollbackPending",
+                    rollback.Succeeded ? "The service restart did not verify in time; Sentinel restored and verified the original running state." : "The service restart did not verify and the original running state could not be restored. Durable recovery remains pending.");
             }
 
             DeleteTransaction(transactionPath);
@@ -164,11 +148,8 @@ internal sealed class ServiceRestartEngine
             {
                 ServiceRestartResult rollback = EnsureRunning(normalized);
                 if (rollback.Succeeded) DeleteTransaction(transactionPath);
-                return ServiceRestartResult.Fail(
-                    rollback.Succeeded ? "RestartFailedRolledBack" : "RestartFailedRollbackPending",
-                    rollback.Succeeded
-                        ? $"Service restart failed safely ({ex.GetType().Name}); Sentinel restored and verified the original running state."
-                        : $"Service restart failed ({ex.GetType().Name}) and restoration could not be verified. Durable recovery remains pending.");
+                return ServiceRestartResult.Fail(rollback.Succeeded ? "RestartFailedRolledBack" : "RestartFailedRollbackPending",
+                    rollback.Succeeded ? $"Service restart failed safely ({ex.GetType().Name}); Sentinel restored and verified the original running state." : $"Service restart failed ({ex.GetType().Name}) and restoration could not be verified. Durable recovery remains pending.");
             }
             return ServiceRestartResult.Fail("RestartFailed", $"Service restart failed safely before a verified state change ({ex.GetType().Name}).");
         }
@@ -220,7 +201,6 @@ internal sealed class ServiceRestartEngine
         if (!StartServiceW(service, 0, null))
         {
             int error = Marshal.GetLastWin32Error();
-            // ERROR_SERVICE_ALREADY_RUNNING is an acceptable race only if independently verified below.
             if (error != 1056)
                 return ServiceRestartResult.Fail("RollbackStartFailed", $"Windows could not restore the service (Win32 {error}).");
         }
@@ -242,7 +222,7 @@ internal sealed class ServiceRestartEngine
                 stream.Write(payload, 0, payload.Length);
                 stream.Flush(true);
             }
-            File.Move(tempPath, finalPath, overwrite: false);
+            File.Move(tempPath, finalPath, false);
             ServiceRestartTransaction? verified = ReadTransaction(finalPath);
             if (verified != transaction)
             {
@@ -251,10 +231,7 @@ internal sealed class ServiceRestartEngine
             }
             return finalPath;
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 
     private static ServiceRestartTransaction? ReadTransaction(string path)
@@ -263,8 +240,7 @@ internal sealed class ServiceRestartEngine
         {
             FileInfo info = new(path);
             if (info.Length is <= 0 or > 16_384) return null;
-            byte[] payload = File.ReadAllBytes(path);
-            return JsonSerializer.Deserialize<ServiceRestartTransaction>(payload);
+            return JsonSerializer.Deserialize<ServiceRestartTransaction>(File.ReadAllBytes(path));
         }
         catch { return null; }
     }
@@ -276,11 +252,8 @@ internal sealed class ServiceRestartEngine
 
     private static string[] GetActiveDependentServices(IntPtr service)
     {
-        uint bytesNeeded;
-        uint count;
-        if (EnumDependentServicesW(service, ServiceActive, IntPtr.Zero, 0, out bytesNeeded, out count))
+        if (EnumDependentServicesW(service, ServiceActive, IntPtr.Zero, 0, out uint bytesNeeded, out uint count))
             return Array.Empty<string>();
-
         int error = Marshal.GetLastWin32Error();
         if (error != ErrorMoreData || bytesNeeded == 0)
             throw new Win32Exception(error, "Active dependent-service state could not be verified.");
@@ -290,7 +263,6 @@ internal sealed class ServiceRestartEngine
         {
             if (!EnumDependentServicesW(service, ServiceActive, buffer, bytesNeeded, out _, out count))
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "Active dependent-service state could not be verified.");
-
             int size = Marshal.SizeOf<ENUM_SERVICE_STATUS>();
             string[] names = new string[checked((int)count)];
             for (int i = 0; i < names.Length; i++)
@@ -300,10 +272,7 @@ internal sealed class ServiceRestartEngine
             }
             return names;
         }
-        finally
-        {
-            Marshal.FreeHGlobal(buffer);
-        }
+        finally { Marshal.FreeHGlobal(buffer); }
     }
 
     private static bool WaitForState(IntPtr service, uint desiredState, TimeSpan timeout)
@@ -313,8 +282,6 @@ internal sealed class ServiceRestartEngine
         {
             if (!TryQueryStatus(service, out SERVICE_STATUS_PROCESS status)) return false;
             if (status.dwCurrentState == desiredState) return true;
-            if (desiredState == ServiceRunning && status.dwCurrentState == ServiceStopped) { /* start may still be racing */ }
-            if (desiredState == ServiceStopped && status.dwCurrentState == ServiceRunning) { /* stop may still be racing */ }
             Thread.Sleep(250);
         }
         return TryQueryStatus(service, out SERVICE_STATUS_PROCESS finalStatus) && finalStatus.dwCurrentState == desiredState;
@@ -338,36 +305,19 @@ internal sealed class ServiceRestartEngine
         ServiceRestartResult.Fail(code, $"{message} (Win32 {Marshal.GetLastWin32Error()}).");
 
     private static ServiceRestartResult Win32FailureWithRollback(string code, string message, int error, ServiceRestartResult rollback) =>
-        ServiceRestartResult.Fail(
-            rollback.Succeeded ? code + "RolledBack" : code + "RollbackPending",
-            rollback.Succeeded
-                ? $"{message} (Win32 {error}) Sentinel restored and verified the original running state."
-                : $"{message} (Win32 {error}) The original running state could not be verified; durable recovery remains pending.");
+        ServiceRestartResult.Fail(rollback.Succeeded ? code + "RolledBack" : code + "RollbackPending",
+            rollback.Succeeded ? $"{message} (Win32 {error}) Sentinel restored and verified the original running state." : $"{message} (Win32 {error}) The original running state could not be verified; durable recovery remains pending.");
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SERVICE_STATUS
     {
-        public uint dwServiceType;
-        public uint dwCurrentState;
-        public uint dwControlsAccepted;
-        public uint dwWin32ExitCode;
-        public uint dwServiceSpecificExitCode;
-        public uint dwCheckPoint;
-        public uint dwWaitHint;
+        public uint dwServiceType, dwCurrentState, dwControlsAccepted, dwWin32ExitCode, dwServiceSpecificExitCode, dwCheckPoint, dwWaitHint;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SERVICE_STATUS_PROCESS
     {
-        public uint dwServiceType;
-        public uint dwCurrentState;
-        public uint dwControlsAccepted;
-        public uint dwWin32ExitCode;
-        public uint dwServiceSpecificExitCode;
-        public uint dwCheckPoint;
-        public uint dwWaitHint;
-        public uint dwProcessId;
-        public uint dwServiceFlags;
+        public uint dwServiceType, dwCurrentState, dwControlsAccepted, dwWin32ExitCode, dwServiceSpecificExitCode, dwCheckPoint, dwWaitHint, dwProcessId, dwServiceFlags;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -382,26 +332,20 @@ internal sealed class ServiceRestartEngine
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr OpenSCManagerW(string? machineName, string? databaseName, uint desiredAccess);
-
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr OpenServiceW(IntPtr scm, string serviceName, uint desiredAccess);
-
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseServiceHandle(IntPtr serviceHandle);
-
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool QueryServiceStatusEx(IntPtr service, int infoLevel, IntPtr buffer, uint bufferSize, out uint bytesNeeded);
-
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumDependentServicesW(IntPtr service, uint serviceState, IntPtr services, uint bufferSize, out uint bytesNeeded, out uint servicesReturned);
-
     [DllImport("advapi32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ControlService(IntPtr service, uint control, out SERVICE_STATUS status);
-
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool StartServiceW(IntPtr service, uint numServiceArgs, string[]? serviceArgVectors);
