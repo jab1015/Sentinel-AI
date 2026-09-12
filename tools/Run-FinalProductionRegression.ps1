@@ -39,23 +39,26 @@ function Resolve-PowerShellHost {
     throw "No PowerShell host executable could be resolved."
 }
 
+function Quote-ProcessArgument([string]$Value) {
+    if ($null -eq $Value) { return '""' }
+    return '"' + $Value.Replace('\', '\').Replace('"', '\"') + '"'
+}
+
 function Invoke-IsolatedSuite([string]$Path, [TimeSpan]$Timeout) {
     $hostPath = Resolve-PowerShellHost
-    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $hostPath
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $false
-    [void]$startInfo.ArgumentList.Add("-NoLogo")
-    [void]$startInfo.ArgumentList.Add("-NoProfile")
-    [void]$startInfo.ArgumentList.Add("-NonInteractive")
-    if ([System.IO.Path]::GetFileName($hostPath).Equals("powershell.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
-        [void]$startInfo.ArgumentList.Add("-ExecutionPolicy")
-        [void]$startInfo.ArgumentList.Add("Bypass")
-    }
-    [void]$startInfo.ArgumentList.Add("-File")
-    [void]$startInfo.ArgumentList.Add($Path)
 
-    $process = [System.Diagnostics.Process]::new()
+    $arguments = "-NoLogo -NoProfile -NonInteractive "
+    if ([System.IO.Path]::GetFileName($hostPath).Equals("powershell.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $arguments += "-ExecutionPolicy Bypass "
+    }
+    $arguments += "-File " + (Quote-ProcessArgument $Path)
+    $startInfo.Arguments = $arguments
+
+    $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $startInfo
     try {
         if (-not $process.Start()) {
@@ -63,7 +66,10 @@ function Invoke-IsolatedSuite([string]$Path, [TimeSpan]$Timeout) {
         }
 
         if (-not $process.WaitForExit([int]$Timeout.TotalMilliseconds)) {
-            try { $process.Kill($true) } catch { }
+            try { $process.Kill($true) }
+            catch {
+                try { $process.Kill() } catch { }
+            }
             try { [void]$process.WaitForExit(5000) } catch { }
             return [pscustomobject]@{ ExitCode = $null; TimedOut = $true; LaunchFailed = $false }
         }
