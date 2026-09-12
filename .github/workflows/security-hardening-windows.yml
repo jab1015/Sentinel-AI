@@ -33,6 +33,15 @@ jobs:
       - name: Build privileged broker
         run: dotnet build "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
 
+      - name: Restore privileged broker identity harness
+        run: dotnet restore "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj"
+
+      - name: Build privileged broker identity harness
+        run: dotnet build "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj" -c Release --no-restore
+
+      - name: Run privileged broker identity harness
+        run: dotnet run --project "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj" -c Release --no-build
+
       - name: Restore Authenticode acceptance harness
         run: dotnet restore "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj"
 
