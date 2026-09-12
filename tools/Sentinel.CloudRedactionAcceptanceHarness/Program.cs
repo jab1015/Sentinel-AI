@@ -16,7 +16,9 @@ static void RequireCloudSessionBootstrapInsideFailureBoundary()
     if (!File.Exists(sourcePath))
         throw new InvalidOperationException($"Cloud gateway source file was not found at {sourcePath}.");
 
-    string source = File.ReadAllText(sourcePath);
+    string source = File.ReadAllText(sourcePath)
+        .Replace("\r\n", "\n", StringComparison.Ordinal)
+        .Replace('\r', '\n');
     int analyzeStart = source.IndexOf("public async Task<CloudAiResult> AnalyzeAsync", StringComparison.Ordinal);
     int sessionCall = source.IndexOf("await GetSessionAsync(wantsAdvanced, cancellationToken)", StringComparison.Ordinal);
     int tryBoundary = source.IndexOf("try\n            {", analyzeStart, StringComparison.Ordinal);
