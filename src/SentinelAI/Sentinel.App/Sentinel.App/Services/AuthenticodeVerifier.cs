@@ -106,16 +106,19 @@ internal static class AuthenticodeVerifier
         {
             Guid subsystem = DriverActionVerify;
             if (!CryptCATAdminAcquireContext2(out catAdmin, ref subsystem, "SHA256", IntPtr.Zero, 0) || catAdmin == IntPtr.Zero)
-                return new(AuthenticodeTrustStatus.Unsigned, false, false, "Unsigned", "No embedded Authenticode signature was found and Windows catalog lookup was unavailable.");
+                return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown",
+                    "Windows catalog verification was unavailable, so Sentinel could not determine whether the file is catalog-signed.");
 
             IntPtr fileHandle = verificationLease.SafeFileHandle.DangerousGetHandle();
             uint hashSize = 0;
             if (!CryptCATAdminCalcHashFromFileHandle2(catAdmin, fileHandle, ref hashSize, null, 0) || hashSize == 0 || hashSize > 1024)
-                return new(AuthenticodeTrustStatus.Unsigned, false, false, "Unsigned", "No embedded Authenticode signature or usable catalog hash was found.");
+                return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown",
+                    "Windows could not determine a valid bounded catalog membership hash for this file.");
 
             byte[] catalogHash = new byte[hashSize];
             if (!CryptCATAdminCalcHashFromFileHandle2(catAdmin, fileHandle, ref hashSize, catalogHash, 0))
-                return new(AuthenticodeTrustStatus.Unsigned, false, false, "Unsigned", "Windows could not calculate the catalog membership hash.");
+                return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown",
+                    "Windows could not calculate the catalog membership hash, so Sentinel made no unsigned classification.");
 
             catInfo = CryptCATAdminEnumCatalogFromHash(catAdmin, catalogHash, hashSize, 0, IntPtr.Zero);
             if (catInfo == IntPtr.Zero)
