@@ -137,6 +137,31 @@ namespace Sentinel.App.Services
             string ruleName = BuildRuleName(remoteIp);
             try
             {
+                FirewallRuleVerification existing = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                if (!existing.QueryValid)
+                {
+                    return FirewallContainmentResult.Failure(
+                        "Firewall state could not be verified",
+                        $"Sentinel could not safely verify the firewall rule before removal ({existing.Detail}). No firewall change was made.");
+                }
+
+                if (!existing.Exists)
+                {
+                    ConnectivityState alreadyAbsentConnectivity = await CheckConnectivityAsync().ConfigureAwait(false);
+                    return new FirewallContainmentResult(false, true, ruleName, remoteIp,
+                        "Network block already absent",
+                        $"Sentinel verified that its expected Windows Firewall block for {remoteIp} is not present. No firewall change was needed.",
+                        false, alreadyAbsentConnectivity.IsHealthy, FirewallContainmentOutcome.Successful);
+                }
+
+                if (!existing.IsExactBlock)
+                {
+                    return new FirewallContainmentResult(false, false, ruleName, remoteIp,
+                        "Conflicting firewall rule was not removed",
+                        $"A rule named {ruleName} exists but does not exactly match Sentinel's required enabled outbound Block scope. Sentinel refused to delete it.",
+                        false, false, FirewallContainmentOutcome.RuleConflict);
+                }
+
                 BrokerInvocationResult mutation = await _brokerClient.RemoveFirewallEndpointAsync(remoteIp).ConfigureAwait(false);
                 FirewallRuleVerification remaining = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
                 if (!mutation.Succeeded || !remaining.QueryValid || remaining.Exists)
