@@ -16,8 +16,8 @@ internal static class VaultBoundaryAcceptance
         {
             TestKeyProtector protector = new(3, masterWrappingKey);
             VerifyMissingItemsBoundaryFailsClosed(root, sourceRoot, protector);
-            VerifyPendingItemsAreNotSurfaced(sourceRoot, protector);
-            VerifyDuplicateAuthenticatedMetadataFailsClosed(protector);
+            VerifyPendingItemsAreNotSurfaced(protector);
+            VerifyDuplicateCiphertextIdentityFailsClosed(protector);
 
             Console.WriteLine("Vault operation-time storage-boundary revalidation: PASS");
             Console.WriteLine("Vault pending-item visibility filtering: PASS");
@@ -58,9 +58,7 @@ internal static class VaultBoundaryAcceptance
         Require(File.Exists(source), "Storage-boundary rejection modified or removed the source file.");
     }
 
-    private static void VerifyPendingItemsAreNotSurfaced(
-        string sourceRoot,
-        TestKeyProtector protector)
+    private static void VerifyPendingItemsAreNotSurfaced(TestKeyProtector protector)
     {
         string root = Path.Combine(Path.GetTempPath(), "SentinelVaultVisibilityHarness", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -118,7 +116,7 @@ internal static class VaultBoundaryAcceptance
         }
     }
 
-    private static void VerifyDuplicateAuthenticatedMetadataFailsClosed(TestKeyProtector protector)
+    private static void VerifyDuplicateCiphertextIdentityFailsClosed(TestKeyProtector protector)
     {
         string root = Path.Combine(Path.GetTempPath(), "SentinelVaultDuplicateHarness", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -131,29 +129,33 @@ internal static class VaultBoundaryAcceptance
             VaultMetadataStore metadata = new(root, vault);
             VaultItemStoreService store = new(root, vault);
 
-            Guid itemId = Guid.NewGuid();
-            VaultWrappedItemKey wrapped;
-            using (VaultItemKeyLease lease = vault.CreateItemKey(itemId))
-                wrapped = Clone(lease.WrappedItemKey);
+            Guid firstId = Guid.NewGuid();
+            Guid secondId = Guid.NewGuid();
+            VaultWrappedItemKey firstKey;
+            VaultWrappedItemKey secondKey;
+            using (VaultItemKeyLease lease = vault.CreateItemKey(firstId))
+                firstKey = Clone(lease.WrappedItemKey);
+            using (VaultItemKeyLease lease = vault.CreateItemKey(secondId))
+                secondKey = Clone(lease.WrappedItemKey);
 
-            string filename = itemId.ToString("N") + ".senc";
+            string duplicateFilename = "shared-ciphertext.senc";
             VaultMetadataSnapshot duplicate = new(
                 1,
                 vault.VaultId,
                 0,
                 new[]
                 {
-                    new VaultMetadataItem(itemId, filename, 1, wrapped),
-                    new VaultMetadataItem(itemId, "duplicate-" + filename, 1, Clone(wrapped))
+                    new VaultMetadataItem(firstId, duplicateFilename, 1, firstKey),
+                    new VaultMetadataItem(secondId, duplicateFilename, 1, secondKey)
                 },
                 Array.Empty<VaultTransactionRecord>());
             Require(metadata.WriteSnapshotAsync(duplicate, CancellationToken.None).GetAwaiter().GetResult().Succeeded,
-                "Duplicate metadata fixture could not be authenticated/persisted.");
+                "Writer-valid duplicate ciphertext fixture could not be authenticated/persisted.");
 
             VaultCommittedItemsResult result = store.ListCommittedItemsAsync(CancellationToken.None)
                 .GetAwaiter().GetResult();
-            Require(!result.Succeeded && result.Code == "DuplicateOrInvalidItemIdentity",
-                "Ambiguous authenticated item identities were accepted: " + result.Code);
+            Require(!result.Succeeded && result.Code == "DuplicateOrInvalidCiphertextIdentity",
+                "Ambiguous authenticated ciphertext identities were accepted: " + result.Code);
         }
         finally
         {
