@@ -8,6 +8,30 @@ static void RequireRedacted(string input, params string[] forbidden)
             throw new InvalidOperationException($"Sensitive value survived redaction: {value}. Output: {output}");
 }
 
+static void RequireCloudSessionBootstrapInsideFailureBoundary()
+{
+    string sourcePath = Path.Combine(
+        Directory.GetCurrentDirectory(),
+        "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "CloudAiGatewayClient.cs");
+    if (!File.Exists(sourcePath))
+        throw new InvalidOperationException($"Cloud gateway source file was not found at {sourcePath}.");
+
+    string source = File.ReadAllText(sourcePath);
+    int analyzeStart = source.IndexOf("public async Task<CloudAiResult> AnalyzeAsync", StringComparison.Ordinal);
+    int sessionCall = source.IndexOf("await GetSessionAsync(wantsAdvanced, cancellationToken)", StringComparison.Ordinal);
+    int tryBoundary = source.IndexOf("try\n            {", analyzeStart, StringComparison.Ordinal);
+    int timeoutCatch = source.IndexOf("catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)", sessionCall, StringComparison.Ordinal);
+    int networkCatch = source.IndexOf("catch (HttpRequestException)", sessionCall, StringComparison.Ordinal);
+    int jsonCatch = source.IndexOf("catch (JsonException)", sessionCall, StringComparison.Ordinal);
+
+    if (analyzeStart < 0 || tryBoundary < 0 || sessionCall < 0 || timeoutCatch < 0 || networkCatch < 0 || jsonCatch < 0 ||
+        !(analyzeStart < tryBoundary && tryBoundary < sessionCall && sessionCall < timeoutCatch && timeoutCatch < networkCatch && networkCatch < jsonCatch))
+    {
+        throw new InvalidOperationException(
+            "Cloud AI session bootstrap is not protected by the AnalyzeAsync fail-closed timeout/network/JSON boundary.");
+    }
+}
+
 Console.WriteLine("=== Sentinel AI Cloud Redaction Acceptance ===");
 
 RequireRedacted("Authorization: Bearer abc.def.ghi", "abc.def.ghi");
@@ -38,5 +62,8 @@ string benign = AiEvidencePackageBuilder.SanitizeForCloud("Windows Defender stat
 if (!benign.Contains("Windows Defender status is enabled", StringComparison.Ordinal))
     throw new InvalidOperationException("Benign evidence was destroyed by redaction.");
 Console.WriteLine("Benign evidence preservation: PASS");
+
+RequireCloudSessionBootstrapInsideFailureBoundary();
+Console.WriteLine("Cloud session bootstrap fail-closed boundary: PASS");
 
 Console.WriteLine("RESULT: PASS");
