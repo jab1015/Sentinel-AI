@@ -9,5 +9,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FileEncryptionContracts.cs" Link="FileEncryptionContracts.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SentinelEncryptedContainerV1.cs" Link="SentinelEncryptedContainerV1.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FileEncryptionService.cs" Link="FileEncryptionService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\WindowsCurrentUserFileKeyProtector.cs" Link="WindowsCurrentUserFileKeyProtector.cs" />
   </ItemGroup>
 </Project>
