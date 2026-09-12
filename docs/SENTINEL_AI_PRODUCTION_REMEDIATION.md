@@ -18,8 +18,7 @@ A finding is complete only after all required source, deterministic, adversarial
 ## Current checkpoint
 
 - Last fully proven broad checkpoint: `3ef08da9226e33a222768938b3dff13373ba7f61`.
-- Latest source-hardening checkpoint before documentation synchronization: `3e4ece61f67c9088a78f294bec5f1264fb7db180`.
-- Documentation synchronization commits follow that source checkpoint.
+- Latest source-hardening checkpoint before this documentation synchronization: `cd98180f8ecaf83272f821d2e7065d72d5953395`.
 - Release posture: **NOT production-hardened; DO NOT MERGE**.
 
 ### Proven CI evidence
@@ -38,7 +37,7 @@ Additional focused evidence after that checkpoint:
 - A21 investigation-cache workflow `34679063934` on `019ddedfc5953c85e9f59d7c1595350d3ff833d3`: **SUCCESS**; expired/stale entries are not returned as current.
 - Focused driver-repair and external-research workflows were also successful on the later `69c43e68a529a1eaaab1149488c4314ef283f574` checkpoint before the latest source corrections.
 
-The exact-head workflows generated for `3e4ece61f67c9088a78f294bec5f1264fb7db180` were **QUEUED** at the latest observation, including broad Windows CI, A17 subprocess-boundary, A10/A11 driver-repair policy, x86/ARM64 package architecture, x64 package, and architecture builds. Queued/running checks are not counted as PASS.
+The exact-head workflows generated for `cd98180f8ecaf83272f821d2e7065d72d5953395` were **QUEUED** at the latest observation, including broad Windows CI, A17 subprocess-boundary, A10/A11 driver-repair policy, A21 external-research provenance, A22 child-process safety, A28 optimization-state, x86/ARM64 package architecture, x64 package, and architecture builds. Queued/running checks are not counted as PASS.
 
 ## Original findings and live status
 
@@ -149,12 +148,20 @@ Deterministic sensitive-format tests pass. Remaining adversarial formats and dep
 ### SAI-A21 — external research keyword overlap / stale context
 **STATUS: OPEN — CODE NOT COMPLETE**
 
-Production external research uses bounded attributable passages rather than page-level keyword overlap. Distinct evidence terms retain independent attribution even when sharing one bounded source passage. External evidence remains advisory and cannot become verified local-machine/action evidence. Driver research distinguishes a known configured official authority from a source Sentinel actually reached. A dedicated cache harness covers fresh reads, expiry, explicit invalidation, type mismatch, and expired-entry cleanup. Focused provenance/cache gates are proven green. Remaining before source closure: current exact-head broad/integration validation and final all-call-path review of authority, bounded passage count/length, duplicate/stale handling, advisory labeling, and final Ask Sentinel safety semantics.
+Production external research uses bounded attributable passages rather than page-level keyword overlap. Distinct evidence terms retain independent attribution even when sharing one bounded source passage. External evidence remains advisory and cannot become verified local-machine/action evidence. Driver research distinguishes a known configured official authority from a source Sentinel actually reached. A dedicated cache harness covers fresh reads, expiry, explicit invalidation, type mismatch, and expired-entry cleanup. Focused provenance/cache gates are proven green.
+
+Adversarial review found an additional catalog-to-package authority defect: an absolute URL read from Dell catalog content could previously be surfaced as a "Dell-hosted" package candidate without independently proving Dell HTTPS authority. Source now routes catalog package paths through `ExternalResearchProvenancePolicy.TryResolveDellPackageUri`: relative paths are anchored to `https://downloads.dell.com/`, and plain HTTP, foreign hosts, alternate ports, credential-bearing URLs, and non-EXE targets fail closed. The production parser uses the same policy. Deterministic provenance coverage includes all of those cases. Exact-head focused/broad CI is queued.
+
+Remaining before source closure: exact-head validation and final all-call-path review of authority, bounded passage count/length, duplicate/stale handling, advisory labeling, and final Ask Sentinel safety semantics.
 
 ### SAI-A22 — external allocation/archive work unbounded
 **STATUS: OPEN — CODE NOT COMPLETE**
 
-External body/catalog reads are bounded while streaming, XML parsing has character limits, child commands are time/output bounded, HTTPS is required, redirects are disabled, and response authority/port is revalidated. The prior Dell CAB flow could consume arbitrary temporary disk during `expand.exe` before post-expansion checks; the common child-process policy now blocks `expand.exe` before launch. Automatic CAB expansion must remain disabled until a design can bound expansion size/entry count/nesting/filesystem growth before and during extraction. Remaining before source closure: current exact-head Windows/package compilation and final malformed/oversized/decompression/resource/cancellation/cleanup/temp-file review.
+External body/catalog reads are bounded while streaming, XML parsing has character limits, child commands are time/output bounded, HTTPS is required, redirects are disabled, and response authority/port is revalidated. The prior Dell CAB flow could consume arbitrary temporary disk during `expand.exe` before post-expansion checks; the common child-process policy blocks `expand.exe`. The driver-research path now performs that expansion-policy preflight before even downloading the Dell catalog, so the unsafe CAB is not downloaded or expanded while extraction remains unsupported. Deterministic preflight coverage exists.
+
+Dell package URLs parsed from catalog content are additionally authority-pinned as described in A21 so future safe catalog parsing cannot silently cross to an attacker-controlled package authority. Automatic CAB expansion must remain disabled until a design can bound expansion size/entry count/nesting/filesystem growth before and during extraction.
+
+Remaining before source closure: exact-head Windows/package compilation and final malformed/oversized/decompression/resource/cancellation/cleanup/temp-file review.
 
 ### SAI-A23 — network collection blind spots
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
@@ -184,7 +191,11 @@ Filtering occurs before aggregate counting and deterministic coverage exists. Ru
 ### SAI-A28 — cooldown/outcome persistence fails open
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Corrupt/unreadable state no longer becomes an empty state. Sentinel fails closed if cooldown state cannot be verified, durably reserves `LastAttemptUtc` before executor invocation, verifies the write, and preserves the pre-action reservation if post-action summary persistence fails. Dedicated and broad CI were green at the last fully proven checkpoint. Remaining filesystem permission/save/load/corruption, concurrent-writer, crash/restart recovery, atomic replacement, stale-state/clock-anomaly, and long-run runtime validation.
+Safety-relevant optimization persistence now fails closed on corrupt, unreadable, oversized, inconsistent, or existing all-default state rather than treating it as a fresh installation. Existing persisted state requires `LastAttemptUtc`; a success timestamp newer than the attempt is rejected. State reads are bounded to 64 KiB, summaries are bounded, writes use an exclusive temporary file with disk flush, and the entire written record is re-read and compared before success is reported. Sentinel still durably reserves `LastAttemptUtc` before executor invocation and preserves the pre-action reservation if post-action summary persistence fails.
+
+A cross-process exclusive lease now spans load, cooldown evaluation, pre-action reservation, execution, and final persistence so two Sentinel processes cannot consume the same cooldown window concurrently. The deterministic harness covers missing first-run state, exact reservation/completion save and reload, malformed JSON, `{}` truncation/default state, invalid timestamp ordering, oversized state, locked persistence, concurrent lease exclusion, and lease reacquisition. Exact-head optimization-state CI is queued.
+
+Remaining installed/runtime validation includes filesystem permission/save/load/corruption, forced crash/restart recovery, stale/future clock behavior, process termination while the lease is held, atomic-replacement fault behavior, and long-run validation.
 
 ### SAI-A29 — architecture/release assurance incomplete
 **STATUS: BLOCKED — WINDOWS RUNTIME VALIDATION REQUIRED / BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED**
@@ -195,7 +206,7 @@ Even if cross-build/package gates become green, they provide build/package evide
 
 ## Current work order
 
-1. Read current exact-head broad Windows, A17 subprocess-boundary, A10/A11 driver, and A29 package-architecture results as runners complete; correct real failures narrowly.
+1. Read current exact-head broad Windows, A17 subprocess-boundary, A10/A11 driver, A21/A22, A28, and A29 package-architecture results as runners complete; correct real failures narrowly.
 2. Move A09/A17 to source-complete only after exact-head audit/integration is green.
 3. Validate the strengthened A10/A11 no-false-success driver policy on exact-head focused CI.
 4. Finish A29 x86/ARM64 package architecture without deleting supported architectures or weakening PE verification.
