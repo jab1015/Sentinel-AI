@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 
 namespace Sentinel.App.Services
@@ -30,30 +31,23 @@ namespace Sentinel.App.Services
                     "$bindings=@(Get-CimInstance -Namespace $ns -ClassName __FilterToConsumerBinding -ErrorAction SilentlyContinue);" +
                     "[pscustomobject]@{Filters=$filters;CommandConsumers=$cmd;ScriptConsumers=$scriptConsumers;Bindings=$bindings}|ConvertTo-Json -Depth 5 -Compress";
 
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
-                    FileName = "powershell.exe",
+                    FileName = ResolvePowerShellPath(),
                     Arguments = $"-NoLogo -NoProfile -NonInteractive -Command \"{script}\"",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
 
-                if (!process.Start())
-                {
-                    return Empty("WMI persistence data was unavailable.");
-                }
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                string output = process.StandardOutput.ReadToEnd();
-                if (!process.WaitForExit(10000) || process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    TryKill(process);
+                if (!execution.Succeeded || string.IsNullOrWhiteSpace(execution.StandardOutput))
                     return Empty("WMI persistence data was unavailable.");
-                }
 
-                using JsonDocument document = JsonDocument.Parse(output);
+                using JsonDocument document = JsonDocument.Parse(execution.StandardOutput);
                 JsonElement root = document.RootElement;
 
                 int filterCount = CountItems(root, "Filters");
@@ -81,6 +75,14 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system)
+                ? "powershell.exe"
+                : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
+
         private static void ReviewCommandConsumers(JsonElement root, List<WmiFinding> findings)
         {
             foreach (JsonElement item in EnumerateItems(root, "CommandConsumers"))
@@ -89,11 +91,7 @@ namespace Sentinel.App.Services
                 string command = GetString(item, "CommandLineTemplate");
                 string executable = GetString(item, "ExecutablePath");
                 string combined = $"{executable} {command}".Trim();
-
-                if (string.IsNullOrWhiteSpace(combined))
-                {
-                    continue;
-                }
+                if (string.IsNullOrWhiteSpace(combined)) continue;
 
                 findings.Add(new WmiFinding(
                     string.IsNullOrWhiteSpace(name) ? "Unnamed consumer" : name,
@@ -109,11 +107,7 @@ namespace Sentinel.App.Services
                 string name = GetString(item, "Name");
                 string engine = GetString(item, "ScriptingEngine");
                 string scriptText = GetString(item, "ScriptText");
-
-                if (string.IsNullOrWhiteSpace(scriptText))
-                {
-                    continue;
-                }
+                if (string.IsNullOrWhiteSpace(scriptText)) continue;
 
                 findings.Add(new WmiFinding(
                     string.IsNullOrWhiteSpace(name) ? "Unnamed consumer" : name,
@@ -124,19 +118,12 @@ namespace Sentinel.App.Services
 
         private static IEnumerable<JsonElement> EnumerateItems(JsonElement root, string propertyName)
         {
-            if (!root.TryGetProperty(propertyName, out JsonElement value) ||
-                value.ValueKind == JsonValueKind.Null ||
-                value.ValueKind == JsonValueKind.Undefined)
-            {
+            if (!root.TryGetProperty(propertyName, out JsonElement value) || value.ValueKind == JsonValueKind.Null || value.ValueKind == JsonValueKind.Undefined)
                 yield break;
-            }
 
             if (value.ValueKind == JsonValueKind.Array)
             {
-                foreach (JsonElement item in value.EnumerateArray())
-                {
-                    yield return item;
-                }
+                foreach (JsonElement item in value.EnumerateArray()) yield return item;
             }
             else if (value.ValueKind == JsonValueKind.Object)
             {
@@ -147,57 +134,27 @@ namespace Sentinel.App.Services
         private static int CountItems(JsonElement root, string propertyName)
         {
             int count = 0;
-            foreach (JsonElement _ in EnumerateItems(root, propertyName))
-            {
-                count++;
-            }
-
+            foreach (JsonElement _ in EnumerateItems(root, propertyName)) count++;
             return count;
         }
 
         private static string GetString(JsonElement item, string propertyName)
         {
-            return item.TryGetProperty(propertyName, out JsonElement value) &&
-                   value.ValueKind == JsonValueKind.String
+            return item.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? string.Empty
                 : string.Empty;
         }
 
-        private static string Fallback(string value, string fallback) =>
-            string.IsNullOrWhiteSpace(value) ? fallback : value;
+        private static string Fallback(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value;
 
         private static string Shorten(string value)
         {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return "content unavailable";
-            }
-
-            string redacted = value.Replace(
-                Environment.UserName,
-                "<user>",
-                StringComparison.OrdinalIgnoreCase);
-
+            if (string.IsNullOrWhiteSpace(value)) return "content unavailable";
+            string redacted = value.Replace(Environment.UserName, "<user>", StringComparison.OrdinalIgnoreCase);
             return redacted.Length <= 180 ? redacted : redacted[..177] + "...";
         }
 
-        private static void TryKill(Process process)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup only.
-            }
-        }
-
-        private static WmiPersistenceSnapshot Empty(string reason) =>
-            new(0, 0, 0, 0, "None", "None", reason);
+        private static WmiPersistenceSnapshot Empty(string reason) => new(0, 0, 0, 0, "None", "None", reason);
 
         private sealed record WmiFinding(string Name, string ConsumerType, string Reason);
 
