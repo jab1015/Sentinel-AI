@@ -210,10 +210,6 @@ internal sealed class QuarantineStoreEngine
         if (!TryRenameOpenFile(temp.SafeFileHandle, destination, out string renameError))
             return Fail("RestoreRenameFailed", renameError);
 
-        txn = txn with { Stage = "DestinationReady" };
-        WriteAtomicJson(transactionPath, txn, overwrite: true);
-        Hit(QuarantineCheckpoint.RestoreDestinationReady);
-
         if (!GetFileInformationByHandle(temp.SafeFileHandle, out ByHandleFileInformation renamedIdentity))
             return Fail("RestoreIdentityMismatch", Win32("Sentinel could not read the renamed restore file identity."));
         if (renamedIdentity.NumberOfLinks != 1)
@@ -244,7 +240,17 @@ internal sealed class QuarantineStoreEngine
             return Fail("RestoreIdentityMismatch", $"Sentinel could not reopen and verify the restored destination ({ex.GetType().Name}). Recovery state was preserved.");
         }
 
+        // The original temp handle is still open with no write/delete sharing, so the path cannot
+        // be replaced while this privileged ACL mutation is applied to the exact restored object.
         _restoreInheritedAcl(destination);
+        if (!PathsEqual(GetFinalPath(temp.SafeFileHandle), destination) ||
+            !HashOpenStream(temp).Equals(record.Sha256, StringComparison.OrdinalIgnoreCase))
+            return Fail("RestoreIdentityMismatch", "The restored object could not be reverified after ACL restoration. Recovery state was preserved.");
+
+        txn = txn with { Stage = "DestinationAclReady" };
+        WriteAtomicJson(transactionPath, txn, overwrite: true);
+        Hit(QuarantineCheckpoint.RestoreDestinationReady);
+
         payload.Dispose();
         if (!TryDeleteExactPath(payloadPath, requireSingleLink: true, expectedSha256: record.Sha256, out string payloadDeleteError))
             return Fail("PayloadDeleteFailed", payloadDeleteError);
@@ -448,20 +454,48 @@ internal sealed class QuarantineStoreEngine
             bool payloadExists = File.Exists(payloadPath);
             bool tempExists = !string.IsNullOrWhiteSpace(txn.TempPath) && File.Exists(txn.TempPath);
 
-            if (destinationExists && VerifyPathHash(txn.Path, txn.Sha256))
+            if (destinationExists && txn.Stage.Equals("DestinationAclReady", StringComparison.Ordinal))
             {
-                SafeDeleteBoundedTemp(txn.TempPath, itemId);
-                if (payloadExists)
+                using FileStream recoveredDestination = OpenStableFile(
+                    txn.Path,
+                    FileAccess.Read,
+                    requireSingleLink: true,
+                    out StableFileIdentity recoveredIdentity,
+                    out string recoveredOpenError);
+                bool exactDestination = string.IsNullOrEmpty(recoveredOpenError) &&
+                    PathsEqual(recoveredIdentity.FinalPath, txn.Path) &&
+                    HashOpenStream(recoveredDestination).Equals(txn.Sha256, StringComparison.OrdinalIgnoreCase);
+                if (exactDestination)
                 {
-                    if (!TryDeleteExactPath(payloadPath, requireSingleLink: true, expectedSha256: txn.Sha256, out string deleteError))
+                    SafeDeleteBoundedTemp(txn.TempPath, itemId);
+                    if (payloadExists)
                     {
-                        issues.Add(new("RestoreRecoveryFailed", transactionPath, deleteError));
+                        if (!TryDeleteExactPath(payloadPath, requireSingleLink: true, expectedSha256: txn.Sha256, out string deleteError))
+                        {
+                            issues.Add(new("RestoreRecoveryFailed", transactionPath, deleteError));
+                            return;
+                        }
+                    }
+
+                    // Keep the stable destination handle open through protected-copy cleanup, then
+                    // reverify the same object before removing recovery metadata.
+                    if (!PathsEqual(GetFinalPath(recoveredDestination.SafeFileHandle), txn.Path) ||
+                        !HashOpenStream(recoveredDestination).Equals(txn.Sha256, StringComparison.OrdinalIgnoreCase))
+                    {
+                        issues.Add(new("RestoreRecoveryFailed", transactionPath, "The restored destination identity changed during recovery. State was preserved."));
                         return;
                     }
+
+                    SafeDeleteRecord(recordPath);
+                    SafeDeleteTransaction(transactionPath);
+                    return;
                 }
-                _restoreInheritedAcl(txn.Path);
-                SafeDeleteRecord(recordPath);
-                SafeDeleteTransaction(transactionPath);
+            }
+
+            if (destinationExists)
+            {
+                issues.Add(new("IncompleteRestore", transactionPath,
+                    "A restore destination exists but the transaction does not prove exact-object verification and ACL completion. Protected state was preserved."));
                 return;
             }
 
