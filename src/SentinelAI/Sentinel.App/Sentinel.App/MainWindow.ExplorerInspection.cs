@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Sentinel.App.Services;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -35,19 +36,50 @@ public sealed partial class MainWindow
             await loaded.Task.ConfigureAwait(true);
         }
 
-        string[] names = request.Paths
+        HashSet<string> unique = new(StringComparer.OrdinalIgnoreCase);
+        List<string> reopenedPaths = new(request.Paths.Count);
+        foreach (string suppliedPath in request.Paths)
+        {
+            if (!ExplorerSelectionObjectValidator.TryReopenAndResolve(suppliedPath, out string resolvedPath))
+            {
+                await new ContentDialog
+                {
+                    Title = "Inspection could not start",
+                    Content = "Sentinel could not reopen every selected filesystem object safely. The selection may have changed, become unavailable, or no longer resolve to a normal filesystem object. No file was changed.",
+                    CloseButtonText = "Close",
+                    XamlRoot = rootElement.XamlRoot
+                }.ShowAsync();
+                return;
+            }
+
+            if (unique.Add(resolvedPath)) reopenedPaths.Add(resolvedPath);
+        }
+
+        if (reopenedPaths.Count == 0)
+        {
+            await new ContentDialog
+            {
+                Title = "Inspection could not start",
+                Content = "Sentinel could not resolve a usable filesystem object from the Explorer selection. No file was changed.",
+                CloseButtonText = "Close",
+                XamlRoot = rootElement.XamlRoot
+            }.ShowAsync();
+            return;
+        }
+
+        string[] names = reopenedPaths
             .Take(5)
             .Select(path => Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToArray();
         string selection = names.Length == 0 ? "the selected filesystem item" : string.Join(Environment.NewLine, names.Select(name => "• " + name));
-        if (request.Paths.Count > names.Length)
-            selection += Environment.NewLine + $"• and {request.Paths.Count - names.Length} more";
+        if (reopenedPaths.Count > names.Length)
+            selection += Environment.NewLine + $"• and {reopenedPaths.Count - names.Length} more";
 
         ContentDialog dialog = new()
         {
             Title = "Inspect with Sentinel AI",
-            Content = $"Sentinel received {request.Paths.Count} selected item(s) from File Explorer and reopened the filesystem paths for validation. No file was changed.\n\n{selection}",
+            Content = $"Sentinel received {request.Paths.Count} selected item(s) from File Explorer, reopened each object through Windows, and resolved the handle-backed filesystem path before inspection. No file was changed.\n\n{selection}",
             PrimaryButtonText = "Continue",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
