@@ -1,0 +1,27 @@
+name: Sentinel Subprocess Boundary Audit
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  subprocess-boundary:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore subprocess boundary audit
+        run: dotnet restore "tools/Sentinel.SubprocessBoundaryAudit/Sentinel.SubprocessBoundaryAudit.csproj"
+      - name: Build subprocess boundary audit
+        run: dotnet build "tools/Sentinel.SubprocessBoundaryAudit/Sentinel.SubprocessBoundaryAudit.csproj" -c Release --no-restore
+      - name: Run subprocess boundary audit
+        run: dotnet run --project "tools/Sentinel.SubprocessBoundaryAudit/Sentinel.SubprocessBoundaryAudit.csproj" -c Release --no-build
