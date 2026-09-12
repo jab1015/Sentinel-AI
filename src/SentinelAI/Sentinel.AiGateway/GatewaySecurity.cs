@@ -76,40 +76,57 @@ internal sealed class GatewaySecurity
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", serviceToken);
         message.Headers.UserAgent.ParseAdd("Sentinel-AI-Gateway/1.0");
 
-        using HttpResponseMessage response = await client.SendAsync(
-            message,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken).ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            Console.Error.WriteLine($"STORE_ENTITLEMENT_QUERY_FAILED status={(int)response.StatusCode}");
+            response = await client.SendAsync(
+                message,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Console.Error.WriteLine("STORE_ENTITLEMENT_QUERY_TIMEOUT");
+            return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification timed out.");
+        }
+        catch (HttpRequestException)
+        {
+            Console.Error.WriteLine("STORE_ENTITLEMENT_QUERY_NETWORK_FAILURE");
             return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification is temporarily unavailable.");
         }
 
-        using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
-            response.Content,
-            BoundedHttpJson.MaximumStoreResponseBytes,
-            maximumDepth: 32,
-            BoundedHttpJson.StoreBodyTimeout,
-            cancellationToken).ConfigureAwait(false);
-        if (document is null)
+        using (response)
         {
-            Console.Error.WriteLine("STORE_ENTITLEMENT_QUERY_INVALID_OR_OVERSIZED_RESPONSE");
-            return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification returned invalid data.");
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.Error.WriteLine($"STORE_ENTITLEMENT_QUERY_FAILED status={(int)response.StatusCode}");
+                return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification is temporarily unavailable.");
+            }
 
-        if (!document.RootElement.TryGetProperty("items", out JsonElement items) ||
-            items.ValueKind != JsonValueKind.Array)
-            return StoreEntitlementResult.Invalid("Microsoft Store returned no active Sentinel entitlement.");
+            using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+                response.Content,
+                BoundedHttpJson.MaximumStoreResponseBytes,
+                maximumDepth: 32,
+                BoundedHttpJson.StoreBodyTimeout,
+                cancellationToken).ConfigureAwait(false);
+            if (document is null)
+            {
+                Console.Error.WriteLine("STORE_ENTITLEMENT_QUERY_INVALID_OR_OVERSIZED_RESPONSE");
+                return StoreEntitlementResult.Unavailable("Microsoft Store entitlement verification returned invalid data.");
+            }
 
-        HashSet<string> expected = new(productIds, StringComparer.OrdinalIgnoreCase);
-        foreach (JsonElement item in items.EnumerateArray())
-        {
-            string productId = ReadString(item, "productId");
-            string status = ReadString(item, "status");
-            if (expected.Contains(productId) && status.Equals("Active", StringComparison.OrdinalIgnoreCase))
-                return StoreEntitlementResult.Active(productId);
+            if (!document.RootElement.TryGetProperty("items", out JsonElement items) ||
+                items.ValueKind != JsonValueKind.Array)
+                return StoreEntitlementResult.Invalid("Microsoft Store returned no active Sentinel entitlement.");
+
+            HashSet<string> expected = new(productIds, StringComparer.OrdinalIgnoreCase);
+            foreach (JsonElement item in items.EnumerateArray())
+            {
+                string productId = ReadString(item, "productId");
+                string status = ReadString(item, "status");
+                if (expected.Contains(productId) && status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                    return StoreEntitlementResult.Active(productId);
+            }
         }
 
         return StoreEntitlementResult.Invalid("No active paid Sentinel entitlement was verified by Microsoft Store.");
@@ -243,6 +260,11 @@ internal sealed class GatewaySecurity
                 message,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Console.Error.WriteLine("ENTRA_TOKEN_TIMEOUT");
+            return null;
         }
         catch (HttpRequestException)
         {
