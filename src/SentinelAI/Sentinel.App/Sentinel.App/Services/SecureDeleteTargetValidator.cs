@@ -28,7 +28,7 @@ internal static class SecureDeleteTargetValidator
     private const int FileAttributeTagInfoClass = 9;
     private const uint FileNameNormalized = 0;
     private const uint VolumeNameDos = 0;
-    private const int MaximumFinalPathCharacters = 32_768;
+    private const uint MaximumFinalPathCharacters = 32_768;
 
     private static readonly HashSet<string> SystemCriticalNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -190,7 +190,7 @@ internal static class SecureDeleteTargetValidator
         if (required == 0 || required > MaximumFinalPathCharacters) return false;
         StringBuilder buffer = new(checked((int)required + 1));
         uint written = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, FileNameNormalized | VolumeNameDos);
-        if (written == 0 || written >= buffer.Capacity) return false;
+        if (written == 0 || written >= (uint)buffer.Capacity) return false;
         path = buffer.ToString();
         return !string.IsNullOrWhiteSpace(path);
     }
