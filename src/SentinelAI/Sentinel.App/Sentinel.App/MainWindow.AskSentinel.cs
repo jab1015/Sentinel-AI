@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Sentinel.App.Services;
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.System;
@@ -374,7 +373,9 @@ namespace Sentinel.App
                     {
                         _askSentinelOutcomeRecorder.RecordVerificationResult("Restart approved", "You approved the restart required to finish the verified driver repair.", true, "The restart was requested only after the repair completed and you approved it.");
                         UpdateMaintenanceReport();
-                        Process.Start(new ProcessStartInfo { FileName = "shutdown.exe", Arguments = "/r /t 0", UseShellExecute = true });
+                        ProcessExecutionResult restartRequest = await WindowsRestartRequestService.RequestRestartAsync();
+                        if (!restartRequest.Succeeded)
+                            AskSentinelStatusText.Text = "Repair installed successfully, but Sentinel could not request the Windows restart. Restart Windows manually to finish applying the repair.";
                     }
                     else AskSentinelStatusText.Text = "Repair installed successfully. Restart later to finish applying it.";
                 }
