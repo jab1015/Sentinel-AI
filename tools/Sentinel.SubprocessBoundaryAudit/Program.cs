@@ -31,6 +31,8 @@ HashSet<string> allowedRunnerPaths = new(StringComparer.OrdinalIgnoreCase)
 
 string auditedShellLaunchPath = Path.GetFullPath(Path.Combine(
     root, "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "WindowsShellLaunchService.cs"));
+string auditedRestartRequestPath = Path.GetFullPath(Path.Combine(
+    root, "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "WindowsRestartRequestService.cs"));
 
 foreach (string allowedRunnerPath in allowedRunnerPaths)
 {
@@ -39,6 +41,28 @@ foreach (string allowedRunnerPath in allowedRunnerPaths)
 }
 if (!File.Exists(auditedShellLaunchPath))
     throw new InvalidOperationException("Expected audited Windows shell-launch service was not found.");
+if (!File.Exists(auditedRestartRequestPath))
+    throw new InvalidOperationException("Expected audited Windows restart-request service was not found.");
+
+string restartRequestText = File.ReadAllText(auditedRestartRequestPath);
+string[] requiredRestartMarkers =
+{
+    "Path.Combine(Environment.SystemDirectory, \"shutdown.exe\")",
+    "Path.IsPathFullyQualified(shutdownPath)",
+    "File.Exists(shutdownPath)",
+    "FileName = shutdownPath",
+    "Arguments = \"/r /t 0\"",
+    "UseShellExecute = false",
+    "CreateNoWindow = true",
+    "BoundedProcessRunner.RunAsync",
+    "RestartRequestTimeout",
+    "maxOutputChars: 16_384"
+};
+if (requiredRestartMarkers.Any(marker => !restartRequestText.Contains(marker, StringComparison.Ordinal)) ||
+    restartRequestText.Contains("FileName = \"shutdown.exe\"", StringComparison.Ordinal))
+{
+    throw new InvalidOperationException("The audited Windows restart-request contract changed or no longer pins shutdown.exe to the trusted Windows system directory.");
+}
 
 HashSet<string> expectedShellTargets = new(StringComparer.OrdinalIgnoreCase)
 {
