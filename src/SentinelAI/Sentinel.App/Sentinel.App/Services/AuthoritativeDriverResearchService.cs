@@ -125,6 +125,14 @@ namespace Sentinel.App.Services
 
         private static DellPackageMatch? TryResolveDellCatalogPackage(DeviceContext context, string deviceName)
         {
+            string expandPath = ResolveSystemBinary("expand.exe");
+            if (ChildProcessSafetyPolicy.IsBlocked(
+                new ChildProcessSafetyPolicy.ProcessStartInfoLike(expandPath),
+                out _))
+            {
+                return null;
+            }
+
             string work = Path.Combine(Path.GetTempPath(), "SentinelAI", "DellCatalog", Guid.NewGuid().ToString("N"));
             try
             {
@@ -134,7 +142,7 @@ namespace Sentinel.App.Services
 
                 ProcessStartInfo expand = new()
                 {
-                    FileName = ResolveSystemBinary("expand.exe"),
+                    FileName = expandPath,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
