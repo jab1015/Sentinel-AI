@@ -21,6 +21,7 @@ internal static class SecureDeleteTargetValidator
     private const uint FileShareDelete = 0x00000004;
     private const uint OpenExisting = 3;
     private const uint FileFlagOpenReparsePoint = 0x00200000;
+    private const uint FileFlagBackupSemantics = 0x02000000;
     private const uint FileAttributeDirectory = 0x00000010;
     private const uint FileAttributeReparsePoint = 0x00000400;
     private const int FileIdInfoClass = 18;
@@ -65,7 +66,7 @@ internal static class SecureDeleteTargetValidator
             FileShareRead | FileShareWrite | FileShareDelete,
             IntPtr.Zero,
             OpenExisting,
-            FileFlagOpenReparsePoint,
+            FileFlagOpenReparsePoint | FileFlagBackupSemantics,
             IntPtr.Zero);
 
         if (handle.IsInvalid)
