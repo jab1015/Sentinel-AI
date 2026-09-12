@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Sentinel.App.Services;
 
-internal sealed class VaultFileKeyProtector : IFileKeyProtector
+internal sealed class VaultFileKeyProtector : IFileKeyProtector, IDisposable
 {
     internal const ushort ModeId = 4;
     internal const ushort WrappingAlgorithmVaultItemKeyAesGcm = 2;
@@ -21,22 +21,43 @@ internal sealed class VaultFileKeyProtector : IFileKeyProtector
 
     private readonly SentinelVaultService _vault;
     private readonly Guid _expectedItemId;
+    private readonly VaultWrappedItemKey? _encryptionRecord;
+    private byte[]? _itemWrappingKey;
 
-    private VaultFileKeyProtector(SentinelVaultService vault, Guid expectedItemId)
+    private VaultFileKeyProtector(
+        SentinelVaultService vault,
+        Guid expectedItemId,
+        VaultWrappedItemKey? encryptionRecord,
+        byte[]? itemWrappingKey)
     {
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
         if (expectedItemId == Guid.Empty)
             throw new ArgumentException("A non-empty Vault item ID is required.", nameof(expectedItemId));
         _expectedItemId = expectedItemId;
+        _encryptionRecord = encryptionRecord;
+        _itemWrappingKey = itemWrappingKey;
     }
 
     public ushort ProtectionModeId => ModeId;
 
-    internal static VaultFileKeyProtector ForEncryption(SentinelVaultService vault, Guid itemId) =>
-        new(vault, itemId);
+    internal static VaultFileKeyProtector ForEncryption(SentinelVaultService vault, VaultItemKeyLease itemKeyLease)
+    {
+        ArgumentNullException.ThrowIfNull(itemKeyLease);
+        VaultWrappedItemKey wrapped = itemKeyLease.WrappedItemKey;
+        if (wrapped.ItemId == Guid.Empty || wrapped.VaultId == Guid.Empty || itemKeyLease.ItemKey.Length != DekSize)
+            throw new CryptographicException("The Vault item-key lease was invalid.");
+        if (vault.State != VaultState.Unlocked || vault.VaultId != wrapped.VaultId)
+            throw new InvalidOperationException("The Sentinel Vault is locked or does not match the item-key lease.");
+
+        return new VaultFileKeyProtector(
+            vault,
+            wrapped.ItemId,
+            CloneWrappedItemKey(wrapped),
+            itemKeyLease.ItemKey.ToArray());
+    }
 
     internal static VaultFileKeyProtector ForOpening(SentinelVaultService vault, Guid itemId) =>
-        new(vault, itemId);
+        new(vault, itemId, null, null);
 
     public ValueTask<WrappedFileKeyRecord> WrapAsync(
         ReadOnlyMemory<byte> dataEncryptionKey,
@@ -46,10 +67,12 @@ internal sealed class VaultFileKeyProtector : IFileKeyProtector
         if (dataEncryptionKey.Length != DekSize)
             throw new CryptographicException("Vault mode requires a 256-bit container data-encryption key.");
 
-        using VaultItemKeyLease itemLease = _vault.CreateItemKey(_expectedItemId);
-        VaultWrappedItemKey wrappedItemKey = itemLease.WrappedItemKey;
-        if (wrappedItemKey.VaultId == Guid.Empty || wrappedItemKey.ItemId != _expectedItemId)
-            throw new CryptographicException("The Vault item-key binding was invalid.");
+        VaultWrappedItemKey? wrappedItemKey = _encryptionRecord;
+        byte[]? itemWrappingKey = _itemWrappingKey;
+        if (wrappedItemKey is null || itemWrappingKey is null)
+            throw new InvalidOperationException("This Vault key protector was not created for encryption.");
+        if (_vault.State != VaultState.Unlocked || _vault.VaultId != wrappedItemKey.VaultId)
+            throw new InvalidOperationException("The Sentinel Vault is locked or changed during encryption.");
 
         byte[] contentNonce = RandomNumberGenerator.GetBytes(NonceSize);
         byte[] contentCiphertext = new byte[DekSize];
@@ -57,7 +80,7 @@ internal sealed class VaultFileKeyProtector : IFileKeyProtector
         byte[] aad = BuildContentAad(wrappedItemKey.VaultId, wrappedItemKey.ItemId);
         try
         {
-            using AesGcm aes = new(itemLease.ItemKey.Span, TagSize);
+            using AesGcm aes = new(itemWrappingKey, TagSize);
             aes.Encrypt(contentNonce, dataEncryptionKey.Span, contentCiphertext, contentTag, aad);
 
             byte[] parameters = new byte[ParameterLength];
@@ -147,6 +170,12 @@ internal sealed class VaultFileKeyProtector : IFileKeyProtector
         }
     }
 
+    public void Dispose()
+    {
+        byte[]? key = Interlocked.Exchange(ref _itemWrappingKey, null);
+        if (key is not null) CryptographicOperations.ZeroMemory(key);
+    }
+
     private static byte[] BuildContentAad(Guid vaultId, Guid itemId)
     {
         byte[] aad = new byte[ContentWrapContext.Length + 32];
@@ -155,4 +184,7 @@ internal sealed class VaultFileKeyProtector : IFileKeyProtector
         itemId.ToByteArray().CopyTo(aad, ContentWrapContext.Length + 16);
         return aad;
     }
+
+    private static VaultWrappedItemKey CloneWrappedItemKey(VaultWrappedItemKey record) =>
+        new(record.Version, record.VaultId, record.ItemId, record.Nonce.ToArray(), record.WrappedItemKey.ToArray());
 }
