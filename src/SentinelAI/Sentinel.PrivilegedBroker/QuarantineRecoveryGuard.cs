@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 internal static class QuarantineRecoveryGuard
 {
     internal static IReadOnlyList<QuarantineStoreIssue> Validate(string root)
@@ -14,15 +12,10 @@ internal static class QuarantineRecoveryGuard
 
         foreach (string transactionPath in Directory.EnumerateFiles(transactionRoot, "*.json", SearchOption.TopDirectoryOnly))
         {
-            QuarantineTransaction? txn;
-            try
-            {
-                txn = JsonSerializer.Deserialize<QuarantineTransaction>(File.ReadAllText(transactionPath));
-            }
-            catch
+            if (!BoundedProtectedJsonFile.TryRead<QuarantineTransaction>(transactionPath, out QuarantineTransaction? txn))
             {
                 issues.Add(new("CorruptTransaction", transactionPath,
-                    "Automatic quarantine recovery was blocked because a transaction could not be parsed. Evidence was preserved."));
+                    "Automatic quarantine recovery was blocked because a transaction was oversized, unreadable, or malformed. Evidence was preserved."));
                 continue;
             }
 
@@ -89,23 +82,19 @@ internal static class QuarantineRecoveryGuard
         List<QuarantineStoreIssue> issues)
     {
         string recordPath = Path.Combine(recordsRoot, itemId + ".json");
-        ProtectedQuarantineRecord? record;
-        try
+        if (!File.Exists(recordPath))
         {
-            if (!File.Exists(recordPath))
-            {
-                issues.Add(Mismatch(transactionPath, "The transaction has no protected record to bind recovery to."));
-                return;
-            }
-            record = JsonSerializer.Deserialize<ProtectedQuarantineRecord>(File.ReadAllText(recordPath));
-        }
-        catch
-        {
-            issues.Add(Mismatch(transactionPath, "The protected record could not be parsed for recovery binding."));
+            issues.Add(Mismatch(transactionPath, "The transaction has no protected record to bind recovery to."));
             return;
         }
 
-        if (record is null || !record.ItemId.Equals(itemId, StringComparison.OrdinalIgnoreCase) ||
+        if (!BoundedProtectedJsonFile.TryRead<ProtectedQuarantineRecord>(recordPath, out ProtectedQuarantineRecord? record) || record is null)
+        {
+            issues.Add(Mismatch(transactionPath, "The protected record was oversized, unreadable, or malformed and could not be used for recovery binding."));
+            return;
+        }
+
+        if (!record.ItemId.Equals(itemId, StringComparison.OrdinalIgnoreCase) ||
             !IsValidHash(record.Sha256) ||
             !record.Sha256.Equals(txn.Sha256, StringComparison.OrdinalIgnoreCase) ||
             !TryFullPath(record.OriginalPath, out string recordPathFull) ||
