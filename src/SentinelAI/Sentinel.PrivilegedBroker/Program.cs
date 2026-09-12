@@ -8,7 +8,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 const int ProtocolVersion = 2;
-const int MaximumRequestCharacters = 32_768;
 const int ErrorInsufficientBuffer = 122;
 string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SentinelAI", "Broker");
 string storeRoot = Path.Combine(root, "QuarantineStore");
@@ -77,21 +76,21 @@ try
     return finalResult.Succeeded ? 0 : 30;
 }
 catch (TimeoutException) { return 25; }
+catch (OperationCanceledException) { return 25; }
 catch { return 31; }
 
 async Task<BrokerRequest?> ReadPipeRequestAsync(NamedPipeServerStream pipe)
 {
-    using StreamReader reader = new(pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
-    string? line = await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
-    if (string.IsNullOrWhiteSpace(line) || line.Length > MaximumRequestCharacters) return null;
+    string? line = await BrokerPipeMessageIO.ReadBoundedLineAsync(pipe);
+    if (string.IsNullOrWhiteSpace(line)) return null;
     try { return JsonSerializer.Deserialize<BrokerRequest>(line, strictJson); }
     catch (JsonException) { return null; }
 }
 
 async Task WritePipeResultAsync(NamedPipeServerStream pipe, BrokerResult result)
 {
-    using StreamWriter writer = new(pipe, new UTF8Encoding(false), bufferSize: 4096, leaveOpen: true) { AutoFlush = true };
-    await writer.WriteLineAsync(JsonSerializer.Serialize(result));
+    string response = JsonSerializer.Serialize(result);
+    await BrokerPipeMessageIO.WriteBoundedLineAsync(pipe, response);
 }
 
 BrokerResult MapStoreResult(string requestId, QuarantineStoreResult result) =>
