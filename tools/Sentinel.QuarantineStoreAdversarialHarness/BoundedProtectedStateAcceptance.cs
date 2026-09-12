@@ -43,8 +43,37 @@ internal static class BoundedProtectedStateAcceptance
             Require(File.Exists(recordPath) && File.Exists(transactionPath),
                 "Oversized protected-state evidence was discarded during fail-closed validation.");
 
+            File.Delete(recordPath);
+            File.Delete(transactionPath);
+
+            string aclReadyId = Guid.NewGuid().ToString("N");
+            string destination = Path.Combine(root, "restore-target.txt");
+            string aclReadyRecordPath = Path.Combine(records, aclReadyId + ".json");
+            string aclReadyTransactionPath = Path.Combine(transactions, aclReadyId + ".json");
+            string aclReadyTemp = Path.Combine(root, ".restore-target.txt.sentinel-restore-" + aclReadyId + "-123.tmp");
+            File.WriteAllText(aclReadyRecordPath,
+                System.Text.Json.JsonSerializer.Serialize(new ProtectedQuarantineRecord(
+                    aclReadyId,
+                    destination,
+                    hash,
+                    DateTimeOffset.UtcNow)));
+            File.WriteAllText(aclReadyTransactionPath,
+                System.Text.Json.JsonSerializer.Serialize(new QuarantineTransaction(
+                    aclReadyId,
+                    "Restore",
+                    "DestinationAclReady",
+                    destination,
+                    aclReadyTemp,
+                    hash,
+                    DateTimeOffset.UtcNow)));
+
+            IReadOnlyList<QuarantineStoreIssue> aclReadyIssues = QuarantineRecoveryGuard.Validate(root);
+            Require(!aclReadyIssues.Any(issue => issue.Path == aclReadyTransactionPath),
+                "The durable DestinationAclReady restore stage was rejected by the recovery guard.");
+
             Console.WriteLine("Bounded protected quarantine transaction read: PASS");
             Console.WriteLine("Bounded protected quarantine record read: PASS");
+            Console.WriteLine("ACL-ready restore recovery guard stage: PASS");
         }
         finally
         {
