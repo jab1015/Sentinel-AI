@@ -203,10 +203,14 @@ internal sealed class GatewaySecurity
         if (advancedRequested && !advancedAuthorized)
             return SessionValidationResult.Denied("This session is not entitled to Advanced AI.");
 
-        if (!Guid.TryParse(requestId, out _))
+        if (!Guid.TryParse(requestId, out Guid parsedRequestId))
             return SessionValidationResult.Denied("A valid unique request ID is required.");
 
-        string replayKey = payload.TokenId + ":" + requestId;
+        // Guid.TryParse accepts multiple textual encodings for the same logical identifier.
+        // Replay protection must therefore key the canonical value, not attacker-controlled text,
+        // or one request can be replayed by changing only its GUID representation.
+        string canonicalRequestId = parsedRequestId.ToString("N");
+        string replayKey = payload.TokenId + ":" + canonicalRequestId;
         lock (_replayGate)
         {
             PruneReplayCacheLocked();
