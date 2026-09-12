@@ -211,10 +211,11 @@ internal sealed class GatewaySecurity
             return SessionValidationResult.Denied("A valid unique request ID is required.");
 
         // Guid.TryParse accepts multiple textual encodings for the same logical identifier.
-        // Replay protection must therefore key the canonical value, not attacker-controlled text,
-        // or one request can be replayed by changing only its GUID representation.
+        // Replay protection must therefore key the canonical value, not attacker-controlled text.
+        // Bind replay identity to the authenticated subject rather than the short-lived token ID:
+        // otherwise renewing a session would allow the same logical request to be replayed.
         string canonicalRequestId = parsedRequestId.ToString("N");
-        string replayKey = payload.TokenId + ":" + canonicalRequestId;
+        string replayKey = payload.Subject + ":" + canonicalRequestId;
         lock (_replayGate)
         {
             PruneReplayCacheLocked();
