@@ -220,7 +220,7 @@ internal sealed class FileEncryptionService
                 plaintext.Flush(flushToDisk: true);
             }
 
-            return new FileDecryptionResult(true, "Verified", "The container authenticated and was decrypted to a separate output file.", container, output, opened.OriginalLength, false);
+            return new FileDecryptionResult(true, "Verified", "The container authenticated and was decrypted to a separate output file.", container, output, opened.OriginalLength, false, outputIdentity);
         }
         catch (OperationCanceledException)
         {
