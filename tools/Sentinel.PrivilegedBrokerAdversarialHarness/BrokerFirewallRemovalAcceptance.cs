@@ -10,7 +10,7 @@ internal static class BrokerFirewallRemovalAcceptance
 
         BrokerFirewallRuleVerification accepted = BrokerFirewallPolicy.EvaluateRemovalEvidence(exact, remoteIp);
         Require(accepted.QueryValid && accepted.Exists && accepted.IsExactBlock,
-            "Broker did not accept the exact enabled outbound Block rule before removal.");
+            "Broker did not accept the exact enabled outbound Block rule before mutation.");
 
         BrokerFirewallRuleVerification absent = BrokerFirewallPolicy.EvaluateRemovalEvidence("FOUND=0", remoteIp);
         Require(absent.QueryValid && !absent.Exists && !absent.IsExactBlock,
@@ -19,17 +19,17 @@ internal static class BrokerFirewallRemovalAcceptance
         BrokerFirewallRuleVerification allow = BrokerFirewallPolicy.EvaluateRemovalEvidence(
             exact.Replace("ACTION=Block", "ACTION=Allow", StringComparison.Ordinal), remoteIp);
         Require(allow.QueryValid && allow.Exists && !allow.IsExactBlock,
-            "Broker would accept an Allow rule for privileged removal.");
+            "Broker would accept an Allow rule as exact Sentinel firewall state.");
 
         BrokerFirewallRuleVerification disabled = BrokerFirewallPolicy.EvaluateRemovalEvidence(
             exact.Replace("ENABLED=True", "ENABLED=False", StringComparison.Ordinal), remoteIp);
         Require(disabled.QueryValid && disabled.Exists && !disabled.IsExactBlock,
-            "Broker would accept a disabled rule for privileged removal.");
+            "Broker would accept a disabled rule as exact Sentinel firewall state.");
 
         BrokerFirewallRuleVerification broadRemote = BrokerFirewallPolicy.EvaluateRemovalEvidence(
             exact.Replace($"REMOTE={remoteIp}", $"REMOTE={remoteIp},203.0.113.11", StringComparison.Ordinal), remoteIp);
         Require(broadRemote.QueryValid && broadRemote.Exists && !broadRemote.IsExactBlock,
-            "Broker would accept broader remote-address scope for privileged removal.");
+            "Broker would accept broader remote-address scope as exact Sentinel firewall state.");
 
         BrokerFirewallRuleVerification duplicateNamedRules = BrokerFirewallPolicy.EvaluateRemovalEvidence(
             "FOUND=2\nCONFLICT=True", remoteIp);
@@ -47,15 +47,20 @@ internal static class BrokerFirewallRemovalAcceptance
 
         string? brokerProgram = FindBrokerProgram();
         Require(brokerProgram is not null,
-            "Could not locate Sentinel.PrivilegedBroker/Program.cs for removal-order acceptance.");
+            "Could not locate Sentinel.PrivilegedBroker/Program.cs for mutation-order acceptance.");
         string source = File.ReadAllText(brokerProgram!);
-        int verifyCall = source.IndexOf("QueryFirewallRuleForRemoval(remoteIp)", StringComparison.Ordinal);
+        int verifyCall = source.IndexOf("QueryFirewallRuleForMutation(remoteIp)", StringComparison.Ordinal);
         int conflictRefusal = source.IndexOf("FirewallRuleConflict", StringComparison.Ordinal);
+        int addBuild = source.IndexOf("BrokerFirewallPolicy.BuildAddArguments(remoteIp)", StringComparison.Ordinal);
         int deleteBuild = source.IndexOf("BrokerFirewallPolicy.BuildDeleteArguments(remoteIp)", StringComparison.Ordinal);
-        Require(verifyCall >= 0 && conflictRefusal > verifyCall && deleteBuild > conflictRefusal,
-            "Broker firewall deletion is not source-ordered behind exact elevated reverification and conflict refusal.");
+        Require(verifyCall >= 0 && conflictRefusal > verifyCall && addBuild > conflictRefusal && deleteBuild > conflictRefusal,
+            "Broker firewall add/remove mutations are not source-ordered behind exact elevated preflight and conflict refusal.");
         Require(source.Contains("FirewallVerificationFailed", StringComparison.Ordinal),
-            "Broker firewall query failure is not pinned to fail closed before deletion.");
+            "Broker firewall query failure is not pinned to fail closed before mutation.");
+        Require(source.Contains("No duplicate firewall rule was created", StringComparison.Ordinal),
+            "Broker does not pin the exact-already-present add path to a safe no-op.");
+        Require(source.Contains("already absent. No firewall change was needed", StringComparison.Ordinal),
+            "Broker does not pin the already-absent remove path to a safe no-op.");
     }
 
     private static string Evidence(string remoteIp) =>
