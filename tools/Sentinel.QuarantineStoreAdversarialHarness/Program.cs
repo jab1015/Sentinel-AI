@@ -7,8 +7,11 @@ static void Require(bool condition, string message)
 
 static string NewRoot() => Path.Combine(Path.GetTempPath(), "SentinelAI-QuarantineAdversarial", Guid.NewGuid().ToString("N"));
 
-static QuarantineStoreEngine Engine(string root, Action<QuarantineCheckpoint>? checkpoint = null) =>
-    new(root, _ => false, _ => { }, _ => { }, checkpoint);
+static QuarantineStoreEngine Engine(
+    string root,
+    Action<QuarantineCheckpoint>? checkpoint = null,
+    Action<string>? restoreInheritedAcl = null) =>
+    new(root, _ => false, _ => { }, restoreInheritedAcl ?? (_ => { }), checkpoint);
 
 static string NewItemId() => Guid.NewGuid().ToString("N");
 
@@ -105,6 +108,43 @@ Run("restore collision preserves quarantine", () =>
     finally { Cleanup(root); }
 });
 
+Run("restore ACL step holds exact destination against replacement", () =>
+{
+    string root = NewRoot();
+    try
+    {
+        string source = WriteSource(root, "acl-race.txt", "trusted-restored-content");
+        string replacement = Path.Combine(root, "attacker-replacement.txt");
+        File.WriteAllText(replacement, "attacker-content");
+        string id = NewItemId();
+        var setup = Engine(root); setup.EnsureDirectories();
+        Require(setup.Quarantine(id, source).Succeeded, "Quarantine failed.");
+
+        bool replacementBlocked = false;
+        var restoring = Engine(root, restoreInheritedAcl: destination =>
+        {
+            try
+            {
+                File.Move(replacement, destination, overwrite: true);
+            }
+            catch (IOException)
+            {
+                replacementBlocked = true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                replacementBlocked = true;
+            }
+        });
+
+        var result = restoring.Restore(id);
+        Require(result.Succeeded, $"Restore failed: {result.Code} {result.Message}");
+        Require(replacementBlocked, "Restore destination could be replaced during the privileged ACL step.");
+        Require(File.Exists(source) && File.ReadAllText(source) == "trusted-restored-content", "Restore destination identity/content changed during ACL processing.");
+    }
+    finally { Cleanup(root); }
+});
+
 Run("crash after quarantine payload commit rolls back safely", () =>
 {
     string root = NewRoot();
@@ -143,7 +183,7 @@ Run("crash after source deletion commits safely", () =>
     finally { Cleanup(root); }
 });
 
-Run("crash after restore destination commit finishes safely", () =>
+Run("crash after verified restore ACL commit finishes safely", () =>
 {
     string root = NewRoot();
     try
@@ -159,6 +199,52 @@ Run("crash after restore destination commit finishes safely", () =>
         Require(File.Exists(source) && File.ReadAllText(source) == "checkpoint-C", "Verified restored destination was not preserved.");
         Require(!File.Exists(recovered.PayloadPathForTest(id)) && !File.Exists(recovered.RecordPathForTest(id)) && !File.Exists(recovered.TransactionPathForTest(id)), "Recovery did not finalize committed restore.");
         Require(issues.Count == 0, "Committed restore unexpectedly remained ambiguous.");
+    }
+    finally { Cleanup(root); }
+});
+
+Run("legacy destination-ready restore state fails closed", () =>
+{
+    string root = NewRoot();
+    try
+    {
+        string source = WriteSource(root, "legacy-restore.txt", "legacy-content");
+        string id = NewItemId();
+        var engine = Engine(root); engine.EnsureDirectories();
+        var q = engine.Quarantine(id, source);
+        Require(q.Succeeded, "Quarantine failed.");
+        File.WriteAllText(source, "legacy-content");
+        File.WriteAllText(engine.TransactionPathForTest(id), JsonSerializer.Serialize(
+            new QuarantineTransaction(id, "Restore", "DestinationReady", source, string.Empty, q.Sha256, DateTimeOffset.UtcNow)));
+
+        var issues = engine.Recover();
+        Require(File.Exists(source) && File.ReadAllText(source) == "legacy-content", "Legacy recovery altered the existing destination.");
+        Require(File.Exists(engine.PayloadPathForTest(id)) && File.Exists(engine.RecordPathForTest(id)) && File.Exists(engine.TransactionPathForTest(id)),
+            "Legacy DestinationReady state was auto-finalized without exact-object ACL proof.");
+        Require(issues.Any(i => i.Code == "IncompleteRestore"), "Legacy DestinationReady state was not surfaced as recovery-required.");
+    }
+    finally { Cleanup(root); }
+});
+
+Run("destination-acl-ready recovery requires exact stable object", () =>
+{
+    string root = NewRoot();
+    try
+    {
+        string source = WriteSource(root, "acl-ready.txt", "acl-ready-content");
+        string id = NewItemId();
+        var engine = Engine(root); engine.EnsureDirectories();
+        var q = engine.Quarantine(id, source);
+        Require(q.Succeeded, "Quarantine failed.");
+        File.WriteAllText(source, "acl-ready-content");
+        File.WriteAllText(engine.TransactionPathForTest(id), JsonSerializer.Serialize(
+            new QuarantineTransaction(id, "Restore", "DestinationAclReady", source, string.Empty, q.Sha256, DateTimeOffset.UtcNow)));
+
+        var issues = engine.Recover();
+        Require(File.Exists(source) && File.ReadAllText(source) == "acl-ready-content", "Recovery altered the committed restored destination.");
+        Require(!File.Exists(engine.PayloadPathForTest(id)) && !File.Exists(engine.RecordPathForTest(id)) && !File.Exists(engine.TransactionPathForTest(id)),
+            "Verified DestinationAclReady state did not finalize protected cleanup.");
+        Require(issues.Count == 0, "Verified DestinationAclReady recovery unexpectedly reported unresolved state.");
     }
     finally { Cleanup(root); }
 });
