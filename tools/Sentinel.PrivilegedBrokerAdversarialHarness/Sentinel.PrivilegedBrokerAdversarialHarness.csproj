@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\BrokerIdentityPolicy.cs" Link="BrokerIdentityPolicy.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\BrokerFirewallPolicy.cs" Link="BrokerFirewallPolicy.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\BrokerPipeMessageIO.cs" Link="BrokerPipeMessageIO.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.PrivilegedBroker\ServiceRestartEngine.cs" Link="ServiceRestartEngine.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FirewallRuleVerificationPolicy.cs" Link="FirewallRuleVerificationPolicy.cs" />
   </ItemGroup>
