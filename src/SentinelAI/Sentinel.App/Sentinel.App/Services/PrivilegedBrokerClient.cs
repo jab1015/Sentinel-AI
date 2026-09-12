@@ -4,6 +4,7 @@
  */
 
 using System;
+using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -21,7 +22,10 @@ internal sealed class PrivilegedBrokerClient
 {
     private const int ProtocolVersion = 2;
     private const int MaximumRequestBytes = 32 * 1024;
+    private const int MaximumProtectedRecordBytes = 64 * 1024;
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(60);
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    private static readonly JsonSerializerOptions ProtectedRecordJsonOptions = new() { MaxDepth = 32 };
     private readonly string _brokerPath;
     private readonly string _recordsRoot;
 
@@ -75,7 +79,8 @@ internal sealed class PrivilegedBrokerClient
         try
         {
             await using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-            return await JsonSerializer.DeserializeAsync<BrokerQuarantineRecord>(stream, cancellationToken: token).ConfigureAwait(false);
+            if (stream.Length is <= 0 or > MaximumProtectedRecordBytes) return null;
+            return await JsonSerializer.DeserializeAsync<BrokerQuarantineRecord>(stream, ProtectedRecordJsonOptions, token).ConfigureAwait(false);
         }
         catch { return null; }
     }
@@ -90,7 +95,8 @@ internal sealed class PrivilegedBrokerClient
             try
             {
                 await using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
-                BrokerQuarantineRecord? record = await JsonSerializer.DeserializeAsync<BrokerQuarantineRecord>(stream, cancellationToken: token).ConfigureAwait(false);
+                if (stream.Length is <= 0 or > MaximumProtectedRecordBytes) continue;
+                BrokerQuarantineRecord? record = await JsonSerializer.DeserializeAsync<BrokerQuarantineRecord>(stream, ProtectedRecordJsonOptions, token).ConfigureAwait(false);
                 if (record is not null && Guid.TryParseExact(record.ItemId, "N", out _)) records.Add(record);
             }
             catch { }
@@ -170,16 +176,15 @@ internal sealed class PrivilegedBrokerClient
             }
 
             using StreamWriter writer = new(pipe, new UTF8Encoding(false), bufferSize: 4096, leaveOpen: true) { AutoFlush = true };
-            using StreamReader reader = new(pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
 
             string requestJson = Encoding.UTF8.GetString(payload);
             await writer.WriteLineAsync(requestJson).WaitAsync(operationToken).ConfigureAwait(false);
-            string? responseJson = await reader.ReadLineAsync().WaitAsync(operationToken).ConfigureAwait(false);
+            string? responseJson = await ReadBoundedUtf8LineAsync(pipe, MaximumRequestBytes, operationToken).ConfigureAwait(false);
 
-            if (string.IsNullOrWhiteSpace(responseJson) || Encoding.UTF8.GetByteCount(responseJson) > MaximumRequestBytes)
+            if (string.IsNullOrWhiteSpace(responseJson))
             {
                 _ = TerminateBroker(process);
-                return BrokerInvocationResult.Failure("InvalidResult", "The broker returned an empty or oversized result.");
+                return BrokerInvocationResult.Failure("InvalidResult", "The broker returned an empty, malformed, or oversized result.");
             }
 
             BrokerResult? result = JsonSerializer.Deserialize<BrokerResult>(responseJson);
@@ -227,10 +232,46 @@ internal sealed class PrivilegedBrokerClient
             _ = TerminateBroker(process);
             return BrokerInvocationResult.Failure("IpcFailure", "The authenticated privileged IPC channel failed. Sentinel made no success claim.");
         }
+        catch (DecoderFallbackException)
+        {
+            _ = TerminateBroker(process);
+            return BrokerInvocationResult.Failure("InvalidResult", "The privileged broker returned malformed UTF-8 result data.");
+        }
         catch (JsonException)
         {
             _ = TerminateBroker(process);
             return BrokerInvocationResult.Failure("InvalidResult", "The privileged broker returned malformed result data.");
+        }
+    }
+
+    private static async Task<string?> ReadBoundedUtf8LineAsync(Stream stream, int maximumBytes, CancellationToken token)
+    {
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            using MemoryStream line = new(capacity: Math.Min(maximumBytes, 4096));
+            while (true)
+            {
+                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maximumBytes + 1)), token).ConfigureAwait(false);
+                if (read == 0) return null;
+
+                int newline = Array.IndexOf(buffer, (byte)'\n', 0, read);
+                int segmentLength = newline >= 0 ? newline : read;
+                if (line.Length + segmentLength > maximumBytes) return null;
+                line.Write(buffer, 0, segmentLength);
+
+                if (newline >= 0)
+                {
+                    byte[] bytes = line.ToArray();
+                    int length = bytes.Length;
+                    if (length > 0 && bytes[length - 1] == (byte)'\r') length--;
+                    return length == 0 ? null : StrictUtf8.GetString(bytes, 0, length);
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
         }
     }
 
