@@ -30,11 +30,13 @@ try
         IsProtectedWindowsPath,
         SetFileAclPrivate,
         ResetFileAclInheritance);
+    ServiceRestartEngine serviceRestart = new(transactionRoot);
     IReadOnlyList<QuarantineStoreIssue> recoveryGuardIssues = QuarantineRecoveryGuard.Validate(root);
     if (recoveryGuardIssues.Count == 0)
     {
         quarantineStore.Recover();
     }
+    ServiceRestartResult serviceRecovery = serviceRestart.RecoverPending();
 
     using NamedPipeServerStream pipe = new(
         pipeName,
@@ -65,6 +67,9 @@ try
         "terminate-process" => TerminateProcess(request),
         "firewall-block-endpoint" => ApplyFirewallMutation(request, add: true),
         "firewall-remove-endpoint" => ApplyFirewallMutation(request, add: false),
+        "restart-service" => serviceRecovery.Succeeded
+            ? MapServiceRestartResult(request.RequestId, serviceRestart.Restart(request.ServiceName))
+            : BrokerResult.Fail(request.RequestId, serviceRecovery.Code, serviceRecovery.Message),
         _ => BrokerResult.Fail(request.RequestId, "UnsupportedOperation", "The requested privileged operation is not allowlisted.")
     };
 
@@ -92,6 +97,11 @@ async Task WritePipeResultAsync(NamedPipeServerStream pipe, BrokerResult result)
 BrokerResult MapStoreResult(string requestId, QuarantineStoreResult result) =>
     result.Succeeded
         ? BrokerResult.Ok(requestId, result.ItemId, result.Sha256, result.Message)
+        : BrokerResult.Fail(requestId, result.Code, result.Message);
+
+BrokerResult MapServiceRestartResult(string requestId, ServiceRestartResult result) =>
+    result.Succeeded
+        ? BrokerResult.Ok(requestId, string.Empty, string.Empty, result.Message)
         : BrokerResult.Fail(requestId, result.Code, result.Message);
 
 bool IsAuthorizedSentinelClient(NamedPipeServerStream pipe, out string error)
@@ -316,7 +326,8 @@ public sealed record BrokerRequest(
     string? ExpectedImagePath = null,
     string? ExpectedImageSha256 = null,
     bool TerminateDescendants = false,
-    string? RemoteIp = null);
+    string? RemoteIp = null,
+    string? ServiceName = null);
 
 public sealed record BrokerResult(string RequestId, bool Succeeded, string Code, string Message, string ItemId, string Sha256)
 {
