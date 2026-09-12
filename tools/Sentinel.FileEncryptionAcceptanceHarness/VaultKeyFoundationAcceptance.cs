@@ -133,7 +133,8 @@ internal static class VaultKeyFoundationAcceptance
                 CancellationToken.None).GetAwaiter().GetResult();
 
             Guid itemId = Guid.NewGuid();
-            VaultFileKeyProtector vaultProtector = VaultFileKeyProtector.ForEncryption(vault, itemId);
+            using VaultItemKeyLease itemKey = vault.CreateItemKey(itemId);
+            using VaultFileKeyProtector vaultProtector = VaultFileKeyProtector.ForEncryption(vault, itemKey);
             IReadOnlyList<IFileKeyProtector> keys = new IFileKeyProtector[] { vaultProtector };
             FileEncryptionService service = new(SentinelEncryptedContainerV1.MinimumChunkSize);
 
