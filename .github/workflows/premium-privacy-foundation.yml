@@ -41,6 +41,15 @@ jobs:
       - name: Run Explorer integration acceptance harness
         run: dotnet run --project "tools/Sentinel.ExplorerIntegrationAcceptanceHarness/Sentinel.ExplorerIntegrationAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore file encryption acceptance harness
+        run: dotnet restore "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj"
+
+      - name: Build file encryption acceptance harness
+        run: dotnet build "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run file encryption acceptance harness
+        run: dotnet run --project "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Build native Explorer command - x64
         shell: pwsh
         run: |
