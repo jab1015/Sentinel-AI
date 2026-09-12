@@ -29,7 +29,11 @@ try
         IsProtectedWindowsPath,
         SetFileAclPrivate,
         ResetFileAclInheritance);
-    quarantineStore.Recover();
+    IReadOnlyList<QuarantineStoreIssue> recoveryGuardIssues = QuarantineRecoveryGuard.Validate(root);
+    if (recoveryGuardIssues.Count == 0)
+    {
+        quarantineStore.Recover();
+    }
 
     using NamedPipeServerStream pipe = new(
         pipeName,
