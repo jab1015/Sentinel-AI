@@ -610,16 +610,17 @@ internal sealed class QuarantineStoreEngine
         int rootOffset = IntPtr.Size == 8 ? 8 : 4;
         int lengthOffset = rootOffset + IntPtr.Size;
         int nameOffset = lengthOffset + sizeof(int);
-        IntPtr buffer = Marshal.AllocHGlobal(nameOffset + nameBytes.Length);
+        int bufferLength = nameOffset + nameBytes.Length + sizeof(char);
+        IntPtr buffer = Marshal.AllocHGlobal(bufferLength);
         try
         {
-            byte[] zeros = new byte[nameOffset + nameBytes.Length];
+            byte[] zeros = new byte[bufferLength];
             Marshal.Copy(zeros, 0, buffer, zeros.Length);
             Marshal.WriteByte(buffer, 0, 0);
             Marshal.WriteIntPtr(buffer, rootOffset, IntPtr.Zero);
             Marshal.WriteInt32(buffer, lengthOffset, nameBytes.Length);
             Marshal.Copy(nameBytes, 0, IntPtr.Add(buffer, nameOffset), nameBytes.Length);
-            if (!SetFileInformationByHandle(fileHandle, FileRenameInfoClass, buffer, (uint)(nameOffset + nameBytes.Length)))
+            if (!SetFileInformationByHandle(fileHandle, FileRenameInfoClass, buffer, (uint)bufferLength))
             {
                 error = Win32("Windows refused the atomic exact-handle restore rename.");
                 return false;
