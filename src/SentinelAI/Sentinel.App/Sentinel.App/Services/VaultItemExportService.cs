@@ -65,75 +65,139 @@ internal sealed class VaultItemExportService
             return VaultExportResult.Fail(boundaryError, itemId, destination);
         if (!TryValidateDestination(destination, out destination, out destinationError))
             return VaultExportResult.Fail(destinationError, itemId, destination);
-        if (_vault.State != VaultState.Unlocked || _vault.VaultId == Guid.Empty)
+
+        VaultOperationSession session;
+        try
+        {
+            session = _vault.AcquireOperationSession();
+        }
+        catch (InvalidOperationException)
+        {
             return VaultExportResult.Fail("VaultLocked", itemId, destination);
+        }
+        catch (ObjectDisposedException)
+        {
+            return VaultExportResult.Fail("VaultUnavailable", itemId, destination);
+        }
 
-        VaultCommittedItemsResult committed = await _itemStore.ListCommittedItemsAsync(cancellationToken).ConfigureAwait(false);
-        if (!committed.Succeeded)
-            return VaultExportResult.Fail("CommittedItemsUnavailable:" + committed.Code, itemId, destination);
-
-        VaultMetadataItem[] matches = committed.Items.Where(i => i.ItemId == itemId).ToArray();
-        if (matches.Length == 0)
-            return VaultExportResult.Fail("ItemNotCommitted", itemId, destination);
-        if (matches.Length != 1)
-            return VaultExportResult.Fail("AmbiguousItemIdentity", itemId, destination);
-        VaultMetadataItem item = matches[0];
-
-        if (!TryGetCiphertextPath(item, out string ciphertextPath))
-            return VaultExportResult.Fail("CiphertextPathInvalid", itemId, destination);
-        if (!File.Exists(ciphertextPath))
-            return VaultExportResult.Fail("CiphertextMissing", itemId, destination);
-        if (IsReparsePoint(ciphertextPath))
-            return VaultExportResult.Fail("CiphertextReparsePoint", itemId, destination);
-
-        VaultFileKeyProtector openingProtector = VaultFileKeyProtector.ForOpening(_vault, itemId);
-        FileContainerVerificationResult before = await _encryption.VerifyAsync(
-            ciphertextPath,
-            new IFileKeyProtector[] { openingProtector },
-            cancellationToken).ConfigureAwait(false);
-        if (!before.Succeeded || before.PlaintextBytes != item.PlaintextBytes)
-            return VaultExportResult.Fail("CiphertextVerificationFailed:" + before.Code, itemId, destination);
-
-        FileDecryptionResult decrypted = await _encryption.DecryptAsync(
-            ciphertextPath,
-            destination,
-            new IFileKeyProtector[] { openingProtector },
-            cancellationToken).ConfigureAwait(false);
-        if (!decrypted.Succeeded)
-            return VaultExportResult.Fail(
-                "ExportFailed:" + decrypted.Code,
-                itemId,
-                destination,
-                decrypted.InvalidOutputRemains);
+        using CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            session.CancellationToken);
+        CancellationToken operationToken = linkedCancellation.Token;
 
         try
         {
-            if (!File.Exists(destination) || IsReparsePoint(destination))
-                return VaultExportResult.Fail("ExportVerificationFailed", itemId, destination, outputRemains: File.Exists(destination));
-            long actualLength = new FileInfo(destination).Length;
-            if (actualLength != item.PlaintextBytes)
-                return VaultExportResult.Fail("ExportLengthMismatch", itemId, destination, outputRemains: true);
+            VaultCommittedItemsResult committed = await _itemStore.ListCommittedItemsAsync(operationToken).ConfigureAwait(false);
+            if (!_vault.IsOperationSessionValid(session))
+                return VaultExportResult.Fail("VaultLockTransition", itemId, destination);
+            if (!committed.Succeeded)
+                return VaultExportResult.Fail("CommittedItemsUnavailable:" + committed.Code, itemId, destination);
+
+            VaultMetadataItem[] matches = committed.Items.Where(i => i.ItemId == itemId).ToArray();
+            if (matches.Length == 0)
+                return VaultExportResult.Fail("ItemNotCommitted", itemId, destination);
+            if (matches.Length != 1)
+                return VaultExportResult.Fail("AmbiguousItemIdentity", itemId, destination);
+            VaultMetadataItem item = matches[0];
+
+            if (!TryGetCiphertextPath(item, out string ciphertextPath))
+                return VaultExportResult.Fail("CiphertextPathInvalid", itemId, destination);
+            if (!File.Exists(ciphertextPath))
+                return VaultExportResult.Fail("CiphertextMissing", itemId, destination);
+            if (IsReparsePoint(ciphertextPath))
+                return VaultExportResult.Fail("CiphertextReparsePoint", itemId, destination);
+
+            VaultFileKeyProtector openingProtector = VaultFileKeyProtector.ForOpening(_vault, itemId);
+            FileContainerVerificationResult before = await _encryption.VerifyAsync(
+                ciphertextPath,
+                new IFileKeyProtector[] { openingProtector },
+                operationToken).ConfigureAwait(false);
+            if (!_vault.IsOperationSessionValid(session))
+                return VaultExportResult.Fail("VaultLockTransition", itemId, destination);
+            if (!before.Succeeded || before.PlaintextBytes != item.PlaintextBytes)
+                return VaultExportResult.Fail("CiphertextVerificationFailed:" + before.Code, itemId, destination);
+
+            FileDecryptionResult decrypted = await _encryption.DecryptAsync(
+                ciphertextPath,
+                destination,
+                new IFileKeyProtector[] { openingProtector },
+                operationToken).ConfigureAwait(false);
+            if (!_vault.IsOperationSessionValid(session))
+                return FailForLockTransition(itemId, destination, decrypted);
+            if (!decrypted.Succeeded)
+                return VaultExportResult.Fail(
+                    "ExportFailed:" + decrypted.Code,
+                    itemId,
+                    destination,
+                    decrypted.InvalidOutputRemains);
+
+            try
+            {
+                if (!File.Exists(destination) || IsReparsePoint(destination))
+                    return VaultExportResult.Fail("ExportVerificationFailed", itemId, destination, outputRemains: File.Exists(destination));
+                long actualLength = new FileInfo(destination).Length;
+                if (actualLength != item.PlaintextBytes)
+                    return VaultExportResult.Fail("ExportLengthMismatch", itemId, destination, outputRemains: true);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return VaultExportResult.Fail("ExportVerificationAccessDenied", itemId, destination, outputRemains: File.Exists(destination));
+            }
+            catch (IOException)
+            {
+                return VaultExportResult.Fail("ExportVerificationIoFailure", itemId, destination, outputRemains: File.Exists(destination));
+            }
+
+            if (!_vault.IsOperationSessionValid(session))
+                return FailForLockTransition(itemId, destination, decrypted);
+
+            if (!TryValidateStorageBoundary(out boundaryError))
+                return VaultExportResult.Fail(boundaryError, itemId, destination, outputRemains: true);
+
+            FileContainerVerificationResult after = await _encryption.VerifyAsync(
+                ciphertextPath,
+                new IFileKeyProtector[] { openingProtector },
+                operationToken).ConfigureAwait(false);
+            if (!_vault.IsOperationSessionValid(session))
+                return FailForLockTransition(itemId, destination, decrypted);
+            if (!after.Succeeded || after.PlaintextBytes != item.PlaintextBytes)
+                return VaultExportResult.Fail("PostExportCiphertextVerificationFailed:" + after.Code, itemId, destination, outputRemains: true);
+
+            if (!_vault.IsOperationSessionValid(session))
+                return FailForLockTransition(itemId, destination, decrypted);
+
+            return VaultExportResult.Success(itemId, destination, item.PlaintextBytes);
         }
-        catch (UnauthorizedAccessException)
+        catch (OperationCanceledException)
         {
-            return VaultExportResult.Fail("ExportVerificationAccessDenied", itemId, destination, outputRemains: File.Exists(destination));
+            if (!_vault.IsOperationSessionValid(session))
+                return VaultExportResult.Fail("VaultLockTransition", itemId, destination, outputRemains: File.Exists(destination));
+            if (cancellationToken.IsCancellationRequested)
+                return VaultExportResult.Fail("Canceled", itemId, destination, outputRemains: File.Exists(destination));
+            return VaultExportResult.Fail("OperationCanceled", itemId, destination, outputRemains: File.Exists(destination));
         }
-        catch (IOException)
-        {
-            return VaultExportResult.Fail("ExportVerificationIoFailure", itemId, destination, outputRemains: File.Exists(destination));
-        }
+    }
 
-        if (!TryValidateStorageBoundary(out boundaryError))
-            return VaultExportResult.Fail(boundaryError, itemId, destination, outputRemains: true);
+    private static VaultExportResult FailForLockTransition(
+        Guid itemId,
+        string destination,
+        FileDecryptionResult decrypted)
+    {
+        if (!decrypted.Succeeded)
+            return VaultExportResult.Fail(
+                "VaultLockTransition",
+                itemId,
+                destination,
+                decrypted.InvalidOutputRemains || File.Exists(destination));
 
-        FileContainerVerificationResult after = await _encryption.VerifyAsync(
-            ciphertextPath,
-            new IFileKeyProtector[] { openingProtector },
-            cancellationToken).ConfigureAwait(false);
-        if (!after.Succeeded || after.PlaintextBytes != item.PlaintextBytes)
-            return VaultExportResult.Fail("PostExportCiphertextVerificationFailed:" + after.Code, itemId, destination, outputRemains: true);
-
-        return VaultExportResult.Success(itemId, destination, item.PlaintextBytes);
+        bool deleted = !decrypted.OutputIdentity.IsEmpty &&
+                       ExactOwnedOutputCleanup.TryDeleteSameObject(destination, decrypted.OutputIdentity);
+        bool remains = File.Exists(destination);
+        return VaultExportResult.Fail(
+            deleted && !remains ? "VaultLockTransition" : "VaultLockTransitionCleanupIncomplete",
+            itemId,
+            destination,
+            remains);
     }
 
     private bool TryValidateDestination(string? destinationPath, out string destination, out string error)
