@@ -1,6 +1,6 @@
 # SAI-000 — Project Status
 
-Version: 2.2  
+Version: 2.3  
 Status: Active — Production security hardening  
 Last Updated: 2026-09-12
 
@@ -14,77 +14,55 @@ Sentinel AI is in an active production-security hardening program based on asses
 
 - Production branch: `main`
 - Hardening branch: `security/production-hardening-1218f5d`
-- Current proven code checkpoint before this documentation synchronization: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`
+- Last fully proven Windows/package code checkpoint: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`
+- Current continuation code checkpoint before this documentation commit: `214ca4588a4bb0c603736e6fa1a10b0e69831345`
 - Findings: 29 total — 14 High, 15 Medium
 - Release posture: **NOT production-hardened; DO NOT MERGE yet**
 
 No finding is marked PASS from source changes or green CI alone. Runtime, packaged, Store, Google Cloud, adversarial, architecture, and stability evidence remain mandatory where applicable.
 
-## Current Proven CI Checkpoint
+## Proven CI Evidence
 
 Exact-head CI for `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`:
 
 - Windows hardening workflow `34676187598`: **PASS**.
 - Unsigned x64 package workflow `34676187667`: **PASS**.
-- Desktop and privileged-broker Release builds: PASS.
-- Broker package-identity policy harness: PASS.
-- Ask Sentinel final-display safety harness: PASS at the preceding validated checkpoint and remains part of Windows CI.
-- Initial-monitoring startup regression harness: PASS at the preceding validated checkpoint and remains part of Windows CI.
-- Security-health classification harness for Defender/firewall evidence: added to Windows CI at the current checkpoint.
-- Authenticode acceptance harness: PASS.
-- BoundedProcessRunner acceptance harness: PASS for 10 consecutive iterations.
-- Quarantine adversarial harness: PASS.
-- System-image, cloud-redaction, event-filtering, investigation-history, diagnostic-log, and AI-gateway security harnesses: PASS.
 
-These are commit-bound CI results, not production-release approval.
+The A10/A11 driver-repair policy gate first passed on code checkpoint `5bf73196bb6661bda96ab45c62e8b0c630168f78` in dedicated Windows workflow `34676963355`. Full Windows/package workflows for later continuation commits are still running/queued and must not be reported as PASS until exact-head results complete.
 
-## Hardening Progress Since the Previous Documentation Checkpoint
+## Latest Hardening Progress
 
-- SAI-A19 final Ask Sentinel display-time validation was implemented. Post-orchestrator answer replacement no longer inherits an earlier validation state; composed/replaced answers are revalidated before display. Advisory/inferred content cannot assert verified protection actions without deterministic action evidence.
-- SAI-A13 initial-monitoring startup behavior was corrected and a deterministic regression gate added so an initial refresh failure cannot permanently prevent timer startup.
-- SAI-A08 firewall containment verification was tightened. Verification now requires the expected enabled outbound exact-address Block rule and fails closed on malformed/incomplete evidence rather than confusing malformed output with verified rule absence. Adversarial cases cover disabled, Allow, inbound, wrong-address, broad, duplicate, incomplete, and malformed states.
-- SAI-A06 Defender/firewall health classification was separated into deterministic classification logic and added to Windows CI. Passive/disabled/stale/incomplete Defender states and stopped/partial/incomplete firewall states fail closed instead of being inferred healthy.
-- SAI-A17 re-review found a remaining custom subprocess path in `NetworkRepairExecutor`. It was moved onto the common `BoundedProcessRunner` so caller cancellation/timeout owns and terminates the child process tree rather than allowing `ipconfig` to outlive the operation.
-- SAI-A14 temporary cleanup remains intentionally disabled/fail-closed; no destructive cleanup is enabled until a safe handle-based implementation exists.
-- SAI-A16 automatic service restart remains intentionally disabled/fail-closed until dependency, rollback, cancellation, and final-state guarantees are implemented.
-- SAI-A21/A22 re-review has begun. External research remains advisory, but passage-to-claim provenance and remaining bounded-resource/adversarial work are not complete.
+- **SAI-A06:** deterministic Defender/firewall health classification is in Windows CI; incomplete/passive/disabled/stale evidence does not become a healthy claim. Runtime validation remains.
+- **SAI-A08:** firewall verification now fails closed on malformed/incomplete query evidence and requires the exact enabled outbound Block rule. Runtime firewall/UAC validation remains.
+- **SAI-A10/A11:** current production source binds driver repair to exact PnP instance, hardware ID, Windows Update ID/revision, rejects ambiguous/missing identity, requires clean installer/per-update result and zero HRESULT, treats restart-required as not fully verified, and rechecks exact device health/update state. A dedicated deterministic policy harness now covers missing/ambiguous device/update, wrong hardware identity, installer/per-update failure, nonzero HRESULT, restart-required, changed post-install identity, still-offered update, and unhealthy/missing post-install evidence. Dedicated Windows policy CI has passed; full runtime Windows Update/device validation remains required.
+- **SAI-A13:** initial-refresh failure no longer prevents the monitoring timer from starting; deterministic startup regression coverage exists. Installed lifecycle validation remains.
+- **SAI-A17:** a remaining `NetworkRepairExecutor` subprocess bypass was moved to `BoundedProcessRunner`; final launch-path audit and runtime edge cases remain.
+- **SAI-A19:** final displayed Ask Sentinel responses are revalidated after replacement/composition; deterministic display-safety coverage exists. Runtime validation remains.
+- **SAI-A28:** re-review found `AutomaticOptimizationCoordinator` treated corrupt/unreadable cooldown state as empty and swallowed persistence failures, allowing repeated-action state to fail open. The coordinator now fails closed when state cannot be read, durably reserves `LastAttemptUtc` before invoking an executor, verifies the reservation write, and preserves that pre-action reservation if the post-action summary write fails. Persistence logic is isolated in `OptimizationRuntimeStateStore`; a deterministic Windows harness covers missing, persisted, corrupt, locked-read, and locked-write states. Exact-head CI for this newest A28 work is pending.
+- **SAI-A14/A16:** unsafe automatic temp cleanup and automatic service restart remain intentionally disabled/fail-closed.
+- **SAI-A21/A22:** re-review continues. External evidence remains advisory; A21 still needs passage-to-claim provenance. A22 still requires closure of archive/decompression resource-exhaustion behavior; current Dell CAB expansion is specifically under review because post-expansion file/size checks do not by themselves bound disk consumption during expansion.
 
 ## Current Priority
 
-1. Complete installed packaged/UAC adversarial validation for SAI-A07/A15.
-2. Complete the remaining runtime matrix for SAI-A19 and SAI-A01 rather than treating deterministic CI as full closure.
-3. Execute SAI-A05 Google Cloud + Microsoft Store entitlement staging validation.
-4. Finish re-review/validation for A06, A08, A10, A11, A13 and the remaining A17 runtime boundary.
-5. Keep A14/A16 safely disabled unless their full safety contracts can be completed.
-6. Complete A21, A22, A23, A24, A28 and A29 release qualification.
+1. Wait for and evaluate exact-head CI for the A28 continuation; correct failures narrowly if any.
+2. Complete A10/A11 runtime/device validation and connect any remaining deterministic policy boundary directly to production decision paths where needed.
+3. Complete A21 attributable passage/provenance binding and stale-cache regression coverage.
+4. Close A22 archive/decompression resource limits safely; disable unsafe automatic archive expansion if it cannot be strongly bounded.
+5. Continue A23/A24/A28 fault/runtime validation and A29 release qualification.
+6. Complete installed packaged/UAC adversarial validation for A07/A15, extended Authenticode runtime fixtures for A01, and Google Cloud/Store staging for A05.
 7. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
 
 ## Planned Premium Privacy Protection
 
-The post-hardening Premium Privacy Protection phase remains authoritative in `SAI-005_Product_Roadmap.md` and is **preserved without implementation during the current hardening effort**.
+The post-hardening Premium Privacy Protection phase in `SAI-005_Product_Roadmap.md` remains authoritative and preserved. It includes supported Explorer integration, Inspect with Sentinel AI, media-aware Secure Delete, attributable-copy/history discovery, AES-256-GCM authenticated encryption, Windows-account and password modes, independent recovery keys, Sentinel Vault, optional future Windows Hello/TPM, server-side entitlement, and independent privacy/crypto review.
 
-Planned subscription-only capabilities remain:
+Privacy operations must use exact-object revalidation, protected-location/link/reparse/race defenses, fail-closed transactions, and VERIFIED / REQUESTED / REMAINS / CANNOT PROVE result semantics. A single-file action must not silently wipe unrelated restore/history/system data or directly manipulate `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`. Unsupported guarantees of forensic irrecoverability are prohibited.
 
-- supported packaged File Explorer integration, beginning with harmless `Inspect with Sentinel AI`
-- Secure Delete with explicit intent, exact-object revalidation, protected-location/link/reparse/race defenses, media-aware behavior, transactional fail-closed execution, and VERIFIED / REQUESTED / REMAINS / CANNOT PROVE results
-- attributable-copy/history discovery separated from deletion, without silently removing unrelated recovery/history/system data
-- authenticated AES-256-GCM file encryption with independent random item keys, unique nonce material, authenticated metadata, corruption detection, and a reviewed streaming/chunked format for large files
-- safe encrypt-then-verify transactions that preserve the plaintext original on encryption or verification failure
-- Windows current-user protection for independent file keys
-- portable password protection using a maintained memory-hard KDF such as Argon2id when supportable
-- independent high-entropy recovery keys with Copy / Save / Print support and no silent escrow
-- Sentinel Vault using a vault master-key hierarchy wrapping independent item keys, automatic/session locking, account/password/recovery modes, and optional future Windows Hello/TPM only after dedicated review
-- existing server-side premium entitlement enforcement, with entitlement never substituting for filesystem/object safety validation
-
-Normal single-file privacy actions must not directly modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`, wipe unrelated restore/history sets, or make unsupported claims of forensic irrecoverability.
-
-**Do not implement Secure Delete, encryption, Sentinel Vault, or destructive Explorer actions until current hardening/release gates are complete or explicit authorization is given.**
+**Do not implement Premium Privacy destructive/encryption features until current hardening/release gates are complete or explicit authorization is given.**
 
 ## Definition of Done
 
-A security finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are all satisfied. Final release additionally requires a complete re-audit of all 29 findings and commit-bound release/stability evidence.
-
-Premium privacy work begins only after the current release-hardening foundation is independently reviewed and accepted, unless explicitly authorized otherwise.
+A finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are satisfied. Final release additionally requires signed/Store package qualification, supported Windows/architecture coverage, fresh final-commit stability runs, and a complete adversarial re-audit of all 29 findings.
 
 ---
 
