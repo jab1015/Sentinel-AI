@@ -69,13 +69,12 @@ namespace Sentinel.App.Services
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    using HttpRequestMessage request = new(HttpMethod.Get, source.Uri);
+                    if (!TryCreatePinnedHttpsUri(source.Uri, out Uri? expectedUri) || expectedUri is null)
+                        continue;
+
+                    using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
                     using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-                    if (!response.IsSuccessStatusCode) continue;
-                    if (!Uri.TryCreate(source.Uri, UriKind.Absolute, out Uri? expectedUri) ||
-                        response.RequestMessage?.RequestUri is not Uri actualUri ||
-                        !actualUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                        !actualUri.Host.Equals(expectedUri.Host, StringComparison.OrdinalIgnoreCase))
+                    if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri))
                         continue;
 
                     string? body = await ReadBoundedBodyAsync(response, cancellationToken).ConfigureAwait(false);
@@ -179,6 +178,26 @@ namespace Sentinel.App.Services
                 builder.Append(buffer, 0, read);
             }
             return builder.ToString();
+        }
+
+        private static bool TryCreatePinnedHttpsUri(string uri, out Uri? expectedUri)
+        {
+            expectedUri = null;
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) ||
+                !parsed.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(parsed.Host))
+                return false;
+
+            expectedUri = parsed;
+            return true;
+        }
+
+        private static bool ResponseMatchesExpectedAuthority(HttpResponseMessage response, Uri expectedUri)
+        {
+            return response.RequestMessage?.RequestUri is Uri actualUri &&
+                   actualUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+                   actualUri.Host.Equals(expectedUri.Host, StringComparison.OrdinalIgnoreCase) &&
+                   actualUri.Port == expectedUri.Port;
         }
 
         private static string BuildEvidenceFingerprint(string question, SystemSnapshot snapshot, string topic)
