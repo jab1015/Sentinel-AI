@@ -23,9 +23,25 @@ namespace Sentinel.App.Services
                 : new(true, false, DriverInstallDisposition.RequiresPostInstallVerification);
         }
 
-        internal static bool IsPostInstallVerified(bool processSucceeded, bool exactDevicePresent, bool hardwareIdentityMatches,
-            bool approvedUpdateStillOffered, int? deviceProblemCode) =>
-            processSucceeded && exactDevicePresent && hardwareIdentityMatches && !approvedUpdateStillOffered && deviceProblemCode == 0;
+        internal static bool HasDriverVersionChanged(string? beforeVersion, string? afterVersion) =>
+            !string.IsNullOrWhiteSpace(beforeVersion) &&
+            !string.IsNullOrWhiteSpace(afterVersion) &&
+            !string.Equals(beforeVersion.Trim(), afterVersion.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        internal static bool IsPostInstallVerified(
+            bool processSucceeded,
+            bool exactDevicePresent,
+            bool hardwareIdentityMatches,
+            bool approvedUpdateStillOffered,
+            int? deviceProblemCode,
+            string? beforeVersion,
+            string? afterVersion) =>
+            processSucceeded &&
+            exactDevicePresent &&
+            hardwareIdentityMatches &&
+            !approvedUpdateStillOffered &&
+            deviceProblemCode == 0 &&
+            HasDriverVersionChanged(beforeVersion, afterVersion);
     }
 
     internal enum DriverInstallDisposition
