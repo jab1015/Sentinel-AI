@@ -188,13 +188,17 @@ void EnsureBrokerDirectories()
 
 BrokerResult TerminateProcess(BrokerRequest req)
 {
-    if (req.ProcessId <= 0 || req.ExpectedProcessStartUtcTicks <= 0 || string.IsNullOrWhiteSpace(req.ExpectedImagePath) || string.IsNullOrWhiteSpace(req.ExpectedImageSha256))
-        return BrokerResult.Fail(req.RequestId, "IncompleteProcessIdentity", "Exact process identity evidence is required.");
+    if (req.ProcessId <= 4 || req.ExpectedProcessStartUtcTicks <= 0 || string.IsNullOrWhiteSpace(req.ExpectedImagePath) || string.IsNullOrWhiteSpace(req.ExpectedImageSha256))
+        return BrokerResult.Fail(req.RequestId, "IncompleteProcessIdentity", "Exact process identity evidence is required for a non-system process.");
 
     using Process process = Process.GetProcessById(req.ProcessId);
     long actualStartTicks = process.StartTime.ToUniversalTime().Ticks;
     if (actualStartTicks != req.ExpectedProcessStartUtcTicks)
         return BrokerResult.Fail(req.RequestId, "ProcessIdentityChanged", "The PID now belongs to a different process instance.");
+
+    string actualProcessName = process.ProcessName;
+    if (BrokerProcessTerminationPolicy.IsProtected(actualProcessName))
+        return BrokerResult.Fail(req.RequestId, "ProtectedProcess", "The privileged broker will not terminate a protected Windows, security, shell, or Sentinel process.");
 
     string actualPath = Path.GetFullPath(process.MainModule?.FileName ?? string.Empty);
     string expectedPath = Path.GetFullPath(req.ExpectedImagePath);
