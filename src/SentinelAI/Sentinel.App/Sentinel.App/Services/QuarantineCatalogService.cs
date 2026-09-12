@@ -87,11 +87,20 @@ namespace Sentinel.App.Services
             }
         }
 
-        public Task RemoveAsync(string quarantineReference, CancellationToken cancellationToken = default)
+        public async Task RemoveAsync(string quarantineReference, CancellationToken cancellationToken = default)
         {
             string itemId = ExtractItemId(quarantineReference);
-            if (!string.IsNullOrWhiteSpace(itemId)) _annotations.Remove(itemId);
-            return Task.CompletedTask;
+            if (string.IsNullOrWhiteSpace(itemId)) return;
+
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                _annotations.Remove(itemId);
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
 
         public Task<IReadOnlyList<QuarantineCatalogEntry>> ReconcileAsync(CancellationToken cancellationToken = default) =>
