@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 
 const int ProtocolVersion = 2;
 const int MaximumRequestCharacters = 32_768;
+const int ErrorInsufficientBuffer = 122;
 string root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SentinelAI", "Broker");
 string storeRoot = Path.Combine(root, "QuarantineStore");
 string recordsRoot = Path.Combine(root, "QuarantineRecords");
@@ -111,6 +112,22 @@ bool IsAuthorizedSentinelClient(NamedPipeServerStream pipe, out string error)
             return false;
         }
 
+        if (!TryGetCurrentPackageFullName(out string brokerPackage))
+        {
+            error = "The privileged broker has no verifiable Windows package identity and refused the request.";
+            return false;
+        }
+        if (!TryGetProcessPackageFullName(client.Handle, out string clientPackage))
+        {
+            error = "The IPC client has no verifiable Windows package identity and refused the request.";
+            return false;
+        }
+        if (!BrokerIdentityPolicy.SamePackage(brokerPackage, clientPackage))
+        {
+            error = "The IPC client package identity does not match the privileged broker package identity.";
+            return false;
+        }
+
         return true;
     }
     catch (Exception ex)
@@ -118,6 +135,32 @@ bool IsAuthorizedSentinelClient(NamedPipeServerStream pipe, out string error)
         error = $"The IPC client identity could not be verified ({ex.GetType().Name}).";
         return false;
     }
+}
+
+bool TryGetCurrentPackageFullName(out string packageFullName)
+{
+    packageFullName = string.Empty;
+    uint length = 0;
+    int result = GetCurrentPackageFullName(ref length, null);
+    if (result != ErrorInsufficientBuffer || length == 0) return false;
+    StringBuilder value = new((int)length);
+    result = GetCurrentPackageFullName(ref length, value);
+    if (result != 0) return false;
+    packageFullName = value.ToString();
+    return !string.IsNullOrWhiteSpace(packageFullName);
+}
+
+bool TryGetProcessPackageFullName(IntPtr processHandle, out string packageFullName)
+{
+    packageFullName = string.Empty;
+    uint length = 0;
+    int result = GetPackageFullName(processHandle, ref length, null);
+    if (result != ErrorInsufficientBuffer || length == 0) return false;
+    StringBuilder value = new((int)length);
+    result = GetPackageFullName(processHandle, ref length, value);
+    if (result != 0) return false;
+    packageFullName = value.ToString();
+    return !string.IsNullOrWhiteSpace(packageFullName);
 }
 
 void EnsureBrokerDirectories()
@@ -222,6 +265,12 @@ bool IsAdministrator()
 [DllImport("kernel32.dll", SetLastError = true)]
 [return: MarshalAs(UnmanagedType.Bool)]
 static extern bool GetNamedPipeClientProcessId(IntPtr pipeHandle, out uint clientProcessId);
+
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+static extern int GetCurrentPackageFullName(ref uint packageFullNameLength, StringBuilder? packageFullName);
+
+[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+static extern int GetPackageFullName(IntPtr hProcess, ref uint packageFullNameLength, StringBuilder? packageFullName);
 
 public sealed record BrokerRequest(
     int Version,
