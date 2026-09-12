@@ -77,6 +77,7 @@ namespace Sentinel.App.Services
             int deleted = 0;
             int skipped = 0;
             long bytesRequestedForDeletion = 0;
+            bool enumerationCompletedSafely = true;
             Dictionary<string, int> skipReasons = new(StringComparer.Ordinal);
 
             await Task.Run(() =>
@@ -97,6 +98,7 @@ namespace Sentinel.App.Services
                 }
                 catch (Exception ex)
                 {
+                    enumerationCompletedSafely = false;
                     AddReason(skipReasons, "Enumeration:" + ex.GetType().Name);
                     return;
                 }
@@ -128,6 +130,7 @@ namespace Sentinel.App.Services
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
+                    enumerationCompletedSafely = false;
                     AddReason(skipReasons, "Enumeration:" + ex.GetType().Name);
                 }
             }, cancellationToken).ConfigureAwait(false);
@@ -136,16 +139,17 @@ namespace Sentinel.App.Services
             long freeAfter = SafeFreeSpace(drive);
             long verifiedRecoveredBytes = Math.Max(freeAfter - freeBefore, 0);
 
-            // SetFileInformationByHandle was applied to the exact verified objects. Free-space
-            // observation is retained as a second independent storage-level signal, but tiny
-            // deletions/filesystem accounting delays must not turn an exact-object deletion into
-            // a false claim that nothing happened.
-            bool verified = deleted == 0 || bytesRequestedForDeletion >= 0;
-            string summary = deleted == 0
-                ? $"Sentinel examined {examined} temporary files and did not find a stale exact-handle target that met the deletion safety policy."
-                : verifiedRecoveredBytes > 0
-                    ? $"Sentinel removed {deleted} stale temporary file(s) by verified file handle and observed {FormatBytes(verifiedRecoveredBytes)} of additional free space."
-                    : $"Sentinel removed {deleted} stale temporary file(s) by verified file handle. Windows did not expose a measurable free-space delta immediately, so Sentinel reports {FormatBytes(bytesRequestedForDeletion)} as the exact file bytes requested for deletion rather than claiming recovered capacity.";
+            // Every FilesChanged count represents an exact object whose deletion disposition was
+            // successfully applied by handle. The whole maintenance attempt is reported successful
+            // only if discovery itself also completed without an unexpected enumeration failure.
+            bool verified = enumerationCompletedSafely;
+            string summary = !verified
+                ? $"Sentinel safely stopped temporary-file cleanup after an unexpected enumeration failure. {deleted} exact-handle deletion(s) had already completed; no additional success claim is made for the interrupted run."
+                : deleted == 0
+                    ? $"Sentinel examined {examined} temporary files and did not find a stale exact-handle target that met the deletion safety policy."
+                    : verifiedRecoveredBytes > 0
+                        ? $"Sentinel removed {deleted} stale temporary file(s) by verified file handle and observed {FormatBytes(verifiedRecoveredBytes)} of additional free space."
+                        : $"Sentinel removed {deleted} stale temporary file(s) by verified file handle. Windows did not expose a measurable free-space delta immediately, so Sentinel reports {FormatBytes(bytesRequestedForDeletion)} as the exact file bytes requested for deletion rather than claiming recovered capacity.";
 
             string diagnostics = skipReasons.Count == 0
                 ? "Every examined candidate either met the exact-handle deletion policy or no skip reason was recorded."
