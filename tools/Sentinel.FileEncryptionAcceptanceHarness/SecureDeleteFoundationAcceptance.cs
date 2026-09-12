@@ -1,10 +1,8 @@
 using Sentinel.App.Services;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 internal static class SecureDeleteFoundationAcceptance
 {
-    [ModuleInitializer]
     internal static void Run()
     {
         if (!OperatingSystem.IsWindows()) return;
