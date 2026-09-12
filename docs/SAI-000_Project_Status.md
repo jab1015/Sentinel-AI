@@ -1,6 +1,6 @@
 # SAI-000 — Project Status
 
-Version: 2.3  
+Version: 2.4  
 Status: Active — Production security hardening  
 Last Updated: 2026-09-12
 
@@ -14,8 +14,7 @@ Sentinel AI is in an active production-security hardening program based on asses
 
 - Production branch: `main`
 - Hardening branch: `security/production-hardening-1218f5d`
-- Last fully proven Windows/package code checkpoint: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`
-- Current continuation code checkpoint before this documentation commit: `214ca4588a4bb0c603736e6fa1a10b0e69831345`
+- Current fully proven documentation checkpoint: `3ef08da9226e33a222768938b3dff13373ba7f61`
 - Findings: 29 total — 14 High, 15 Medium
 - Release posture: **NOT production-hardened; DO NOT MERGE yet**
 
@@ -23,34 +22,35 @@ No finding is marked PASS from source changes or green CI alone. Runtime, packag
 
 ## Proven CI Evidence
 
-Exact-head CI for `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`:
+Exact-head CI for `3ef08da9226e33a222768938b3dff13373ba7f61`:
 
-- Windows hardening workflow `34676187598`: **PASS**.
-- Unsigned x64 package workflow `34676187667`: **PASS**.
+- Windows hardening workflow `34677065591`: **PASS**.
+- Unsigned x64 package workflow `34677065599`: **PASS**.
+- Driver-repair hardening workflow `34677065596`: **PASS**.
+- Optimization-state hardening workflow `34677065594`: **PASS**.
 
-The A10/A11 driver-repair policy gate first passed on code checkpoint `5bf73196bb6661bda96ab45c62e8b0c630168f78` in dedicated Windows workflow `34676963355`. Full Windows/package workflows for later continuation commits are still running/queued and must not be reported as PASS until exact-head results complete.
+These are deterministic/CI results, not production-release approval.
 
 ## Latest Hardening Progress
 
 - **SAI-A06:** deterministic Defender/firewall health classification is in Windows CI; incomplete/passive/disabled/stale evidence does not become a healthy claim. Runtime validation remains.
-- **SAI-A08:** firewall verification now fails closed on malformed/incomplete query evidence and requires the exact enabled outbound Block rule. Runtime firewall/UAC validation remains.
-- **SAI-A10/A11:** current production source binds driver repair to exact PnP instance, hardware ID, Windows Update ID/revision, rejects ambiguous/missing identity, requires clean installer/per-update result and zero HRESULT, treats restart-required as not fully verified, and rechecks exact device health/update state. A dedicated deterministic policy harness now covers missing/ambiguous device/update, wrong hardware identity, installer/per-update failure, nonzero HRESULT, restart-required, changed post-install identity, still-offered update, and unhealthy/missing post-install evidence. Dedicated Windows policy CI has passed; full runtime Windows Update/device validation remains required.
+- **SAI-A08:** firewall verification fails closed on malformed/incomplete query evidence and requires the exact enabled outbound Block rule. Runtime firewall/UAC validation remains.
+- **SAI-A10/A11:** production logic binds driver repair to exact PnP instance, hardware ID, Windows Update ID/revision, rejects ambiguous/missing identity, requires clean installer/per-update result and zero HRESULT, treats restart-required as not fully verified, and rechecks exact device health/update state. A dedicated deterministic policy harness covers missing/ambiguous device/update, wrong hardware identity, installer/per-update failure, nonzero HRESULT, restart-required, changed post-install identity, still-offered update, and unhealthy/missing post-install evidence. Exact-head dedicated and full Windows CI now pass. Real Windows Update/device runtime validation remains required.
 - **SAI-A13:** initial-refresh failure no longer prevents the monitoring timer from starting; deterministic startup regression coverage exists. Installed lifecycle validation remains.
 - **SAI-A17:** a remaining `NetworkRepairExecutor` subprocess bypass was moved to `BoundedProcessRunner`; final launch-path audit and runtime edge cases remain.
 - **SAI-A19:** final displayed Ask Sentinel responses are revalidated after replacement/composition; deterministic display-safety coverage exists. Runtime validation remains.
-- **SAI-A28:** re-review found `AutomaticOptimizationCoordinator` treated corrupt/unreadable cooldown state as empty and swallowed persistence failures, allowing repeated-action state to fail open. The coordinator now fails closed when state cannot be read, durably reserves `LastAttemptUtc` before invoking an executor, verifies the reservation write, and preserves that pre-action reservation if the post-action summary write fails. Persistence logic is isolated in `OptimizationRuntimeStateStore`; a deterministic Windows harness covers missing, persisted, corrupt, locked-read, and locked-write states. Exact-head CI for this newest A28 work is pending.
+- **SAI-A28:** corrupt/unreadable cooldown state no longer fails open. Optimization now fails closed when persisted state cannot be verified, durably reserves `LastAttemptUtc` before invoking an executor, verifies that reservation, and preserves it if the post-action summary write fails. The isolated `OptimizationRuntimeStateStore` has deterministic coverage for missing, persisted, corrupt, locked-read, and locked-write states. Exact-head dedicated and full Windows CI now pass. Runtime/concurrency/fault validation remains.
 - **SAI-A14/A16:** unsafe automatic temp cleanup and automatic service restart remain intentionally disabled/fail-closed.
-- **SAI-A21/A22:** re-review continues. External evidence remains advisory; A21 still needs passage-to-claim provenance. A22 still requires closure of archive/decompression resource-exhaustion behavior; current Dell CAB expansion is specifically under review because post-expansion file/size checks do not by themselves bound disk consumption during expansion.
+- **SAI-A21/A22:** re-review continues. External evidence remains advisory; A21 still needs attributable passage/provenance binding and stale-cache regression coverage. A22 still requires closure of archive/decompression resource-exhaustion behavior; post-expansion checks alone do not bound disk consumption during CAB expansion.
 
 ## Current Priority
 
-1. Wait for and evaluate exact-head CI for the A28 continuation; correct failures narrowly if any.
-2. Complete A10/A11 runtime/device validation and connect any remaining deterministic policy boundary directly to production decision paths where needed.
-3. Complete A21 attributable passage/provenance binding and stale-cache regression coverage.
-4. Close A22 archive/decompression resource limits safely; disable unsafe automatic archive expansion if it cannot be strongly bounded.
-5. Continue A23/A24/A28 fault/runtime validation and A29 release qualification.
-6. Complete installed packaged/UAC adversarial validation for A07/A15, extended Authenticode runtime fixtures for A01, and Google Cloud/Store staging for A05.
-7. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
+1. Complete A21 attributable passage/provenance binding and stale-cache regression coverage.
+2. Close A22 archive/decompression resource limits safely; disable unsafe automatic archive expansion if it cannot be strongly bounded.
+3. Continue A23/A24/A28 fault/runtime validation and A29 release qualification.
+4. Complete A10/A11 real Windows Update/device runtime validation.
+5. Complete installed packaged/UAC adversarial validation for A07/A15, extended Authenticode runtime fixtures for A01, and Google Cloud/Store staging for A05.
+6. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
 
 ## Planned Premium Privacy Protection
 
