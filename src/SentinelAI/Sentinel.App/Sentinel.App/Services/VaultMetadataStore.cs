@@ -61,6 +61,22 @@ internal sealed class VaultMetadataStore
         bool tempCreated = false;
         try
         {
+            VaultMetadataReadResult current = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            if (current.Succeeded && current.Snapshot is not null)
+            {
+                if (snapshot.Generation != checked(current.Snapshot.Generation + 1))
+                    return VaultMetadataWriteResult.Fail("GenerationConflict");
+            }
+            else if (current.Code == "NotFound")
+            {
+                if (snapshot.Generation != 0)
+                    return VaultMetadataWriteResult.Fail("GenerationConflict");
+            }
+            else
+            {
+                return VaultMetadataWriteResult.Fail("CurrentSnapshotUnavailable:" + current.Code);
+            }
+
             byte[] plaintext = JsonSerializer.SerializeToUtf8Bytes(snapshot, JsonOptions);
             if (plaintext.Length is <= 0 or > MaximumPlaintextBytes)
                 return VaultMetadataWriteResult.Fail("SnapshotTooLarge");
@@ -105,14 +121,14 @@ internal sealed class VaultMetadataStore
             }
 
             VaultMetadataReadResult verification = await ReadSnapshotFromPathAsync(tempPath, cancellationToken).ConfigureAwait(false);
-            if (!verification.Succeeded || verification.Snapshot is null || verification.Snapshot != snapshot)
+            if (!verification.Succeeded || verification.Snapshot is null || !SnapshotsEquivalent(verification.Snapshot, snapshot))
                 return VaultMetadataWriteResult.Fail("TempVerificationFailed");
 
             File.Move(tempPath, _metadataPath, overwrite: true);
             tempCreated = false;
 
             VaultMetadataReadResult committed = await ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
-            if (!committed.Succeeded || committed.Snapshot is null || committed.Snapshot != snapshot)
+            if (!committed.Succeeded || committed.Snapshot is null || !SnapshotsEquivalent(committed.Snapshot, snapshot))
                 return VaultMetadataWriteResult.Fail("CommittedVerificationFailed");
 
             return VaultMetadataWriteResult.Success(snapshot.Generation);
@@ -120,6 +136,10 @@ internal sealed class VaultMetadataStore
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             return VaultMetadataWriteResult.Fail("Canceled");
+        }
+        catch (OverflowException)
+        {
+            return VaultMetadataWriteResult.Fail("GenerationOverflow");
         }
         catch (UnauthorizedAccessException)
         {
@@ -291,6 +311,21 @@ internal sealed class VaultMetadataStore
         PayloadContext.CopyTo(aad, 0);
         header.CopyTo(aad, PayloadContext.Length);
         return aad;
+    }
+
+    private static bool SnapshotsEquivalent(VaultMetadataSnapshot left, VaultMetadataSnapshot right)
+    {
+        byte[] leftBytes = JsonSerializer.SerializeToUtf8Bytes(left, JsonOptions);
+        byte[] rightBytes = JsonSerializer.SerializeToUtf8Bytes(right, JsonOptions);
+        try
+        {
+            return leftBytes.AsSpan().SequenceEqual(rightBytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(leftBytes);
+            CryptographicOperations.ZeroMemory(rightBytes);
+        }
     }
 
     private static void ValidateSnapshot(VaultMetadataSnapshot snapshot)
