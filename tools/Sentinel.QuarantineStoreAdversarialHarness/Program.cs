@@ -44,10 +44,10 @@ Run("basic quarantine / restore", () =>
         string source = WriteSource(root, "basic.txt", "sentinel-basic");
         string id = NewItemId();
         var q = engine.Quarantine(id, source);
-        Require(q.Succeeded, $"Quarantine failed: {q.Code}");
+        Require(q.Succeeded, $"Quarantine failed: {q.Code} {q.Message}");
         Require(!File.Exists(source) && File.Exists(engine.PayloadPathForTest(id)) && File.Exists(engine.RecordPathForTest(id)), "Quarantine did not commit expected protected state.");
         var r = engine.Restore(id);
-        Require(r.Succeeded, $"Restore failed: {r.Code}");
+        Require(r.Succeeded, $"Restore failed: {r.Code} {r.Message}");
         Require(File.Exists(source) && !File.Exists(engine.PayloadPathForTest(id)) && !File.Exists(engine.RecordPathForTest(id)), "Restore did not complete exact reversal.");
     }
     finally { Cleanup(root); }
