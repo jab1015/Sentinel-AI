@@ -44,7 +44,9 @@ internal static class BrokerFirewallPolicy
         return new[]
         {
             "advfirewall", "firewall", "delete", "rule",
-            $"name={BuildRuleName(normalized)}"
+            $"name={BuildRuleName(normalized)}",
+            "dir=out",
+            $"remoteip={normalized}"
         };
     }
 
