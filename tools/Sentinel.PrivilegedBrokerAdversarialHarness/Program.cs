@@ -1,7 +1,25 @@
+using Sentinel.App.Services;
+
 static void Require(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
 }
+
+static Dictionary<string, string> ExactFirewallEvidence(string remoteIp) => new(StringComparer.OrdinalIgnoreCase)
+{
+    ["FOUND"] = "1",
+    ["ENABLED"] = "True",
+    ["ACTION"] = "Block",
+    ["DIRECTION"] = "Outbound",
+    ["PROFILE"] = "Any",
+    ["REMOTE"] = remoteIp,
+    ["LOCAL"] = "Any",
+    ["PROTOCOL"] = "Any",
+    ["LOCALPORT"] = "Any",
+    ["REMOTEPORT"] = "Any",
+    ["PROGRAM"] = "Any",
+    ["SERVICE"] = "Any"
+};
 
 Console.WriteLine("=== Sentinel AI Privileged Broker Adversarial Acceptance ===");
 
@@ -51,9 +69,61 @@ Require(deleteArgs.SequenceEqual(new[]
     $"name={BrokerFirewallPolicy.BuildRuleName("203.0.113.10")}"
 }), "Firewall removal arguments differ from the fixed allowlisted shape.");
 
+const string testIp = "203.0.113.10";
+FirewallRuleVerification exact = FirewallRuleVerificationPolicy.Evaluate(ExactFirewallEvidence(testIp), testIp);
+Require(exact.QueryValid && exact.Exists && exact.IsExactBlock, "Exact enabled outbound Block rule was not accepted.");
+
+Dictionary<string, string> disabled = ExactFirewallEvidence(testIp);
+disabled["ENABLED"] = "False";
+Require(!FirewallRuleVerificationPolicy.Evaluate(disabled, testIp).IsExactBlock, "Disabled rule was incorrectly accepted.");
+
+Dictionary<string, string> allow = ExactFirewallEvidence(testIp);
+allow["ACTION"] = "Allow";
+Require(!FirewallRuleVerificationPolicy.Evaluate(allow, testIp).IsExactBlock, "Allow rule was incorrectly accepted.");
+
+Dictionary<string, string> inbound = ExactFirewallEvidence(testIp);
+inbound["DIRECTION"] = "Inbound";
+Require(!FirewallRuleVerificationPolicy.Evaluate(inbound, testIp).IsExactBlock, "Inbound rule was incorrectly accepted.");
+
+Dictionary<string, string> wrongRemote = ExactFirewallEvidence(testIp);
+wrongRemote["REMOTE"] = "203.0.113.11";
+Require(!FirewallRuleVerificationPolicy.Evaluate(wrongRemote, testIp).IsExactBlock, "Wrong remote address was incorrectly accepted.");
+
+Dictionary<string, string> broadRemote = ExactFirewallEvidence(testIp);
+broadRemote["REMOTE"] = testIp + ",203.0.113.11";
+Require(!FirewallRuleVerificationPolicy.Evaluate(broadRemote, testIp).IsExactBlock, "Broader remote-address scope was incorrectly accepted.");
+
+Dictionary<string, string> duplicate = ExactFirewallEvidence(testIp);
+duplicate["FOUND"] = "2";
+duplicate["CONFLICT"] = "True";
+FirewallRuleVerification duplicateResult = FirewallRuleVerificationPolicy.Evaluate(duplicate, testIp);
+Require(duplicateResult.QueryValid && duplicateResult.Exists && !duplicateResult.IsExactBlock,
+    "Duplicate deterministic firewall rules did not fail closed.");
+
+FirewallRuleVerification notFound = FirewallRuleVerificationPolicy.Evaluate(
+    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["FOUND"] = "0" }, testIp);
+Require(notFound.QueryValid && !notFound.Exists, "Explicit firewall rule absence was not classified correctly.");
+
+FirewallRuleVerification malformed = FirewallRuleVerificationPolicy.Evaluate(
+    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), testIp);
+Require(!malformed.QueryValid, "Malformed firewall query output was incorrectly treated as verified absence.");
+
+FirewallRuleVerification malformedCount = FirewallRuleVerificationPolicy.Evaluate(
+    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["FOUND"] = "not-a-number" }, testIp);
+Require(!malformedCount.QueryValid, "Malformed firewall rule count was incorrectly treated as valid.");
+
+Dictionary<string, string> incomplete = ExactFirewallEvidence(testIp);
+incomplete.Remove("SERVICE");
+FirewallRuleVerification incompleteResult = FirewallRuleVerificationPolicy.Evaluate(incomplete, testIp);
+Require(incompleteResult.QueryValid && incompleteResult.Exists && !incompleteResult.IsExactBlock,
+    "Incomplete firewall scope evidence was incorrectly accepted.");
+
 Console.WriteLine("Same packaged broker/client identity: PASS");
 Console.WriteLine("Different/missing package identity rejected: PASS");
 Console.WriteLine("Firewall literal-IP validation: PASS");
 Console.WriteLine("Firewall injection/non-literal targets rejected: PASS");
 Console.WriteLine("Firewall mutation argument shape fixed/allowlisted: PASS");
+Console.WriteLine("Firewall exact enabled outbound Block verification: PASS");
+Console.WriteLine("Disabled/Allow/wrong-direction/wrong-scope rules rejected: PASS");
+Console.WriteLine("Malformed firewall query output distinguished from verified rule absence: PASS");
 Console.WriteLine("RESULT: PASS");

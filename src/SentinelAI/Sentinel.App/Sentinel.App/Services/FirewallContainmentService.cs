@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Sentinel AI
  * Copyright (c) 2026 Modern Methods.
  */
@@ -43,6 +43,13 @@ namespace Sentinel.App.Services
             try
             {
                 FirewallRuleVerification existing = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
+                if (!existing.QueryValid)
+                {
+                    return FirewallContainmentResult.Failure(
+                        "Firewall state could not be verified",
+                        $"Sentinel could not safely determine whether its deterministic firewall rule already exists ({existing.Detail}). No firewall change was made.");
+                }
+
                 if (existing.Exists)
                 {
                     return existing.IsExactBlock
@@ -62,7 +69,7 @@ namespace Sentinel.App.Services
 
                 ruleCreated = true;
                 FirewallRuleVerification verified = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
-                if (!verified.IsExactBlock)
+                if (!verified.QueryValid || !verified.IsExactBlock)
                 {
                     FirewallContainmentResult cleanup = await RemoveBlockCoreAsync(remoteEndpoint).ConfigureAwait(false);
                     return cleanup.Succeeded
@@ -132,8 +139,13 @@ namespace Sentinel.App.Services
             {
                 BrokerInvocationResult mutation = await _brokerClient.RemoveFirewallEndpointAsync(remoteIp).ConfigureAwait(false);
                 FirewallRuleVerification remaining = await QueryAndVerifyRuleAsync(ruleName, remoteIp).ConfigureAwait(false);
-                if (!mutation.Succeeded || remaining.Exists)
-                    return FirewallContainmentResult.Failure("Network block could not be removed", "Sentinel could not verify removal of the Windows Firewall rule.");
+                if (!mutation.Succeeded || !remaining.QueryValid || remaining.Exists)
+                {
+                    string detail = !remaining.QueryValid
+                        ? $" Firewall verification failed closed ({remaining.Detail})."
+                        : string.Empty;
+                    return FirewallContainmentResult.Failure("Network block could not be removed", "Sentinel could not verify removal of the Windows Firewall rule." + detail);
+                }
 
                 ConnectivityState connectivity = await CheckConnectivityAsync().ConfigureAwait(false);
                 return new FirewallContainmentResult(true, true, ruleName, remoteIp,
@@ -166,43 +178,11 @@ namespace Sentinel.App.Services
             };
             ProcessExecutionResult result = await BoundedProcessRunner.RunAsync(startInfo, TimeSpan.FromSeconds(12)).ConfigureAwait(false);
             if (!result.Succeeded)
-                return new(false, false, $"firewall query failed: {result.Outcome}");
+                return new(false, false, false, $"firewall query failed: {result.Outcome}");
 
             Dictionary<string, string> values = ParseKeyValues(result.StandardOutput);
-            if (!values.TryGetValue("FOUND", out string? foundText) || !int.TryParse(foundText, out int found) || found == 0)
-                return new(false, false, "rule not found");
-            if (found != 1 || values.ContainsKey("CONFLICT"))
-                return new(true, false, "more than one rule has the deterministic Sentinel name");
-
-            bool enabled = values.TryGetValue("ENABLED", out string? enabledText) && enabledText.Equals("True", StringComparison.OrdinalIgnoreCase);
-            bool block = values.TryGetValue("ACTION", out string? action) && action.Equals("Block", StringComparison.OrdinalIgnoreCase);
-            bool outbound = values.TryGetValue("DIRECTION", out string? direction) && (direction.Equals("Outbound", StringComparison.OrdinalIgnoreCase) || direction.Equals("Out", StringComparison.OrdinalIgnoreCase));
-            bool profileAny = values.TryGetValue("PROFILE", out string? profile) && profile.Equals("Any", StringComparison.OrdinalIgnoreCase);
-            bool remoteExact = values.TryGetValue("REMOTE", out string? remote) && AddressListExactlyMatches(remote, remoteIp);
-            bool localAny = values.TryGetValue("LOCAL", out string? local) && IsAny(local);
-            bool protocolAny = values.TryGetValue("PROTOCOL", out string? protocol) && IsAny(protocol);
-            bool localPortAny = values.TryGetValue("LOCALPORT", out string? localPort) && IsAny(localPort);
-            bool remotePortAny = values.TryGetValue("REMOTEPORT", out string? remotePort) && IsAny(remotePort);
-            bool programAny = values.TryGetValue("PROGRAM", out string? program) && IsAny(program);
-            bool serviceAny = values.TryGetValue("SERVICE", out string? service) && IsAny(service);
-
-            bool exact = enabled && block && outbound && profileAny && remoteExact && localAny && protocolAny &&
-                         localPortAny && remotePortAny && programAny && serviceAny;
-            string detail = exact ? "exact enabled outbound Block rule verified" :
-                $"Enabled={enabled}; ActionBlock={block}; Outbound={outbound}; ProfileAny={profileAny}; RemoteExact={remoteExact}; ProgramAny={programAny}; ServiceAny={serviceAny}; ProtocolAny={protocolAny}; PortsAny={localPortAny && remotePortAny}";
-            return new(true, exact, detail);
+            return FirewallRuleVerificationPolicy.Evaluate(values, remoteIp);
         }
-
-        private static bool AddressListExactlyMatches(string value, string expected)
-        {
-            string[] items = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            return items.Length == 1 && IPAddress.TryParse(items[0], out IPAddress? parsed) &&
-                   parsed.ToString().Equals(expected, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsAny(string? value) =>
-            !string.IsNullOrWhiteSpace(value) &&
-            (value.Equals("Any", StringComparison.OrdinalIgnoreCase) || value.Equals("*", StringComparison.OrdinalIgnoreCase));
 
         private static Dictionary<string, string> ParseKeyValues(string output)
         {
@@ -258,7 +238,6 @@ namespace Sentinel.App.Services
         private static string EscapePowerShellLiteral(string value) => (value ?? string.Empty).Replace("'", "''", StringComparison.Ordinal);
 
         private sealed record ConnectivityState(bool IsHealthy);
-        private sealed record FirewallRuleVerification(bool Exists, bool IsExactBlock, string Detail);
 
         public enum FirewallContainmentOutcome
         {
