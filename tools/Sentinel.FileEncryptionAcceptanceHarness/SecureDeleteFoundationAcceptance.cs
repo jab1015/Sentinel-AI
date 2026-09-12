@@ -84,6 +84,8 @@ internal static class SecureDeleteFoundationAcceptance
             }
             try { Directory.Delete(root, true); } catch { }
         }
+
+        SecureDeleteCoordinatorAcceptance.Run();
     }
 
     private static void VerifyReparseSourceContract()
