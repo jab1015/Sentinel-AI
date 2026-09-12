@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
@@ -24,46 +23,27 @@ namespace Sentinel.App.Services
 
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "schtasks.exe",
-                        Arguments = "/Query /FO CSV /V",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? "schtasks.exe" : Path.Combine(system, "schtasks.exe"),
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
+                startInfo.ArgumentList.Add("/Query");
+                startInfo.ArgumentList.Add("/FO");
+                startInfo.ArgumentList.Add("CSV");
+                startInfo.ArgumentList.Add("/V");
 
-                process.Start();
-                Task<string> outputRead = process.StandardOutput.ReadToEndAsync();
-                Task<string> errorRead = process.StandardError.ReadToEndAsync();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 1_000_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(10000))
-                {
-                    try
-                    {
-                        process.Kill(entireProcessTree: true);
-                    }
-                    catch
-                    {
-                        // The process may have exited between the timeout and cleanup.
-                    }
-
+                if (!execution.Succeeded || string.IsNullOrWhiteSpace(execution.StandardOutput))
                     return ScheduledTaskSnapshot.Unavailable;
-                }
 
-                string output = outputRead.GetAwaiter().GetResult();
-                _ = errorRead.GetAwaiter().GetResult();
-
-                if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    return ScheduledTaskSnapshot.Unavailable;
-                }
-
-                string[] lines = output.Split(
+                string[] lines = execution.StandardOutput.Split(
                     new[] { "\r\n", "\n" },
                     StringSplitOptions.RemoveEmptyEntries);
 
@@ -82,17 +62,13 @@ namespace Sentinel.App.Services
                 int authorIndex = FindColumn(headers, "Author");
 
                 if (taskNameIndex < 0 || actionIndex < 0)
-                {
                     return ScheduledTaskSnapshot.Unavailable;
-                }
 
                 for (int index = 1; index < lines.Length; index++)
                 {
                     string[] values = ParseCsvLine(lines[index]);
                     if (values.Length == 0)
-                    {
                         continue;
-                    }
 
                     totalTasks++;
                     string taskName = GetValue(values, taskNameIndex, "Unknown task");
@@ -101,9 +77,7 @@ namespace Sentinel.App.Services
 
                     ScheduledTaskFinding? finding = Assess(taskName, action, author);
                     if (finding is not null)
-                    {
                         findings.Add(finding);
-                    }
                 }
             }
             catch
@@ -119,21 +93,14 @@ namespace Sentinel.App.Services
                 primary?.Reason ?? "No unusual scheduled-task persistence was detected.");
         }
 
-        private static ScheduledTaskFinding? Assess(
-            string taskName,
-            string action,
-            string author)
+        private static ScheduledTaskFinding? Assess(string taskName, string action, string author)
         {
             if (string.IsNullOrWhiteSpace(action))
-            {
                 return null;
-            }
 
             string normalized = action.Replace('/', '\\');
-            bool temporaryLocation =
-                normalized.Contains("\\Temp\\", StringComparison.OrdinalIgnoreCase);
-            bool downloadsLocation =
-                normalized.Contains("\\Downloads\\", StringComparison.OrdinalIgnoreCase);
+            bool temporaryLocation = normalized.Contains("\\Temp\\", StringComparison.OrdinalIgnoreCase);
+            bool downloadsLocation = normalized.Contains("\\Downloads\\", StringComparison.OrdinalIgnoreCase);
             bool scriptOrLolBin =
                 normalized.Contains("powershell", StringComparison.OrdinalIgnoreCase) ||
                 normalized.Contains("pwsh", StringComparison.OrdinalIgnoreCase) ||
@@ -144,25 +111,13 @@ namespace Sentinel.App.Services
                 normalized.Contains("regsvr32", StringComparison.OrdinalIgnoreCase);
 
             if (temporaryLocation)
-            {
-                return new ScheduledTaskFinding(
-                    taskName,
-                    $"Runs from a temporary folder. Author: {author}.");
-            }
+                return new ScheduledTaskFinding(taskName, $"Runs from a temporary folder. Author: {author}.");
 
             if (downloadsLocation)
-            {
-                return new ScheduledTaskFinding(
-                    taskName,
-                    $"Runs from the Downloads folder. Author: {author}.");
-            }
+                return new ScheduledTaskFinding(taskName, $"Runs from the Downloads folder. Author: {author}.");
 
             if (scriptOrLolBin)
-            {
-                return new ScheduledTaskFinding(
-                    taskName,
-                    $"Uses a script or living-off-the-land executable. Author: {author}.");
-            }
+                return new ScheduledTaskFinding(taskName, $"Uses a script or living-off-the-land executable. Author: {author}.");
 
             return null;
         }
@@ -176,10 +131,7 @@ namespace Sentinel.App.Services
             for (int index = 0; index < line.Length; index++)
             {
                 char current = line[index];
-                if (current == '"')
-                {
-                    quoted = !quoted;
-                }
+                if (current == '"') quoted = !quoted;
                 else if (current == ',' && !quoted)
                 {
                     values.Add(Unquote(line[start..index]));
@@ -191,29 +143,20 @@ namespace Sentinel.App.Services
             return values.ToArray();
         }
 
-        private static string Unquote(string value) =>
-            value.Trim().Trim('"').Replace("\"\"", "\"");
+        private static string Unquote(string value) => value.Trim().Trim('"').Replace("\"\"", "\"");
 
         private static int FindColumn(string[] headers, params string[] names)
         {
             for (int index = 0; index < headers.Length; index++)
             {
                 foreach (string name in names)
-                {
-                    if (headers[index].Equals(name, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return index;
-                    }
-                }
+                    if (headers[index].Equals(name, StringComparison.OrdinalIgnoreCase)) return index;
             }
-
             return -1;
         }
 
         private static string GetValue(string[] values, int index, string fallback) =>
-            index >= 0 && index < values.Length && !string.IsNullOrWhiteSpace(values[index])
-                ? values[index]
-                : fallback;
+            index >= 0 && index < values.Length && !string.IsNullOrWhiteSpace(values[index]) ? values[index] : fallback;
 
         private sealed record ScheduledTaskFinding(string TaskName, string Reason);
 
