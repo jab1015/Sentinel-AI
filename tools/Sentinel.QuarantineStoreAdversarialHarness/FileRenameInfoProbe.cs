@@ -9,6 +9,8 @@ internal static class FileRenameInfoProbe
     private const uint GenericWrite = 0x40000000;
     private const uint DeleteAccess = 0x00010000;
     private const uint FileShareRead = 0x00000001;
+    private const uint FileShareWrite = 0x00000002;
+    private const uint FileShareDelete = 0x00000004;
     private const uint OpenExisting = 3;
     private const uint FileAttributeNormal = 0x00000080;
     private const int FileRenameInfoClass = 3;
@@ -74,6 +76,29 @@ internal static class FileRenameInfoProbe
             bool sourceWhileOpen = File.Exists(source);
             bool destinationWhileOpen = File.Exists(destination);
             Console.WriteLine($"rename-probe {name}: result={renameResult}; Win32={renameError}; sourceWhileOpen={sourceWhileOpen}; destinationWhileOpen={destinationWhileOpen}");
+
+            using (SafeFileHandle reopened = CreateFileW(
+                destination,
+                GenericRead,
+                FileShareRead | FileShareWrite | FileShareDelete,
+                IntPtr.Zero,
+                OpenExisting,
+                FileAttributeNormal,
+                IntPtr.Zero))
+            {
+                int nativeError = reopened.IsInvalid ? Marshal.GetLastWin32Error() : 0;
+                Console.WriteLine($"rename-probe {name}: native-reopen valid={!reopened.IsInvalid}; Win32={nativeError}");
+            }
+
+            try
+            {
+                using FileStream stream = new(destination, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                Console.WriteLine($"rename-probe {name}: managed-reopen success length={stream.Length}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"rename-probe {name}: managed-reopen failed {ex.GetType().Name}: {ex.Message}");
+            }
 
             handle.Dispose();
             Console.WriteLine($"rename-probe {name}: afterClose source={File.Exists(source)}; destination={File.Exists(destination)}; files=[{string.Join(",", Directory.EnumerateFiles(root).Select(Path.GetFileName))}]");
