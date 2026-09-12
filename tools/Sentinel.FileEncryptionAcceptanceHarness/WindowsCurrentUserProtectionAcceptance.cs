@@ -1,10 +1,8 @@
 using Sentinel.App.Services;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class WindowsCurrentUserProtectionAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         if (!OperatingSystem.IsWindows()) return;
