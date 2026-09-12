@@ -48,7 +48,67 @@ try
         AuthenticodeVerifier.MapStatus(0, "Test Publisher", signerCertificateExpired: true).Status == AuthenticodeTrustStatus.TrustedTimestamped;
     Console.WriteLine($"Structured status mapping: {(mappingPass ? "PASS" : "FAIL")}");
 
-    bool pass = trustedPass && unsignedPass && tamperedPass && mappingPass;
+    Console.WriteLine();
+    Console.WriteLine("--- Scenario 5: verification lease blocks path/object replacement ---");
+    string leaseTarget = Path.Combine(tempRoot, "lease-target.exe");
+    string replacement = Path.Combine(tempRoot, "lease-replacement.exe");
+    File.Copy(trustedPath, leaseTarget, overwrite: true);
+    File.WriteAllText(replacement, "attacker replacement");
+
+    bool replacementBlocked;
+    bool writeBlocked;
+    bool deleteBlocked;
+    using (FileStream lease = AuthenticodeVerifier.OpenVerificationLease(leaseTarget))
+    {
+        try
+        {
+            File.Move(replacement, leaseTarget, overwrite: true);
+            replacementBlocked = false;
+        }
+        catch (IOException)
+        {
+            replacementBlocked = true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            replacementBlocked = true;
+        }
+
+        try
+        {
+            using FileStream writer = new(leaseTarget, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+            writer.WriteByte(0x41);
+            writer.Flush(true);
+            writeBlocked = false;
+        }
+        catch (IOException)
+        {
+            writeBlocked = true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            writeBlocked = true;
+        }
+
+        try
+        {
+            File.Delete(leaseTarget);
+            deleteBlocked = false;
+        }
+        catch (IOException)
+        {
+            deleteBlocked = true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            deleteBlocked = true;
+        }
+    }
+
+    bool leasePass = replacementBlocked && writeBlocked && deleteBlocked && File.Exists(leaseTarget);
+    Console.WriteLine($"Stable verification lease: {(leasePass ? "PASS" : "FAIL")} (replace={replacementBlocked}, write={writeBlocked}, delete={deleteBlocked})");
+
+    bool pass = trustedPass && unsignedPass && tamperedPass && mappingPass && leasePass;
     Console.WriteLine();
     Console.WriteLine(pass ? "RESULT: PASS" : "RESULT: FAIL");
     Environment.ExitCode = pass ? 0 : 1;
