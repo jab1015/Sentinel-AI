@@ -74,11 +74,11 @@ internal static class SecureDeleteTargetValidator
         if (!TryGetInfo(handle, FileAttributeTagInfoClass, out FILE_ATTRIBUTE_TAG_INFO attributeInfo))
             return Failure(SecureDeleteTargetValidationCode.IdentityUnverified, "File attributes could not be verified from the opened object.");
 
-        if ((attributeInfo.FileAttributes & FileAttributeDirectory) != 0)
-            return Failure(SecureDeleteTargetValidationCode.DirectoryRejected, "Secure Delete v1 accepts files only, not directories.");
-
         if ((attributeInfo.FileAttributes & FileAttributeReparsePoint) != 0)
             return Failure(SecureDeleteTargetValidationCode.ReparsePointRejected, "Reparse points, symbolic links, and junction-like objects are not accepted.");
+
+        if ((attributeInfo.FileAttributes & FileAttributeDirectory) != 0)
+            return Failure(SecureDeleteTargetValidationCode.DirectoryRejected, "Secure Delete v1 accepts files only, not directories.");
 
         if (!TryGetInfo(handle, FileStandardInfoClass, out FILE_STANDARD_INFO standardInfo))
             return Failure(SecureDeleteTargetValidationCode.IdentityUnverified, "File link and size information could not be verified.");
