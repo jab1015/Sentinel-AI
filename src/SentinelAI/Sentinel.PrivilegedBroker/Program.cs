@@ -63,6 +63,8 @@ try
         "restore-quarantined-file" => MapStoreResult(request.RequestId, quarantineStore.Restore(request.ItemId)),
         "delete-quarantined-file" => MapStoreResult(request.RequestId, quarantineStore.Delete(request.ItemId)),
         "terminate-process" => TerminateProcess(request),
+        "firewall-block-endpoint" => ApplyFirewallMutation(request, add: true),
+        "firewall-remove-endpoint" => ApplyFirewallMutation(request, add: false),
         _ => BrokerResult.Fail(request.RequestId, "UnsupportedOperation", "The requested privileged operation is not allowlisted.")
     };
 
@@ -200,6 +202,44 @@ BrokerResult TerminateProcess(BrokerRequest req)
         req.TerminateDescendants ? "The exact approved process instance and its descendants were terminated." : "The exact approved process instance was terminated.");
 }
 
+BrokerResult ApplyFirewallMutation(BrokerRequest req, bool add)
+{
+    if (!BrokerFirewallPolicy.TryNormalizeRemoteIp(req.RemoteIp, out string remoteIp))
+        return BrokerResult.Fail(req.RequestId, "InvalidFirewallTarget", "A literal remote IP address is required for firewall containment.");
+
+    string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+    string netsh = string.IsNullOrWhiteSpace(system) ? "netsh.exe" : Path.Combine(system, "netsh.exe");
+    string[] arguments = add
+        ? BrokerFirewallPolicy.BuildAddArguments(remoteIp)
+        : BrokerFirewallPolicy.BuildDeleteArguments(remoteIp);
+
+    using Process process = new();
+    process.StartInfo = new ProcessStartInfo
+    {
+        FileName = netsh,
+        UseShellExecute = false,
+        CreateNoWindow = true
+    };
+    foreach (string argument in arguments)
+        process.StartInfo.ArgumentList.Add(argument);
+
+    if (!process.Start())
+        return BrokerResult.Fail(req.RequestId, "FirewallLaunchFailed", "Windows Firewall command did not start.");
+    if (!process.WaitForExit(30_000))
+    {
+        try { process.Kill(entireProcessTree: true); } catch { }
+        return BrokerResult.Fail(req.RequestId, "FirewallTimeout", "Windows Firewall did not complete the requested mutation within the allowed time.");
+    }
+    if (process.ExitCode != 0)
+        return BrokerResult.Fail(req.RequestId, "FirewallMutationFailed", $"Windows Firewall returned exit code {process.ExitCode}.");
+
+    string ruleName = BrokerFirewallPolicy.BuildRuleName(remoteIp);
+    return BrokerResult.Ok(req.RequestId, ruleName, string.Empty,
+        add
+            ? $"Windows accepted the exact allowlisted firewall block mutation for {remoteIp}. The desktop client must independently verify active policy before reporting containment success."
+            : $"Windows accepted the exact allowlisted firewall removal mutation for {remoteIp}. The desktop client must independently verify active policy before reporting removal success.");
+}
+
 void SetAcl(string path, bool usersRead)
 {
     string icacls = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "icacls.exe");
@@ -282,7 +322,8 @@ public sealed record BrokerRequest(
     long ExpectedProcessStartUtcTicks = 0,
     string? ExpectedImagePath = null,
     string? ExpectedImageSha256 = null,
-    bool TerminateDescendants = false);
+    bool TerminateDescendants = false,
+    string? RemoteIp = null);
 
 public sealed record BrokerResult(string RequestId, bool Succeeded, string Code, string Message, string ItemId, string Sha256)
 {
