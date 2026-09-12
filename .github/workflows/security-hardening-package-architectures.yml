@@ -82,10 +82,31 @@ jobs:
           }
 
           $expected = [Convert]::ToUInt16('${{ matrix.expectedMachine }}'.Substring(2), 16)
+          $diagnosticsPath = Join-Path $env:RUNNER_TEMP "package-architecture-${{ matrix.platform }}.txt"
+          $diagnostics = @(
+            "platform=${{ matrix.platform }}",
+            "expectedMachine=${{ matrix.expectedMachine }}",
+            "msix=$($msixes[0].FullName)"
+          )
+          $mismatches = @()
           foreach ($binary in @($apps[0], $brokers[0])) {
             $machine = Get-PeMachine $binary.FullName
+            $machineHex = "0x$($machine.ToString('x4'))"
+            $diagnostics += "$($binary.Name)=$machineHex path=$($binary.FullName)"
+            Write-Host "$($binary.Name): machine $machineHex; expected ${{ matrix.expectedMachine }} for ${{ matrix.platform }}"
             if ($machine -ne $expected) {
-              throw "$($binary.Name) machine 0x$($machine.ToString('x4')) did not match expected ${{ matrix.expectedMachine }} for ${{ matrix.platform }}."
+              $mismatches += "$($binary.Name) machine $machineHex did not match expected ${{ matrix.expectedMachine }} for ${{ matrix.platform }}."
             }
-            Write-Host "$($binary.Name): machine 0x$($machine.ToString('x4')) verified for ${{ matrix.platform }}"
           }
+          $diagnostics | Set-Content -Path $diagnosticsPath -Encoding utf8
+          if ($mismatches.Count -gt 0) {
+            throw ($mismatches -join ' ')
+          }
+
+      - name: Upload ${{ matrix.platform }} PE architecture diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-architecture-${{ matrix.platform }}-diagnostics
+          path: ${{ runner.temp }}\package-architecture-${{ matrix.platform }}.txt
+          if-no-files-found: warn
