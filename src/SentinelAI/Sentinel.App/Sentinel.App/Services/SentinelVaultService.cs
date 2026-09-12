@@ -28,6 +28,7 @@ internal sealed class SentinelVaultService : IDisposable
     private Guid _vaultId;
     private DateTimeOffset _lastActivityUtc;
     private VaultState _state = VaultState.Locked;
+    private long _lockEpoch;
     private bool _disposed;
 
     internal VaultState State
@@ -47,10 +48,12 @@ internal sealed class SentinelVaultService : IDisposable
         ThrowIfDisposed();
         ValidateMasterKeyProtectors(keyProtectors);
 
+        long unlockEpoch;
         lock (_gate)
         {
             if (_state != VaultState.Locked || _vaultMasterKey is not null)
                 throw new InvalidOperationException("A vault session is already initialized or unlocked.");
+            unlockEpoch = _lockEpoch;
             _state = VaultState.Unlocking;
         }
 
@@ -69,11 +72,14 @@ internal sealed class SentinelVaultService : IDisposable
 
             byte[] body = SerializeEnvelopeBody(vaultId, wrapped);
             byte[] tag = ComputeEnvelopeTag(vmk, body);
+            CryptographicOperations.ZeroMemory(body);
             VaultMasterKeyEnvelope envelope = new(VaultFormatVersion, vaultId, wrapped, tag);
 
             lock (_gate)
             {
                 ThrowIfDisposed();
+                if (_state != VaultState.Unlocking || _lockEpoch != unlockEpoch)
+                    throw new OperationCanceledException("Vault initialization was invalidated by a lock transition.");
                 _vaultMasterKey = vmk;
                 vmk = Array.Empty<byte>();
                 _vaultId = vaultId;
@@ -87,7 +93,8 @@ internal sealed class SentinelVaultService : IDisposable
         {
             lock (_gate)
             {
-                if (_state == VaultState.Unlocking) _state = VaultState.Locked;
+                if (_state == VaultState.Unlocking && _lockEpoch == unlockEpoch)
+                    _state = VaultState.Locked;
             }
             throw;
         }
@@ -107,10 +114,12 @@ internal sealed class SentinelVaultService : IDisposable
         ValidateEnvelopeShape(envelope);
         ValidateMasterKeyProtectors(keyProtectors);
 
+        long unlockEpoch;
         lock (_gate)
         {
             if (_state != VaultState.Locked || _vaultMasterKey is not null)
                 return VaultUnlockResult.Fail("InvalidState");
+            unlockEpoch = _lockEpoch;
             _state = VaultState.Unlocking;
         }
 
@@ -148,13 +157,19 @@ internal sealed class SentinelVaultService : IDisposable
 
             if (accepted is null)
             {
-                lock (_gate) _state = VaultState.Locked;
+                lock (_gate)
+                {
+                    if (_state == VaultState.Unlocking && _lockEpoch == unlockEpoch)
+                        _state = VaultState.Locked;
+                }
                 return VaultUnlockResult.Fail("CredentialOrEnvelopeRejected");
             }
 
             lock (_gate)
             {
                 ThrowIfDisposed();
+                if (_state != VaultState.Unlocking || _lockEpoch != unlockEpoch)
+                    return VaultUnlockResult.Fail("LockStateChanged");
                 _vaultMasterKey = accepted;
                 accepted = null;
                 _vaultId = envelope.VaultId;
@@ -165,12 +180,20 @@ internal sealed class SentinelVaultService : IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            lock (_gate) _state = VaultState.Locked;
+            lock (_gate)
+            {
+                if (_state == VaultState.Unlocking && _lockEpoch == unlockEpoch)
+                    _state = VaultState.Locked;
+            }
             throw;
         }
         catch
         {
-            lock (_gate) _state = VaultState.Locked;
+            lock (_gate)
+            {
+                if (_state == VaultState.Unlocking && _lockEpoch == unlockEpoch)
+                    _state = VaultState.Locked;
+            }
             throw;
         }
         finally
@@ -261,28 +284,25 @@ internal sealed class SentinelVaultService : IDisposable
     internal bool LockIfInactive(TimeSpan timeout, DateTimeOffset nowUtc)
     {
         if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
+        byte[]? key;
         lock (_gate)
         {
             ThrowIfDisposed();
             if (_state != VaultState.Unlocked || _vaultMasterKey is null) return false;
             if (nowUtc - _lastActivityUtc < timeout) return false;
+            key = TransitionToLockedUnderGate();
         }
-        Lock();
+        if (key is not null) CryptographicOperations.ZeroMemory(key);
         return true;
     }
 
     internal void Lock()
     {
-        byte[]? key = null;
+        byte[]? key;
         lock (_gate)
         {
             if (_state == VaultState.Locked && _vaultMasterKey is null) return;
-            _state = VaultState.Locking;
-            key = _vaultMasterKey;
-            _vaultMasterKey = null;
-            _vaultId = Guid.Empty;
-            _lastActivityUtc = default;
-            _state = VaultState.Locked;
+            key = TransitionToLockedUnderGate();
         }
         if (key is not null) CryptographicOperations.ZeroMemory(key);
     }
@@ -297,6 +317,18 @@ internal sealed class SentinelVaultService : IDisposable
         }
         Lock();
         lock (_gate) _disposed = true;
+    }
+
+    private byte[]? TransitionToLockedUnderGate()
+    {
+        _lockEpoch = checked(_lockEpoch + 1);
+        _state = VaultState.Locking;
+        byte[]? key = _vaultMasterKey;
+        _vaultMasterKey = null;
+        _vaultId = Guid.Empty;
+        _lastActivityUtc = default;
+        _state = VaultState.Locked;
+        return key;
     }
 
     private byte[] CopyUnlockedMasterKey(out Guid vaultId)
