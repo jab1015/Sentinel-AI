@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 
 internal static class VaultMetadataAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         VerifyAsync().GetAwaiter().GetResult();
