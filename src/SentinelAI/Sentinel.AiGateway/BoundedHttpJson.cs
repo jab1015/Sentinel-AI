@@ -67,6 +67,14 @@ internal static class BoundedHttpJson
         {
             return null;
         }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
         catch (JsonException)
         {
             return null;
