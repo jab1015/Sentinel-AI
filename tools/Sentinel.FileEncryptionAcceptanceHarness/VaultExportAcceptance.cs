@@ -1,13 +1,11 @@
 using Sentinel.App.Services;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class VaultExportAcceptance
 {
     private const long ConcurrentExportFixtureBytes = 128L * 1024 * 1024;
 
-    [ModuleInitializer]
     internal static void Verify()
     {
         string vaultRoot = Path.Combine(Path.GetTempPath(), "SentinelVaultExportHarness", Guid.NewGuid().ToString("N"));
