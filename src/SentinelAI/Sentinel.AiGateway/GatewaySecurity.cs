@@ -91,6 +91,7 @@ internal sealed class GatewaySecurity
             response.Content,
             BoundedHttpJson.MaximumStoreResponseBytes,
             maximumDepth: 32,
+            BoundedHttpJson.StoreBodyTimeout,
             cancellationToken).ConfigureAwait(false);
         if (document is null)
         {
@@ -228,31 +229,51 @@ internal sealed class GatewaySecurity
             ["scope"] = scope,
             ["grant_type"] = "client_credentials"
         });
-
-        using HttpResponseMessage response = await client.PostAsync(
-            $"https://login.microsoftonline.com/{Uri.EscapeDataString(tenantId)}/oauth2/v2.0/token",
-            content,
-            cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        using HttpRequestMessage message = new(
+            HttpMethod.Post,
+            $"https://login.microsoftonline.com/{Uri.EscapeDataString(tenantId)}/oauth2/v2.0/token")
         {
-            Console.Error.WriteLine($"ENTRA_TOKEN_FAILED status={(int)response.StatusCode}");
+            Content = content
+        };
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await client.SendAsync(
+                message,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            Console.Error.WriteLine("ENTRA_TOKEN_NETWORK_FAILURE");
             return null;
         }
 
-        using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
-            response.Content,
-            BoundedHttpJson.MaximumEntraResponseBytes,
-            maximumDepth: 16,
-            cancellationToken).ConfigureAwait(false);
-        if (document is null)
+        using (response)
         {
-            Console.Error.WriteLine("ENTRA_TOKEN_INVALID_OR_OVERSIZED_RESPONSE");
-            return null;
-        }
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.Error.WriteLine($"ENTRA_TOKEN_FAILED status={(int)response.StatusCode}");
+                return null;
+            }
 
-        return document.RootElement.TryGetProperty("access_token", out JsonElement accessToken)
-            ? accessToken.GetString()
-            : null;
+            using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+                response.Content,
+                BoundedHttpJson.MaximumEntraResponseBytes,
+                maximumDepth: 16,
+                BoundedHttpJson.EntraBodyTimeout,
+                cancellationToken).ConfigureAwait(false);
+            if (document is null)
+            {
+                Console.Error.WriteLine("ENTRA_TOKEN_INVALID_OR_OVERSIZED_RESPONSE");
+                return null;
+            }
+
+            return document.RootElement.TryGetProperty("access_token", out JsonElement accessToken)
+                ? accessToken.GetString()
+                : null;
+        }
     }
 
     private void PruneReplayCacheLocked()
