@@ -1,10 +1,8 @@
 using Sentinel.App.Services;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class VaultKeyFoundationAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         byte[] wrappingKey = RandomNumberGenerator.GetBytes(32);
