@@ -7,6 +7,13 @@ static void Require(bool condition, string message)
     if (!condition) throw new InvalidOperationException(message);
 }
 
+static void RunAcceptance(string name, Action action)
+{
+    Console.WriteLine($"--- {name}: START ---");
+    action();
+    Console.WriteLine($"--- {name}: COMPLETE ---");
+}
+
 static byte[] PatternBytes(int length)
 {
     byte[] data = new byte[length];
@@ -26,6 +33,18 @@ static int HeaderLength(byte[] container) => BinaryPrimitives.ReadInt32LittleEnd
 static int DataOffset(byte[] container) => checked(HeaderLength(container) + 16);
 
 Console.WriteLine("=== Sentinel File Encryption Acceptance ===");
+
+RunAcceptance(nameof(ExactOwnedOutputCleanupAcceptance), ExactOwnedOutputCleanupAcceptance.Verify);
+RunAcceptance(nameof(PasswordProtectionAcceptance), PasswordProtectionAcceptance.Verify);
+RunAcceptance(nameof(RecoveryKeyAcceptance), RecoveryKeyAcceptance.Verify);
+RunAcceptance(nameof(WindowsCurrentUserProtectionAcceptance), WindowsCurrentUserProtectionAcceptance.Verify);
+RunAcceptance(nameof(VaultKeyFoundationAcceptance), VaultKeyFoundationAcceptance.Verify);
+RunAcceptance(nameof(VaultMetadataAcceptance), VaultMetadataAcceptance.Verify);
+RunAcceptance(nameof(VaultBoundaryAcceptance), VaultBoundaryAcceptance.Verify);
+RunAcceptance(nameof(VaultItemStoreAcceptance), VaultItemStoreAcceptance.Verify);
+RunAcceptance(nameof(VaultUnlockLockRaceAcceptance), VaultUnlockLockRaceAcceptance.Verify);
+RunAcceptance(nameof(VaultExportAcceptance), VaultExportAcceptance.Verify);
+RunAcceptance(nameof(SecureDeleteFoundationAcceptance), SecureDeleteFoundationAcceptance.Run);
 
 string root = Path.Combine(Path.GetTempPath(), "SentinelCryptoHarness", Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
