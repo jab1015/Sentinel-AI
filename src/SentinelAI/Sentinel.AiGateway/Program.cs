@@ -219,49 +219,67 @@ app.MapPost("/v1/analyze", async (
     };
     message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-    using HttpResponseMessage response = await client.SendAsync(
-        message,
-        HttpCompletionOption.ResponseHeadersRead,
-        cancellationToken).ConfigureAwait(false);
-
-    if (!response.IsSuccessStatusCode)
+    HttpResponseMessage response;
+    try
     {
-        Console.Error.WriteLine($"OPENAI_GATEWAY_FAILURE status={(int)response.StatusCode}");
+        response = await client.SendAsync(
+            message,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+        Console.Error.WriteLine("OPENAI_GATEWAY_TIMEOUT");
+        return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+    catch (HttpRequestException)
+    {
+        Console.Error.WriteLine("OPENAI_GATEWAY_NETWORK_FAILURE");
         return Results.StatusCode(StatusCodes.Status502BadGateway);
     }
 
-    using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
-        response.Content,
-        BoundedHttpJson.MaximumProviderResponseBytes,
-        maximumDepth: 64,
-        cancellationToken).ConfigureAwait(false);
-    if (document is null)
+    using (response)
     {
-        Console.Error.WriteLine("OPENAI_GATEWAY_INVALID_OR_OVERSIZED_RESPONSE");
-        return Results.StatusCode(StatusCodes.Status502BadGateway);
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.Error.WriteLine($"OPENAI_GATEWAY_FAILURE status={(int)response.StatusCode}");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+            response.Content,
+            BoundedHttpJson.MaximumProviderResponseBytes,
+            maximumDepth: 64,
+            BoundedHttpJson.ProviderBodyTimeout,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null)
+        {
+            Console.Error.WriteLine("OPENAI_GATEWAY_INVALID_OVERSIZED_OR_STALLED_RESPONSE");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        JsonElement root = document.RootElement;
+        string answer = ExtractOutputText(root);
+        if (string.IsNullOrWhiteSpace(answer))
+        {
+            Console.Error.WriteLine("OPENAI_GATEWAY_EMPTY_RESPONSE");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        int inputTokens = ReadUsage(root, "input_tokens");
+        int outputTokens = ReadUsage(root, "output_tokens");
+        bool moreEvidence = IndicatesMoreEvidence(answer);
+        int confidence = moreEvidence ? 55 : 75;
+
+        return Results.Ok(new SentinelAiResponse(
+            Answer: Limit(answer.Trim(), 8_000),
+            Provider: "OpenAI",
+            Model: model,
+            InputTokens: inputTokens,
+            OutputTokens: outputTokens,
+            ConfidencePercent: confidence,
+            RequiresMoreEvidence: moreEvidence));
     }
-
-    JsonElement root = document.RootElement;
-    string answer = ExtractOutputText(root);
-    if (string.IsNullOrWhiteSpace(answer))
-    {
-        Console.Error.WriteLine("OPENAI_GATEWAY_EMPTY_RESPONSE");
-        return Results.StatusCode(StatusCodes.Status502BadGateway);
-    }
-
-    int inputTokens = ReadUsage(root, "input_tokens");
-    int outputTokens = ReadUsage(root, "output_tokens");
-    bool moreEvidence = IndicatesMoreEvidence(answer);
-    int confidence = moreEvidence ? 55 : 75;
-
-    return Results.Ok(new SentinelAiResponse(
-        Answer: Limit(answer.Trim(), 8_000),
-        Provider: "OpenAI",
-        Model: model,
-        InputTokens: inputTokens,
-        OutputTokens: outputTokens,
-        ConfidencePercent: confidence,
-        RequiresMoreEvidence: moreEvidence));
 });
 
 app.Run();
