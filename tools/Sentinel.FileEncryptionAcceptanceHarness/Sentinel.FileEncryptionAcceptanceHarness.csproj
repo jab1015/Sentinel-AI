@@ -21,5 +21,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultMetadataStore.cs" Link="VaultMetadataStore.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultFileKeyProtector.cs" Link="VaultFileKeyProtector.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultItemStoreService.cs" Link="VaultItemStoreService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultItemExportService.cs" Link="VaultItemExportService.cs" />
   </ItemGroup>
 </Project>
