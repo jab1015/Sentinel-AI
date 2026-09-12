@@ -200,11 +200,13 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using HttpClient client = new() { Timeout = NetworkTimeout };
+                if (!TryCreatePinnedHttpsUri(uri, out Uri? expectedUri)) return false;
+                using HttpClientHandler handler = new() { AllowAutoRedirect = false };
+                using HttpClient client = new(handler) { Timeout = NetworkTimeout };
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
-                using HttpRequestMessage request = new(HttpMethod.Get, uri);
+                using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
                 using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
-                if (!response.IsSuccessStatusCode) return false;
+                if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri)) return false;
                 if (response.Content.Headers.ContentLength is long declared && declared > maxBytes) return false;
 
                 using Stream input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
@@ -314,11 +316,13 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using HttpClient client = new() { Timeout = NetworkTimeout };
+                if (!TryCreatePinnedHttpsUri(uri, out Uri? expectedUri)) return new(false, string.Empty);
+                using HttpClientHandler handler = new() { AllowAutoRedirect = false };
+                using HttpClient client = new(handler) { Timeout = NetworkTimeout };
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
-                using HttpRequestMessage request = new(HttpMethod.Get, uri);
+                using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
                 using HttpResponseMessage response = client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult();
-                if (!response.IsSuccessStatusCode) return new(false, string.Empty);
+                if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri)) return new(false, string.Empty);
                 if (response.Content.Headers.ContentLength is long declared && declared > MaximumWebBodyBytes) return new(false, string.Empty);
 
                 using Stream input = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
@@ -336,6 +340,28 @@ namespace Sentinel.App.Services
                 return new(true, Encoding.UTF8.GetString(bounded.ToArray()));
             }
             catch { return new(false, string.Empty); }
+        }
+
+        private static bool TryCreatePinnedHttpsUri(string uri, out Uri? expectedUri)
+        {
+            expectedUri = null;
+            if (!Uri.TryCreate(uri, UriKind.Absolute, out Uri? parsed) ||
+                !parsed.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(parsed.Host))
+            {
+                return false;
+            }
+
+            expectedUri = parsed;
+            return true;
+        }
+
+        private static bool ResponseMatchesExpectedAuthority(HttpResponseMessage response, Uri expectedUri)
+        {
+            return response.RequestMessage?.RequestUri is Uri actualUri &&
+                   actualUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+                   actualUri.Host.Equals(expectedUri.Host, StringComparison.OrdinalIgnoreCase) &&
+                   actualUri.Port == expectedUri.Port;
         }
 
         private static bool CatalogAppearsToHaveResults(string body) =>
