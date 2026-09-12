@@ -65,10 +65,13 @@ namespace Sentinel.App.Services
             if (platformDevice && !string.IsNullOrWhiteSpace(oem.Uri) && (oemProbe.Reached || oem.BrowserAuthoritative))
             {
                 int confidence = HasStrongMachineIdentity(context) ? 92 : 84;
+                string summary = oemProbe.Reached
+                    ? $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and reached the computer manufacturer's official support source. Windows Update and Microsoft Update Catalog did not provide an exact automatically installable repair. Because this is a platform-specific device, Sentinel is keeping the computer manufacturer as the preferred authority and will not substitute a generic component-vendor package."
+                    : $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and recognized the configured official manufacturer support URL, but Sentinel did not reach that source during this investigation. No package or external conclusion was verified; the manufacturer remains the preferred manual authority for this platform-specific device.";
                 return new DriverResearchResult(
-                    true, true, confidence, oem.Name, oem.Uri,
+                    true, oemProbe.Reached, confidence, oem.Name, oem.Uri,
                     context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                    $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)}. Windows Update and Microsoft Update Catalog did not provide an exact automatically installable repair. Because this is a platform-specific device, Sentinel is keeping the computer manufacturer as the preferred authority and will not substitute a generic component-vendor package.",
+                    summary,
                     true);
             }
 
@@ -78,10 +81,13 @@ namespace Sentinel.App.Services
                 WebProbe componentProbe = Probe(componentVendor.Uri);
                 if (componentProbe.Reached || componentVendor.BrowserAuthoritative)
                 {
+                    string summary = componentProbe.Reached
+                        ? "Sentinel could not verify an exact package through Windows Update or Microsoft Update Catalog. It identified the affected component vendor from verified local evidence and reached the vendor's official support source. Sentinel will not install anything until model compatibility and the package signature are verified."
+                        : "Sentinel identified a configured official component-vendor support URL from local hardware evidence, but Sentinel did not reach that source during this investigation. No package or external conclusion was verified, and no installation is allowed.";
                     return new DriverResearchResult(
-                        true, true, 86, componentVendor.Name, componentVendor.Uri,
+                        true, componentProbe.Reached, 86, componentVendor.Name, componentVendor.Uri,
                         context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                        "Sentinel could not verify an exact package through Windows Update or Microsoft Update Catalog. It identified the affected component vendor from verified local evidence and located the vendor's official support source. Sentinel will not install anything until model compatibility and the package signature are verified.",
+                        summary,
                         true);
                 }
             }
@@ -89,10 +95,13 @@ namespace Sentinel.App.Services
             if (!string.IsNullOrWhiteSpace(oem.Uri) && (oemProbe.Reached || oem.BrowserAuthoritative))
             {
                 int confidence = HasStrongMachineIdentity(context) ? 92 : 84;
+                string summary = oemProbe.Reached
+                    ? $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and reached the computer manufacturer's official support source. Windows Update and Microsoft Update Catalog did not provide an exact automatically installable repair. Sentinel has not verified a signed package, so no installation is allowed."
+                    : $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)} and recognized the configured official manufacturer support URL, but Sentinel did not reach that source during this investigation. No signed package or external conclusion was verified, so no installation is allowed.";
                 return new DriverResearchResult(
-                    true, true, confidence, oem.Name, oem.Uri,
+                    true, oemProbe.Reached, confidence, oem.Name, oem.Uri,
                     context.Manufacturer, context.Model, context.SerialNumber, context.HardwareId,
-                    $"Sentinel identified this computer as {Display(context.Manufacturer)} {Display(context.Model)}. Windows Update and Microsoft Update Catalog did not provide an exact automatically installable repair. Sentinel has not verified a signed package, so no installation is allowed.",
+                    summary,
                     true);
             }
 
