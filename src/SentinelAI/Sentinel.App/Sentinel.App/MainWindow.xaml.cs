@@ -77,8 +77,10 @@ namespace Sentinel.App
         private async Task RunInitialRefreshAsync()
         {
             await Task.Delay(250);
-            await UpdateDashboardAsync();
-            _timer.Start();
+            await InitialMonitoringStartupCoordinator.RunAsync(
+                UpdateDashboardAsync,
+                _timer.Start,
+                _ => MonitoringStatusText.Text = "The first check could not finish, but Sentinel is still monitoring and will retry automatically.");
         }
 
         private async Task EnsurePreferredNameAsync()
