@@ -64,6 +64,9 @@ internal sealed class PrivilegedBrokerClient
     internal Task<BrokerInvocationResult> RemoveFirewallEndpointAsync(string remoteIp, CancellationToken token = default) =>
         InvokeAsync(new BrokerRequest(ProtocolVersion, NewRequestId(), "firewall-remove-endpoint", RemoteIp: remoteIp), DefaultTimeout, token);
 
+    internal Task<BrokerInvocationResult> RestartServiceAsync(string serviceName, CancellationToken token = default) =>
+        InvokeAsync(new BrokerRequest(ProtocolVersion, NewRequestId(), "restart-service", ServiceName: serviceName), DefaultTimeout, token);
+
     internal async Task<BrokerQuarantineRecord?> ReadProtectedRecordAsync(string itemId, CancellationToken token = default)
     {
         if (!Guid.TryParseExact(itemId, "N", out _)) return null;
@@ -235,7 +238,8 @@ internal sealed class PrivilegedBrokerClient
         string? ExpectedImagePath = null,
         string? ExpectedImageSha256 = null,
         bool TerminateDescendants = false,
-        string? RemoteIp = null);
+        string? RemoteIp = null,
+        string? ServiceName = null);
 
     private sealed record BrokerResult(string RequestId, bool Succeeded, string? Code, string? Message, string? ItemId, string? Sha256);
 }
