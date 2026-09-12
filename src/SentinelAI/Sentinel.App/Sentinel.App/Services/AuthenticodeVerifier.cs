@@ -23,41 +23,44 @@ internal static class AuthenticodeVerifier
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown", "The executable could not be opened for signature verification.");
 
-        string beforeHash;
-        try { beforeHash = ComputeSha256(path); }
+        try
+        {
+            using FileStream verificationLease = OpenVerificationLease(path);
+            string beforeHash = ComputeSha256(verificationLease);
+
+            // Keep one non-write/non-delete-shared handle open for the entire trust decision.
+            // WinVerifyTrust and catalog hashing receive this same object handle, preventing a
+            // path swap from making Windows verify a transient different file between hashes.
+            SignerMetadata embeddedSigner = TryGetSigner(path);
+            AuthenticodeVerificationResult result = VerifyEmbedded(path, verificationLease, embeddedSigner);
+
+            if (result.Status == AuthenticodeTrustStatus.Unsigned)
+            {
+                AuthenticodeVerificationResult catalog = VerifyCatalog(path, verificationLease);
+                if (catalog.Status != AuthenticodeTrustStatus.Unsigned)
+                    result = catalog;
+            }
+
+            string afterHash = ComputeSha256(verificationLease);
+            if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(beforeHash), Convert.FromHexString(afterHash)))
+            {
+                return new(AuthenticodeTrustStatus.FileChangedDuringVerification, result.IsSigned, false, result.Publisher,
+                    "The executable changed while Sentinel was verifying it, so no trust decision was made.", afterHash);
+            }
+
+            return result with { VerifiedSha256 = afterHash };
+        }
         catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
         {
-            return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown", "The executable could not be read completely for signature verification.");
+            return new(AuthenticodeTrustStatus.VerificationError, false, false, "Unknown",
+                "The executable could not be held and read as one stable file object for signature verification.");
         }
-
-        SignerMetadata embeddedSigner = TryGetSigner(path);
-        AuthenticodeVerificationResult result = VerifyEmbedded(path, embeddedSigner);
-
-        if (result.Status == AuthenticodeTrustStatus.Unsigned)
-        {
-            AuthenticodeVerificationResult catalog = VerifyCatalog(path);
-            if (catalog.Status != AuthenticodeTrustStatus.Unsigned)
-                result = catalog;
-        }
-
-        string afterHash;
-        try { afterHash = ComputeSha256(path); }
-        catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
-        {
-            return new(AuthenticodeTrustStatus.FileChangedDuringVerification, result.IsSigned, false, result.Publisher,
-                "The executable changed or became unreadable while Sentinel was verifying it.");
-        }
-
-        if (!CryptographicOperations.FixedTimeEquals(Convert.FromHexString(beforeHash), Convert.FromHexString(afterHash)))
-        {
-            return new(AuthenticodeTrustStatus.FileChangedDuringVerification, result.IsSigned, false, result.Publisher,
-                "The executable changed while Sentinel was verifying it, so no trust decision was made.", afterHash);
-        }
-
-        return result with { VerifiedSha256 = afterHash };
     }
 
-    private static AuthenticodeVerificationResult VerifyEmbedded(string path, SignerMetadata signer)
+    internal static FileStream OpenVerificationLease(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
+
+    private static AuthenticodeVerificationResult VerifyEmbedded(string path, FileStream verificationLease, SignerMetadata signer)
     {
         IntPtr fileInfoPointer = IntPtr.Zero;
         IntPtr pathPointer = IntPtr.Zero;
@@ -68,7 +71,7 @@ internal static class AuthenticodeVerifier
             {
                 StructSize = (uint)Marshal.SizeOf<WinTrustFileInfo>(),
                 FilePath = pathPointer,
-                FileHandle = IntPtr.Zero,
+                FileHandle = verificationLease.SafeFileHandle.DangerousGetHandle(),
                 KnownSubject = IntPtr.Zero
             };
 
@@ -89,7 +92,7 @@ internal static class AuthenticodeVerifier
         }
     }
 
-    private static AuthenticodeVerificationResult VerifyCatalog(string path)
+    private static AuthenticodeVerificationResult VerifyCatalog(string path, FileStream verificationLease)
     {
         IntPtr catAdmin = IntPtr.Zero;
         IntPtr catInfo = IntPtr.Zero;
@@ -105,8 +108,7 @@ internal static class AuthenticodeVerifier
             if (!CryptCATAdminAcquireContext2(out catAdmin, ref subsystem, "SHA256", IntPtr.Zero, 0) || catAdmin == IntPtr.Zero)
                 return new(AuthenticodeTrustStatus.Unsigned, false, false, "Unsigned", "No embedded Authenticode signature was found and Windows catalog lookup was unavailable.");
 
-            using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            IntPtr fileHandle = stream.SafeFileHandle.DangerousGetHandle();
+            IntPtr fileHandle = verificationLease.SafeFileHandle.DangerousGetHandle();
             uint hashSize = 0;
             if (!CryptCATAdminCalcHashFromFileHandle2(catAdmin, fileHandle, ref hashSize, null, 0) || hashSize == 0 || hashSize > 1024)
                 return new(AuthenticodeTrustStatus.Unsigned, false, false, "Unsigned", "No embedded Authenticode signature or usable catalog hash was found.");
@@ -209,10 +211,12 @@ internal static class AuthenticodeVerifier
         };
     }
 
-    private static string ComputeSha256(string path)
+    private static string ComputeSha256(FileStream stream)
     {
-        using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        return Convert.ToHexString(SHA256.HashData(stream));
+        stream.Position = 0;
+        byte[] hash = SHA256.HashData(stream);
+        stream.Position = 0;
+        return Convert.ToHexString(hash);
     }
 
     private static SignerMetadata TryGetSigner(string path)
