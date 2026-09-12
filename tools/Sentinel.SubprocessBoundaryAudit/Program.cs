@@ -22,7 +22,7 @@ static bool TryParseQuotedInitializerValues(string body, out HashSet<string> val
     {
         string line = rawLine.Trim();
         if (line.Length == 0) continue;
-        if (line.EndsWith(',', StringComparison.Ordinal))
+        if (line.EndsWith(",", StringComparison.Ordinal))
             line = line[..^1].TrimEnd();
         if (line.Length < 2 || line[0] != '"' || line[^1] != '"')
             return false;
