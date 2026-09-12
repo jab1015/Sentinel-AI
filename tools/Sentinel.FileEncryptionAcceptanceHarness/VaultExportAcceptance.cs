@@ -1,9 +1,12 @@
 using Sentinel.App.Services;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class VaultExportAcceptance
 {
+    private const long ConcurrentExportFixtureBytes = 128L * 1024 * 1024;
+
     [ModuleInitializer]
     internal static void Verify()
     {
@@ -82,6 +85,8 @@ internal static class VaultExportAcceptance
                 CancellationToken.None).GetAwaiter().GetResult().Succeeded,
                 "Export fixture could not reopen the Vault.");
 
+            VerifyLockRevokesInFlightExport(vault, envelope, protector, store, exporter, externalRoot);
+
             VaultMetadataStore metadata = new(vaultRoot, vault);
             VaultMetadataReadResult current = metadata.ReadSnapshotAsync(CancellationToken.None)
                 .GetAwaiter().GetResult();
@@ -118,6 +123,7 @@ internal static class VaultExportAcceptance
             Console.WriteLine("Vault export metadata/ciphertext immutability: PASS");
             Console.WriteLine("Vault export collision / internal-destination refusal: PASS");
             Console.WriteLine("Vault locked / unknown / pending item refusal: PASS");
+            Console.WriteLine("Vault lock revokes in-flight export and removes exact-owned plaintext: PASS");
         }
         finally
         {
@@ -125,6 +131,121 @@ internal static class VaultExportAcceptance
             CryptographicOperations.ZeroMemory(plaintext);
             TryDeleteTree(vaultRoot);
             TryDeleteTree(externalRoot);
+        }
+    }
+
+    private static void VerifyLockRevokesInFlightExport(
+        SentinelVaultService vault,
+        VaultMasterKeyEnvelope envelope,
+        TestKeyProtector protector,
+        VaultItemStoreService store,
+        VaultItemExportService exporter,
+        string externalRoot)
+    {
+        string largeSource = Path.Combine(externalRoot, "lock-transition-source.bin");
+        string interruptedDestination = Path.Combine(externalRoot, "lock-transition-export.bin");
+        WriteBoundedLargeFixture(largeSource, ConcurrentExportFixtureBytes);
+
+        VaultAddItemResult largeAdded = store.AddFileAsync(largeSource, CancellationToken.None)
+            .GetAwaiter().GetResult();
+        Require(largeAdded.Succeeded, "Lock-transition fixture could not commit a Vault item: " + largeAdded.Code);
+        Require(File.Exists(largeAdded.CiphertextPath), "Lock-transition fixture ciphertext was not durable before export.");
+
+        Task<VaultExportResult> inFlight = exporter.ExportAsync(
+            largeAdded.ItemId,
+            interruptedDestination,
+            CancellationToken.None);
+
+        WaitForPlaintextWriteToBegin(interruptedDestination, inFlight, TimeSpan.FromSeconds(30));
+        vault.Lock();
+
+        VaultExportResult interrupted = inFlight.WaitAsync(TimeSpan.FromSeconds(30))
+            .GetAwaiter().GetResult();
+        Require(!interrupted.Succeeded,
+            "Vault lock transition allowed an in-flight plaintext export to report success.");
+        Require(interrupted.Code == "VaultLockTransition",
+            "Vault lock transition did not complete exact-owned plaintext cleanup: " + interrupted.Code);
+        Require(!interrupted.OutputRemains && !File.Exists(interruptedDestination),
+            "Vault lock transition left Sentinel-owned incomplete plaintext behind.");
+        Require(File.Exists(largeAdded.CiphertextPath),
+            "Vault lock transition removed or lost the Vault ciphertext.");
+        Require(File.Exists(largeSource) && new FileInfo(largeSource).Length == ConcurrentExportFixtureBytes,
+            "Vault lock transition modified the original source fixture.");
+
+        Require(vault.UnlockAsync(
+            envelope,
+            new IFileKeyProtector[] { protector },
+            CancellationToken.None).GetAwaiter().GetResult().Succeeded,
+            "Vault could not reopen after the in-flight export lock transition.");
+    }
+
+    private static void WaitForPlaintextWriteToBegin(
+        string destination,
+        Task exportTask,
+        TimeSpan timeout)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < timeout)
+        {
+            if (TryGetLength(destination, out long length) && length > 0)
+                return;
+            if (exportTask.IsCompleted)
+                break;
+            Thread.Sleep(1);
+        }
+
+        if (exportTask.IsFaulted)
+            exportTask.GetAwaiter().GetResult();
+        throw new InvalidOperationException(
+            exportTask.IsCompleted
+                ? "In-flight export completed before the harness observed a plaintext write; revocation was not exercised."
+                : "Timed out waiting for an in-flight plaintext export to begin.");
+    }
+
+    private static bool TryGetLength(string path, out long length)
+    {
+        length = 0;
+        try
+        {
+            if (!File.Exists(path)) return false;
+            length = new FileInfo(path).Length;
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static void WriteBoundedLargeFixture(string path, long length)
+    {
+        byte[] block = new byte[1024 * 1024];
+        RandomNumberGenerator.Fill(block);
+        try
+        {
+            using FileStream stream = new(
+                path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                block.Length,
+                FileOptions.SequentialScan);
+            long remaining = length;
+            while (remaining > 0)
+            {
+                int count = (int)Math.Min(block.Length, remaining);
+                stream.Write(block, 0, count);
+                remaining -= count;
+            }
+            stream.Flush(flushToDisk: true);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(block);
         }
     }
 
