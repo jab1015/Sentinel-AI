@@ -135,9 +135,9 @@ internal sealed class GatewaySecurity
     internal string? IssueSession(string tier, string subject)
     {
         byte[]? key = ReadSigningKey();
-        if (key is null) return null;
+        if (key is null || string.IsNullOrWhiteSpace(subject) || !TryNormalizeTier(tier, out string normalizedTier))
+            return null;
 
-        string normalizedTier = tier.Equals("Advanced", StringComparison.OrdinalIgnoreCase) ? "Advanced" : "Basic";
         SessionPayload payload = new(
             Version: 1,
             Subject: Limit(subject, 128),
@@ -153,6 +153,9 @@ internal sealed class GatewaySecurity
 
     internal SessionValidationResult ValidateSession(string? authorizationHeader, string requestId, string requestedTier)
     {
+        if (!TryNormalizeTier(requestedTier, out string normalizedRequestedTier))
+            return SessionValidationResult.Denied("The requested AI tier is unsupported.");
+
         if (string.IsNullOrWhiteSpace(authorizationHeader) ||
             !authorizationHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             return SessionValidationResult.Denied("A gateway session is required.");
@@ -195,11 +198,12 @@ internal sealed class GatewaySecurity
 
         if (payload is null || payload.Version != 1 || string.IsNullOrWhiteSpace(payload.Subject) ||
             string.IsNullOrWhiteSpace(payload.TokenId) ||
-            payload.ExpiresUnixSeconds <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+            payload.ExpiresUnixSeconds <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() ||
+            !TryNormalizeTier(payload.Tier, out string normalizedAuthorizedTier))
             return SessionValidationResult.Denied("The gateway session is expired or invalid.");
 
-        bool advancedAuthorized = payload.Tier.Equals("Advanced", StringComparison.OrdinalIgnoreCase);
-        bool advancedRequested = requestedTier.Equals("Advanced", StringComparison.OrdinalIgnoreCase);
+        bool advancedAuthorized = normalizedAuthorizedTier == "Advanced";
+        bool advancedRequested = normalizedRequestedTier == "Advanced";
         if (advancedRequested && !advancedAuthorized)
             return SessionValidationResult.Denied("This session is not entitled to Advanced AI.");
 
@@ -316,6 +320,23 @@ internal sealed class GatewaySecurity
         if (string.IsNullOrWhiteSpace(raw)) return null;
         byte[] key = Encoding.UTF8.GetBytes(raw);
         return key.Length >= 32 ? key : null;
+    }
+
+    private static bool TryNormalizeTier(string? tier, out string normalizedTier)
+    {
+        if (string.Equals(tier, "Basic", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedTier = "Basic";
+            return true;
+        }
+        if (string.Equals(tier, "Advanced", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedTier = "Advanced";
+            return true;
+        }
+
+        normalizedTier = string.Empty;
+        return false;
     }
 
     private static string[] ReadCsv(string name, string[] fallback)
