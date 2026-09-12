@@ -7,6 +7,14 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(options =>
+{
+    // Reject oversized JSON before minimal-API model binding can allocate the complete body.
+    // Current Sentinel gateway requests are intentionally small; 64 KiB leaves headroom for
+    // JSON framing while preserving the tighter per-field checks below.
+    options.Limits.MaxRequestBodySize = 64 * 1024;
+});
+
 builder.Services.AddHttpClient("openai", client =>
 {
     client.BaseAddress = new Uri("https://api.openai.com/v1/");
@@ -216,13 +224,20 @@ app.MapPost("/v1/analyze", async (
         HttpCompletionOption.ResponseHeadersRead,
         cancellationToken).ConfigureAwait(false);
 
-    await using Stream providerStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-    using JsonDocument document = await JsonDocument.ParseAsync(providerStream,
-        new JsonDocumentOptions { MaxDepth = 64 }, cancellationToken).ConfigureAwait(false);
-
     if (!response.IsSuccessStatusCode)
     {
         Console.Error.WriteLine($"OPENAI_GATEWAY_FAILURE status={(int)response.StatusCode}");
+        return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+
+    using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+        response.Content,
+        BoundedHttpJson.MaximumProviderResponseBytes,
+        maximumDepth: 64,
+        cancellationToken).ConfigureAwait(false);
+    if (document is null)
+    {
+        Console.Error.WriteLine("OPENAI_GATEWAY_INVALID_OR_OVERSIZED_RESPONSE");
         return Results.StatusCode(StatusCodes.Status502BadGateway);
     }
 
