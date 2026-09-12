@@ -71,13 +71,13 @@ internal sealed class VaultItemExportService
         {
             session = _vault.AcquireOperationSession();
         }
-        catch (InvalidOperationException)
-        {
-            return VaultExportResult.Fail("VaultLocked", itemId, destination);
-        }
         catch (ObjectDisposedException)
         {
             return VaultExportResult.Fail("VaultUnavailable", itemId, destination);
+        }
+        catch (InvalidOperationException)
+        {
+            return VaultExportResult.Fail("VaultLocked", itemId, destination);
         }
 
         using CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
