@@ -61,227 +61,241 @@ internal sealed class VaultItemStoreService
         {
             return VaultAddItemResult.Fail("Canceled");
         }
-        await using (operationLease)
+
+        if (operationLease is null)
+            return VaultAddItemResult.Fail("OperationLeaseUnavailable");
+        await using FileStream lease = operationLease;
+
+        if (!TryValidateStorageBoundary(out string boundaryError))
+            return VaultAddItemResult.Fail(boundaryError);
+
+        Guid vaultId = _vault.VaultId;
+        if (_vault.State != VaultState.Unlocked || vaultId == Guid.Empty)
+            return VaultAddItemResult.Fail("VaultLocked");
+
+        VaultMetadataReadResult read = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        VaultMetadataSnapshot current;
+        if (read.Succeeded && read.Snapshot is not null)
         {
-            if (operationLease is null)
-                return VaultAddItemResult.Fail("OperationLeaseUnavailable");
+            current = read.Snapshot;
+            if (current.VaultId != vaultId)
+                return VaultAddItemResult.Fail("VaultIdentityMismatch");
+            if (!TryValidateMetadataConsistency(current, out string metadataError))
+                return VaultAddItemResult.Fail(metadataError);
+            if (current.PendingTransactions.Count != 0)
+                return VaultAddItemResult.Fail("RecoveryRequired");
+        }
+        else if (read.Code == "NotFound")
+        {
+            current = new VaultMetadataSnapshot(
+                MetadataVersion,
+                vaultId,
+                -1,
+                Array.Empty<VaultMetadataItem>(),
+                Array.Empty<VaultTransactionRecord>());
+        }
+        else
+        {
+            return VaultAddItemResult.Fail("MetadataUnavailable:" + read.Code);
+        }
 
-            Guid vaultId = _vault.VaultId;
-            if (_vault.State != VaultState.Unlocked || vaultId == Guid.Empty)
-                return VaultAddItemResult.Fail("VaultLocked");
+        Guid itemId = Guid.NewGuid();
+        Guid transactionId = Guid.NewGuid();
+        string ciphertextFileName = itemId.ToString("N") + ".senc";
+        string ciphertextPath = Path.Combine(_itemsRoot, ciphertextFileName);
+        if (File.Exists(ciphertextPath) || Directory.Exists(ciphertextPath))
+            return VaultAddItemResult.Fail("CiphertextCollision", itemId, transactionId, ciphertextPath, plaintextBytes);
 
-            VaultMetadataReadResult read = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
-            VaultMetadataSnapshot current;
-            if (read.Succeeded && read.Snapshot is not null)
-            {
-                current = read.Snapshot;
-                if (current.VaultId != vaultId)
-                    return VaultAddItemResult.Fail("VaultIdentityMismatch");
-                if (current.PendingTransactions.Count != 0)
-                    return VaultAddItemResult.Fail("RecoveryRequired");
-            }
-            else if (read.Code == "NotFound")
-            {
-                current = new VaultMetadataSnapshot(
-                    MetadataVersion,
-                    vaultId,
-                    -1,
-                    Array.Empty<VaultMetadataItem>(),
-                    Array.Empty<VaultTransactionRecord>());
-            }
-            else
-            {
-                return VaultAddItemResult.Fail("MetadataUnavailable:" + read.Code);
-            }
+        try
+        {
+            using VaultItemKeyLease itemKey = _vault.CreateItemKey(itemId);
+            VaultWrappedItemKey wrappedItemKey = CloneWrappedItemKey(itemKey.WrappedItemKey);
+            using VaultFileKeyProtector protector = VaultFileKeyProtector.ForEncryption(_vault, itemKey);
+            IReadOnlyList<IFileKeyProtector> protectors = new IFileKeyProtector[] { protector };
 
-            Guid itemId = Guid.NewGuid();
-            Guid transactionId = Guid.NewGuid();
-            string ciphertextFileName = itemId.ToString("N") + ".senc";
-            string ciphertextPath = Path.Combine(_itemsRoot, ciphertextFileName);
-            if (File.Exists(ciphertextPath) || Directory.Exists(ciphertextPath))
-                return VaultAddItemResult.Fail("CiphertextCollision", itemId, transactionId, ciphertextPath, plaintextBytes);
+            List<VaultMetadataItem> items = current.Items.ToList();
+            items.Add(new VaultMetadataItem(itemId, ciphertextFileName, plaintextBytes, wrappedItemKey));
 
-            try
-            {
-                using VaultItemKeyLease itemKey = _vault.CreateItemKey(itemId);
-                VaultWrappedItemKey wrappedItemKey = CloneWrappedItemKey(itemKey.WrappedItemKey);
-                using VaultFileKeyProtector protector = VaultFileKeyProtector.ForEncryption(_vault, itemKey);
-                IReadOnlyList<IFileKeyProtector> protectors = new IFileKeyProtector[] { protector };
+            VaultTransactionRecord transaction = new(
+                transactionId,
+                itemId,
+                VaultTransactionState.Prepared,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
-                List<VaultMetadataItem> items = current.Items.ToList();
-                items.Add(new VaultMetadataItem(itemId, ciphertextFileName, plaintextBytes, wrappedItemKey));
-
-                VaultTransactionRecord transaction = new(
-                    transactionId,
+            VaultMetadataSnapshot prepared = NextSnapshot(current, items, new[] { transaction });
+            VaultMetadataWriteResult preparedWrite = await _metadata.WriteSnapshotAsync(prepared, cancellationToken).ConfigureAwait(false);
+            if (!preparedWrite.Succeeded)
+                return VaultAddItemResult.Fail(
+                    "PrepareMetadataFailed:" + preparedWrite.Code,
                     itemId,
-                    VaultTransactionState.Prepared,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-
-                VaultMetadataSnapshot prepared = NextSnapshot(current, items, new[] { transaction });
-                VaultMetadataWriteResult preparedWrite = await _metadata.WriteSnapshotAsync(prepared, cancellationToken).ConfigureAwait(false);
-                if (!preparedWrite.Succeeded)
-                    return VaultAddItemResult.Fail(
-                        "PrepareMetadataFailed:" + preparedWrite.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes);
-                current = prepared;
-
-                FileEncryptionResult encrypted = await _encryption.EncryptAsync(
-                    source,
+                    transactionId,
                     ciphertextPath,
-                    protectors,
-                    cancellationToken).ConfigureAwait(false);
-                if (!encrypted.Succeeded || !encrypted.Verified)
-                    return VaultAddItemResult.Fail(
-                        "CiphertextCreationFailed:" + encrypted.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
+                    plaintextBytes);
+            current = prepared;
 
-                FileContainerVerificationResult verified = await _encryption.VerifyAsync(
+            if (!TryValidateStorageBoundary(out boundaryError))
+                return VaultAddItemResult.Fail(
+                    boundaryError,
+                    itemId,
+                    transactionId,
                     ciphertextPath,
-                    protectors,
-                    cancellationToken).ConfigureAwait(false);
-                if (!verified.Succeeded || verified.PlaintextBytes != plaintextBytes)
-                    return VaultAddItemResult.Fail(
-                        "CiphertextVerificationFailed:" + verified.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
+                    plaintextBytes,
+                    recoveryRequired: true);
 
-                transaction = transaction with
-                {
-                    State = VaultTransactionState.CiphertextReady,
-                    UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                };
-                VaultMetadataSnapshot ciphertextReady = NextSnapshot(current, current.Items, new[] { transaction });
-                VaultMetadataWriteResult ciphertextWrite = await _metadata.WriteSnapshotAsync(ciphertextReady, cancellationToken).ConfigureAwait(false);
-                if (!ciphertextWrite.Succeeded)
-                    return VaultAddItemResult.Fail(
-                        "CiphertextStateCommitFailed:" + ciphertextWrite.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
-                current = ciphertextReady;
+            FileEncryptionResult encrypted = await _encryption.EncryptAsync(
+                source,
+                ciphertextPath,
+                protectors,
+                cancellationToken).ConfigureAwait(false);
+            if (!encrypted.Succeeded || !encrypted.Verified)
+                return VaultAddItemResult.Fail(
+                    "CiphertextCreationFailed:" + encrypted.Code,
+                    itemId,
+                    transactionId,
+                    ciphertextPath,
+                    plaintextBytes,
+                    recoveryRequired: true);
 
-                transaction = transaction with
-                {
-                    State = VaultTransactionState.MetadataCommitted,
-                    UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                };
-                VaultMetadataSnapshot metadataCommitted = NextSnapshot(current, current.Items, new[] { transaction });
-                VaultMetadataWriteResult metadataWrite = await _metadata.WriteSnapshotAsync(metadataCommitted, cancellationToken).ConfigureAwait(false);
-                if (!metadataWrite.Succeeded)
-                    return VaultAddItemResult.Fail(
-                        "ItemMetadataCommitFailed:" + metadataWrite.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
-                current = metadataCommitted;
+            FileContainerVerificationResult verified = await _encryption.VerifyAsync(
+                ciphertextPath,
+                protectors,
+                cancellationToken).ConfigureAwait(false);
+            if (!verified.Succeeded || verified.PlaintextBytes != plaintextBytes)
+                return VaultAddItemResult.Fail(
+                    "CiphertextVerificationFailed:" + verified.Code,
+                    itemId,
+                    transactionId,
+                    ciphertextPath,
+                    plaintextBytes,
+                    recoveryRequired: true);
 
-                VaultRecoveryCheckResult committedCheck = await VerifyPendingItemAsync(
-                    current,
-                    transaction,
-                    cancellationToken).ConfigureAwait(false);
-                if (!committedCheck.Succeeded)
-                    return VaultAddItemResult.Fail(
-                        "CommittedVerificationFailed:" + committedCheck.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
+            transaction = transaction with
+            {
+                State = VaultTransactionState.CiphertextReady,
+                UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+            VaultMetadataSnapshot ciphertextReady = NextSnapshot(current, current.Items, new[] { transaction });
+            VaultMetadataWriteResult ciphertextWrite = await _metadata.WriteSnapshotAsync(ciphertextReady, cancellationToken).ConfigureAwait(false);
+            if (!ciphertextWrite.Succeeded)
+                return VaultAddItemResult.Fail(
+                    "CiphertextStateCommitFailed:" + ciphertextWrite.Code,
+                    itemId,
+                    transactionId,
+                    ciphertextPath,
+                    plaintextBytes,
+                    recoveryRequired: true);
+            current = ciphertextReady;
 
-                VaultMetadataSnapshot complete = NextSnapshot(
-                    current,
-                    current.Items,
-                    Array.Empty<VaultTransactionRecord>());
-                VaultMetadataWriteResult completeWrite = await _metadata.WriteSnapshotAsync(complete, cancellationToken).ConfigureAwait(false);
-                if (!completeWrite.Succeeded)
-                    return VaultAddItemResult.Fail(
-                        "CompletionCommitFailed:" + completeWrite.Code,
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
+            transaction = transaction with
+            {
+                State = VaultTransactionState.MetadataCommitted,
+                UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+            VaultMetadataSnapshot metadataCommitted = NextSnapshot(current, current.Items, new[] { transaction });
+            VaultMetadataWriteResult metadataWrite = await _metadata.WriteSnapshotAsync(metadataCommitted, cancellationToken).ConfigureAwait(false);
+            if (!metadataWrite.Succeeded)
+                return VaultAddItemResult.Fail(
+                    "ItemMetadataCommitFailed:" + metadataWrite.Code,
+                    itemId,
+                    transactionId,
+                    ciphertextPath,
+                    plaintextBytes,
+                    recoveryRequired: true);
+            current = metadataCommitted;
 
-                VaultMetadataReadResult finalRead = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
-                if (!finalRead.Succeeded || finalRead.Snapshot is null ||
-                    finalRead.Snapshot.PendingTransactions.Count != 0 ||
-                    !finalRead.Snapshot.Items.Any(i => i.ItemId == itemId))
-                {
-                    return VaultAddItemResult.Fail(
-                        "CompletionVerificationFailed",
-                        itemId,
-                        transactionId,
-                        ciphertextPath,
-                        plaintextBytes,
-                        recoveryRequired: true);
-                }
+            VaultRecoveryCheckResult committedCheck = await VerifyPendingItemAsync(
+                current,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            if (!committedCheck.Succeeded)
+                return VaultAddItemResult.Fail(
+                    "CommittedVerificationFailed:" + committedCheck.Code,
+                    itemId,
+                    transactionId,
+                    ciphertextPath,
+                    plaintextBytes,
+                    recoveryRequired: true);
 
-                return VaultAddItemResult.Success(itemId, transactionId, ciphertextPath, plaintextBytes);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            VaultMetadataSnapshot complete = NextSnapshot(
+                current,
+                current.Items,
+                Array.Empty<VaultTransactionRecord>());
+            VaultMetadataWriteResult completeWrite = await _metadata.WriteSnapshotAsync(complete, cancellationToken).ConfigureAwait(false);
+            if (!completeWrite.Succeeded)
+                return VaultAddItemResult.Fail(
+                    "CompletionCommitFailed:" + completeWrite.Code,
+                    itemId,
+                    transactionId,
+                    ciphertextPath,
+                    plaintextBytes,
+                    recoveryRequired: true);
+
+            VaultMetadataReadResult finalRead = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            if (!finalRead.Succeeded || finalRead.Snapshot is null ||
+                !TryValidateMetadataConsistency(finalRead.Snapshot, out _) ||
+                finalRead.Snapshot.PendingTransactions.Count != 0 ||
+                !finalRead.Snapshot.Items.Any(i => i.ItemId == itemId))
             {
                 return VaultAddItemResult.Fail(
-                    "Canceled",
+                    "CompletionVerificationFailed",
                     itemId,
                     transactionId,
                     ciphertextPath,
                     plaintextBytes,
                     recoveryRequired: true);
             }
-            catch (InvalidOperationException)
-            {
-                return VaultAddItemResult.Fail(
-                    "VaultStateChanged",
-                    itemId,
-                    transactionId,
-                    ciphertextPath,
-                    plaintextBytes,
-                    recoveryRequired: true);
-            }
-            catch (OverflowException)
-            {
-                return VaultAddItemResult.Fail(
-                    "GenerationOverflow",
-                    itemId,
-                    transactionId,
-                    ciphertextPath,
-                    plaintextBytes,
-                    recoveryRequired: true);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return VaultAddItemResult.Fail(
-                    "AccessDenied",
-                    itemId,
-                    transactionId,
-                    ciphertextPath,
-                    plaintextBytes,
-                    recoveryRequired: true);
-            }
-            catch (IOException)
-            {
-                return VaultAddItemResult.Fail(
-                    "IoFailure",
-                    itemId,
-                    transactionId,
-                    ciphertextPath,
-                    plaintextBytes,
-                    recoveryRequired: true);
-            }
+
+            return VaultAddItemResult.Success(itemId, transactionId, ciphertextPath, plaintextBytes);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return VaultAddItemResult.Fail(
+                "Canceled",
+                itemId,
+                transactionId,
+                ciphertextPath,
+                plaintextBytes,
+                recoveryRequired: true);
+        }
+        catch (InvalidOperationException)
+        {
+            return VaultAddItemResult.Fail(
+                "VaultStateChanged",
+                itemId,
+                transactionId,
+                ciphertextPath,
+                plaintextBytes,
+                recoveryRequired: true);
+        }
+        catch (OverflowException)
+        {
+            return VaultAddItemResult.Fail(
+                "GenerationOverflow",
+                itemId,
+                transactionId,
+                ciphertextPath,
+                plaintextBytes,
+                recoveryRequired: true);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return VaultAddItemResult.Fail(
+                "AccessDenied",
+                itemId,
+                transactionId,
+                ciphertextPath,
+                plaintextBytes,
+                recoveryRequired: true);
+        }
+        catch (IOException)
+        {
+            return VaultAddItemResult.Fail(
+                "IoFailure",
+                itemId,
+                transactionId,
+                ciphertextPath,
+                plaintextBytes,
+                recoveryRequired: true);
         }
     }
 
@@ -301,112 +315,143 @@ internal sealed class VaultItemStoreService
             return VaultRecoveryResult.Fail("Canceled");
         }
 
-        await using (operationLease)
+        if (operationLease is null)
+            return VaultRecoveryResult.Fail("OperationLeaseUnavailable");
+        await using FileStream lease = operationLease;
+
+        if (!TryValidateStorageBoundary(out string boundaryError))
+            return VaultRecoveryResult.Fail(boundaryError);
+
+        VaultMetadataReadResult read = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        if (read.Code == "NotFound") return VaultRecoveryResult.Success(0);
+        if (!read.Succeeded || read.Snapshot is null)
+            return VaultRecoveryResult.Fail("MetadataUnavailable:" + read.Code);
+
+        VaultMetadataSnapshot current = read.Snapshot;
+        if (current.VaultId != _vault.VaultId)
+            return VaultRecoveryResult.Fail("VaultIdentityMismatch");
+        if (!TryValidateMetadataConsistency(current, out string metadataError))
+            return VaultRecoveryResult.Fail(metadataError);
+
+        int recovered = 0;
+        while (current.PendingTransactions.Count > 0)
         {
-            if (operationLease is null)
-                return VaultRecoveryResult.Fail("OperationLeaseUnavailable");
+            if (current.PendingTransactions.Count != 1)
+                return VaultRecoveryResult.Fail("AmbiguousPendingTransactions", recovered);
 
-            VaultMetadataReadResult read = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
-            if (read.Code == "NotFound") return VaultRecoveryResult.Success(0);
-            if (!read.Succeeded || read.Snapshot is null)
-                return VaultRecoveryResult.Fail("MetadataUnavailable:" + read.Code);
+            VaultTransactionRecord transaction = current.PendingTransactions[0];
+            VaultMetadataItem[] matches = current.Items.Where(i => i.ItemId == transaction.ItemId).ToArray();
+            if (matches.Length != 1)
+                return VaultRecoveryResult.Fail("PendingItemMetadataAmbiguous", recovered);
+            VaultMetadataItem item = matches[0];
 
-            VaultMetadataSnapshot current = read.Snapshot;
-            if (current.VaultId != _vault.VaultId)
-                return VaultRecoveryResult.Fail("VaultIdentityMismatch");
+            if (!TryValidateStorageBoundary(out boundaryError))
+                return VaultRecoveryResult.Fail(boundaryError, recovered);
+            if (!TryGetCiphertextPath(item, out string ciphertextPath))
+                return VaultRecoveryResult.Fail("PendingCiphertextPathInvalid", recovered);
 
-            int recovered = 0;
-            while (current.PendingTransactions.Count > 0)
+            if (transaction.State == VaultTransactionState.Prepared && !File.Exists(ciphertextPath))
             {
-                if (current.PendingTransactions.Count != 1)
-                    return VaultRecoveryResult.Fail("AmbiguousPendingTransactions", recovered);
+                VaultMetadataSnapshot rolledBack = NextSnapshot(
+                    current,
+                    current.Items.Where(i => i.ItemId != item.ItemId).ToArray(),
+                    Array.Empty<VaultTransactionRecord>());
+                VaultMetadataWriteResult rollbackWrite = await _metadata.WriteSnapshotAsync(rolledBack, cancellationToken).ConfigureAwait(false);
+                if (!rollbackWrite.Succeeded)
+                    return VaultRecoveryResult.Fail("PreparedRollbackCommitFailed:" + rollbackWrite.Code, recovered);
+                current = rolledBack;
+                recovered++;
+                continue;
+            }
 
-                VaultTransactionRecord transaction = current.PendingTransactions[0];
-                VaultMetadataItem? item = current.Items.SingleOrDefault(i => i.ItemId == transaction.ItemId);
-                if (item is null)
-                    return VaultRecoveryResult.Fail("PendingItemMetadataMissing", recovered);
+            VaultRecoveryCheckResult check = await VerifyPendingItemAsync(
+                current,
+                transaction,
+                cancellationToken).ConfigureAwait(false);
+            if (!check.Succeeded)
+                return VaultRecoveryResult.Fail("PendingCiphertextRejected:" + check.Code, recovered);
 
-                if (!TryGetCiphertextPath(item, out string ciphertextPath))
-                    return VaultRecoveryResult.Fail("PendingCiphertextPathInvalid", recovered);
-
-                if (transaction.State == VaultTransactionState.Prepared && !File.Exists(ciphertextPath))
+            if (transaction.State == VaultTransactionState.Prepared)
+            {
+                transaction = transaction with
                 {
-                    VaultMetadataSnapshot rolledBack = NextSnapshot(
-                        current,
-                        current.Items.Where(i => i.ItemId != item.ItemId).ToArray(),
-                        Array.Empty<VaultTransactionRecord>());
-                    VaultMetadataWriteResult rollbackWrite = await _metadata.WriteSnapshotAsync(rolledBack, cancellationToken).ConfigureAwait(false);
-                    if (!rollbackWrite.Succeeded)
-                        return VaultRecoveryResult.Fail("PreparedRollbackCommitFailed:" + rollbackWrite.Code, recovered);
-                    current = rolledBack;
-                    recovered++;
-                    continue;
-                }
+                    State = VaultTransactionState.CiphertextReady,
+                    UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+                VaultMetadataSnapshot ready = NextSnapshot(current, current.Items, new[] { transaction });
+                VaultMetadataWriteResult readyWrite = await _metadata.WriteSnapshotAsync(ready, cancellationToken).ConfigureAwait(false);
+                if (!readyWrite.Succeeded)
+                    return VaultRecoveryResult.Fail("RecoveryCiphertextStateCommitFailed:" + readyWrite.Code, recovered);
+                current = ready;
+            }
 
-                VaultRecoveryCheckResult check = await VerifyPendingItemAsync(
+            if (transaction.State == VaultTransactionState.CiphertextReady)
+            {
+                transaction = transaction with
+                {
+                    State = VaultTransactionState.MetadataCommitted,
+                    UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+                VaultMetadataSnapshot committed = NextSnapshot(current, current.Items, new[] { transaction });
+                VaultMetadataWriteResult committedWrite = await _metadata.WriteSnapshotAsync(committed, cancellationToken).ConfigureAwait(false);
+                if (!committedWrite.Succeeded)
+                    return VaultRecoveryResult.Fail("RecoveryMetadataCommitFailed:" + committedWrite.Code, recovered);
+                current = committed;
+            }
+
+            if (transaction.State is VaultTransactionState.MetadataCommitted or VaultTransactionState.Complete)
+            {
+                VaultRecoveryCheckResult finalCheck = await VerifyPendingItemAsync(
                     current,
                     transaction,
                     cancellationToken).ConfigureAwait(false);
-                if (!check.Succeeded)
-                    return VaultRecoveryResult.Fail("PendingCiphertextRejected:" + check.Code, recovered);
+                if (!finalCheck.Succeeded)
+                    return VaultRecoveryResult.Fail("RecoveryFinalVerificationFailed:" + finalCheck.Code, recovered);
 
-                if (transaction.State == VaultTransactionState.Prepared)
-                {
-                    transaction = transaction with
-                    {
-                        State = VaultTransactionState.CiphertextReady,
-                        UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    };
-                    VaultMetadataSnapshot ready = NextSnapshot(current, current.Items, new[] { transaction });
-                    VaultMetadataWriteResult readyWrite = await _metadata.WriteSnapshotAsync(ready, cancellationToken).ConfigureAwait(false);
-                    if (!readyWrite.Succeeded)
-                        return VaultRecoveryResult.Fail("RecoveryCiphertextStateCommitFailed:" + readyWrite.Code, recovered);
-                    current = ready;
-                }
-
-                if (transaction.State == VaultTransactionState.CiphertextReady)
-                {
-                    transaction = transaction with
-                    {
-                        State = VaultTransactionState.MetadataCommitted,
-                        UpdatedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    };
-                    VaultMetadataSnapshot committed = NextSnapshot(current, current.Items, new[] { transaction });
-                    VaultMetadataWriteResult committedWrite = await _metadata.WriteSnapshotAsync(committed, cancellationToken).ConfigureAwait(false);
-                    if (!committedWrite.Succeeded)
-                        return VaultRecoveryResult.Fail("RecoveryMetadataCommitFailed:" + committedWrite.Code, recovered);
-                    current = committed;
-                }
-
-                if (transaction.State is VaultTransactionState.MetadataCommitted or VaultTransactionState.Complete)
-                {
-                    VaultRecoveryCheckResult finalCheck = await VerifyPendingItemAsync(
-                        current,
-                        transaction,
-                        cancellationToken).ConfigureAwait(false);
-                    if (!finalCheck.Succeeded)
-                        return VaultRecoveryResult.Fail("RecoveryFinalVerificationFailed:" + finalCheck.Code, recovered);
-
-                    VaultMetadataSnapshot complete = NextSnapshot(
-                        current,
-                        current.Items,
-                        Array.Empty<VaultTransactionRecord>());
-                    VaultMetadataWriteResult completeWrite = await _metadata.WriteSnapshotAsync(complete, cancellationToken).ConfigureAwait(false);
-                    if (!completeWrite.Succeeded)
-                        return VaultRecoveryResult.Fail("RecoveryCompletionCommitFailed:" + completeWrite.Code, recovered);
-                    current = complete;
-                    recovered++;
-                    continue;
-                }
-
-                if (transaction.State == VaultTransactionState.CleanupPending)
-                    return VaultRecoveryResult.Fail("CleanupRecoveryNotImplemented", recovered);
-
-                return VaultRecoveryResult.Fail("UnsupportedTransactionState", recovered);
+                VaultMetadataSnapshot complete = NextSnapshot(
+                    current,
+                    current.Items,
+                    Array.Empty<VaultTransactionRecord>());
+                VaultMetadataWriteResult completeWrite = await _metadata.WriteSnapshotAsync(complete, cancellationToken).ConfigureAwait(false);
+                if (!completeWrite.Succeeded)
+                    return VaultRecoveryResult.Fail("RecoveryCompletionCommitFailed:" + completeWrite.Code, recovered);
+                current = complete;
+                recovered++;
+                continue;
             }
 
-            return VaultRecoveryResult.Success(recovered);
+            if (transaction.State == VaultTransactionState.CleanupPending)
+                return VaultRecoveryResult.Fail("CleanupRecoveryNotImplemented", recovered);
+
+            return VaultRecoveryResult.Fail("UnsupportedTransactionState", recovered);
         }
+
+        return VaultRecoveryResult.Success(recovered);
+    }
+
+    internal async Task<VaultCommittedItemsResult> ListCommittedItemsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_vault.State != VaultState.Unlocked || _vault.VaultId == Guid.Empty)
+            return VaultCommittedItemsResult.Fail("VaultLocked");
+
+        VaultMetadataReadResult read = await _metadata.ReadSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        if (read.Code == "NotFound") return VaultCommittedItemsResult.Success(Array.Empty<VaultMetadataItem>());
+        if (!read.Succeeded || read.Snapshot is null)
+            return VaultCommittedItemsResult.Fail("MetadataUnavailable:" + read.Code);
+
+        VaultMetadataSnapshot snapshot = read.Snapshot;
+        if (snapshot.VaultId != _vault.VaultId)
+            return VaultCommittedItemsResult.Fail("VaultIdentityMismatch");
+        if (!TryValidateMetadataConsistency(snapshot, out string metadataError))
+            return VaultCommittedItemsResult.Fail(metadataError);
+
+        HashSet<Guid> pendingItemIds = snapshot.PendingTransactions.Select(t => t.ItemId).ToHashSet();
+        VaultMetadataItem[] committed = snapshot.Items
+            .Where(item => !pendingItemIds.Contains(item.ItemId))
+            .Select(CloneMetadataItem)
+            .ToArray();
+        return VaultCommittedItemsResult.Success(committed);
     }
 
     private async Task<VaultRecoveryCheckResult> VerifyPendingItemAsync(
@@ -414,12 +459,17 @@ internal sealed class VaultItemStoreService
         VaultTransactionRecord transaction,
         CancellationToken cancellationToken)
     {
-        VaultMetadataItem? item = snapshot.Items.SingleOrDefault(i => i.ItemId == transaction.ItemId);
-        if (item is null) return VaultRecoveryCheckResult.Fail("ItemMetadataMissing");
+        VaultMetadataItem[] matches = snapshot.Items.Where(i => i.ItemId == transaction.ItemId).ToArray();
+        if (matches.Length != 1) return VaultRecoveryCheckResult.Fail("ItemMetadataAmbiguous");
+        VaultMetadataItem item = matches[0];
         if (item.WrappedItemKey.VaultId != snapshot.VaultId || item.WrappedItemKey.ItemId != item.ItemId)
             return VaultRecoveryCheckResult.Fail("WrappedItemKeyMismatch");
+        if (!TryValidateStorageBoundary(out string boundaryError))
+            return VaultRecoveryCheckResult.Fail(boundaryError);
         if (!TryGetCiphertextPath(item, out string path) || !File.Exists(path))
             return VaultRecoveryCheckResult.Fail("CiphertextMissing");
+        if (IsReparsePoint(path))
+            return VaultRecoveryCheckResult.Fail("CiphertextReparsePoint");
 
         VaultFileKeyProtector openingProtector = VaultFileKeyProtector.ForOpening(_vault, item.ItemId);
         FileContainerVerificationResult verification = await _encryption.VerifyAsync(
@@ -433,16 +483,64 @@ internal sealed class VaultItemStoreService
         return VaultRecoveryCheckResult.Success();
     }
 
+    private bool TryValidateStorageBoundary(out string error)
+    {
+        error = string.Empty;
+        try
+        {
+            if (!Directory.Exists(_root) || !Directory.Exists(_itemsRoot))
+            {
+                error = "StorageBoundaryMissing";
+                return false;
+            }
+
+            string canonicalRoot = Path.GetFullPath(_root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string canonicalItems = Path.GetFullPath(_itemsRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string expectedItems = Path.Combine(canonicalRoot, ItemsDirectoryName)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (!string.Equals(canonicalItems, expectedItems, StringComparison.OrdinalIgnoreCase))
+            {
+                error = "StorageBoundaryChanged";
+                return false;
+            }
+
+            if (IsReparsePoint(canonicalRoot) || IsReparsePoint(canonicalItems))
+            {
+                error = "StorageBoundaryReparsePoint";
+                return false;
+            }
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            error = "StorageBoundaryAccessDenied";
+            return false;
+        }
+        catch (IOException)
+        {
+            error = "StorageBoundaryIoFailure";
+            return false;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            error = "StorageBoundaryInvalid";
+            return false;
+        }
+    }
+
     private bool TryGetCiphertextPath(VaultMetadataItem item, out string path)
     {
         path = string.Empty;
         try
         {
+            if (string.IsNullOrWhiteSpace(item.CiphertextFileName) ||
+                !string.Equals(Path.GetFileName(item.CiphertextFileName), item.CiphertextFileName, StringComparison.Ordinal))
+                return false;
+
             string candidate = Path.GetFullPath(Path.Combine(_itemsRoot, item.CiphertextFileName));
             string prefix = _itemsRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
                             Path.DirectorySeparatorChar;
             if (!candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
-            if (!string.Equals(Path.GetFileName(candidate), item.CiphertextFileName, StringComparison.Ordinal)) return false;
             path = candidate;
             return true;
         }
@@ -450,6 +548,51 @@ internal sealed class VaultItemStoreService
         {
             return false;
         }
+    }
+
+    private bool TryValidateMetadataConsistency(VaultMetadataSnapshot snapshot, out string error)
+    {
+        error = string.Empty;
+        if (snapshot.Items.GroupBy(i => i.ItemId).Any(g => g.Key == Guid.Empty || g.Count() != 1))
+        {
+            error = "DuplicateOrInvalidItemIdentity";
+            return false;
+        }
+        if (snapshot.PendingTransactions.GroupBy(t => t.TransactionId).Any(g => g.Key == Guid.Empty || g.Count() != 1))
+        {
+            error = "DuplicateOrInvalidTransactionIdentity";
+            return false;
+        }
+        if (snapshot.PendingTransactions.GroupBy(t => t.ItemId).Any(g => g.Key == Guid.Empty || g.Count() != 1))
+        {
+            error = "AmbiguousPendingItemIdentity";
+            return false;
+        }
+        if (snapshot.Items.GroupBy(i => i.CiphertextFileName, StringComparer.OrdinalIgnoreCase).Any(g =>
+                string.IsNullOrWhiteSpace(g.Key) || g.Count() != 1))
+        {
+            error = "DuplicateOrInvalidCiphertextIdentity";
+            return false;
+        }
+
+        HashSet<Guid> itemIds = snapshot.Items.Select(i => i.ItemId).ToHashSet();
+        if (snapshot.PendingTransactions.Any(t => !itemIds.Contains(t.ItemId)))
+        {
+            error = "PendingItemMetadataMissing";
+            return false;
+        }
+
+        foreach (VaultMetadataItem item in snapshot.Items)
+        {
+            if (item.WrappedItemKey.VaultId != snapshot.VaultId ||
+                item.WrappedItemKey.ItemId != item.ItemId ||
+                !TryGetCiphertextPath(item, out _))
+            {
+                error = "InvalidItemBinding";
+                return false;
+            }
+        }
+        return true;
     }
 
     private static VaultMetadataSnapshot NextSnapshot(
@@ -544,11 +687,21 @@ internal sealed class VaultItemStoreService
         }
     }
 
+    private static bool IsReparsePoint(string path) =>
+        (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+
     private static void RejectReparseDirectory(string path, string label)
     {
-        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+        if (IsReparsePoint(path))
             throw new IOException(label + " cannot be a reparse point.");
     }
+
+    private static VaultMetadataItem CloneMetadataItem(VaultMetadataItem item) =>
+        new(
+            item.ItemId,
+            item.CiphertextFileName,
+            item.PlaintextBytes,
+            CloneWrappedItemKey(item.WrappedItemKey));
 
     private static VaultWrappedItemKey CloneWrappedItemKey(VaultWrappedItemKey record) =>
         new(
@@ -595,4 +748,16 @@ internal sealed record VaultRecoveryCheckResult(bool Succeeded, string Code)
 {
     internal static VaultRecoveryCheckResult Success() => new(true, "Verified");
     internal static VaultRecoveryCheckResult Fail(string code) => new(false, code);
+}
+
+internal sealed record VaultCommittedItemsResult(
+    bool Succeeded,
+    string Code,
+    IReadOnlyList<VaultMetadataItem> Items)
+{
+    internal static VaultCommittedItemsResult Success(IReadOnlyList<VaultMetadataItem> items) =>
+        new(true, "VerifiedMetadata", items);
+
+    internal static VaultCommittedItemsResult Fail(string code) =>
+        new(false, code, Array.Empty<VaultMetadataItem>());
 }
