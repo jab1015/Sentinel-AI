@@ -30,7 +30,6 @@ namespace Sentinel.App.Services
 
             List<ExternalResearchPassage> passages = new();
             HashSet<string> seenTerms = new(StringComparer.OrdinalIgnoreCase);
-            HashSet<string> seenPassages = new(StringComparer.Ordinal);
 
             foreach (string rawTerm in evidenceTerms)
             {
@@ -46,9 +45,12 @@ namespace Sentinel.App.Services
                     continue;
 
                 string passage = ExtractWindow(text, index, term.Length);
-                if (passage.Length == 0 || !seenPassages.Add(passage))
+                if (passage.Length == 0)
                     continue;
 
+                // Distinct evidence terms are preserved even when their bounded windows
+                // are textually identical. Otherwise one nearby term can erase another
+                // term's source attribution and make passage-to-claim review ambiguous.
                 passages.Add(new ExternalResearchPassage(term, passage));
             }
 
