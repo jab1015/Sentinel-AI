@@ -105,16 +105,108 @@ internal static class VaultKeyFoundationAcceptance
                     "Windows session-lock hook did not lock the vault key session.");
             }
 
+            VerifyMode4ContainerRoundTrip(protector);
+
             Console.WriteLine("Vault authenticated VMK envelope / lock state: PASS");
             Console.WriteLine("Vault independent per-item DEK hierarchy: PASS");
             Console.WriteLine("Vault item-ID/tamper binding: PASS");
             Console.WriteLine("Vault inactivity/session lock foundation: PASS");
+            Console.WriteLine("Vault mode-4 encrypted-container round trip / lock denial: PASS");
             CryptographicOperations.ZeroMemory(firstItemKey);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(wrappingKey);
             CryptographicOperations.ZeroMemory(wrongWrappingKey);
+        }
+    }
+
+    private static void VerifyMode4ContainerRoundTrip(TestKeyProtector masterProtector)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "SentinelVaultMode4Harness", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using SentinelVaultService vault = new();
+            VaultMasterKeyEnvelope envelope = vault.InitializeNewVaultAsync(
+                new IFileKeyProtector[] { masterProtector },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            Guid itemId = Guid.NewGuid();
+            VaultFileKeyProtector vaultProtector = VaultFileKeyProtector.ForEncryption(vault, itemId);
+            IReadOnlyList<IFileKeyProtector> keys = new IFileKeyProtector[] { vaultProtector };
+            FileEncryptionService service = new(SentinelEncryptedContainerV1.MinimumChunkSize);
+
+            string source = Path.Combine(root, "vault-source.bin");
+            string container = Path.Combine(root, "vault-item.senc");
+            string decrypted = Path.Combine(root, "vault-decrypted.bin");
+            byte[] plaintext = RandomNumberGenerator.GetBytes(SentinelEncryptedContainerV1.MinimumChunkSize + 317);
+            File.WriteAllBytes(source, plaintext);
+
+            FileEncryptionResult encryption = service.EncryptAsync(source, container, keys, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Require(encryption.Succeeded && encryption.Verified,
+                "Vault mode-4 encryption was not verified: " + encryption.Code);
+            Require(File.Exists(source) && File.ReadAllBytes(source).SequenceEqual(plaintext),
+                "Vault encryption modified or removed the source plaintext.");
+
+            FileContainerVerificationResult verified = service.VerifyAsync(container, keys, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Require(verified.Succeeded, "Fresh Vault mode-4 container did not verify: " + verified.Code);
+
+            FileDecryptionResult decryption = service.DecryptAsync(container, decrypted, keys, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Require(decryption.Succeeded && File.ReadAllBytes(decrypted).SequenceEqual(plaintext),
+                "Vault mode-4 decryption did not reproduce the exact plaintext.");
+
+            vault.Lock();
+            FileContainerVerificationResult locked = service.VerifyAsync(container, keys, CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Require(!locked.Succeeded && locked.Code == "KeyUnavailable",
+                "Locked Vault still released a mode-4 container DEK.");
+
+            Require(vault.UnlockAsync(
+                envelope,
+                new IFileKeyProtector[] { masterProtector },
+                CancellationToken.None).GetAwaiter().GetResult().Succeeded,
+                "Vault mode-4 test could not reopen the same Vault.");
+
+            VaultFileKeyProtector openingProtector = VaultFileKeyProtector.ForOpening(vault, itemId);
+            Require(service.VerifyAsync(
+                    container,
+                    new IFileKeyProtector[] { openingProtector },
+                    CancellationToken.None).GetAwaiter().GetResult().Succeeded,
+                "Reopened Vault could not recover the mode-4 container DEK.");
+
+            VaultFileKeyProtector wrongItem = VaultFileKeyProtector.ForOpening(vault, Guid.NewGuid());
+            FileContainerVerificationResult wrongItemResult = service.VerifyAsync(
+                    container,
+                    new IFileKeyProtector[] { wrongItem },
+                    CancellationToken.None).GetAwaiter().GetResult();
+            Require(!wrongItemResult.Succeeded && wrongItemResult.Code == "KeyUnavailable",
+                "A different Vault item ID opened another item's mode-4 container.");
+
+            using SentinelVaultService differentVault = new();
+            _ = differentVault.InitializeNewVaultAsync(
+                new IFileKeyProtector[] { masterProtector },
+                CancellationToken.None).GetAwaiter().GetResult();
+            VaultFileKeyProtector wrongVault = VaultFileKeyProtector.ForOpening(differentVault, itemId);
+            FileContainerVerificationResult wrongVaultResult = service.VerifyAsync(
+                    container,
+                    new IFileKeyProtector[] { wrongVault },
+                    CancellationToken.None).GetAwaiter().GetResult();
+            Require(!wrongVaultResult.Succeeded && wrongVaultResult.Code == "KeyUnavailable",
+                "A different Vault identity opened a mode-4 container.");
+
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            }
+            catch { }
         }
     }
 
