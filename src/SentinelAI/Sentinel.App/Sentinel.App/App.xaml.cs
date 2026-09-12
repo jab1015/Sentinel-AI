@@ -4,7 +4,11 @@ using Microsoft.Windows.AppLifecycle;
 using Sentinel.App.Services;
 using System;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using Windows.ApplicationModel.Activation;
+using Windows.Storage;
 
 namespace Sentinel.App
 {
@@ -19,10 +23,12 @@ namespace Sentinel.App
 
         private readonly DiagnosticLogService _diagnosticLog = new();
         private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
+        private readonly ExplorerHandoffService _explorerHandoffService;
         private AppInstance? _primaryInstance;
         private Window? _window;
         private OptionsWindow? _optionsWindow;
         private SystemTrayService? _systemTrayService;
+        private ExplorerInspectionRequest? _pendingExplorerInspection;
         private bool _isExplicitExit;
         private bool _pendingInteractiveActivation;
 
@@ -30,6 +36,8 @@ namespace Sentinel.App
         {
             EnsurePerMonitorDpiAwareness();
             InitializeComponent();
+            string handoffRoot = Path.Combine(ApplicationData.Current.LocalFolder.Path, "ExplorerHandoff");
+            _explorerHandoffService = new ExplorerHandoffService(handoffRoot);
             UnhandledException += App_UnhandledException;
         }
 
@@ -41,10 +49,12 @@ namespace Sentinel.App
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            if (!EnsurePrimaryInstance()) return;
+            AppActivationArguments? activation = GetCurrentActivationArguments();
+            if (!EnsurePrimaryInstance(activation)) return;
 
+            bool explorerInspectionActivation = HandleExplorerInspectionActivation(activation, allowProcessArguments: true);
             Stopwatch startupTimer = Stopwatch.StartNew();
-            bool launchedByWindowsStartup = IsWindowsStartupLaunch();
+            bool launchedByWindowsStartup = activation?.Kind == ExtendedActivationKind.StartupTask;
             _ = _diagnosticLog.InformationAsync("ApplicationLaunch",
                 launchedByWindowsStartup ? "Sentinel AI Windows startup launch started." : "Sentinel AI interactive launch started.");
 
@@ -61,7 +71,7 @@ namespace Sentinel.App
                 _window.AppWindow.Closing += MainAppWindow_Closing;
                 _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);
 
-                if (launchedByWindowsStartup && !_pendingInteractiveActivation)
+                if (launchedByWindowsStartup && !_pendingInteractiveActivation && !explorerInspectionActivation)
                 {
                     mainWindow.StartBackgroundMonitoring();
                     _window.AppWindow.Hide();
@@ -72,6 +82,8 @@ namespace Sentinel.App
                     _pendingInteractiveActivation = false;
                     _window.Activate();
                 }
+
+                DeliverPendingExplorerInspection(mainWindow);
 
                 startupTimer.Stop();
                 _ = _diagnosticLog.InformationAsync("StartupPerformance",
@@ -95,7 +107,7 @@ namespace Sentinel.App
             }
         }
 
-        private bool EnsurePrimaryInstance()
+        private bool EnsurePrimaryInstance(AppActivationArguments? activation)
         {
             try
             {
@@ -103,8 +115,9 @@ namespace Sentinel.App
                 AppInstance primary = AppInstance.FindOrRegisterForKey(MainInstanceKey);
                 if (!primary.IsCurrent)
                 {
-                    AppActivationArguments activation = current.GetActivatedEventArgs();
-                    primary.RedirectActivationToAsync(activation).AsTask().GetAwaiter().GetResult();
+                    AppActivationArguments? redirect = activation ?? GetCurrentActivationArguments();
+                    if (redirect is not null)
+                        primary.RedirectActivationToAsync(redirect).AsTask().GetAwaiter().GetResult();
                     _ = _diagnosticLog.InformationAsync("SingleInstance", "A duplicate Sentinel AI launch was redirected to the existing instance.");
                     Exit();
                     return false;
@@ -131,6 +144,7 @@ namespace Sentinel.App
                 return;
             }
 
+            bool explorerInspectionActivation = HandleExplorerInspectionActivation(args, allowProcessArguments: false);
             Window? window = _window;
             if (window is null)
             {
@@ -139,17 +153,55 @@ namespace Sentinel.App
             }
 
             ShowMainWindow();
+            if (explorerInspectionActivation && window is MainWindow mainWindow)
+                DeliverPendingExplorerInspection(mainWindow);
             _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI window handled a redirected activation.");
         }
 
-        private static bool IsWindowsStartupLaunch()
+        private bool HandleExplorerInspectionActivation(AppActivationArguments? activation, bool allowProcessArguments)
         {
-            try
+            Guid handoffId = Guid.Empty;
+            bool hasRequest = false;
+
+            if (activation?.Kind == ExtendedActivationKind.Launch && activation.Data is ILaunchActivatedEventArgs launchArgs)
+                hasRequest = ExplorerHandoffService.TryParseHandoffId(launchArgs.Arguments, out handoffId);
+
+            if (!hasRequest && allowProcessArguments)
             {
-                AppActivationArguments? activation = AppInstance.GetCurrent().GetActivatedEventArgs();
-                return activation is not null && activation.Kind == ExtendedActivationKind.StartupTask;
+                string[] processArguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
+                hasRequest = ExplorerHandoffService.TryParseHandoffId(processArguments, out handoffId);
             }
-            catch { return false; }
+
+            if (!hasRequest) return false;
+
+            if (_explorerHandoffService.TryConsume(handoffId, out ExplorerInspectionRequest? request, out string reason) && request is not null)
+            {
+                _pendingExplorerInspection = request;
+                _ = _diagnosticLog.InformationAsync("ExplorerInspectionActivation",
+                    $"Sentinel accepted a one-time File Explorer inspection handoff containing {request.Paths.Count} revalidated filesystem item(s). No file was changed by activation.");
+            }
+            else
+            {
+                _pendingExplorerInspection = null;
+                _ = _diagnosticLog.WarningAsync("ExplorerInspectionActivation",
+                    $"Sentinel rejected a File Explorer inspection handoff. {reason}");
+            }
+
+            return true;
+        }
+
+        private void DeliverPendingExplorerInspection(MainWindow mainWindow)
+        {
+            ExplorerInspectionRequest? request = _pendingExplorerInspection;
+            if (request is null) return;
+            _pendingExplorerInspection = null;
+            mainWindow.HandleExplorerInspectionRequest(request);
+        }
+
+        private static AppActivationArguments? GetCurrentActivationArguments()
+        {
+            try { return AppInstance.GetCurrent().GetActivatedEventArgs(); }
+            catch { return null; }
         }
 
         private void MainAppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
