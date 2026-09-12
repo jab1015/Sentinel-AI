@@ -19,9 +19,6 @@ string root = FindRepoRoot();
 string productionRoot = Path.Combine(root, "src", "SentinelAI");
 if (!Directory.Exists(productionRoot)) throw new InvalidOperationException("Production source directory was not found.");
 
-// A17 is a production-wide boundary, not a Services-directory convention. Any code that
-// directly creates or starts a System.Diagnostics.Process can bypass the common timeout,
-// cancellation, process-tree termination, concurrent drain, and output-bound guarantees.
 Regex directProcessOwnership = new(
     @"\bProcess\s*\.\s*Start\s*\(|\bnew\s+(?:System\.Diagnostics\.)?Process\s*\(|\bnew\s+(?:System\.Diagnostics\.)?Process\s*\{|\bProcess\s+\w+\s*=\s*new\s*\(",
     RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -52,9 +49,6 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
     string relative = Path.GetRelativePath(root, file);
     if (relative.EndsWith(Path.Combine("Services", "PrivilegedBrokerClient.cs"), StringComparison.OrdinalIgnoreCase))
     {
-        // UAC elevation requires ShellExecute/runas and therefore cannot use the redirected-output
-        // runner. This is the one production exception. It must retain authenticated PID-bound IPC,
-        // one linked wall-clock deadline across connect/write/read/exit, and bounded tree termination.
         string[] requiredSafetyMarkers =
         {
             "UseShellExecute = true",
@@ -68,17 +62,18 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
             "reader.ReadLineAsync().WaitAsync(operationToken)",
             "process.WaitForExitAsync(operationToken)",
             "catch (OperationCanceledException) when (token.IsCancellationRequested)",
-            "TerminateBroker(process)",
+            "bool brokerExitVerified = TerminateBroker(process)",
+            "could not verify the broker exited",
             "process.Kill(entireProcessTree: true)",
-            "process.WaitForExit(5_000)"
+            "process.WaitForExit(5_000)",
+            "return process.HasExited"
         };
         if (requiredSafetyMarkers.All(marker => text.Contains(marker, StringComparison.Ordinal)))
         {
-            // Fresh per-stage use of the full operation timeout would allow cumulative timeout windows.
-            // The UAC exception is accepted only when write/read do not reset WaitAsync(timeout, ...).
             if (!text.Contains("WriteLineAsync(requestJson).WaitAsync(timeout", StringComparison.Ordinal) &&
                 !text.Contains("ReadLineAsync().WaitAsync(timeout", StringComparison.Ordinal) &&
-                !text.Contains("WaitForExitAsync(token).WaitAsync(timeout", StringComparison.Ordinal))
+                !text.Contains("WaitForExitAsync(token).WaitAsync(timeout", StringComparison.Ordinal) &&
+                !text.Contains("Sentinel terminated the broker", StringComparison.OrdinalIgnoreCase))
                 continue;
         }
     }
