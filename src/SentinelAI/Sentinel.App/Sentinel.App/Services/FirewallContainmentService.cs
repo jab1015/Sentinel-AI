@@ -187,11 +187,13 @@ namespace Sentinel.App.Services
         {
             string safeName = EscapePowerShellLiteral(ruleName);
             string command =
+                "$ErrorActionPreference='Stop'; try { " +
                 "$name='" + safeName + "'; " +
-                "$rules=@(Get-NetFirewallRule -PolicyStore ActiveStore -DisplayName $name -ErrorAction SilentlyContinue | Where-Object {$_.DisplayName -eq $name}); " +
+                "$rules=@(Get-NetFirewallRule -PolicyStore ActiveStore -DisplayName $name -ErrorAction Stop | Where-Object {$_.DisplayName -eq $name}); " +
                 "if($rules.Count -eq 0){'FOUND=0'; exit 0}; if($rules.Count -ne 1){\"FOUND=$($rules.Count)`nCONFLICT=True\"; exit 0}; " +
-                "$r=$rules[0]; $a=@($r | Get-NetFirewallAddressFilter); $p=@($r | Get-NetFirewallPortFilter); $app=@($r | Get-NetFirewallApplicationFilter); $svc=@($r | Get-NetFirewallServiceFilter); " +
-                "\"FOUND=1`nENABLED=$($r.Enabled)`nACTION=$($r.Action)`nDIRECTION=$($r.Direction)`nPROFILE=$($r.Profile)`nREMOTE=$(@($a.RemoteAddress) -join ',')`nLOCAL=$(@($a.LocalAddress) -join ',')`nPROTOCOL=$($p.Protocol)`nLOCALPORT=$(@($p.LocalPort) -join ',')`nREMOTEPORT=$(@($p.RemotePort) -join ',')`nPROGRAM=$($app.Program)`nSERVICE=$($svc.Service)\"";
+                "$r=$rules[0]; $a=@($r | Get-NetFirewallAddressFilter -ErrorAction Stop); $p=@($r | Get-NetFirewallPortFilter -ErrorAction Stop); $app=@($r | Get-NetFirewallApplicationFilter -ErrorAction Stop); $svc=@($r | Get-NetFirewallServiceFilter -ErrorAction Stop); " +
+                "\"FOUND=1`nENABLED=$($r.Enabled)`nACTION=$($r.Action)`nDIRECTION=$($r.Direction)`nPROFILE=$($r.Profile)`nREMOTE=$(@($a.RemoteAddress) -join ',')`nLOCAL=$(@($a.LocalAddress) -join ',')`nPROTOCOL=$($p.Protocol)`nLOCALPORT=$(@($p.LocalPort) -join ',')`nREMOTEPORT=$(@($p.RemotePort) -join ',')`nPROGRAM=$($app.Program)`nSERVICE=$($svc.Service)\"; " +
+                "} catch { Write-Error 'SENTINEL_FIREWALL_QUERY_FAILED'; exit 70 }";
 
             string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
             ProcessStartInfo startInfo = new()
@@ -205,20 +207,24 @@ namespace Sentinel.App.Services
             if (!result.Succeeded)
                 return new(false, false, false, $"firewall query failed: {result.Outcome}");
 
-            Dictionary<string, string> values = ParseKeyValues(result.StandardOutput);
+            if (!TryParseKeyValues(result.StandardOutput, out Dictionary<string, string> values))
+                return new(false, false, false, "firewall query output was malformed or ambiguous");
             return FirewallRuleVerificationPolicy.Evaluate(values, remoteIp);
         }
 
-        private static Dictionary<string, string> ParseKeyValues(string output)
+        private static bool TryParseKeyValues(string output, out Dictionary<string, string> values)
         {
-            Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+            values = new(StringComparer.OrdinalIgnoreCase);
             foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
                 int separator = line.IndexOf('=');
-                if (separator <= 0) continue;
-                values[line[..separator].Trim()] = line[(separator + 1)..].Trim();
+                if (separator <= 0) return false;
+                string key = line[..separator].Trim();
+                string value = line[(separator + 1)..].Trim();
+                if (key.Length == 0 || values.ContainsKey(key)) return false;
+                values.Add(key, value);
             }
-            return values;
+            return true;
         }
 
         private static async Task<ConnectivityState> CheckConnectivityAsync()
