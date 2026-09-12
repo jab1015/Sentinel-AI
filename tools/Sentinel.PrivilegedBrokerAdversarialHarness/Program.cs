@@ -34,10 +34,8 @@ Require(!BrokerIdentityPolicy.SamePackage(null, packageA), "Missing broker packa
 Require(!BrokerIdentityPolicy.SamePackage(packageA, string.Empty), "Empty client package identity was accepted.");
 Require(!BrokerIdentityPolicy.SamePackage("   ", packageA), "Whitespace broker package identity was accepted.");
 
-Require(BrokerFirewallPolicy.TryNormalizeRemoteIp("203.0.113.10", out string ipv4) && ipv4 == "203.0.113.10",
-    "Literal IPv4 target was rejected or changed unexpectedly.");
-Require(BrokerFirewallPolicy.TryNormalizeRemoteIp("2001:db8::10", out string ipv6) && ipv6.Contains(':', StringComparison.Ordinal),
-    "Literal IPv6 target was rejected.");
+Require(BrokerFirewallPolicy.TryNormalizeRemoteIp("203.0.113.10", out string ipv4) && ipv4 == "203.0.113.10", "Literal IPv4 target was rejected or changed unexpectedly.");
+Require(BrokerFirewallPolicy.TryNormalizeRemoteIp("2001:db8::10", out string ipv6) && ipv6.Contains(':', StringComparison.Ordinal), "Literal IPv6 target was rejected.");
 
 string[] maliciousTargets =
 {
@@ -45,11 +43,7 @@ string[] maliciousTargets =
     "203.0.113.10;Remove-Item C:\\*",
     "203.0.113.10 profile=any action=allow",
     "203.0.113.10\" dir=in action=allow",
-    "any",
-    "*",
-    "example.com",
-    "",
-    "   "
+    "any", "*", "example.com", "", "   "
 };
 foreach (string target in maliciousTargets)
     Require(!BrokerFirewallPolicy.TryNormalizeRemoteIp(target, out _), $"Non-literal/injected firewall target was accepted: '{target}'");
@@ -76,86 +70,75 @@ Require(exact.QueryValid && exact.Exists && exact.IsExactBlock, "Exact enabled o
 Dictionary<string, string> disabled = ExactFirewallEvidence(testIp);
 disabled["ENABLED"] = "False";
 Require(!FirewallRuleVerificationPolicy.Evaluate(disabled, testIp).IsExactBlock, "Disabled rule was incorrectly accepted.");
-
 Dictionary<string, string> allow = ExactFirewallEvidence(testIp);
 allow["ACTION"] = "Allow";
 Require(!FirewallRuleVerificationPolicy.Evaluate(allow, testIp).IsExactBlock, "Allow rule was incorrectly accepted.");
-
 Dictionary<string, string> inbound = ExactFirewallEvidence(testIp);
 inbound["DIRECTION"] = "Inbound";
 Require(!FirewallRuleVerificationPolicy.Evaluate(inbound, testIp).IsExactBlock, "Inbound rule was incorrectly accepted.");
-
 Dictionary<string, string> wrongRemote = ExactFirewallEvidence(testIp);
 wrongRemote["REMOTE"] = "203.0.113.11";
 Require(!FirewallRuleVerificationPolicy.Evaluate(wrongRemote, testIp).IsExactBlock, "Wrong remote address was incorrectly accepted.");
-
 Dictionary<string, string> broadRemote = ExactFirewallEvidence(testIp);
 broadRemote["REMOTE"] = testIp + ",203.0.113.11";
 Require(!FirewallRuleVerificationPolicy.Evaluate(broadRemote, testIp).IsExactBlock, "Broader remote-address scope was incorrectly accepted.");
-
 Dictionary<string, string> duplicate = ExactFirewallEvidence(testIp);
 duplicate["FOUND"] = "2";
 duplicate["CONFLICT"] = "True";
 FirewallRuleVerification duplicateResult = FirewallRuleVerificationPolicy.Evaluate(duplicate, testIp);
-Require(duplicateResult.QueryValid && duplicateResult.Exists && !duplicateResult.IsExactBlock,
-    "Duplicate deterministic firewall rules did not fail closed.");
-
-FirewallRuleVerification notFound = FirewallRuleVerificationPolicy.Evaluate(
-    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["FOUND"] = "0" }, testIp);
+Require(duplicateResult.QueryValid && duplicateResult.Exists && !duplicateResult.IsExactBlock, "Duplicate deterministic firewall rules did not fail closed.");
+FirewallRuleVerification notFound = FirewallRuleVerificationPolicy.Evaluate(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["FOUND"] = "0" }, testIp);
 Require(notFound.QueryValid && !notFound.Exists, "Explicit firewall rule absence was not classified correctly.");
-
-FirewallRuleVerification malformed = FirewallRuleVerificationPolicy.Evaluate(
-    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), testIp);
+FirewallRuleVerification malformed = FirewallRuleVerificationPolicy.Evaluate(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), testIp);
 Require(!malformed.QueryValid, "Malformed firewall query output was incorrectly treated as verified absence.");
-
-FirewallRuleVerification malformedCount = FirewallRuleVerificationPolicy.Evaluate(
-    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["FOUND"] = "not-a-number" }, testIp);
+FirewallRuleVerification malformedCount = FirewallRuleVerificationPolicy.Evaluate(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["FOUND"] = "not-a-number" }, testIp);
 Require(!malformedCount.QueryValid, "Malformed firewall rule count was incorrectly treated as valid.");
-
 Dictionary<string, string> incomplete = ExactFirewallEvidence(testIp);
 incomplete.Remove("SERVICE");
 FirewallRuleVerification incompleteResult = FirewallRuleVerificationPolicy.Evaluate(incomplete, testIp);
-Require(incompleteResult.QueryValid && incompleteResult.Exists && !incompleteResult.IsExactBlock,
-    "Incomplete firewall scope evidence was incorrectly accepted.");
+Require(incompleteResult.QueryValid && incompleteResult.Exists && !incompleteResult.IsExactBlock, "Incomplete firewall scope evidence was incorrectly accepted.");
 
 string[] approvedServices = { "BITS", "bits", "wuauserv", "Spooler" };
 foreach (string service in approvedServices)
-    Require(ServiceRestartEngine.TryNormalizeServiceName(service, out string normalized) && !string.IsNullOrWhiteSpace(normalized),
-        $"Allowlisted service was rejected: {service}");
+    Require(ServiceRestartEngine.TryNormalizeServiceName(service, out string normalized) && !string.IsNullOrWhiteSpace(normalized), $"Allowlisted service was rejected: {service}");
 
 string[] rejectedServices =
 {
-    "WinDefend",
-    "WdNisSvc",
-    "MpsSvc",
-    "SecurityHealthService",
-    "EventLog",
-    "RpcSs",
-    "BITS & net user attacker /add",
-    "../BITS",
-    "*",
-    "",
-    "   "
+    "WinDefend", "WdNisSvc", "MpsSvc", "SecurityHealthService", "EventLog", "RpcSs",
+    "BITS & net user attacker /add", "../BITS", "*", "", "   "
 };
 foreach (string service in rejectedServices)
     Require(!ServiceRestartEngine.TryNormalizeServiceName(service, out _), $"Non-allowlisted or injected service target was accepted: '{service}'");
 
-string recoveryRoot = Path.Combine(Path.GetTempPath(), "SentinelServiceRestartHarness", Guid.NewGuid().ToString("N"));
-Directory.CreateDirectory(recoveryRoot);
+string brokerTransactionRoot = Path.Combine(Path.GetTempPath(), "SentinelServiceRestartHarness", Guid.NewGuid().ToString("N"), "Transactions");
+Directory.CreateDirectory(brokerTransactionRoot);
 try
 {
-    ServiceRestartEngine emptyRecovery = new(recoveryRoot);
+    ServiceRestartEngine emptyRecovery = new(brokerTransactionRoot);
     Require(emptyRecovery.RecoverPending().Succeeded, "Empty service-restart recovery directory should be safe.");
 
-    string malformedRecord = Path.Combine(recoveryRoot, $"service-restart-{Guid.NewGuid():N}.json");
+    string quarantineLikeRecord = Path.Combine(brokerTransactionRoot, Guid.NewGuid().ToString("N") + ".json");
+    File.WriteAllText(quarantineLikeRecord, "{}");
+    Require(emptyRecovery.RecoverPending().Succeeded, "Top-level quarantine transaction records must not be consumed by service-restart recovery.");
+
+    string serviceRestartRoot = Path.Combine(brokerTransactionRoot, "ServiceRestarts");
+    Directory.CreateDirectory(serviceRestartRoot);
+    string malformedRecord = Path.Combine(serviceRestartRoot, $"service-restart-{Guid.NewGuid():N}.json");
     File.WriteAllText(malformedRecord, "{}");
     ServiceRestartResult malformedRecovery = emptyRecovery.RecoverPending();
-    Require(!malformedRecovery.Succeeded && malformedRecovery.Code == "RecoveryRecordInvalid",
-        "Malformed service restart recovery state did not fail closed.");
+    Require(!malformedRecovery.Succeeded && malformedRecovery.Code == "RecoveryRecordInvalid", "Malformed service restart recovery state did not fail closed.");
+
+    Require(Directory.EnumerateFiles(brokerTransactionRoot, "service-restart-*.json", SearchOption.TopDirectoryOnly).Count() == 0,
+        "Service restart recovery records must never share the top-level quarantine transaction namespace.");
 }
 finally
 {
-    try { if (Directory.Exists(recoveryRoot)) Directory.Delete(recoveryRoot, true); } catch { }
+    try
+    {
+        string harnessRoot = Directory.GetParent(brokerTransactionRoot)?.FullName ?? brokerTransactionRoot;
+        if (Directory.Exists(harnessRoot)) Directory.Delete(harnessRoot, true);
+    }
+    catch { }
 }
 
 Console.WriteLine("Same packaged broker/client identity: PASS");
@@ -167,5 +150,6 @@ Console.WriteLine("Firewall exact enabled outbound Block verification: PASS");
 Console.WriteLine("Disabled/Allow/wrong-direction/wrong-scope rules rejected: PASS");
 Console.WriteLine("Malformed firewall query output distinguished from verified rule absence: PASS");
 Console.WriteLine("Service restart allowlist and injection rejection: PASS");
+Console.WriteLine("Service/quarantine recovery namespaces isolated: PASS");
 Console.WriteLine("Malformed service restart recovery fails closed: PASS");
 Console.WriteLine("RESULT: PASS");
