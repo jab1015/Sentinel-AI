@@ -103,8 +103,8 @@ $app = Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue | Select-O
 if ($app) {
     try {
         $appPackage = Get-ProcessPackageFullName -ProcessId $app.Id
-        Add-Result 'Running Sentinel app package identity matches installed package' ($appPackage -eq $package.PackageFullName) \
-            "PID=$($app.Id); ProcessPackage=$appPackage; Expected=$($package.PackageFullName)"
+        $appEvidence = "PID=$($app.Id); ProcessPackage=$appPackage; Expected=$($package.PackageFullName)"
+        Add-Result 'Running Sentinel app package identity matches installed package' ($appPackage -eq $package.PackageFullName) $appEvidence
     }
     catch {
         Add-Result 'Running Sentinel app package identity matches installed package' $false $_.Exception.Message
