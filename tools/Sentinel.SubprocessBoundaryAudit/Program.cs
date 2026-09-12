@@ -53,21 +53,34 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
     if (relative.EndsWith(Path.Combine("Services", "PrivilegedBrokerClient.cs"), StringComparison.OrdinalIgnoreCase))
     {
         // UAC elevation requires ShellExecute/runas and therefore cannot use the redirected-output
-        // runner. This is the one production exception, and it must retain its independently audited
-        // bounded IPC/process lifecycle rather than becoming a generic subprocess escape hatch.
+        // runner. This is the one production exception. It must retain authenticated PID-bound IPC,
+        // one linked wall-clock deadline across connect/write/read/exit, and bounded tree termination.
         string[] requiredSafetyMarkers =
         {
             "UseShellExecute = true",
             "Verb = \"runas\"",
             "GetNamedPipeServerProcessId",
             "connectedPid != process.Id",
-            "WaitForExitAsync(token).WaitAsync(timeout, token)",
+            "CancellationTokenSource.CreateLinkedTokenSource(token)",
+            "operationDeadline.CancelAfter(timeout)",
+            "pipe.ConnectAsync(operationToken).WaitAsync(TimeSpan.FromSeconds(20), operationToken)",
+            "writer.WriteLineAsync(requestJson).WaitAsync(operationToken)",
+            "reader.ReadLineAsync().WaitAsync(operationToken)",
+            "process.WaitForExitAsync(operationToken)",
+            "catch (OperationCanceledException) when (token.IsCancellationRequested)",
             "TerminateBroker(process)",
             "process.Kill(entireProcessTree: true)",
             "process.WaitForExit(5_000)"
         };
         if (requiredSafetyMarkers.All(marker => text.Contains(marker, StringComparison.Ordinal)))
-            continue;
+        {
+            // Fresh per-stage use of the full operation timeout would allow cumulative timeout windows.
+            // The UAC exception is accepted only when write/read do not reset WaitAsync(timeout, ...).
+            if (!text.Contains("WriteLineAsync(requestJson).WaitAsync(timeout", StringComparison.Ordinal) &&
+                !text.Contains("ReadLineAsync().WaitAsync(timeout", StringComparison.Ordinal) &&
+                !text.Contains("WaitForExitAsync(token).WaitAsync(timeout", StringComparison.Ordinal))
+                continue;
+        }
     }
 
     violations.Add(relative);
