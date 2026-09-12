@@ -1,131 +1,75 @@
 # SAI-004 — Sprint History
 
-Version: 1.3  
+Version: 2.0  
 Status: Active  
-Last Updated: 2026-07-31
+Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
 
 ---
 
-# Purpose
+## Historical Foundation
 
-This document is the official development log for Sentinel AI.
+Earlier sprints established WinUI 3, MonitoringEngine/SystemSnapshot, native CPU/memory/disk/network/process monitoring, Defender/Firewall evidence, investigation UX, approval-gated remediation, persistent history, optimization transparency, and Store packaging.
 
----
+## Production Hardening Program — September 2026
 
-# Completed Sprints
+Baseline assessment: `1218f5d39e2e98f955179d7911b013636068d373`  
+Assessment result: 29 findings — 14 High, 15 Medium.  
+Working branch: `security/production-hardening-1218f5d`.
 
-## Sprint 1 — Foundation
+### Hardening milestone — process reliability
 
-- Created the WinUI 3 solution and application
-- Established the initial dashboard and branding
-- Added live DispatcherTimer updates
-- Established the repository and `main` branch
+- Centralized bounded subprocess execution.
+- Concurrent stdout/stderr drains.
+- Wall-clock timeout and cancellation.
+- Output caps and structured outcomes.
+- Descendant process-tree termination.
+- Production PowerShell argument-path coverage.
+- Windows CI now repeats the BoundedProcessRunner acceptance harness 10 consecutive times.
+- Exact-head checkpoint `d8ac4af1...`: 10x gate PASS.
 
-## Sprint 2 — Architecture and Documentation
+### Hardening milestone — quarantine
 
-- Created the monitoring-service architecture
-- Added MonitoringEngine and SystemSnapshot
-- Created the project documentation and tracking system
-- Established coding, release, and development standards
+- Added protected quarantine store/recovery semantics.
+- Added semantic validation of recovery transactions before destructive recovery.
+- Recovery now refuses ambiguous/forged state and preserves evidence.
+- Corrected Windows handle rename buffer semantics.
+- Strengthened restore identity/hash/link/path verification.
+- Added adversarial cases for forged restore path/temp path, corrupt records/transactions, collisions, payload tamper, crash recovery, and duplicate IDs.
+- Corrected false-success cleanup behavior: protected record deletion must succeed before transaction deletion; cleanup failures return `MetadataCleanupFailed` and preserve recovery state.
+- Deterministic Windows record-lock fault tests PASS.
 
-## Sprint 3 — Native Windows Monitoring
+### Hardening milestone — package and broker
 
-Status: Completed and verified
+- Unsigned x64 package CI builds/unpacks the generated MSIX and proves the desktop app and privileged broker are both present.
+- Corrected installed-runtime validator to use package identity `ModernMethods.SentinelAI`, manifest publisher identity, and actual PackageFamilyName.
+- Broker retains allowlisted versioned IPC, current-user pipe restriction, peer PID validation, exact target start/path/hash checks, and cancellation/timeout fail-closed behavior.
+- Added Windows package-full-name binding so copied/unpackaged or mismatched broker/client identities are rejected.
+- Added broker identity policy harness; same package accepted, different/missing/unpackaged identity rejected.
 
-Achievements:
+### Exact-head CI checkpoint
 
-- Added Microsoft.Windows.CsWin32
-- Added `NativeMethods.txt`
-- Implemented CPU monitoring with `GetSystemTimes`
-- Implemented physical-memory monitoring with `GlobalMemoryStatusEx`
-- Removed placeholder and random CPU data
-- Connected CPU and memory to the live dashboard
-- Verified successful build and runtime behavior
+Commit before documentation synchronization: `d8ac4af17a6451cb4f82e86ce45b64523f1ed303`.
 
-## Sprint 4 — Core Monitoring Expansion
+- Windows hardening workflow: PASS (`34671410981`; `34671409289` also passed at the same head).
+- Package workflow: PASS (`34671410865`).
+- Quarantine, Authenticode, broker identity, 10x bounded process, system-image, redaction, event filtering, history, diagnostics, and AI gateway harnesses: PASS.
 
-Status: Completed and verified
+## Active Sprint — Adversarial Runtime and Final Claim Boundaries
 
-Achievements:
+Next work:
 
-- Connected disk capacity and usage to the dashboard
-- Implemented live network download and upload throughput
-- Added running process count
-- Added highest-memory process identification and usage
-- Implemented Microsoft Defender enabled status
-- Implemented Windows Firewall enabled status
-- Added security status to the dashboard
-- Preserved live refresh behavior
-- Verified successful build, launch, and live operation
+1. SAI-A07/A15 packaged broker/UAC hostile-caller and lifecycle testing.
+2. SAI-A19 final Ask Sentinel response validation after all UI replacement/composition paths.
+3. SAI-A01 extended Authenticode fixture/runtime matrix.
+4. SAI-A05 Google Cloud + Microsoft Store entitlement staging validation.
+5. Remaining High/Medium findings and complete adversarial re-audit.
+6. Signed package/install/update/uninstall and long-duration stability qualification.
 
-## Security Intelligence Foundation
+## Standing Rule
 
-Status: Implemented through multiple incremental verified builds
-
-Achievements include:
-
-- Investigation-oriented status and executive summaries
-- Evidence-based attention states
-- Windows condition interpretation and guided remediation
-- Progressive disclosure for technical evidence
-- Personalized per-Windows-user greeting setup
-- Continued background monitoring without unnecessary interruption
-
-## User Approval & Recovery
-
-Status: Completed and build verified — 2026-07-31
-
-Achievements:
-
-- Added explicit user approval coordination for sensitive remediation
-- Bound approvals to exact action, target, reason, and evidence state
-- Added short approval expiration window
-- Made approval requests single-use
-- Added protection against reused approvals
-- Revalidated system state immediately before execution
-- Invalidated approvals when investigation evidence changed
-- Prevented execution when evidence confidence regressed
-- Added approval-gated remediation executor
-- Added independent post-action verification contract
-- Added bounded follow-up verification retries
-- Added explicit remediation outcome states
-- Prevented unverified remediation from being reported as successful
-- Added continued-investigation signaling after pending, failed, or execution-failed remediation
-- Verified successful builds throughout the phase
-
----
-
-# Active Work
-
-## Next Phase — Security Intelligence and Remediation Integration
-
-Objectives:
-
-- Wire approved remediation framework to concrete supported Windows actions
-- Preserve exact-target and explicit-consent safety guarantees
-- Expand security-event and suspicious-activity intelligence
-- Continue startup and service analysis
-- Add integration and failure-path coverage
-- Improve responsiveness and reduce observed runtime lag
-
----
-
-# Current Performance Note
-
-The Product Owner reports that the application remains functional and substantially improved, but some UI/runtime lag is still observable. Performance responsiveness is a standing requirement for subsequent work.
-
----
-
-# Lessons Learned
-
-- Replace or expand capabilities incrementally and verify each step at runtime.
-- Preserve existing working features during every expansion.
-- Repository documentation must be synchronized after verified milestones.
-- Service-level capability is not complete until it is integrated and verified.
-- Remediation must never be reported as successful until independent evidence confirms the expected state.
-- User approval must be narrow, short-lived, single-use, and invalidated when evidence changes.
+Green CI is evidence, not a production claim. Source-complete items remain open until their required Windows, Store, cloud, adversarial, and release gates are satisfied.
 
 ---
 

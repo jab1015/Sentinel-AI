@@ -1,150 +1,72 @@
 # SAI-000 — Project Status
 
-Version: 1.4  
-Status: Active — Security completion pending Windows acceptance  
-Last Updated: 2026-08-08
+Version: 2.0  
+Status: Active — Production security hardening  
+Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
 
 ---
 
-# Purpose
+## Single Source of Truth
 
-This document is the single source of truth for the current state of Sentinel AI.
+Sentinel AI is in an active production-security hardening program based on assessment commit `1218f5d39e2e98f955179d7911b013636068d373`.
 
----
+- Production branch: `main`
+- Hardening branch: `security/production-hardening-1218f5d`
+- Current hardening checkpoint before this documentation update: `d8ac4af17a6451cb4f82e86ce45b64523f1ed303`
+- Findings: 29 total — 14 High, 15 Medium
+- Release posture: **NOT production-hardened; DO NOT MERGE yet**
 
-# Project Information
+No finding is marked PASS from source changes alone. Runtime, packaged, Store, Google Cloud, adversarial, architecture, and stability evidence remain mandatory where applicable.
 
-- **Project:** Sentinel AI
-- **Platform:** Windows Desktop
-- **Framework:** WinUI 3
-- **Language:** C#
-- **Runtime:** .NET 8
-- **Repository:** GitHub
-- **Production Branch:** `main`
+## Product Objective
 
----
+Sentinel AI is being strengthened from a monitoring/explanation application into a trustworthy Windows security platform that preserves Ask Sentinel, hardware/software monitoring, repair assistance, history, and optimization while adding safe detection, containment, quarantine, elevated remediation, and clear user-facing explanations.
 
-# Current Version
+## Current Proven CI Checkpoint
 
-0.4.0 development line
+At `d8ac4af17a6451cb4f82e86ce45b64523f1ed303`:
 
----
+- Windows hardening workflow: **PASS** — latest exact-head PR run `34671410981`; earlier exact-head run `34671409289` also completed successfully.
+- Unsigned x64 package workflow: **PASS** — exact-head run `34671410865`.
+- Desktop x64 Release build: PASS.
+- Privileged broker x64 Release build: PASS.
+- Broker package-identity policy harness: PASS.
+- Authenticode acceptance harness: PASS.
+- BoundedProcessRunner acceptance harness: PASS for 10 consecutive iterations.
+- Quarantine adversarial harness: PASS, including recovery semantics and metadata-cleanup failure preservation.
+- System-image, cloud-redaction, event-filtering, investigation-history, diagnostic-log, and AI-gateway security harnesses: PASS.
 
-# Current Phase
+These are commit-bound CI results, not production-release approval.
 
-Proactive Security Completion — implementation and harness preparation
+## Major Hardening Completed So Far
 
----
+- Bounded subprocess ownership with concurrent output draining, wall-clock timeout/cancellation, output caps, and descendant-tree termination.
+- Quarantine protected-store transaction/recovery semantics hardened; forged recovery state fails closed; restore uses handle-based identity controls; cleanup failures preserve recovery evidence and do not report false success.
+- Privileged broker uses a versioned allowlisted protocol, peer PID checks, exact target identity checks, and now Windows package-full-name binding between broker and client.
+- Package CI proves both `Sentinel.App.exe` and `Sentinel.PrivilegedBroker.exe` are present in the generated unsigned x64 MSIX.
+- Installed-runtime validation script corrected to query the real package identity and manifest publisher identity.
+- Authenticode, DISM/SFC classification, cloud redaction, history retention, diagnostics, event filtering, network subprocess collection, and AI gateway source boundaries have been materially hardened.
 
-# Current Objective
+## Current Priority
 
-Continue expanding Sentinel from passive monitoring and investigation into a trustworthy Windows investigation assistant that can recommend and safely execute narrowly scoped remediation while preserving explicit user control.
+1. Finish SAI-A07/A15 privileged-broker adversarial packaged/UAC validation.
+2. Fix SAI-A19 so every final Ask Sentinel response is deterministically validated after all UI response replacements.
+3. Revalidate SAI-A01 Authenticode against catalog/timestamp/revocation/replacement and shipped architectures.
+4. Execute SAI-A05 Google Cloud + Store entitlement staging validation.
+5. Continue the remaining 29-finding remediation and adversarial re-review.
+6. Perform final signed/package, clean install/upgrade/uninstall, supported Windows/architecture, startup/background, Defender/firewall, recovery, resource, and 1-hour/8-hour stability gates.
 
----
+## Important Open Runtime Boundaries
 
-# Current Validation Gate
+Quarantine CI is materially stronger, but standard-user ACL resistance, reparse/junction/hardlink attacks, crash checkpoints, disk-full/access-denied, destination races, broker-killed-mid-operation, and installed package/UAC behavior still require real Windows evidence.
 
-Repository-wide security implementation and static source verification are substantially complete. The current estimate is **97% complete**.
+Broker package identity is source/CI validated, but installed elevated broker identity, unauthorized callers, malformed IPC, UAC cancel/accept, PID reuse, target replacement, pipe races, and upgrade behavior remain runtime work.
 
-This is not yet a release-complete claim:
+## Definition of Done
 
-- The updated branch has not yet been pulled into the Product Owner's Visual Studio environment.
-- The full Windows build and acceptance harness suite have not yet run against these changes.
-- Live installed-app checks, BSOD-question grounding, performance observation, and remediation safety validation remain pending.
-- The prior July/August production acceptance results remain historical baseline evidence and do not validate the current change set.
-
-The Product Owner should wait for the explicit instruction **READY TO PULL, BUILD, AND TEST** before beginning the validation sequence.
-
----
-
-# Security Completion Implemented
-
-- Continuous Defender, Firewall, authentication, network, process, lineage, service, startup, scheduled-task, persistence, spyware, crash, and availability evidence.
-- Fail-closed incomplete-evidence semantics throughout protection, risk, Ask Sentinel, and Activity Center.
-- Persistent atomic investigation and maintenance history with unavailable-history distinction.
-- Ask Sentinel current-evidence and verified-history grounding, including optimization action versus current-need separation.
-- Explicit, single-use, exact-target remediation approval with PID/start-time process binding.
-- Transactional firewall and quarantine containment with verification, rollback, idempotence, serialization, and timeouts.
-- Automatic optimization default-off, mandatory verification/rollback, single-action cycles, cooldown persistence, and bounded resource use.
-- Approval-only DISM/SFC repair and exclusion from unattended maintenance.
-- Non-destructive acceptance harnesses for optimization settings, remediation outcomes, quarantine tamper resistance, containment identity, and maintenance-history integrity.
-
----
-
-# Completed Work
-
-## Foundation and Core Monitoring
-
-- [x] WinUI 3 application and Sentinel AI dashboard
-- [x] MonitoringEngine and SystemSnapshot architecture
-- [x] Native CPU and physical-memory monitoring
-- [x] Disk capacity and usage monitoring
-- [x] Network download and upload throughput
-- [x] Running process count and highest-memory process reporting
-- [x] Microsoft Defender and Windows Firewall status
-- [x] Live dashboard refresh and timestamps
-- [x] Progressive-disclosure technical details
-- [x] User-facing healthy-state executive summary
-
-## Investigation Experience
-
-- [x] Investigation-oriented user messaging
-- [x] Evidence-driven attention state
-- [x] Guided remediation language
-- [x] Windows Update transient-condition handling
-- [x] Personalized per-user greeting setup
-- [x] Background monitoring designed to avoid unnecessary user interruption
-
-## User Approval and Recovery
-
-Status: Completed and runtime build verified by Product Owner on 2026-07-31.
-
-- [x] Explicit approval model for sensitive remediation
-- [x] Exact action and target binding
-- [x] Short-lived approval requests
-- [x] Single-use approval enforcement
-- [x] Revalidation immediately before execution
-- [x] Approval invalidation when investigation state changes
-- [x] Confidence regression protection
-- [x] Post-remediation verification contract
-- [x] Bounded verification retries
-- [x] Distinct not-attempted, pending, failed, verified-success, and execution-failed outcomes
-- [x] Continued-investigation state when remediation cannot be verified
-- [x] Successful build and launch after completion
-
----
-
-# Current Runtime Observation
-
-The application is building and running successfully. The Product Owner reports some remaining UI/runtime lag. Performance responsiveness remains an active optimization item and must not be ignored as additional monitoring and remediation capabilities are added.
-
----
-
-# Known Remaining Work
-
-- Reduce remaining dashboard/runtime lag
-- Complete production wiring of approval-gated remediation actions to concrete Windows operations
-- Expand security event and suspicious activity intelligence
-- Complete startup and service analysis
-- Expand integration, failure-path, and remediation verification tests
-- Alerts and notifications
-- Historical reporting and investigation history
-- AI-assisted explanations and recommendations
-- Release hardening and production acceptance
-
----
-
-# Immediate Next Task
-
-Begin the next implementation phase after User Approval & Recovery, with performance responsiveness treated as a standing acceptance requirement.
-
----
-
-# Definition of Done
-
-A feature is complete only when it builds, runs, satisfies acceptance criteria, preserves existing behavior, is verified, is documented, and is pushed to `main`.
+A security finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are all satisfied. Final release additionally requires a complete re-audit of all 29 findings and commit-bound release/stability evidence.
 
 ---
 

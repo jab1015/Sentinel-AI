@@ -1,140 +1,104 @@
 # SAI-005 — Product Roadmap
 
-Version: 1.2  
-Status: Active  
-Last Updated: 2026-07-29
+Version: 2.0  
+Status: Active — Production hardening roadmap  
+Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
 
 ---
 
-# Product Vision
+## Product Vision
 
-Sentinel AI will become an AI-powered Windows security assistant that helps users understand, monitor, and improve the health and security of their computers.
+Sentinel AI will be a trustworthy Windows security and system-assistance platform that continuously monitors verified evidence, explains findings in plain language, detects suspicious behavior, safely contains/remediates supported threats, preserves user control, and never claims an action succeeded without verification.
 
----
+## Established Product Foundation
 
-# Version 0.1 — Foundation
+Complete or substantially implemented:
 
-Status: Complete
+- WinUI 3/.NET 8 desktop application.
+- Hardware/software/system monitoring.
+- Defender and Firewall evidence collection.
+- Ask Sentinel investigation/explanation experience.
+- Activity/investigation history and diagnostics.
+- Optimization/repair assistance with approval and verification concepts.
+- Microsoft Store/MSIX packaging foundation.
+- Privileged broker architecture.
+- Quarantine architecture.
+- AI gateway architecture with server-side session/tier controls in source.
 
-- WinUI 3 application
-- Initial dashboard
-- GitHub workflow
-- Project structure
+## Phase A — Production Security Hardening
 
----
+Status: **ACTIVE**
 
-# Version 0.2 — Architecture and Documentation
+Baseline: 29 findings (14 High, 15 Medium) from commit `1218f5d...`.
 
-Status: Complete
+Current accomplishments include bounded subprocess execution, quarantine recovery/cleanup hardening, package payload verification, broker package-identity binding, Authenticode improvements, deterministic DISM/SFC classification, redaction/history/diagnostic/event-filtering tests, and AI gateway security harness coverage.
 
-- MonitoringEngine
-- SystemSnapshot
-- Modular monitor services
-- Engineering and tracking documentation
+Exit criteria:
 
----
+- Every High and Medium finding corrected or explicitly disabled/fail-closed where a safe capability is not ready.
+- Required deterministic, adversarial, packaged-runtime, cloud, Store, and architecture-specific evidence attached to each finding.
+- Full 29-finding adversarial re-audit completed.
 
-# Version 0.3 — Native Monitoring Foundation
+## Phase B — Active Protection
 
-Status: Complete
-
-- Native CPU monitoring
-- Native physical-memory monitoring
-- CsWin32 integration
-- Live dashboard refresh
-
----
-
-# Version 0.4 — Core Monitoring Dashboard
-
-Status: Complete and runtime verified
-
-- Disk capacity and usage
-- Network download and upload throughput
-- Process count and highest-memory process
-- Microsoft Defender enabled status
-- Windows Firewall enabled status
-- Complete live dashboard integration
-
-Success criteria achieved: the dashboard displays verified live CPU, memory, disk, network, process, and Windows security information.
-
----
-
-# Version 0.5 — Security Intelligence
-
-Status: Active
+Status: **IN DEVELOPMENT / NOT YET RELEASE-QUALIFIED**
 
 Objectives:
 
-- Windows Event Log monitoring
-- Critical and security event classification
-- Suspicious-process indicators
-- Startup application analysis
-- Service-health analysis
-- Threat and risk classification
-- Integration and failure-path tests
+- Detect suspicious/malicious behavior and potentially tainted files.
+- Ransomware/malware indicators with honest confidence/evidence semantics.
+- User warning + explanation + safe blocking/containment where technically supported.
+- Protected file quarantine with restore/permanent-delete workflows.
+- Suspicious network containment with explicit unblock/release controls where supported.
+- Strong Defender integration without overstating Sentinel's independent blocking coverage.
+- Exact-target elevated remediation through the broker.
 
----
+## Phase C — Ask Sentinel Trust Boundary
 
-# Version 0.6 — Recommendations and Alerts
+Status: **ACTIVE**
 
-Status: Planned
+- Preserve natural-language investigation and explanations.
+- Final displayed answer must pass deterministic claim/provenance validation after every response replacement/composition path.
+- Separate VERIFIED FACT, OBSERVED, INFERRED, ACTION VERIFIED, and ADVISORY semantics.
+- AI prose must never invent blocked/quarantined/repaired/Defender/firewall outcomes.
 
-- Explainable security recommendations
-- Alert center
-- Toast notifications
-- Security timeline
-- Historical reporting
+## Phase D — Cloud and Entitlement Validation
 
----
+Status: **BLOCKED ON EXTERNAL VALIDATION**
 
-# Version 0.7 — AI Intelligence
+- Deploy/validate Google Cloud gateway configuration.
+- IAM + Secret Manager + provider secret isolation.
+- Store entitlement validation for paid tier.
+- Replay/rate/concurrency/spend controls across multiple instances.
+- Abuse, timeout, outage, restart, and secret-unavailable tests.
 
-Status: Planned
+## Phase E — Release Qualification
 
-- AI-generated explanations
-- Confidence scoring
-- Root-cause analysis
-- Personalized recommendations
-- Natural-language interaction
+Status: **PLANNED AFTER HARDENING**
 
----
+Required before release sign-off:
 
-# Version 0.8 — Protection and Remediation
+- Store-signed/package provenance validation.
+- Clean install, upgrade, uninstall.
+- x64 plus every actually shipped architecture.
+- Supported Windows versions.
+- Standard/admin/UAC matrices.
+- Startup/background/Explorer restart/sleep-wake/network-loss behavior.
+- Defender/firewall interactions.
+- Crash/recovery/disk-full/access-denied tests.
+- Fresh 1-hour and 8-hour stability/resource runs on the final commit.
+- Independent final security review.
 
-Status: Planned
+## Current Next Milestones
 
-- Suspicious activity detection
-- Remediation guidance
-- Threat history
-- Policy-based protective actions
-
----
-
-# Version 0.9 — Release Candidate
-
-Status: Planned
-
-- UI polish
-- Accessibility
-- Performance testing
-- Installer
-- Upgrade process
-- Beta testing
-
----
-
-# Version 1.0 — Commercial Release
-
-Status: Planned
-
-- Production release
-- Installer and updates
-- User documentation
-- Licensing
-- Public distribution readiness
+1. Broker packaged/UAC adversarial validation (A07/A15).
+2. Final Ask Sentinel claim boundary (A19).
+3. Authenticode extended runtime matrix (A01).
+4. AI gateway staging/Store validation (A05).
+5. Remaining findings and full re-audit.
+6. Final release qualification.
 
 ---
 
