@@ -1,9 +1,7 @@
-using System.Runtime.CompilerServices;
 using Sentinel.App.Services;
 
 internal static class ExactOwnedOutputCleanupAcceptance
 {
-    [ModuleInitializer]
     internal static void Verify()
     {
         string root = Path.Combine(Path.GetTempPath(), "SentinelExactCleanupHarness", Guid.NewGuid().ToString("N"));
