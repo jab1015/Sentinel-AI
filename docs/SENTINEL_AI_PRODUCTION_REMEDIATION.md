@@ -4,7 +4,7 @@ Baseline assessment revision: `1218f5d39e2e98f955179d7911b013636068d373`
 Hardening branch: `security/production-hardening-1218f5d`  
 Last Updated: 2026-09-12
 
-A finding is marked complete only after all required source, deterministic, adversarial, Windows runtime, package, Store, cloud, architecture, and stability validation is satisfied. **Source implementation or green CI alone does not close a finding.**
+A finding is complete only after all required source, deterministic, adversarial, Windows runtime, package, Store, cloud, architecture, and stability validation is satisfied. **Source implementation or green CI alone does not close a finding.**
 
 ## Status vocabulary
 
@@ -13,12 +13,11 @@ A finding is marked complete only after all required source, deterministic, adve
 - **BLOCKED — GOOGLE CLOUD VALIDATION REQUIRED**
 - **BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED**
 - **BLOCKED — WINDOWS RUNTIME VALIDATION REQUIRED**
-- **PASS — FULLY VERIFIED** (use only when every required gate is proven)
+- **PASS — FULLY VERIFIED**
 
 ## Original findings
 
 ### HIGH
-
 - [ ] SAI-A01 — Executable trust does not verify Authenticode integrity
 - [ ] SAI-A02 — Quarantine is a rename, not a protected containment boundary
 - [ ] SAI-A03 — Restore/delete trust attacker-editable catalog paths and hashes
@@ -35,7 +34,6 @@ A finding is marked complete only after all required source, deterministic, adve
 - [ ] SAI-A16 — Service restart can affect dependencies and leave a service stopped
 
 ### MEDIUM
-
 - [ ] SAI-A12 — Startup preference controls only one of two startup mechanisms
 - [ ] SAI-A15 — Privileged actions lack a consistent execution boundary
 - [ ] SAI-A17 — Caller cancellation can leave command children running
@@ -54,170 +52,168 @@ A finding is marked complete only after all required source, deterministic, adve
 
 ## Current checkpoint — 2026-09-12
 
-Pre-documentation code checkpoint: `d8ac4af17a6451cb4f82e86ce45b64523f1ed303` (`test(broker): run package identity policy gate`).
+Pre-documentation code checkpoint: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b` (`fix(A17): route network repair through bounded runner`).
 
 ### Exact-head CI evidence
 
-- Windows hardening workflow: **SUCCESS** — run `34671410981`; same-head run `34671409289` also completed SUCCESS.
-- Unsigned x64 package workflow: **SUCCESS** — run `34671410865`.
+- Windows hardening workflow `34676187598`: **SUCCESS**.
+- Unsigned x64 package workflow `34676187667`: **SUCCESS**.
 - Desktop x64 Release build: PASS.
 - Broker x64 Release build: PASS.
 - Broker package-identity harness: PASS.
+- Ask Sentinel final-display safety harness: PASS in Windows CI.
+- Initial monitoring startup acceptance harness: PASS in Windows CI.
+- Security-health classification harness: present in current Windows CI.
 - Authenticode acceptance harness: PASS.
 - BoundedProcessRunner acceptance harness: PASS for 10 consecutive repetitions.
 - Quarantine-store adversarial harness: PASS.
-- System-image classification: PASS.
-- Cloud redaction: PASS.
-- Event filtering: PASS.
-- Investigation history: PASS.
-- Diagnostic logging: PASS.
-- AI gateway security harness: PASS.
+- System-image, cloud-redaction, event-filtering, investigation-history, diagnostic-log, and AI-gateway security harnesses: PASS.
 
 This is internal deterministic/CI evidence only.
 
 ## Finding records
 
 ### SAI-A01 — Authenticode executable trust
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Current source requires Windows Authenticode verification, content-bound caching, changed-during-verification fail-closed behavior, structured status mapping, and catalog handling. Windows CI covers trusted Windows executable, unsigned executable, tampered trusted copy, and status mapping.
-
-Remaining: catalog fixture matrix, self-signed/untrusted publisher lookalikes, timestamp-preserving replacement, timestamped expiry, revocation/offline behavior, cache invalidation races, and every shipped architecture.
+Source requires Windows trust verification with content/change checks and structured status handling. Deterministic Authenticode acceptance coverage passes. Remaining: real catalog fixture matrix, self-signed/untrusted lookalikes, timestamp-preserving replacement, timestamped expiry, revocation/offline behavior, cache/race validation, and every shipped architecture.
 
 ### SAI-A02 / A03 / A04 — protected quarantine, trusted state, recovery
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Current source/CI now provides:
+Protected records/transactions, semantic recovery guard, record-derived restore destination, protected-directory/collision rejection, directory/reparse defenses, handle identity/hash/link checks, no-overwrite restore, exact-payload permanent delete, and metadata-cleanup failure preservation have deterministic adversarial coverage.
 
-- Protected store records/transactions and semantic recovery guard.
-- Recovery refuses forged/ambiguous transaction semantics before destructive action.
-- Restore destination derives from protected record state; protected directories and collisions are rejected.
-- Directory-chain lease/reparse defenses around restore.
-- Handle-based identity/hash/link verification and no-overwrite rename semantics.
-- Permanent delete verifies exact payload identity/hash and rejects hard-linked payloads.
-- Deterministic cases for basic quarantine/restore/delete, collision, tamper, payload-ready crash recovery, corrupt record/transaction, forged restore path/temp path, and duplicate item ID.
-- Restore/delete metadata cleanup no longer swallows record deletion failure. Record cleanup is required before transaction cleanup; failure returns `MetadataCleanupFailed` and preserves transaction recovery evidence. Deterministic Windows record-lock tests PASS.
-
-Important fixes during this phase included the documented absolute `FILE_RENAME_INFO` target, correct UTF-16 target-buffer termination, and removal of unreliable post-rename pathname-reopen identity assumptions.
-
-Remaining Windows adversarial evidence: standard-user inability to modify payload/record/transaction/directories; resulting owner/DACL verification; reparse/junction/symlink/hardlink attacks; source/destination replacement races; orphan states; all crash checkpoints; disk full/access denied; destination directory deletion; broker killed mid-operation; installed package/UAC behavior. Do not mark PASS yet.
+Remaining: standard-user ACL/owner resistance, reparse/junction/symlink/hardlink runtime attacks, source/destination races, orphan states, all crash checkpoints, disk full/access denied, destination deletion, broker termination mid-operation, and installed package/UAC behavior.
 
 ### SAI-A05 — AI gateway authentication/entitlement
-
 **STATUS: BLOCKED — GOOGLE CLOUD VALIDATION REQUIRED / BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED**
 
-Source includes short-lived signed sessions, server-side tier enforcement, Microsoft Store paid-entitlement path, replay request IDs, provider concurrency limits, and server-side provider credentials. Deterministic AI gateway security harness passes.
+Source includes short-lived signed sessions, server-side tier enforcement, Store entitlement path, replay request IDs, concurrency limits, and server-side provider credentials. AI gateway harness passes. Remaining external matrix includes anonymous/malformed/expired/modified/replay, tier escalation, entitlement expiry/revocation, rate/concurrency abuse, provider/secret/Store outage, restart, multi-instance/distributed replay/rate state, IAM, Secret Manager, logging/alerting, and spend controls.
 
-Remaining staging matrix: anonymous, malformed, expired, modified, replayed, Basic→Advanced, unsubscribed/expired/revoked entitlement, rate/concurrency abuse, provider timeout, secret unavailable, Store outage, instance restart, multi-instance/distributed replay/rate/spend behavior, IAM/Secret Manager/logging/alerting/spend controls.
+### SAI-A06 — Defender and firewall health
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
+
+Original failure: registry/process/profile indicators could imply protection without proving active Defender/firewall state.
+
+Current implementation queries Defender status, Defender service/protection/passive/signature state, firewall service, and active firewall profiles. A deterministic classifier now fails closed for passive/disabled/stale/incomplete Defender states and stopped/partial/incomplete/impossible firewall states and is included in Windows CI.
+
+Remaining: installed Windows/Defender variants, policy-managed/passive configurations, service transition/race behavior, stale/unavailable PowerShell evidence, and supported-Windows runtime validation.
 
 ### SAI-A07 / A15 — privileged broker and exact elevated identity
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Current source uses a versioned allowlisted named-pipe protocol, current-user pipe restriction, peer PID verification, exact target start/path/hash validation, cancellation/timeout fail-closed behavior, and generated-package broker presence.
+Versioned allowlisted IPC, current-user pipe restriction, peer PID, exact target start/path/hash, timeout/cancellation fail-closed behavior, package broker presence, and broker/client Windows package-full-name binding are implemented. Missing/unpackaged/mismatched identity fails closed. Installed validation tooling uses the actual Sentinel package identity/publisher.
 
-New hardening: broker and client must have the same Windows package full name. Unpackaged/missing/mismatched package identity fails closed. Deterministic policy harness accepts same-package identity and rejects different/missing/unpackaged identity; current Windows workflow passes it.
+Remaining: installed elevated package identity after UAC, unrelated same-user callers, copied/spoofed binaries, malformed/oversized/extra JSON, unsupported protocol/operation, arbitrary command/path attempts, PID reuse/target replacement, caller exit, UAC accept/cancel, no-connect/no-send/disconnect/hang, pipe races, second callers, signing/provenance/ACLs, installed paths, and upgrade-pending behavior.
 
-Installed-runtime validator was corrected to query package identity `ModernMethods.SentinelAI`, validate the manifest publisher identity, and use the actual PackageFamilyName for packaged logs.
+### SAI-A08 — firewall containment verification
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Remaining: installed elevated broker package identity, same-user unrelated caller, copied/spoofed client/broker, malformed/oversized/extra JSON, unsupported protocol/operation, arbitrary command/path attempts, PID reuse, target replacement, caller exit during UAC, UAC accept/cancel, broker no-connect/no-send/disconnect/hang, pipe races, second caller, installed package paths, signing/provenance/ACLs, and upgrade-pending behavior.
+Original failure: verification could accept a disabled or Allow rule as successful containment.
+
+Current verifier requires the expected enabled outbound exact-address Block rule. Malformed/incomplete query output fails closed and is not treated as verified rule absence. Adversarial deterministic coverage includes disabled, Allow, inbound, wrong-address, overly broad, duplicate, incomplete, and malformed states.
+
+Remaining: installed firewall-policy/runtime behavior, Group Policy interaction, concurrent rule mutation/removal, privilege/UAC paths, IPv4/IPv6 coverage as applicable, and actual containment/unblock verification.
 
 ### SAI-A09 / A17 — bounded subprocess ownership
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Common runner drains stdout/stderr concurrently, enforces wall-clock timeout/cancellation, caps output, returns structured outcomes, and kills descendant process trees where Windows permits. Driver research and netstat collection use it. Windows workflow repeats the acceptance harness 10 times; all repetitions pass at the current checkpoint.
+Common runner drains both streams concurrently, enforces wall-clock timeout/cancellation, caps output, returns structured outcomes, and attempts descendant-tree termination. Windows CI repeats the acceptance harness 10 times.
 
-Remaining: access-denied/kill-failure and packaged runtime behavior where practical, plus final audit for bypass launch helpers.
+A17 re-review found `NetworkRepairExecutor` still used custom `Process` ownership. Caller cancellation could escape while `ipconfig` remained alive. At `ed313049...` that path was moved to `BoundedProcessRunner`, eliminating that bypass from the network-repair path.
+
+Remaining: access-denied/kill-failure and packaged runtime behavior where practical plus continued final audit for any other bypass launch helpers.
+
+### SAI-A10 / A11 — driver repair identity and success reporting
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
+
+Current source binds a candidate to exact PnP instance, hardware ID, Windows Update ID/revision, revalidates before install, rejects ambiguous/missing matches, and does not claim repair success when Windows Update reports failure or verification is absent/restart-pending.
+
+Remaining: dedicated deterministic adversarial matrix plus real Windows Update/device/runtime cases including ambiguity, disappearance/replacement, failed install, restart-required, cancellation, timeout, and post-install verification.
 
 ### SAI-A12 — startup behavior
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Source moved toward one packaged StartupTask mechanism and single-instance activation/redirect. Remaining: installed StartupTask enable/disable, Windows-disabled preference, duplicate activation, Explorer restart, upgrade/Store lifecycle.
+Source uses packaged StartupTask/single-instance direction. Remaining: installed enable/disable, Windows-disabled preference, duplicate activation, Explorer restart, Store upgrade/lifecycle.
+
+### SAI-A13 — monitoring timer startup
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
+
+Original failure: an exception during the first refresh could prevent the monitoring timer from ever starting. Startup sequencing has been corrected and a deterministic initial-monitoring startup acceptance gate added to Windows CI.
+
+Remaining: installed startup/background lifecycle, repeated refresh failure/recovery, suspend/resume, sleep/wake, session transitions, and long-running runtime validation.
 
 ### SAI-A14 — temporary cleanup race
+**STATUS: OPEN — CODE NOT COMPLETE / SAFELY DISABLED**
 
-**STATUS: OPEN — CODE NOT COMPLETE**
-
-Unsafe automatic temp deletion remains fail-closed/disabled until a handle-based reparse-resistant primitive is fully implemented and validated.
+Unsafe automatic temporary deletion remains fail-closed and performs no destructive cleanup. Do not re-enable until a handle-based, reparse-resistant, race-resistant exact-object primitive and adversarial runtime tests exist.
 
 ### SAI-A16 — service restart dependency safety
+**STATUS: OPEN — CODE NOT COMPLETE / SAFELY DISABLED**
 
-**STATUS: OPEN — CODE NOT COMPLETE**
-
-Unsafe automatic restart remains fail-closed. Dependency-aware broker execution, rollback, cancellation recovery, and verified final service state are still required before restoration.
+Unsafe automatic service restart remains fail-closed. Dependency-aware broker execution, rollback, cancellation recovery, and verified final service state are required before enabling it.
 
 ### SAI-A18 — system image integrity classification
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Inverted DISM phrase handling is removed; explicit healthy/corrupt/unknown/error classification has deterministic passing tests. Remaining: real DISM/SFC permissions, cancellation, reboot, supported-Windows and failure-path validation.
+DISM/SFC healthy/corrupt/unknown/error classification has deterministic coverage. Remaining real DISM/SFC permissions, cancellation, reboot, supported-Windows and failure-path validation.
 
 ### SAI-A19 — final Ask Sentinel claim boundary
+**STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-**STATUS: OPEN — CODE NOT COMPLETE — NEXT CODE PRIORITY**
+The old defect allowed MainWindow response replacements after orchestrator validation to reach display without fresh validation while retaining an earlier validated state. Current code invalidates that state on post-orchestrator replacements and applies final display-time validation after composition. Deterministic regression coverage prevents advisory/inferred prose from claiming blocked/quarantined/repaired/Defender/firewall actions without corresponding verified action evidence.
 
-The orchestrator validates a preliminary response, but `MainWindow.AskSentinel.cs` can subsequently replace that answer on optimization, external-investigation, and driver-answer paths and display it without revalidation.
-
-Required correction: one deterministic final validator/provenance boundary immediately before final display, after all composition/replacement. Regression tests must ensure advisory/model text cannot claim blocked, quarantined, repaired, Defender removal, firewall application, or other verified actions without corresponding deterministic state. Preserve explicit VERIFIED FACT / OBSERVED / INFERRED / ACTION VERIFIED / ADVISORY semantics.
+Remaining: installed UI/runtime paths, all response replacement paths with real services, malformed/adversarial model text, cancellation/timeouts, and final provenance UX validation.
 
 ### SAI-A20 — cloud evidence redaction
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Deterministic tests pass for authorization/credential/JWT/user/email/MAC/device/IP/path cases. Remaining: adversarial formats and deployed log/telemetry inspection.
+Deterministic sensitive-format tests pass. Remaining adversarial formats and deployed logging/telemetry inspection.
 
 ### SAI-A21 — external research evidence
-
 **STATUS: OPEN — CODE/VALIDATION REMAINS**
 
-External matches are advisory rather than `Verified=true`. Passage-to-claim provenance, stale-cache behavior, and regression coverage remain.
+External matches remain advisory rather than verified security facts, and final display safety prevents advisory/model text from asserting verified security actions. Passage-to-claim provenance, stale-cache semantics, and dedicated regression coverage remain incomplete.
 
 ### SAI-A22 — bounded external/archive work
-
 **STATUS: OPEN — VALIDATION/REVIEW REMAINS**
 
-Source has bounded response/archive/XML handling and bounded driver catalog execution. Remaining: malformed/oversized archives, decompression/file-count limits, redirects/source policy, timeouts, resource exhaustion.
+Source has bounded response/archive/XML handling and bounded driver-catalog execution. Remaining malformed/oversized archives, decompression/file-count limits, redirect/source policy, timeout/cancellation, and resource-exhaustion adversarial tests.
 
 ### SAI-A23 — network collection coverage
-
 **STATUS: SOURCE COMPLETE — RUNTIME VALIDATION REQUIRED**
 
-Polling limitations are explicit and netstat uses the bounded runner. Remaining: short-lived TCP, UDP peer attribution, LAN/common-port correlation, IPv6/QUIC, process attribution, adapter churn, and event-driven coverage. Do not claim comprehensive network blocking.
+Polling limitations are explicit and netstat uses the bounded runner. Remaining short-lived TCP, UDP attribution, LAN/common-port correlation, IPv6/QUIC, process attribution, adapter churn, and event-driven coverage. Do not claim comprehensive independent network blocking.
 
 ### SAI-A24 / A25 / A26 / A27 / A28 — correctness, persistence, diagnostics
-
 **STATUS: SOURCE/CI IMPROVED — RUNTIME/FAULT VALIDATION REQUIRED**
 
-Current source includes per-adapter throughput baselines/reset handling, bounded history retention/tail reads, serialized/redacted diagnostic logging with crash breadcrumbs/rotation, benign filtering before aggregate counting, and fail-closed maintenance persistence with durable pre-action reservation. A25/A26/A27 deterministic harnesses pass. Continue A24/A28 concurrency/fault/runtime work before closure.
+Current source includes per-adapter throughput baselines/reset handling, bounded history retention, serialized/redacted diagnostics with crash breadcrumbs/rotation, benign filtering before aggregate counting, and maintenance reservation/cooldown work. A25/A26/A27 deterministic harnesses pass. A24/A28 concurrency, persistence-failure and runtime behavior still require focused completion/re-review. Informational history failure must not be confused with safety-relevant cooldown/reservation persistence.
 
 ### SAI-A29 — architecture/test/release assurance
-
 **STATUS: BLOCKED — WINDOWS RUNTIME VALIDATION REQUIRED / BLOCKED — MICROSOFT STORE / PARTNER CENTER VALIDATION REQUIRED**
 
-Unsigned x64 package CI builds/unpacks the actual generated MSIX and proves both desktop and broker payload presence. This is not Store-signed release qualification.
+Unsigned x64 package CI builds/unpacks the generated MSIX and validates desktop/broker packaging. This is not Store-signed release qualification.
 
-Remaining: final signed/Store-style package, clean install/upgrade/uninstall, every shipped architecture, supported Windows, standard/admin/UAC, startup/background, Defender/firewall, sleep/wake/network loss, recovery/failure, resource behavior, and fresh final-commit 1-hour/8-hour stability evidence.
-
-## Other original findings still requiring individual closure
-
-SAI-A06, A08, A10, A11, and A13 remain open until their current source is re-reviewed against the original failure mode and all required deterministic/runtime evidence is recorded. Do not infer closure from unrelated green workflows.
+Remaining: final signed/Store-style package, clean install/upgrade/uninstall, every shipped architecture, supported Windows versions, standard/admin/UAC, startup/background, Defender/firewall, sleep/wake/network loss, recovery/failure, resource behavior, and fresh final-commit 1-hour/8-hour stability evidence.
 
 ## Current work order
 
-1. Finish A07/A15 packaged broker/UAC adversarial validation.
-2. Implement A19 final Ask Sentinel display-time validation and regression harness.
-3. Revalidate A01 with the extended Authenticode fixture/runtime/architecture matrix.
+1. Finish A07/A15 packaged broker/UAC adversarial runtime validation.
+2. Complete remaining A19 runtime/provenance validation.
+3. Complete A01 extended Authenticode runtime fixture/architecture matrix.
 4. Execute A05 Google Cloud + Store staging validation.
-5. Continue A06/A08/A10/A11/A13/A14/A16/A21/A22/A23/A24/A28 and remaining runtime gates.
-6. Re-audit every High finding adversarially.
-7. Re-audit all 29 findings.
-8. Run final signed package/install-update-uninstall, supported Windows/architecture, startup/background/UAC/Defender/firewall/recovery matrices.
+5. Finish A06/A08/A10/A11/A13 and A17 runtime/adversarial evidence.
+6. Complete or safely leave disabled A14/A16.
+7. Complete A21/A22/A23/A24/A28.
+8. Complete A29 release qualification.
 9. Run fresh final-commit 1-hour and 8-hour stability/resource tests.
-10. Only then label the branch `READY FOR FINAL INDEPENDENT REVIEW` and hand the exact final commit to the independent reviewer.
+10. Re-audit every High finding adversarially, then re-audit all 29 findings.
+11. Only then label the branch `READY FOR FINAL INDEPENDENT REVIEW`.
+
+## Premium Privacy Protection preservation gate
+
+The Premium Privacy Protection roadmap in `SAI-005_Product_Roadmap.md` and `SAI-000_Project_Status.md` remains authoritative and **PLANNED POST-HARDENING**. Current hardening must not remove, weaken, overwrite, or prematurely implement that plan. Secure Delete, encryption, Sentinel Vault, and destructive File Explorer actions remain out of current implementation scope unless explicitly authorized.
 
 ## Release closure rule
 
