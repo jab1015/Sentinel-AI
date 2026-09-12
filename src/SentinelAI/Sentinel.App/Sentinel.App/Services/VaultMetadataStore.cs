@@ -56,7 +56,25 @@ internal sealed class VaultMetadataStore
         if (_vault.State != VaultState.Unlocked || _vault.VaultId != snapshot.VaultId)
             return VaultMetadataWriteResult.Fail("VaultLockedOrMismatched");
 
-        await using FileStream lease = await AcquireWriterLeaseAsync(cancellationToken).ConfigureAwait(false);
+        FileStream lease;
+        try
+        {
+            lease = await AcquireWriterLeaseAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return VaultMetadataWriteResult.Fail("Canceled");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return VaultMetadataWriteResult.Fail("AccessDenied");
+        }
+        catch (IOException)
+        {
+            return VaultMetadataWriteResult.Fail("IoFailure");
+        }
+
+        await using FileStream writerLease = lease;
         string tempPath = Path.Combine(_root, $".{MetadataFileName}.{Guid.NewGuid():N}.tmp");
         bool tempCreated = false;
         try
