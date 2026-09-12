@@ -46,19 +46,50 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Verify privileged broker is packaged
+      - name: Verify generated MSIX payload
         shell: pwsh
         run: |
           $packageRoot = "src\SentinelAI\Sentinel.App\Sentinel.App (Package)"
-          $brokers = @(Get-ChildItem $packageRoot -Recurse -File -Filter "Sentinel.PrivilegedBroker.exe" -ErrorAction SilentlyContinue)
-          if ($brokers.Count -eq 0) {
-            throw "Sentinel.PrivilegedBroker.exe was not found in package build output. Privileged operations would be unavailable after installation."
+          $msixes = @(Get-ChildItem "$packageRoot\AppPackages" -Recurse -File -Filter "*.msix" -ErrorAction Stop |
+            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($msixes.Count -ne 1) {
+            throw "Expected exactly one generated application MSIX, found $($msixes.Count)."
           }
-          $apps = @(Get-ChildItem $packageRoot -Recurse -File -Filter "Sentinel.App.exe" -ErrorAction SilentlyContinue)
-          if ($apps.Count -eq 0) { throw "Sentinel.App.exe was not found in package build output." }
-          Write-Host "Packaged Sentinel.App.exe count: $($apps.Count)"
-          Write-Host "Packaged Sentinel.PrivilegedBroker.exe count: $($brokers.Count)"
-          $brokers | ForEach-Object { Write-Host $_.FullName }
+
+          $makeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -File -ErrorAction Stop |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $makeAppx) { throw "MakeAppx.exe was not found." }
+
+          $unpackRoot = Join-Path $env:RUNNER_TEMP "sentinel-msix-unpacked"
+          if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $unpackRoot | Out-Null
+          & $makeAppx.FullName unpack /p $msixes[0].FullName /d $unpackRoot /o
+          if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed to unpack the generated MSIX." }
+
+          $apps = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.App.exe")
+          $brokers = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.PrivilegedBroker.exe")
+          if ($apps.Count -ne 1) { throw "Generated MSIX did not contain exactly one Sentinel.App.exe; found $($apps.Count)." }
+          if ($brokers.Count -ne 1) { throw "Generated MSIX did not contain exactly one Sentinel.PrivilegedBroker.exe; found $($brokers.Count)." }
+
+          $inventoryPath = Join-Path $env:GITHUB_WORKSPACE "package-payload-inventory.txt"
+          @(
+            "MSIX=$($msixes[0].FullName)",
+            "MSIX_SHA256=$((Get-FileHash $msixes[0].FullName -Algorithm SHA256).Hash)",
+            "Sentinel.App.exe=$($apps[0].FullName)",
+            "Sentinel.App.exe_SHA256=$((Get-FileHash $apps[0].FullName -Algorithm SHA256).Hash)",
+            "Sentinel.PrivilegedBroker.exe=$($brokers[0].FullName)",
+            "Sentinel.PrivilegedBroker.exe_SHA256=$((Get-FileHash $brokers[0].FullName -Algorithm SHA256).Hash)"
+          ) | Set-Content -Path $inventoryPath -Encoding utf8
+          Get-Content $inventoryPath
+
+      - name: Upload package payload inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-payload-inventory
+          path: package-payload-inventory.txt
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Record package inventory
         shell: pwsh
