@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,9 +12,13 @@ internal static class WindowsRestartRequestService
 
     internal static Task<ProcessExecutionResult> RequestRestartAsync(CancellationToken cancellationToken = default)
     {
+        string shutdownPath = Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+        if (!Path.IsPathFullyQualified(shutdownPath) || !File.Exists(shutdownPath))
+            return Task.FromResult(ProcessExecutionResult.LaunchFailure("The trusted Windows restart executable could not be resolved."));
+
         ProcessStartInfo startInfo = new()
         {
-            FileName = "shutdown.exe",
+            FileName = shutdownPath,
             Arguments = "/r /t 0",
             UseShellExecute = false,
             CreateNoWindow = true
