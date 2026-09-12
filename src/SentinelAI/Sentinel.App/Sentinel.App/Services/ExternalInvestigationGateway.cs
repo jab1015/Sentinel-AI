@@ -82,15 +82,23 @@ namespace Sentinel.App.Services
                     if (body is null) continue;
 
                     string searchable = NormalizeWebText(body);
-                    IReadOnlyList<string> matches = evidenceTerms
-                        .Where(term => searchable.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    IReadOnlyList<ExternalResearchPassage> passages =
+                        ExternalResearchProvenancePolicy.ExtractPassages(searchable, evidenceTerms);
+                    IReadOnlyList<string> matches = passages
+                        .Select(p => p.MatchedTerm)
                         .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .Take(8)
                         .ToArray();
 
-                    ExternalSourceEvidence evidence = new(source.Name, source.Uri, source.Authority, true, matches.Count > 0, matches);
+                    ExternalSourceEvidence evidence = new(
+                        source.Name,
+                        source.Uri,
+                        source.Authority,
+                        true,
+                        passages.Count > 0,
+                        matches,
+                        passages);
                     reached.Add(evidence);
-                    if (matches.Count > 0) relevant.Add(evidence);
+                    if (passages.Count > 0) relevant.Add(evidence);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
                 catch { }
@@ -106,14 +114,14 @@ namespace Sentinel.App.Services
             else if (relevant.Count == 0)
             {
                 result = new ExternalInvestigationResult(topic, false, 0,
-                    $"Sentinel reached {reached.Count} approved authoritative source(s), but did not find material relevant to the current evidence. No external conclusion was accepted.",
+                    $"Sentinel reached {reached.Count} approved authoritative source(s), but did not find attributable source passages relevant to the current evidence. No external conclusion was accepted.",
                     reached, true, false, Array.Empty<string>());
             }
             else
             {
                 string[] matchedTerms = relevant.SelectMany(x => x.MatchedTerms).Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
                 result = new ExternalInvestigationResult(topic, false, 0,
-                    $"Sentinel found potentially relevant material on {relevant.Count} approved authoritative source(s). Keyword relevance is not treated as verified evidence; any conclusion remains advisory until Sentinel can bind a specific source passage to a specific local claim.",
+                    $"Sentinel found bounded attributable passages on {relevant.Count} approved authoritative source(s) that contain terms from the current evidence. These passages remain advisory context and are not proof of local machine state or proof that Sentinel performed a security action.",
                     reached, true, false, matchedTerms);
             }
 
@@ -137,10 +145,6 @@ namespace Sentinel.App.Services
                 SmartAiResult ai = await _aiCoordinator.AnalyzeAsync("external-investigation", question, snapshot, result, aiContext, cancellationToken, supplementalEvidence).ConfigureAwait(false);
                 if (ai.UsedCloudAi)
                 {
-                    // Cloud model prose is deliberately NOT copied into a security-state answer.
-                    // The model is an advisory reasoning layer, not the authority for whether
-                    // Sentinel blocked, repaired, quarantined, or verified anything. Only
-                    // deterministic application records may make those claims to the user.
                     string cacheNote = ai.FromCache ? " A recent analysis for identical redacted evidence was reused without another provider request." : string.Empty;
                     string advisoryOutcome = ai.RequiresMoreEvidence
                         ? "The AI advisory also indicated that more verified evidence is needed before Sentinel can make a stronger conclusion."
@@ -249,7 +253,15 @@ namespace Sentinel.App.Services
         private sealed record TrustedSource(string Name, string Uri, int Authority);
     }
 
-    public sealed record ExternalSourceEvidence(string SourceName, string Uri, int Authority, bool Reached, bool MatchedCurrentEvidence, IReadOnlyList<string> MatchedTerms);
+    public sealed record ExternalSourceEvidence(
+        string SourceName,
+        string Uri,
+        int Authority,
+        bool Reached,
+        bool MatchedCurrentEvidence,
+        IReadOnlyList<string> MatchedTerms,
+        IReadOnlyList<ExternalResearchPassage>? Passages = null);
+
     public sealed record ExternalInvestigationResult(
         string Topic,
         bool Verified,
