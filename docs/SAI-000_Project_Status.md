@@ -1,6 +1,6 @@
 # SAI-000 — Project Status
 
-Version: 2.1  
+Version: 2.2  
 Status: Active — Production security hardening  
 Last Updated: 2026-09-12
 
@@ -14,82 +14,77 @@ Sentinel AI is in an active production-security hardening program based on asses
 
 - Production branch: `main`
 - Hardening branch: `security/production-hardening-1218f5d`
-- Current hardening documentation checkpoint before the premium-privacy roadmap update: `d7d1289d97cd01f61ee8467bdcbb503455c50e3b`
+- Current proven code checkpoint before this documentation synchronization: `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`
 - Findings: 29 total — 14 High, 15 Medium
 - Release posture: **NOT production-hardened; DO NOT MERGE yet**
 
-No finding is marked PASS from source changes alone. Runtime, packaged, Store, Google Cloud, adversarial, architecture, and stability evidence remain mandatory where applicable.
-
-## Product Objective
-
-Sentinel AI is being strengthened from a monitoring/explanation application into a trustworthy Windows security platform that preserves Ask Sentinel, hardware/software monitoring, repair assistance, history, and optimization while adding safe detection, containment, quarantine, elevated remediation, and clear user-facing explanations.
+No finding is marked PASS from source changes or green CI alone. Runtime, packaged, Store, Google Cloud, adversarial, architecture, and stability evidence remain mandatory where applicable.
 
 ## Current Proven CI Checkpoint
 
-At the current hardening checkpoint:
+Exact-head CI for `ed313049f371cf46c74cdb4e83cf8ed12f169c9b`:
 
-- Windows hardening workflow: PASS at the documented exact-head checkpoint.
-- Unsigned x64 package workflow: PASS at the documented exact-head checkpoint.
-- Desktop x64 Release build: PASS.
-- Privileged broker x64 Release build: PASS.
+- Windows hardening workflow `34676187598`: **PASS**.
+- Unsigned x64 package workflow `34676187667`: **PASS**.
+- Desktop and privileged-broker Release builds: PASS.
 - Broker package-identity policy harness: PASS.
+- Ask Sentinel final-display safety harness: PASS at the preceding validated checkpoint and remains part of Windows CI.
+- Initial-monitoring startup regression harness: PASS at the preceding validated checkpoint and remains part of Windows CI.
+- Security-health classification harness for Defender/firewall evidence: added to Windows CI at the current checkpoint.
 - Authenticode acceptance harness: PASS.
 - BoundedProcessRunner acceptance harness: PASS for 10 consecutive iterations.
-- Quarantine adversarial harness: PASS, including recovery semantics and metadata-cleanup failure preservation.
+- Quarantine adversarial harness: PASS.
 - System-image, cloud-redaction, event-filtering, investigation-history, diagnostic-log, and AI-gateway security harnesses: PASS.
 
 These are commit-bound CI results, not production-release approval.
 
-## Major Hardening Completed So Far
+## Hardening Progress Since the Previous Documentation Checkpoint
 
-- Bounded subprocess ownership with concurrent output draining, wall-clock timeout/cancellation, output caps, and descendant-tree termination.
-- Quarantine protected-store transaction/recovery semantics hardened; forged recovery state fails closed; restore uses handle-based identity controls; cleanup failures preserve recovery evidence and do not report false success.
-- Privileged broker uses a versioned allowlisted protocol, peer PID checks, exact target identity checks, and Windows package-full-name binding between broker and client.
-- Package CI proves both `Sentinel.App.exe` and `Sentinel.PrivilegedBroker.exe` are present in the generated unsigned x64 MSIX.
-- Installed-runtime validation script corrected to query the real package identity and manifest publisher identity.
-- Authenticode, DISM/SFC classification, cloud redaction, history retention, diagnostics, event filtering, network subprocess collection, and AI gateway source boundaries have been materially hardened.
+- SAI-A19 final Ask Sentinel display-time validation was implemented. Post-orchestrator answer replacement no longer inherits an earlier validation state; composed/replaced answers are revalidated before display. Advisory/inferred content cannot assert verified protection actions without deterministic action evidence.
+- SAI-A13 initial-monitoring startup behavior was corrected and a deterministic regression gate added so an initial refresh failure cannot permanently prevent timer startup.
+- SAI-A08 firewall containment verification was tightened. Verification now requires the expected enabled outbound exact-address Block rule and fails closed on malformed/incomplete evidence rather than confusing malformed output with verified rule absence. Adversarial cases cover disabled, Allow, inbound, wrong-address, broad, duplicate, incomplete, and malformed states.
+- SAI-A06 Defender/firewall health classification was separated into deterministic classification logic and added to Windows CI. Passive/disabled/stale/incomplete Defender states and stopped/partial/incomplete firewall states fail closed instead of being inferred healthy.
+- SAI-A17 re-review found a remaining custom subprocess path in `NetworkRepairExecutor`. It was moved onto the common `BoundedProcessRunner` so caller cancellation/timeout owns and terminates the child process tree rather than allowing `ipconfig` to outlive the operation.
+- SAI-A14 temporary cleanup remains intentionally disabled/fail-closed; no destructive cleanup is enabled until a safe handle-based implementation exists.
+- SAI-A16 automatic service restart remains intentionally disabled/fail-closed until dependency, rollback, cancellation, and final-state guarantees are implemented.
+- SAI-A21/A22 re-review has begun. External research remains advisory, but passage-to-claim provenance and remaining bounded-resource/adversarial work are not complete.
 
 ## Current Priority
 
-1. Finish SAI-A07/A15 privileged-broker adversarial packaged/UAC validation.
-2. Fix SAI-A19 so every final Ask Sentinel response is deterministically validated after all UI response replacements.
-3. Revalidate SAI-A01 Authenticode against catalog/timestamp/revocation/replacement and shipped architectures.
-4. Execute SAI-A05 Google Cloud + Store entitlement staging validation.
-5. Continue the remaining 29-finding remediation and adversarial re-review.
-6. Perform final signed/package, clean install/upgrade/uninstall, supported Windows/architecture, startup/background, Defender/firewall, recovery, resource, and 1-hour/8-hour stability gates.
+1. Complete installed packaged/UAC adversarial validation for SAI-A07/A15.
+2. Complete the remaining runtime matrix for SAI-A19 and SAI-A01 rather than treating deterministic CI as full closure.
+3. Execute SAI-A05 Google Cloud + Microsoft Store entitlement staging validation.
+4. Finish re-review/validation for A06, A08, A10, A11, A13 and the remaining A17 runtime boundary.
+5. Keep A14/A16 safely disabled unless their full safety contracts can be completed.
+6. Complete A21, A22, A23, A24, A28 and A29 release qualification.
+7. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
 
 ## Planned Premium Privacy Protection
 
-A post-hardening premium feature phase is now formally recorded in `SAI-005_Product_Roadmap.md`.
+The post-hardening Premium Privacy Protection phase remains authoritative in `SAI-005_Product_Roadmap.md` and is **preserved without implementation during the current hardening effort**.
 
-Planned subscription-only capabilities include:
+Planned subscription-only capabilities remain:
 
-- modern File Explorer integration
-- Inspect with Sentinel AI
-- Secure Delete for explicitly selected user files with strict target validation and verification-oriented results
-- attributable-copy/history discovery with carefully scoped cleanup actions
-- strong authenticated file encryption
-- Windows-account-protected encryption
-- portable password encryption
-- independent recovery keys
-- Sentinel Vault
-- optional future Windows Hello/TPM integration after dedicated review
+- supported packaged File Explorer integration, beginning with harmless `Inspect with Sentinel AI`
+- Secure Delete with explicit intent, exact-object revalidation, protected-location/link/reparse/race defenses, media-aware behavior, transactional fail-closed execution, and VERIFIED / REQUESTED / REMAINS / CANNOT PROVE results
+- attributable-copy/history discovery separated from deletion, without silently removing unrelated recovery/history/system data
+- authenticated AES-256-GCM file encryption with independent random item keys, unique nonce material, authenticated metadata, corruption detection, and a reviewed streaming/chunked format for large files
+- safe encrypt-then-verify transactions that preserve the plaintext original on encryption or verification failure
+- Windows current-user protection for independent file keys
+- portable password protection using a maintained memory-hard KDF such as Argon2id when supportable
+- independent high-entropy recovery keys with Copy / Save / Print support and no silent escrow
+- Sentinel Vault using a vault master-key hierarchy wrapping independent item keys, automatic/session locking, account/password/recovery modes, and optional future Windows Hello/TPM only after dedicated review
+- existing server-side premium entitlement enforcement, with entitlement never substituting for filesystem/object safety validation
 
-These features are **PLANNED ONLY** and must not interrupt the current 29-finding remediation or release qualification. They must be built on the validated broker, package-identity, entitlement, quarantine/filesystem-safety, and crash-recovery foundations.
+Normal single-file privacy actions must not directly modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`, wipe unrelated restore/history sets, or make unsupported claims of forensic irrecoverability.
 
-The privacy feature set must be aggressive about protecting the selected user's data while remaining conservative about unrelated Windows/system data. A single-file action must not automatically remove unrelated restore/history sets or manipulate system-managed paging/hibernation files.
-
-## Important Open Runtime Boundaries
-
-Quarantine CI is materially stronger, but standard-user ACL resistance, reparse/junction/hardlink attacks, crash checkpoints, disk-full/access-denied, destination races, broker-killed-mid-operation, and installed package/UAC behavior still require real Windows evidence.
-
-Broker package identity is source/CI validated, but installed elevated broker identity, unauthorized callers, malformed IPC, UAC cancel/accept, PID reuse, target replacement, pipe races, and upgrade behavior remain runtime work.
+**Do not implement Secure Delete, encryption, Sentinel Vault, or destructive Explorer actions until current hardening/release gates are complete or explicit authorization is given.**
 
 ## Definition of Done
 
 A security finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are all satisfied. Final release additionally requires a complete re-audit of all 29 findings and commit-bound release/stability evidence.
 
-Premium privacy work begins only after the current release-hardening foundation is independently reviewed and accepted.
+Premium privacy work begins only after the current release-hardening foundation is independently reviewed and accepted, unless explicitly authorized otherwise.
 
 ---
 
