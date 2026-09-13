@@ -51,8 +51,17 @@ $localRunnerTemp = Join-Path ([IO.Path]::GetTempPath()) ("SentinelAI-local-runne
 New-Item -ItemType Directory -Path $localRunnerTemp -Force | Out-Null
 $env:RUNNER_TEMP = $localRunnerTemp
 
+$baseScript = Join-Path $PSScriptRoot 'Build-SentinelAI-TestPackage.ps1'
+$compatScript = Join-Path $localRunnerTemp 'Build-SentinelAI-TestPackage-Compat.ps1'
+$scriptText = Get-Content -LiteralPath $baseScript -Raw
+$oldRng = '[Security.Cryptography.RandomNumberGenerator]::GetBytes(48)'
+$newRng = '$( $bytes = New-Object byte[] 48; $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }; $bytes )'
+if (-not $scriptText.Contains($oldRng)) { throw 'Expected RNG expression was not found in package script.' }
+$scriptText = $scriptText.Replace($oldRng, $newRng)
+Set-Content -LiteralPath $compatScript -Value $scriptText -Encoding UTF8
+
 try {
-    & (Join-Path $PSScriptRoot 'Build-SentinelAI-TestPackage.ps1') `
+    & $compatScript `
         -MsBuild $msbuild `
         -SignTool $signTool `
         -MakeAppx $makeAppx `
