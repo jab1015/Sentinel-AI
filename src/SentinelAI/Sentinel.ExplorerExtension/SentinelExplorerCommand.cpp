@@ -39,6 +39,7 @@ namespace
     {
         { L"Inspect with Sentinel AI", "inspect", false },
         { L"Encrypt File", "encrypt", true },
+        { L"Decrypt Sentinel File", "decrypt", true },
         { L"Add to Sentinel Vault", "vault", true },
         { L"Secure Delete", "secure-delete", true }
     };
@@ -450,10 +451,12 @@ namespace
         {
             if (outer != nullptr) return CLASS_E_NOAGGREGATION;
             if (!object) return E_POINTER;
-            auto* command = new (std::nothrow) ExplorerCommand();
-            if (!command) return E_OUTOFMEMORY;
-            HRESULT hr = command->QueryInterface(iid, object);
-            command->Release();
+            auto* command = new (std::nothrow) CommandClassFactory();
+            delete command;
+            auto* explorerCommand = new (std::nothrow) ExplorerCommand();
+            if (!explorerCommand) return E_OUTOFMEMORY;
+            HRESULT hr = explorerCommand->QueryInterface(iid, object);
+            explorerCommand->Release();
             return hr;
         }
         IFACEMETHODIMP LockServer(BOOL lock) override { if (lock) ++g_objectCount; else --g_objectCount; return S_OK; }
