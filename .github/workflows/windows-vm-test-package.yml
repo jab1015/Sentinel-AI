@@ -105,6 +105,7 @@ jobs:
             -KeyLength 3072 `
             -HashAlgorithm SHA256 `
             -KeySpec Signature `
+            -KeyExportPolicy Exportable `
             -KeyUsage DigitalSignature `
             -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3') `
             -NotAfter (Get-Date).AddDays(30)
@@ -128,9 +129,20 @@ jobs:
           $exported = [Security.Cryptography.X509Certificates.X509Certificate2]::new($publicCert)
           if ($exported.HasPrivateKey) { throw 'Exported VM certificate unexpectedly contains a private key.' }
 
+          # Use a one-run random password and a runner-temp PFX so SignTool can sign noninteractively.
+          # The PFX is never committed, staged, or uploaded and is deleted in the always() cleanup step.
+          $passwordPlain = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+          Write-Output "::add-mask::$passwordPlain"
+          $password = ConvertTo-SecureString -String $passwordPlain -AsPlainText -Force
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
+          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password -ChainOption EndEntityCertOnly -NoProperties | Out-Null
+          if (-not (Test-Path -LiteralPath $pfxPath -PathType Leaf)) { throw 'Failed to create runner-temp signing PFX.' }
+
           "TEST_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "TEST_CERT_SUBJECT=$publisher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Created ephemeral non-exported signing key for certificate $($cert.Thumbprint). Only the public certificate is staged as an artifact."
+          "TEST_SIGNING_PFX=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TEST_SIGNING_PASSWORD=$passwordPlain" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Created ephemeral test signing material for $($cert.Thumbprint). Only the public certificate is staged as an artifact."
 
       - name: Sign VM test MSIX
         shell: pwsh
@@ -139,15 +151,15 @@ jobs:
           $signLog = 'windows-vm-test-signing.log'
           Copy-Item -LiteralPath $env:UNSIGNED_MSIX -Destination $signedPackage -Force
 
-          $certInMy = Get-Item -LiteralPath "Cert:\CurrentUser\My\$env:TEST_CERT_THUMBPRINT" -ErrorAction Stop
-          if (-not $certInMy.HasPrivateKey) { throw 'Ephemeral signing certificate private key is unavailable in CurrentUser\My.' }
-          if ($certInMy.Subject -ne $env:TEST_CERT_SUBJECT) { throw 'Ephemeral signing certificate subject changed unexpectedly.' }
-
-          "Signing $signedPackage with $($certInMy.Subject) / $($certInMy.Thumbprint)" | Set-Content -LiteralPath $signLog -Encoding utf8
-          & '${{ steps.tools.outputs.signtool }}' sign /s My /sha1 $env:TEST_CERT_THUMBPRINT /fd SHA256 /v $signedPackage 2>&1 | Tee-Object -FilePath $signLog -Append
+          if (-not (Test-Path -LiteralPath $env:TEST_SIGNING_PFX -PathType Leaf)) { throw 'Ephemeral signing PFX is unavailable.' }
+          "Signing $signedPackage with ephemeral VM test certificate $env:TEST_CERT_THUMBPRINT" | Set-Content -LiteralPath $signLog -Encoding utf8
+          & '${{ steps.tools.outputs.signtool }}' sign /f $env:TEST_SIGNING_PFX /p $env:TEST_SIGNING_PASSWORD /fd SHA256 /v $signedPackage 2>&1 | Tee-Object -FilePath $signLog -Append
           if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed with exit code $LASTEXITCODE. See $signLog." }
 
-          # The certificate is self-signed and runner-local. Trust it only in the ephemeral runner for verification.
+          # Delete private signing material immediately after signing, before package inspection/upload.
+          Remove-Item -LiteralPath $env:TEST_SIGNING_PFX -Force -ErrorAction Stop
+
+          # The certificate is self-signed and runner-local. Trust only the public cert for verification.
           $publicCert = Join-Path $env:OUTPUT_DIR $env:CERT_NAME
           Import-Certificate -FilePath $publicCert -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
           Import-Certificate -FilePath $publicCert -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
@@ -241,7 +253,9 @@ jobs:
             "CertificateSubject=$env:TEST_CERT_SUBJECT",
             "CertificateThumbprint=$env:TEST_CERT_THUMBPRINT",
             "SHA256=$hash",
-            'PrivateKeyExported=NO',
+            'PrivateKeyCommitted=NO',
+            'PrivateKeyArtifactPublished=NO',
+            'EphemeralRunnerPfxDeleted=YES',
             'ProductionStoreSigningKeyUsed=NO'
           ) | Set-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PackageBuildInfo.txt') -Encoding utf8
 
@@ -276,6 +290,9 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          if ($env:TEST_SIGNING_PFX -and (Test-Path -LiteralPath $env:TEST_SIGNING_PFX)) {
+            Remove-Item -LiteralPath $env:TEST_SIGNING_PFX -Force -ErrorAction SilentlyContinue
+          }
           if ($env:TEST_CERT_THUMBPRINT) {
             Remove-Item -LiteralPath "Cert:\CurrentUser\TrustedPeople\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath "Cert:\CurrentUser\Root\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
