@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: SOURCE FOUNDATION IMPLEMENTED — DESTRUCTIVE IMPLEMENTATION NOT STARTED  
-Version: 1.1  
+Status: EXACT-TARGET FOUNDATION + NON-DESTRUCTIVE COORDINATOR CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
+Version: 1.2  
 Date: 2026-09-12
 
 ## Purpose
@@ -21,37 +21,42 @@ Secure Delete is not:
 
 ## Components
 
+- `SecureDeleteTargetValidator`
 - `SecureDeleteCoordinator`
 - `StorageCapabilityDetector`
-- `SecureDeleteResult`
-- narrow privileged broker operation bound to exact object identity
-- `RelatedArtifactDiscoveryService`
+- future exact-handle mutation executor / narrow privileged broker operation
+- future durable Secure Delete transaction record/result
+- future `RelatedArtifactDiscoveryService`
 
 ## Current source implementation
 
 Implemented on `feature/premium-privacy-foundation`:
 
 - `SecureDeleteContracts` defines explicit validation and storage-capability result semantics.
-- `SecureDeleteTargetValidator` is a non-destructive exact-target boundary. It requires a fully qualified filesystem path, reopens the object with reparse traversal disabled, rejects directories/reparse objects/multiple hard links/device namespaces/protected locations/system-critical files, resolves the final handle path, and binds stable volume/file identity.
-- `SecureDeleteTargetValidator.Revalidate` must prove the same volume/file ID and canonical path again immediately before any future destructive mutation; path replacement loses authorization.
-- `StorageCapabilityDetector` currently reports only mounted-volume/root/filesystem/location facts that can be obtained without guessing. Physical media type, BitLocker state, TRIM/unmap support, and cloud synchronization remain `Unknown` until reviewed platform/provider APIs provide trustworthy evidence.
-- Acceptance coverage is linked into the active privacy encryption/Vault harness for ordinary and empty files, Unicode paths, invalid/device namespaces, directory rejection, protected application location, system-critical filenames, hard links, target replacement, reparse-source contract, and conservative unknown media semantics.
+- `SecureDeleteTargetValidator` is a non-destructive exact-target boundary. It requires a fully qualified filesystem path, reopens the exact object with reparse traversal disabled, rejects directories/reparse objects/multiple hard links/device namespaces/protected locations/system-critical files, resolves the final handle path, and binds stable volume/file identity.
+- Directory inspection uses Windows backup-semantics only so directory objects can be identified and rejected explicitly; this does not create destructive directory authority.
+- `SecureDeleteTargetValidator.Revalidate` proves the same volume/file ID and canonical path again; path replacement loses authorization.
+- `StorageCapabilityDetector` reports only mounted-volume/root/filesystem/location facts that can be obtained without guessing. Physical media type, BitLocker state, TRIM/unmap support, and cloud synchronization remain `Unknown` until reviewed platform/provider APIs provide trustworthy evidence.
+- `SecureDeleteCoordinator` is a non-destructive authorization/preflight boundary. It accepts only a previously validated `SecureDeleteTargetIdentity`, never an arbitrary path string.
+- Coordinator authorization is short-lived (currently five minutes), bound to the exact target and storage boundary, and currently limited to local fixed storage.
+- Coordinator authorization permits only a future logical-removal path. `AllowsOverwriteSanitization` is explicitly `false` until media-specific overwrite strategy is separately qualified.
+- `RevalidateForMutation` rejects expired/malformed authorizations, path/object replacement, unsupported storage, changed volume/filesystem boundary, and attempted privilege inflation.
+- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, path-swap revocation, and the coordinator's non-destructive behavior.
 
 Not implemented yet:
 
-- no `SecureDeleteCoordinator` destructive transaction
-- no privileged Secure Delete broker operation
+- no destructive Secure Delete executor
+- no privileged Secure Delete broker mutation operation
 - no overwrite/TRIM/deallocation action
 - no related-copy cleanup action
 - no destructive Explorer command
-
-This separation is intentional: source target authorization and capability reporting must qualify before destructive behavior is added.
+- no claim that preflight authorization alone closes mutation-time TOCTOU
 
 ## Exact-target authorization
 
 Before any destructive step Sentinel must:
 
-1. canonicalize the user-selected path
+1. canonicalize the user-selected path during selection/inspection
 2. open/reopen the exact filesystem object
 3. bind stable identity evidence from that object
 4. verify the object remains the user-approved target
@@ -61,14 +66,19 @@ Before any destructive step Sentinel must:
 8. reject Program Files and Sentinel package/install locations
 9. reject system-critical files and device namespaces
 10. revalidate identity immediately before destructive mutation
+11. **reopen and retain the exact verified object/handle through the destructive mutation itself**
+
+The current coordinator implements steps through non-destructive pre-mutation revalidation. It does **not** yet implement step 11. A future executor must not convert a successful `MutationGateReady` result into path-only authority and then reopen an unverified object later.
 
 User intent, subscription state, path text, filename similarity, and prior inspection are not substitutes for exact-object validation.
 
-## Broker rule
+## Broker / executor rule
 
 No unrestricted delete API is permitted.
 
-A future broker request must contain a narrow operation identifier and sufficient expected identity evidence for the broker to independently reopen and verify the exact approved object before mutation. The broker must fail closed if the object changed while UAC was pending.
+A future broker/executor request must contain a narrow operation identifier and sufficient expected identity evidence to independently reopen and verify the exact approved object. The executor must retain the verified object through mutation so another filesystem object cannot be substituted between authorization and deletion. It must fail closed if identity, link count, reparse state, protected-location policy, storage boundary, or authorization changes while UAC or IPC is pending.
+
+The destructive executor must not expose a free-form `DeletePath(string)` or equivalent path-only primitive.
 
 ## Storage capability classification
 
@@ -89,7 +99,7 @@ The current source foundation intentionally leaves physical-media, BitLocker, TR
 
 ### HDD / rotational media
 
-Sentinel may support exact-file overwrite strategies only after exact-target safeguards, sparse/compressed/encrypted-file behavior, allocation semantics, and crash handling are reviewed. Overwrite success does not prove every historical sector/remapped sector is gone.
+Sentinel may support exact-file overwrite strategies only after exact-target handle-retention safeguards, sparse/compressed/encrypted-file behavior, allocation semantics, crash handling, and post-operation verification are reviewed. Overwrite success does not prove every historical sector/remapped sector is gone.
 
 ### SSD / NVMe / flash
 
@@ -148,6 +158,8 @@ Minimum states:
 
 Recovery never guesses. Ambiguous state remains actionable and visible.
 
+The current coordinator authorization is not a substitute for this future durable destructive transaction state.
+
 ## Cancellation and crash policy
 
 Cancellation before destructive mutation: no change.
@@ -180,6 +192,7 @@ Prohibited without exact independent proof:
 - symlink/junction/reparse
 - hardlink
 - target swap after confirmation
+- target swap between preflight and mutation
 - parent replacement
 - protected Windows path
 - Program Files
@@ -193,9 +206,12 @@ Prohibited without exact independent proof:
 - duplicate discovery
 - user declines
 - false-positive duplicate resistance
+- authorization expiry, replay, malformed privilege bits, and storage-boundary change
 
 ## Qualification state
 
-**SOURCE FOUNDATION IMPLEMENTED.** Exact-target binding/revalidation and conservative storage-capability reporting exist and are wired into the active privacy harness. The current privacy workflow result must still complete successfully before this foundation is called CI VERIFIED.
+**EXACT-TARGET FOUNDATION CI VERIFIED.** Exact-target binding/revalidation and conservative storage-capability reporting passed the active privacy harness, desktop build, native Explorer x64/x86/ARM64 builds, unsigned x64 MSIX build, and packaged x64 Explorer-extension PE verification at exact head `dd35c6e76a219840a9efeef0f441c9741b590a77`, workflow run `34726434160`.
 
-**DESTRUCTIVE IMPLEMENTATION NOT STARTED.** No Secure Delete broker mutation, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. Destructive source work remains gated on qualification of this foundation and an independent review of the exact-target/broker transaction design.
+**NON-DESTRUCTIVE COORDINATOR CI VERIFIED.** The short-lived exact-identity authorization/pre-mutation gate and its adversarial acceptance coverage passed the same complete workflow chain at exact head `42e88b2e6f1d9574eba344057d0db8b546393af3`, workflow run `34726779853`.
+
+**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle deletion, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next source milestone is a narrow executor/broker boundary that independently opens, verifies, and **retains the exact filesystem object through mutation**, backed by durable transaction state and acceptance tests. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
