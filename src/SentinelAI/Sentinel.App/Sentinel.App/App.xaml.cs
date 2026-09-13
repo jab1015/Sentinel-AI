@@ -84,8 +84,6 @@ namespace Sentinel.App
                 }
 
                 DeliverPendingExplorerInspection(mainWindow);
-                if (!launchedByWindowsStartup)
-                    _ = PromptForExplorerRestartAfterInstallAsync(mainWindow);
 
                 startupTimer.Stop();
                 _ = _diagnosticLog.InformationAsync("StartupPerformance",
@@ -279,8 +277,6 @@ namespace Sentinel.App
 
         private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
-            // The process may terminate immediately after this callback. Persist a bounded
-            // breadcrumb synchronously, then attempt the richer async log without awaiting it.
             _diagnosticLog.WriteCrashBreadcrumb("UnhandledException", e.Exception);
             _ = _diagnosticLog.ErrorAsync(
                 "UnhandledException",
