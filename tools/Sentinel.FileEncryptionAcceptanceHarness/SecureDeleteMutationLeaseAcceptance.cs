@@ -58,7 +58,7 @@ internal static class SecureDeleteMutationLeaseAcceptance
             }
 
             Require(File.Exists(target) && File.ReadAllBytes(target).SequenceEqual(original),
-                "Acquiring and disposing the non-destructive mutation lease changed the file.");
+                "Acquiring and disposing an unused mutation lease changed the file.");
             string movedAfterDispose = Path.Combine(root, "moved-after-dispose.bin");
             File.Move(target, movedAfterDispose);
             Require(File.Exists(movedAfterDispose), "Disposing the mutation lease did not release rename protection.");
@@ -92,12 +92,12 @@ internal static class SecureDeleteMutationLeaseAcceptance
                     inflatedResult.CoordinatorCode == SecureDeleteCoordinatorCode.InvalidAuthorization,
                 "Privilege-inflated authorization acquired a mutation lease.");
 
-            VerifyNoPathOrMutationSurface();
+            VerifyNarrowExactHandleMutationSurface();
 
             Console.WriteLine("Secure Delete retained exact-handle mutation lease: PASS");
             Console.WriteLine("Secure Delete lease blocks rename/write races while active: PASS");
             Console.WriteLine("Secure Delete preflight-to-lease path-swap revocation: PASS");
-            Console.WriteLine("Secure Delete mutation lease remains non-destructive: PASS");
+            Console.WriteLine("Secure Delete destructive surface remains exact-handle only: PASS");
         }
         finally
         {
@@ -105,7 +105,7 @@ internal static class SecureDeleteMutationLeaseAcceptance
         }
     }
 
-    private static void VerifyNoPathOrMutationSurface()
+    private static void VerifyNarrowExactHandleMutationSurface()
     {
         MethodInfo[] managerMethods = typeof(SecureDeleteMutationLeaseManager)
             .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
@@ -117,23 +117,44 @@ internal static class SecureDeleteMutationLeaseAcceptance
                 .Any(property => property.PropertyType == typeof(SafeFileHandle)),
             "Mutation lease exposed its raw SafeFileHandle as a property.");
 
+        MethodInfo[] leaseMethods = typeof(SecureDeleteMutationLease)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+        MethodInfo? logicalRemoval = leaseMethods.SingleOrDefault(method => method.Name == "TryRequestLogicalRemoval");
+        Require(logicalRemoval is not null,
+            "The retained exact-object lease does not expose the reviewed narrow logical-removal operation.");
+        Require(!logicalRemoval!.GetParameters().Any(parameter => parameter.ParameterType == typeof(string)),
+            "Exact-handle logical removal unexpectedly accepts pathname authority.");
+        Require(logicalRemoval.ReturnType == typeof(bool),
+            "Exact-handle logical removal contract changed unexpectedly.");
+
         string sourcePath = Path.Combine(Environment.CurrentDirectory,
             "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "SecureDeleteMutationLease.cs");
         Require(File.Exists(sourcePath), "Mutation lease source was unavailable to the acceptance harness.");
         string source = File.ReadAllText(sourcePath);
-        string[] forbiddenMutationCalls =
+
+        // The destructive API intentionally permitted in the reviewed lease is
+        // SetFileInformationByHandle(FileDispositionInfo) on the retained SafeFileHandle.
+        Require(source.Contains("SetFileInformationByHandle", StringComparison.Ordinal),
+            "Exact-handle logical removal no longer uses the reviewed retained-handle API.");
+        Require(source.Contains("FileDispositionInfo", StringComparison.Ordinal),
+            "Exact-handle logical removal no longer binds deletion to FileDispositionInfo.");
+
+        string[] forbiddenPathMutationCalls =
         {
-            "SetFileInformationByHandle",
             "DeleteFileW(",
             "File.Delete(",
+            "RemoveDirectory",
+            "SHFileOperation",
+            "IFileOperation",
+            "cmd.exe",
+            "powershell.exe",
             "WriteFile(",
-            "SetEndOfFile",
-            "FileDispositionInfo"
+            "SetEndOfFile"
         };
-        foreach (string forbidden in forbiddenMutationCalls)
+        foreach (string forbidden in forbiddenPathMutationCalls)
         {
-            Require(source.IndexOf(forbidden, StringComparison.Ordinal) < 0,
-                "Mutation lease foundation unexpectedly contains destructive API surface: " + forbidden);
+            Require(source.IndexOf(forbidden, StringComparison.OrdinalIgnoreCase) < 0,
+                "Mutation lease unexpectedly contains broader/path-based destructive surface: " + forbidden);
         }
     }
 
