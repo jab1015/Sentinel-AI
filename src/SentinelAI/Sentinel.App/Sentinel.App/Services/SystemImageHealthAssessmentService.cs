@@ -5,159 +5,128 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sentinel.App.Services
 {
-    /// <summary>
-    /// Performs read-only Windows component-store and protected-system-file health
-    /// assessment. No repair is attempted here. DISM ScanHealth and SFC VerifyOnly
-    /// are used because they do not intentionally modify Windows.
-    /// </summary>
     public sealed class SystemImageHealthAssessmentService
     {
         private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(30);
-        public async Task<SystemImageHealthAssessment> AssessAsync(
-            CancellationToken cancellationToken = default)
+
+        public async Task<SystemImageHealthAssessment> AssessAsync(CancellationToken cancellationToken = default)
         {
-            CommandResult dism = await RunAsync(
-                "dism.exe",
-                "/Online /Cleanup-Image /ScanHealth",
-                cancellationToken).ConfigureAwait(false);
+            CommandResult dism = await RunAsync("dism.exe", "/Online /Cleanup-Image /ScanHealth", cancellationToken).ConfigureAwait(false);
+            IntegrityAssessmentState componentState = ClassifyDism(dism);
 
-            bool componentStoreCorruptionDetected =
-                ContainsAny(dism.Output, dism.Error,
-                    "component store is repairable",
-                    "component store corruption detected",
-                    "the component store has been corrupted");
-
-            bool componentStoreHealthy =
-                dism.ExitCode == 0 &&
-                ContainsAny(dism.Output, dism.Error,
-                    "No component store corruption detected",
-                    "The component store is repairable") == false &&
-                !componentStoreCorruptionDetected;
-
-            if (dism.ExitCode == -1)
+            if (dism.Outcome is ProcessExecutionOutcome.TimedOut or ProcessExecutionOutcome.Canceled)
             {
                 return new SystemImageHealthAssessment(
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                    "Windows component-store assessment reached its safety timeout. Sentinel skipped SFC to avoid compounding system load and will not infer integrity health.",
-                    dism.ExitCode,
-                    dism.Output,
-                    dism.Error,
-                    -1,
-                    string.Empty,
-                    "SFC verification was skipped after the DISM safety timeout.");
+                    false, false, false, false, false,
+                    "Windows component-store assessment did not complete. Sentinel skipped SFC and will not infer integrity health.",
+                    dism.ExitCode, dism.Output, dism.Error, -1, string.Empty,
+                    "SFC verification was skipped because DISM did not complete.")
+                {
+                    ComponentStoreState = componentState,
+                    ProtectedFilesState = IntegrityAssessmentState.Unknown
+                };
             }
 
-            CommandResult sfc = await RunAsync(
-                "sfc.exe",
-                "/verifyonly",
-                cancellationToken).ConfigureAwait(false);
+            CommandResult sfc = await RunAsync("sfc.exe", "/verifyonly", cancellationToken).ConfigureAwait(false);
+            IntegrityAssessmentState protectedState = ClassifySfc(sfc);
 
-            bool protectedFilesCorruptionDetected =
-                ContainsAny(sfc.Output, sfc.Error,
-                    "found integrity violations",
-                    "found corrupt files",
-                    "could not perform the requested operation");
+            bool componentHealthy = componentState == IntegrityAssessmentState.Healthy;
+            bool componentCorrupt = componentState == IntegrityAssessmentState.Corrupt;
+            bool filesHealthy = protectedState == IntegrityAssessmentState.Healthy;
+            bool filesCorrupt = protectedState == IntegrityAssessmentState.Corrupt;
+            bool repairWarranted = componentCorrupt || filesCorrupt;
 
-            bool protectedFilesHealthy =
-                sfc.ExitCode == 0 &&
-                ContainsAny(sfc.Output, sfc.Error,
-                    "did not find any integrity violations");
-
-            bool repairInvestigationWarranted =
-                componentStoreCorruptionDetected || protectedFilesCorruptionDetected;
-
-            string summary = repairInvestigationWarranted
-                ? "Sentinel detected Windows component or protected-file integrity evidence that warrants a repair plan. No repair has been performed yet."
-                : componentStoreHealthy && protectedFilesHealthy
-                    ? "Windows component-store and protected-system-file integrity checks passed. No repair is warranted."
-                    : "Sentinel could not fully verify Windows image integrity. No automatic repair will be attempted from incomplete evidence.";
+            string summary = repairWarranted
+                ? "Sentinel detected explicit Windows component or protected-file corruption evidence that warrants a repair plan. No repair has been performed yet."
+                : componentHealthy && filesHealthy
+                    ? "Windows component-store and protected-system-file integrity checks explicitly reported healthy results. No repair is warranted."
+                    : "Sentinel could not positively verify Windows image integrity. No automatic repair will be attempted from unknown or failed evidence.";
 
             return new SystemImageHealthAssessment(
-                componentStoreHealthy,
-                componentStoreCorruptionDetected,
-                protectedFilesHealthy,
-                protectedFilesCorruptionDetected,
-                repairInvestigationWarranted,
-                summary,
-                dism.ExitCode,
-                dism.Output,
-                dism.Error,
-                sfc.ExitCode,
-                sfc.Output,
-                sfc.Error);
+                componentHealthy, componentCorrupt, filesHealthy, filesCorrupt, repairWarranted,
+                summary, dism.ExitCode, dism.Output, dism.Error, sfc.ExitCode, sfc.Output, sfc.Error)
+            {
+                ComponentStoreState = componentState,
+                ProtectedFilesState = protectedState
+            };
         }
 
-        private static bool ContainsAny(string output, string error, params string[] values)
-        {
-            string combined = $"{output}\n{error}";
-            foreach (string value in values)
-            {
-                if (combined.Contains(value, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
+        internal static IntegrityAssessmentState ClassifyDismText(int exitCode, string output, string error = "") =>
+            ClassifyDism(new CommandResult(exitCode, output, error,
+                exitCode == 0 ? ProcessExecutionOutcome.Succeeded : ProcessExecutionOutcome.NonZeroExit));
 
-            return false;
+        internal static IntegrityAssessmentState ClassifySfcText(int exitCode, string output, string error = "") =>
+            ClassifySfc(new CommandResult(exitCode, output, error,
+                exitCode == 0 ? ProcessExecutionOutcome.Succeeded : ProcessExecutionOutcome.NonZeroExit));
+
+        private static IntegrityAssessmentState ClassifyDism(CommandResult result)
+        {
+            if (result.Outcome != ProcessExecutionOutcome.Succeeded || result.ExitCode != 0)
+                return result.Outcome == ProcessExecutionOutcome.TimedOut ? IntegrityAssessmentState.TimedOut : IntegrityAssessmentState.Error;
+
+            string combined = result.Output + "\n" + result.Error;
+            if (combined.Contains("No component store corruption detected", StringComparison.OrdinalIgnoreCase))
+                return IntegrityAssessmentState.Healthy;
+            if (combined.Contains("The component store is repairable", StringComparison.OrdinalIgnoreCase) ||
+                combined.Contains("component store corruption detected", StringComparison.OrdinalIgnoreCase) ||
+                combined.Contains("the component store has been corrupted", StringComparison.OrdinalIgnoreCase))
+                return IntegrityAssessmentState.Corrupt;
+
+            return IntegrityAssessmentState.Unknown;
         }
 
-        private static async Task<CommandResult> RunAsync(
-            string fileName,
-            string arguments,
-            CancellationToken cancellationToken)
+        private static IntegrityAssessmentState ClassifySfc(CommandResult result)
         {
-            using Process process = new()
+            string combined = result.Output + "\n" + result.Error;
+            if (result.Outcome == ProcessExecutionOutcome.TimedOut) return IntegrityAssessmentState.TimedOut;
+            if (combined.Contains("Windows Resource Protection did not find any integrity violations", StringComparison.OrdinalIgnoreCase))
+                return result.ExitCode == 0 ? IntegrityAssessmentState.Healthy : IntegrityAssessmentState.Error;
+            if (combined.Contains("Windows Resource Protection found integrity violations", StringComparison.OrdinalIgnoreCase) ||
+                combined.Contains("Windows Resource Protection found corrupt files", StringComparison.OrdinalIgnoreCase))
+                return IntegrityAssessmentState.Corrupt;
+            if (combined.Contains("could not perform the requested operation", StringComparison.OrdinalIgnoreCase))
+                return IntegrityAssessmentState.Error;
+            if (result.Outcome != ProcessExecutionOutcome.Succeeded || result.ExitCode != 0)
+                return IntegrityAssessmentState.Error;
+            return IntegrityAssessmentState.Unknown;
+        }
+
+        private static async Task<CommandResult> RunAsync(string fileName, string arguments, CancellationToken cancellationToken)
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            string absolutePath = string.IsNullOrWhiteSpace(system) ? fileName : Path.Combine(system, fileName);
+            ProcessStartInfo startInfo = new()
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
-                }
+                FileName = absolutePath,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
-            process.Start();
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            using CancellationTokenSource timeoutSource = new(CommandTimeout);
-            using CancellationTokenSource linkedSource =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
-
-            try
-            {
-                await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                try { process.Kill(entireProcessTree: true); }
-                catch { }
-
-                return new CommandResult(
-                    -1,
-                    string.Empty,
-                    $"Windows Windows integrity assessment exceeded its {CommandTimeout.TotalSeconds:0}-second safety timeout.");
-            }
-
-            return new CommandResult(
-                process.ExitCode,
-                await outputTask.ConfigureAwait(false),
-                await errorTask.ConfigureAwait(false));
+            ProcessExecutionResult result = await BoundedProcessRunner.RunAsync(
+                startInfo, CommandTimeout, cancellationToken).ConfigureAwait(false);
+            return new CommandResult(result.ExitCode ?? -1, result.StandardOutput, result.StandardError, result.Outcome);
         }
 
-        private sealed record CommandResult(int ExitCode, string Output, string Error);
+        private sealed record CommandResult(int ExitCode, string Output, string Error, ProcessExecutionOutcome Outcome);
+    }
+
+    public enum IntegrityAssessmentState
+    {
+        Unknown,
+        Healthy,
+        Corrupt,
+        Error,
+        TimedOut
     }
 
     public sealed record SystemImageHealthAssessment(
@@ -172,5 +141,9 @@ namespace Sentinel.App.Services
         string DismError,
         int SfcExitCode,
         string SfcOutput,
-        string SfcError);
+        string SfcError)
+    {
+        public IntegrityAssessmentState ComponentStoreState { get; init; } = IntegrityAssessmentState.Unknown;
+        public IntegrityAssessmentState ProtectedFilesState { get; init; } = IntegrityAssessmentState.Unknown;
+    }
 }

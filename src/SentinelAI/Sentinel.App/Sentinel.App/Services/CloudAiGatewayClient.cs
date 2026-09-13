@@ -4,7 +4,9 @@
  */
 
 using System;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
@@ -14,26 +16,24 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Client for the Modern Methods server-side AI gateway.
-    /// No provider API secret is stored in Sentinel. The production HTTPS endpoint
-    /// is built in, while SENTINEL_AI_GATEWAY_URL can override it for testing.
-    ///
-    /// RELEASE SAFETY BOUNDARY:
-    /// A current Microsoft Store subscription must be verified before any request
-    /// that can consume paid cloud-AI tokens is transmitted.
+    /// Provider credentials and authoritative paid-entitlement decisions remain server-side.
+    /// The client obtains only short-lived gateway sessions.
     /// </summary>
     public sealed class CloudAiGatewayClient
     {
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
-        private static readonly TimeSpan SubscriptionCacheLifetime = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan SessionRefreshCeiling = TimeSpan.FromMinutes(8);
+        private static readonly TimeSpan SessionExpirySafetyMargin = TimeSpan.FromSeconds(30);
         private const string ProductionEndpoint =
             "https://sentinel-ai-gateway-49908265995.us-central1.run.app/v1/analyze";
 
-        private static readonly SemaphoreSlim SubscriptionLock = new(1, 1);
-        private static SubscriptionState? _cachedSubscriptionState;
-        private static DateTimeOffset _cachedSubscriptionAt;
+        private static readonly SemaphoreSlim SessionLock = new(1, 1);
+        private static GatewaySession? _basicSession;
+        private static GatewaySession? _advancedSession;
 
         private readonly HttpClient _httpClient;
         private readonly Uri? _endpoint;
+        private readonly Uri? _gatewayRoot;
         private readonly StoreSubscriptionService _subscriptionService = new();
 
         public CloudAiGatewayClient()
@@ -52,10 +52,13 @@ namespace Sentinel.App.Services
 #endif
 
             if (Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri) && uri.Scheme == Uri.UriSchemeHttps)
+            {
                 _endpoint = uri;
+                _gatewayRoot = new Uri(uri.GetLeftPart(UriPartial.Authority) + "/");
+            }
         }
 
-        public bool IsConfigured => _endpoint is not null;
+        public bool IsConfigured => _endpoint is not null && _gatewayRoot is not null;
 
         public async Task<CloudAiResult> AnalyzeAsync(
             AiEvidencePackage evidence,
@@ -68,34 +71,51 @@ namespace Sentinel.App.Services
             if (!decision.UseCloudAi)
                 return CloudAiResult.NotUsed(decision.Reason);
 
-            if (_endpoint is null)
+            if (_endpoint is null || _gatewayRoot is null)
                 return CloudAiResult.Unavailable("Secure AI gateway is not configured. Sentinel will continue using local and authoritative research only.");
 
             if (evidence.EstimatedInputTokens > decision.MaximumTotalTokens)
                 return CloudAiResult.Unavailable("The evidence package exceeds Sentinel's AI token budget, so no cloud request was sent.");
 
-            // This check intentionally happens immediately before constructing/sending
-            // the paid request. If Store licensing cannot be positively verified,
-            // Sentinel fails closed and continues with free local functionality.
-            SubscriptionState subscription = await GetVerifiedSubscriptionStateAsync(cancellationToken).ConfigureAwait(false);
-            if (!subscription.IsActive)
-            {
-                return CloudAiResult.SubscriptionRequired(
-                    string.IsNullOrWhiteSpace(subscription.Summary)
-                        ? "A Sentinel AI subscription is required for cloud AI investigations. Local monitoring remains available."
-                        : subscription.Summary);
-            }
-
-            CloudAiRequest request = new(
-                SchemaVersion: 1,
-                Purpose: evidence.Purpose,
-                ModelTier: decision.ModelTier.ToString(),
-                MaximumTotalTokens: decision.MaximumTotalTokens,
-                Evidence: evidence.Payload);
+            bool wantsAdvanced = decision.ModelTier.ToString().Equals("Advanced", StringComparison.OrdinalIgnoreCase);
 
             try
             {
-                using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(_endpoint, request, cancellationToken).ConfigureAwait(false);
+                // Session bootstrap is part of the same untrusted network boundary as /v1/analyze.
+                // Timeouts, malformed/oversized JSON, transport failures, or Store bootstrap faults
+                // must fail closed to local analysis rather than escape into the Ask Sentinel UI.
+                GatewaySessionResult sessionResult = await GetSessionAsync(wantsAdvanced, cancellationToken).ConfigureAwait(false);
+                if (!sessionResult.Succeeded || sessionResult.Session is null)
+                {
+                    return sessionResult.RequiresSubscription
+                        ? CloudAiResult.SubscriptionRequired(sessionResult.Reason)
+                        : CloudAiResult.Unavailable(sessionResult.Reason);
+                }
+
+                string requestId = Guid.NewGuid().ToString();
+                CloudAiRequest request = new(
+                    SchemaVersion: 1,
+                    RequestId: requestId,
+                    Purpose: evidence.Purpose,
+                    ModelTier: wantsAdvanced ? "Advanced" : "Basic",
+                    MaximumTotalTokens: decision.MaximumTotalTokens,
+                    Evidence: evidence.Payload);
+
+                using HttpRequestMessage message = new(HttpMethod.Post, _endpoint)
+                {
+                    Content = JsonContent.Create(request)
+                };
+                message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", sessionResult.Session.AccessToken);
+
+                using HttpResponseMessage response = await _httpClient.SendAsync(message, cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                {
+                    InvalidateSession(wantsAdvanced);
+                    return wantsAdvanced
+                        ? CloudAiResult.SubscriptionRequired("The secure gateway could not verify an active paid entitlement. Free local monitoring and Basic Ask Sentinel remain available.")
+                        : CloudAiResult.Unavailable("The secure gateway rejected the current AI session. Sentinel continued without cloud AI.");
+                }
+
                 if (!response.IsSuccessStatusCode)
                     return CloudAiResult.Unavailable($"Secure AI gateway returned HTTP {(int)response.StatusCode}. Sentinel did not rely on a cloud answer.");
 
@@ -122,53 +142,166 @@ namespace Sentinel.App.Services
             {
                 return CloudAiResult.Unavailable("Secure AI gateway timed out. Sentinel continued without cloud AI.");
             }
-            catch
+            catch (HttpRequestException)
             {
                 return CloudAiResult.Unavailable("Secure AI gateway is temporarily unavailable. Sentinel continued without cloud AI.");
             }
+            catch (JsonException)
+            {
+                return CloudAiResult.Unavailable("Secure AI gateway returned invalid data. Sentinel continued without cloud AI.");
+            }
+            catch (InvalidOperationException)
+            {
+                return CloudAiResult.Unavailable("Secure AI gateway session setup could not be completed safely. Sentinel continued without cloud AI.");
+            }
+        }
+
+        public static void InvalidateSubscriptionCache()
+        {
+            _basicSession = null;
+            _advancedSession = null;
+        }
+
+        private async Task<GatewaySessionResult> GetSessionAsync(bool advanced, CancellationToken cancellationToken)
+        {
+            GatewaySession? cached = advanced ? _advancedSession : _basicSession;
+            if (cached is not null && CanReuseSession(cached))
+                return GatewaySessionResult.Success(cached);
+
+            await SessionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                cached = advanced ? _advancedSession : _basicSession;
+                if (cached is not null && CanReuseSession(cached))
+                    return GatewaySessionResult.Success(cached);
+
+                GatewaySessionResult result = advanced
+                    ? await CreateStoreSessionAsync(cancellationToken).ConfigureAwait(false)
+                    : await CreateFreeSessionAsync(cancellationToken).ConfigureAwait(false);
+
+                if (result.Succeeded && result.Session is not null)
+                {
+                    if (advanced) _advancedSession = result.Session;
+                    else _basicSession = result.Session;
+                }
+
+                return result;
+            }
+            finally
+            {
+                SessionLock.Release();
+            }
+        }
+
+        private async Task<GatewaySessionResult> CreateFreeSessionAsync(CancellationToken cancellationToken)
+        {
+            if (_gatewayRoot is null) return GatewaySessionResult.Unavailable("Secure AI gateway is not configured.");
+            Uri uri = new(_gatewayRoot, "v1/session/free");
+            using HttpResponseMessage response = await _httpClient.PostAsJsonAsync(uri, new { schemaVersion = 1 }, cancellationToken).ConfigureAwait(false);
+            return await ReadSessionResponseAsync(response, requiresSubscription: false, expectedTier: "Basic", cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<GatewaySessionResult> CreateStoreSessionAsync(CancellationToken cancellationToken)
+        {
+            if (_gatewayRoot is null) return GatewaySessionResult.Unavailable("Secure AI gateway is not configured.");
+
+            Uri ticketUri = new(_gatewayRoot, "v1/store/collections-ticket");
+            using HttpResponseMessage ticketResponse = await _httpClient.GetAsync(ticketUri, cancellationToken).ConfigureAwait(false);
+            if (!ticketResponse.IsSuccessStatusCode)
+                return GatewaySessionResult.Unavailable("The secure gateway could not start Microsoft Store entitlement verification.");
+
+            StoreCollectionsTicketResponse? ticket = await ticketResponse.Content.ReadFromJsonAsync<StoreCollectionsTicketResponse>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken).ConfigureAwait(false);
+            if (ticket is null || string.IsNullOrWhiteSpace(ticket.ServiceTicket) || string.IsNullOrWhiteSpace(ticket.PublisherUserId))
+                return GatewaySessionResult.Unavailable("The secure gateway returned an invalid Microsoft Store entitlement ticket.");
+
+            StoreCollectionsIdentityResult collections = await _subscriptionService.CreateCollectionsIdentityAsync(
+                ticket.ServiceTicket,
+                ticket.PublisherUserId).ConfigureAwait(false);
+            if (!collections.Succeeded)
+                return GatewaySessionResult.SubscriptionRequired(
+                    string.IsNullOrWhiteSpace(collections.Message)
+                        ? "Microsoft Store could not verify this Sentinel subscription."
+                        : collections.Message);
+
+            Uri sessionUri = new(_gatewayRoot, "v1/session/store");
+            using HttpResponseMessage sessionResponse = await _httpClient.PostAsJsonAsync(
+                sessionUri,
+                new StoreSessionRequest(1, collections.CollectionsId),
+                cancellationToken).ConfigureAwait(false);
+
+            if (sessionResponse.StatusCode == HttpStatusCode.Forbidden)
+                return GatewaySessionResult.SubscriptionRequired("Microsoft Store did not report an active paid Sentinel entitlement.");
+
+            return await ReadSessionResponseAsync(sessionResponse, requiresSubscription: true, expectedTier: "Advanced", cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<GatewaySessionResult> ReadSessionResponseAsync(
+            HttpResponseMessage response,
+            bool requiresSubscription,
+            string expectedTier,
+            CancellationToken cancellationToken)
+        {
+            if (!response.IsSuccessStatusCode)
+            {
+                string reason = $"Secure gateway session setup failed with HTTP {(int)response.StatusCode}.";
+                return requiresSubscription
+                    ? GatewaySessionResult.SubscriptionRequired(reason)
+                    : GatewaySessionResult.Unavailable(reason);
+            }
+
+            GatewaySessionResponse? body = await response.Content.ReadFromJsonAsync<GatewaySessionResponse>(
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }, cancellationToken).ConfigureAwait(false);
+            if (body is null || string.IsNullOrWhiteSpace(body.AccessToken) || body.AccessToken.Length > 16_384 ||
+                body.ExpiresInSeconds <= 0 || !string.Equals(body.Tier, expectedTier, StringComparison.OrdinalIgnoreCase))
+                return GatewaySessionResult.Unavailable("Secure gateway returned an invalid session.");
+
+            return GatewaySessionResult.Success(new GatewaySession(
+                body.AccessToken,
+                expectedTier,
+                DateTimeOffset.UtcNow,
+                body.ExpiresInSeconds));
+        }
+
+        private static bool CanReuseSession(GatewaySession session)
+        {
+            if (session.ExpiresInSeconds <= 0)
+                return false;
+
+            TimeSpan serverLifetime = TimeSpan.FromSeconds(session.ExpiresInSeconds);
+            TimeSpan refreshAge = serverLifetime > SessionExpirySafetyMargin
+                ? serverLifetime - SessionExpirySafetyMargin
+                : TimeSpan.Zero;
+            if (refreshAge > SessionRefreshCeiling)
+                refreshAge = SessionRefreshCeiling;
+
+            return refreshAge > TimeSpan.Zero && DateTimeOffset.UtcNow - session.CreatedAtUtc < refreshAge;
+        }
+
+        private static void InvalidateSession(bool advanced)
+        {
+            if (advanced) _advancedSession = null;
+            else _basicSession = null;
         }
 
         private static string Limit(string value, int maximum) =>
             value.Length <= maximum ? value : value[..maximum];
 
-        public static void InvalidateSubscriptionCache()
+        private sealed record StoreCollectionsTicketResponse(string ServiceTicket, string PublisherUserId);
+        private sealed record StoreSessionRequest(int SchemaVersion, string CollectionsId);
+        private sealed record GatewaySessionResponse(string AccessToken, string? Tier, int ExpiresInSeconds);
+        private sealed record GatewaySession(string AccessToken, string Tier, DateTimeOffset CreatedAtUtc, int ExpiresInSeconds);
+
+        private sealed record GatewaySessionResult(bool Succeeded, GatewaySession? Session, bool RequiresSubscription, string Reason)
         {
-            _cachedSubscriptionState = null;
-            _cachedSubscriptionAt = default;
-        }
-
-        private async Task<SubscriptionState> GetVerifiedSubscriptionStateAsync(CancellationToken cancellationToken)
-        {
-#if DEBUG
-            return await _subscriptionService.GetStateAsync().ConfigureAwait(false);
-#else
-            DateTimeOffset now = DateTimeOffset.UtcNow;
-            SubscriptionState? cached = _cachedSubscriptionState;
-            if (cached is not null && now - _cachedSubscriptionAt < SubscriptionCacheLifetime)
-                return cached;
-
-            await SubscriptionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                now = DateTimeOffset.UtcNow;
-                cached = _cachedSubscriptionState;
-                if (cached is not null && now - _cachedSubscriptionAt < SubscriptionCacheLifetime)
-                    return cached;
-
-                SubscriptionState current = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
-                _cachedSubscriptionState = current;
-                _cachedSubscriptionAt = now;
-                return current;
-            }
-            finally
-            {
-                SubscriptionLock.Release();
-            }
-#endif
+            public static GatewaySessionResult Success(GatewaySession session) => new(true, session, false, string.Empty);
+            public static GatewaySessionResult Unavailable(string reason) => new(false, null, false, reason);
+            public static GatewaySessionResult SubscriptionRequired(string reason) => new(false, null, true, reason);
         }
 
         private sealed record CloudAiRequest(
             int SchemaVersion,
+            string RequestId,
             string Purpose,
             string ModelTier,
             int MaximumTotalTokens,

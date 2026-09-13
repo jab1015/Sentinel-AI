@@ -48,8 +48,6 @@ namespace Sentinel.App.Services
                     string.Empty, string.Empty);
             }
 
-            // Re-check immediately before execution so a transient condition that
-            // already recovered never causes an unnecessary service change.
             WindowsUpdateHealthAssessment preExecution = _healthService.Assess();
             if (!preExecution.ServiceExists || !preExecution.ServiceStopped ||
                 !preExecution.RecentFailuresDetected)
@@ -63,8 +61,6 @@ namespace Sentinel.App.Services
             CommandResult execution = await RunAsync(
                 "sc.exe", "start wuauserv", cancellationToken).ConfigureAwait(false);
 
-            // sc.exe may report that the service is already running if Windows
-            // recovered between the final assessment and command execution.
             bool commandAccepted = execution.ExitCode == 0 ||
                 execution.Output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase) ||
                 execution.Output.Contains("START_PENDING", StringComparison.OrdinalIgnoreCase) ||
@@ -107,45 +103,28 @@ namespace Sentinel.App.Services
             string arguments,
             CancellationToken cancellationToken)
         {
-            using Process process = new()
+            ProcessStartInfo startInfo = new()
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                }
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true
             };
 
-            process.Start();
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            using CancellationTokenSource timeoutSource = new(CommandTimeout);
-            using CancellationTokenSource linkedSource =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            ProcessExecutionResult execution = await BoundedProcessRunner.RunAsync(
+                startInfo,
+                CommandTimeout,
+                cancellationToken,
+                maxOutputChars: 128_000).ConfigureAwait(false);
 
-            try
-            {
-                await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                try { process.Kill(entireProcessTree: true); }
-                catch { }
+            if (execution.Outcome == ProcessExecutionOutcome.Canceled && cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
 
-                return new CommandResult(
-                    -1,
-                    string.Empty,
-                    $"Windows Windows Update repair command exceeded the {CommandTimeout.TotalSeconds:0}-second safety timeout.");
-            }
+            string error = execution.Outcome == ProcessExecutionOutcome.TimedOut
+                ? $"Windows Update repair command exceeded the {CommandTimeout.TotalSeconds:0}-second safety timeout."
+                : execution.StandardError;
 
-            return new CommandResult(
-                process.ExitCode,
-                await outputTask.ConfigureAwait(false),
-                await errorTask.ConfigureAwait(false));
+            return new CommandResult(execution.ExitCode ?? -1, execution.StandardOutput, error);
         }
 
         private sealed record CommandResult(int ExitCode, string Output, string Error);

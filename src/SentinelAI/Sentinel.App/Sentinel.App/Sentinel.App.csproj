@@ -17,6 +17,16 @@
     <Configurations>Debug;Release;LocalDev</Configurations>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'x64'">
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == '' and '$(Platform)' == 'ARM64'">
+    <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)' == 'LocalDev'">
     <DefineConstants>$(DefineConstants);SENTINEL_LOCAL_DEV</DefineConstants>
     <Optimize>true</Optimize>

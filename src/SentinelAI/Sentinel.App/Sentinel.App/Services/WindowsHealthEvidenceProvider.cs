@@ -230,28 +230,18 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using Process process = new();
-                var output = new StringBuilder();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
                     FileName = fileName,
                     Arguments = arguments,
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                process.OutputDataReceived += (_, e) => { if (!string.IsNullOrWhiteSpace(e.Data)) output.AppendLine(e.Data); };
-                if (!process.Start()) return string.Empty;
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-                if (!process.WaitForExit((int)CommandTimeout.TotalMilliseconds))
-                {
-                    process.Kill(true);
-                    return string.Empty;
-                }
-                process.WaitForExit();
-                return process.ExitCode == 0 ? output.ToString().Trim() : string.Empty;
+                ProcessExecutionResult result = BoundedProcessRunner.RunAsync(
+                    startInfo,
+                    CommandTimeout,
+                    maxOutputChars: 256_000).GetAwaiter().GetResult();
+                return result.Succeeded ? result.StandardOutput.Trim() : string.Empty;
             }
             catch { return string.Empty; }
         }

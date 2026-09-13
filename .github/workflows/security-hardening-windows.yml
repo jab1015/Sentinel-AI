@@ -1,0 +1,170 @@
+name: Sentinel Security Hardening Windows
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore AI gateway
+        run: dotnet restore "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj"
+
+      - name: Build AI gateway
+        run: dotnet build "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj" -c Release --no-restore
+
+      - name: Restore desktop app
+        run: dotnet restore "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -r win-x64
+
+      - name: Build desktop app
+        run: dotnet build "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
+
+      - name: Restore privileged broker
+        run: dotnet restore "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -r win-x64
+
+      - name: Build privileged broker
+        run: dotnet build "src/SentinelAI/Sentinel.PrivilegedBroker/Sentinel.PrivilegedBroker.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
+
+      - name: Restore privileged broker identity harness
+        run: dotnet restore "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj"
+
+      - name: Build privileged broker identity harness
+        run: dotnet build "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj" -c Release --no-restore
+
+      - name: Run privileged broker identity harness
+        run: dotnet run --project "tools/Sentinel.PrivilegedBrokerAdversarialHarness/Sentinel.PrivilegedBrokerAdversarialHarness.csproj" -c Release --no-build
+
+      - name: Restore Ask Sentinel final display safety harness
+        run: dotnet restore "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj"
+
+      - name: Build Ask Sentinel final display safety harness
+        run: dotnet build "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj" -c Release --no-restore
+
+      - name: Run Ask Sentinel final display safety harness
+        run: dotnet run --project "tools/Sentinel.AskSentinelDisplaySafetyHarness/Sentinel.AskSentinelDisplaySafetyHarness.csproj" -c Release --no-build
+
+      - name: Restore initial monitoring startup acceptance harness
+        run: dotnet restore "tools/Sentinel.InitialMonitoringStartupAcceptanceHarness/Sentinel.InitialMonitoringStartupAcceptanceHarness.csproj"
+
+      - name: Build initial monitoring startup acceptance harness
+        run: dotnet build "tools/Sentinel.InitialMonitoringStartupAcceptanceHarness/Sentinel.InitialMonitoringStartupAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run initial monitoring startup acceptance harness
+        run: dotnet run --project "tools/Sentinel.InitialMonitoringStartupAcceptanceHarness/Sentinel.InitialMonitoringStartupAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore security health classification harness
+        run: dotnet restore "tools/Sentinel.SecurityHealthAcceptanceHarness/Sentinel.SecurityHealthAcceptanceHarness.csproj"
+
+      - name: Build security health classification harness
+        run: dotnet build "tools/Sentinel.SecurityHealthAcceptanceHarness/Sentinel.SecurityHealthAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run security health classification harness
+        run: dotnet run --project "tools/Sentinel.SecurityHealthAcceptanceHarness/Sentinel.SecurityHealthAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore Authenticode acceptance harness
+        run: dotnet restore "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj"
+
+      - name: Build Authenticode acceptance harness
+        run: dotnet build "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run Authenticode acceptance harness
+        run: dotnet run --project "tools/Sentinel.AuthenticodeAcceptanceHarness/Sentinel.AuthenticodeAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore bounded process runner acceptance harness
+        run: dotnet restore "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj"
+
+      - name: Build bounded process runner acceptance harness
+        run: dotnet build "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run bounded process runner acceptance harness 10 times
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          1..10 | ForEach-Object {
+            Write-Host "=== BoundedProcessRunner reliability iteration $_ of 10 ==="
+            dotnet run --project "tools/Sentinel.BoundedProcessRunnerAcceptanceHarness/Sentinel.BoundedProcessRunnerAcceptanceHarness.csproj" -c Release --no-build
+            if ($LASTEXITCODE -ne 0) {
+              throw "BoundedProcessRunner acceptance harness failed on iteration $_ with exit code $LASTEXITCODE."
+            }
+          }
+
+      - name: Restore quarantine-store adversarial harness
+        run: dotnet restore "tools/Sentinel.QuarantineStoreAdversarialHarness/Sentinel.QuarantineStoreAdversarialHarness.csproj"
+
+      - name: Build quarantine-store adversarial harness
+        run: dotnet build "tools/Sentinel.QuarantineStoreAdversarialHarness/Sentinel.QuarantineStoreAdversarialHarness.csproj" -c Release --no-restore
+
+      - name: Run quarantine-store adversarial harness
+        run: dotnet run --project "tools/Sentinel.QuarantineStoreAdversarialHarness/Sentinel.QuarantineStoreAdversarialHarness.csproj" -c Release --no-build
+
+      - name: Restore system image health acceptance harness
+        run: dotnet restore "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj"
+
+      - name: Build system image health acceptance harness
+        run: dotnet build "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run system image health acceptance harness
+        run: dotnet run --project "tools/Sentinel.SystemImageHealthAcceptanceHarness/Sentinel.SystemImageHealthAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore cloud redaction acceptance harness
+        run: dotnet restore "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj"
+
+      - name: Build cloud redaction acceptance harness
+        run: dotnet build "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run cloud redaction acceptance harness
+        run: dotnet run --project "tools/Sentinel.CloudRedactionAcceptanceHarness/Sentinel.CloudRedactionAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore event log filtering acceptance harness
+        run: dotnet restore "tools/Sentinel.EventLogFilteringAcceptanceHarness/Sentinel.EventLogFilteringAcceptanceHarness.csproj"
+
+      - name: Build event log filtering acceptance harness
+        run: dotnet build "tools/Sentinel.EventLogFilteringAcceptanceHarness/Sentinel.EventLogFilteringAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run event log filtering acceptance harness
+        run: dotnet run --project "tools/Sentinel.EventLogFilteringAcceptanceHarness/Sentinel.EventLogFilteringAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore investigation history acceptance harness
+        run: dotnet restore "tools/Sentinel.InvestigationHistoryAcceptanceHarness/Sentinel.InvestigationHistoryAcceptanceHarness.csproj"
+
+      - name: Build investigation history acceptance harness
+        run: dotnet build "tools/Sentinel.InvestigationHistoryAcceptanceHarness/Sentinel.InvestigationHistoryAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run investigation history acceptance harness
+        run: dotnet run --project "tools/Sentinel.InvestigationHistoryAcceptanceHarness/Sentinel.InvestigationHistoryAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore diagnostic log acceptance harness
+        run: dotnet restore "tools/Sentinel.DiagnosticLogAcceptanceHarness/Sentinel.DiagnosticLogAcceptanceHarness.csproj"
+
+      - name: Build diagnostic log acceptance harness
+        run: dotnet build "tools/Sentinel.DiagnosticLogAcceptanceHarness/Sentinel.DiagnosticLogAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run diagnostic log acceptance harness
+        run: dotnet run --project "tools/Sentinel.DiagnosticLogAcceptanceHarness/Sentinel.DiagnosticLogAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore AI gateway security harness
+        run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
+
+      - name: Build AI gateway security harness
+        run: dotnet build "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run AI gateway security harness
+        run: dotnet run --project "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-build

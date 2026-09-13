@@ -13,10 +13,11 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Performs the first production optimization action: conservative cleanup of
-    /// stale files from the current user's temporary directory only. The executor
-    /// never traverses outside that directory, skips protected/reparse-point files,
-    /// caps each run, and verifies recovered free space after execution.
+    /// Conservatively removes stale files from the current user's temporary directory.
+    /// Enumeration is only discovery: every deletion is rebound to an exact Windows file
+    /// handle, final-path checked against the handle-resolved temp root, reparse/protected
+    /// objects and multiply-linked files are rejected, and age/size are read from that same
+    /// handle immediately before delete-by-handle. Path swaps therefore fail closed.
     /// </summary>
     public sealed class SafeTemporaryStorageOptimizationExecutor
     {
@@ -30,40 +31,55 @@ namespace Sentinel.App.Services
         {
             ArgumentNullException.ThrowIfNull(decision);
             ArgumentNullException.ThrowIfNull(safety);
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (!safety.ExecutionAllowed)
-            {
                 return OptimizationExecutionResult.NotRun(safety.Summary);
-            }
 
             OptimizationCandidate? storageCandidate = decision.Candidates
                 .FirstOrDefault(candidate =>
                     candidate.Kind == OptimizationKind.StoragePressure &&
                     candidate.AutomaticEligible &&
                     candidate.Risk == OptimizationRisk.Low);
-
             if (storageCandidate is null)
             {
                 return OptimizationExecutionResult.NotRun(
                     "No verified automatic storage optimization is available.");
             }
 
-            string tempRoot = Path.GetFullPath(Path.GetTempPath());
-            if (!Directory.Exists(tempRoot))
+            string tempRoot;
+            try { tempRoot = Path.GetFullPath(Path.GetTempPath()); }
+            catch
             {
                 return OptimizationExecutionResult.NotRun(
-                    "The current user's temporary directory is unavailable.");
+                    "The current user's temporary directory could not be resolved safely.");
             }
 
-            DriveInfo drive = new(Path.GetPathRoot(tempRoot)!);
-            long freeBefore = SafeFreeSpace(drive);
+            if (!Directory.Exists(tempRoot) ||
+                !HandleBasedTemporaryFileDeletion.TryGetCanonicalDirectoryPath(tempRoot, out string canonicalRoot))
+            {
+                return OptimizationExecutionResult.NotRun(
+                    "The current user's temporary directory could not be verified through a Windows directory handle. No files were deleted.");
+            }
+
+            string? driveRoot = Path.GetPathRoot(canonicalRoot);
+            if (string.IsNullOrWhiteSpace(driveRoot))
+            {
+                return OptimizationExecutionResult.NotRun(
+                    "Sentinel could not verify the temporary directory volume. No files were deleted.");
+            }
+
+            // Capacity observation is supporting telemetry only. An unusual redirected/UNC
+            // temp root must not turn a safely completed exact-handle cleanup into an exception.
+            long freeBefore = SafeFreeSpace(driveRoot);
             DateTime cutoffUtc = DateTime.UtcNow - MinimumFileAge;
 
             int examined = 0;
             int deleted = 0;
             int skipped = 0;
             long bytesRequestedForDeletion = 0;
-            var errors = new List<string>();
+            bool enumerationCompletedSafely = true;
+            Dictionary<string, int> skipReasons = new(StringComparer.Ordinal);
 
             await Task.Run(() =>
             {
@@ -83,71 +99,61 @@ namespace Sentinel.App.Services
                 }
                 catch (Exception ex)
                 {
-                    errors.Add(ex.GetType().Name);
+                    enumerationCompletedSafely = false;
+                    AddReason(skipReasons, "Enumeration:" + ex.GetType().Name);
                     return;
                 }
 
-                foreach (string path in files)
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (examined >= MaximumFilesPerRun)
-                        break;
-
-                    examined++;
-
-                    try
+                    foreach (string path in files)
                     {
-                        string fullPath = Path.GetFullPath(path);
-                        if (!IsUnderRoot(fullPath, tempRoot))
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (examined >= MaximumFilesPerRun) break;
+                        examined++;
+
+                        HandleDeletionResult result = HandleBasedTemporaryFileDeletion.TryDeleteStaleFile(
+                            path,
+                            canonicalRoot,
+                            cutoffUtc);
+                        if (result.Deleted)
+                        {
+                            deleted++;
+                            bytesRequestedForDeletion = checked(bytesRequestedForDeletion + result.FileBytes);
+                        }
+                        else
                         {
                             skipped++;
-                            continue;
+                            AddReason(skipReasons, result.Reason);
                         }
-
-                        FileInfo file = new(fullPath);
-                        FileAttributes attributes = file.Attributes;
-                        if ((attributes & (FileAttributes.System | FileAttributes.ReparsePoint)) != 0 ||
-                            file.LastWriteTimeUtc > cutoffUtc)
-                        {
-                            skipped++;
-                            continue;
-                        }
-
-                        long length = Math.Max(file.Length, 0);
-                        file.Delete();
-                        bytesRequestedForDeletion += length;
-                        deleted++;
                     }
-                    catch (IOException)
-                    {
-                        skipped++;
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        skipped++;
-                    }
-                    catch (Exception ex)
-                    {
-                        skipped++;
-                        if (errors.Count < 10)
-                            errors.Add(ex.GetType().Name);
-                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    enumerationCompletedSafely = false;
+                    AddReason(skipReasons, "Enumeration:" + ex.GetType().Name);
                 }
             }, cancellationToken).ConfigureAwait(false);
 
-            drive = new DriveInfo(Path.GetPathRoot(tempRoot)!);
-            long freeAfter = SafeFreeSpace(drive);
+            long freeAfter = SafeFreeSpace(driveRoot);
             long verifiedRecoveredBytes = Math.Max(freeAfter - freeBefore, 0);
 
-            bool verified = !safety.VerificationRequired ||
-                            deleted == 0 ||
-                            verifiedRecoveredBytes > 0;
+            // Every FilesChanged count represents an exact object whose deletion disposition was
+            // successfully applied by handle. The whole maintenance attempt is reported successful
+            // only if discovery itself also completed without an unexpected enumeration failure.
+            bool verified = enumerationCompletedSafely;
+            string summary = !verified
+                ? $"Sentinel safely stopped temporary-file cleanup after an unexpected enumeration failure. {deleted} exact-handle deletion(s) had already completed; no additional success claim is made for the interrupted run."
+                : deleted == 0
+                    ? $"Sentinel examined {examined} temporary files and did not find a stale exact-handle target that met the deletion safety policy."
+                    : verifiedRecoveredBytes > 0
+                        ? $"Sentinel removed {deleted} stale temporary file(s) by verified file handle and observed {FormatBytes(verifiedRecoveredBytes)} of additional free space."
+                        : $"Sentinel removed {deleted} stale temporary file(s) by verified file handle. Windows did not expose a measurable free-space delta immediately, so Sentinel reports {FormatBytes(bytesRequestedForDeletion)} as the exact file bytes requested for deletion rather than claiming recovered capacity.";
 
-            string summary = deleted == 0
-                ? $"Sentinel checked {examined} temporary files and found no stale files that were safe to remove."
-                : verified
-                    ? $"Sentinel safely removed {deleted} stale temporary files and verified {FormatBytes(verifiedRecoveredBytes)} of recovered disk space."
-                    : $"Sentinel removed {deleted} stale temporary files, but the expected free-space improvement could not be verified.";
+            string diagnostics = skipReasons.Count == 0
+                ? "Every examined candidate either met the exact-handle deletion policy or no skip reason was recorded."
+                : "Fail-closed skips: " + string.Join(", ", skipReasons.OrderBy(x => x.Key).Take(12).Select(x => $"{x.Key}={x.Value}"));
 
             return new OptimizationExecutionResult(
                 Attempted: true,
@@ -160,21 +166,18 @@ namespace Sentinel.App.Services
                 EstimatedBytesChanged: bytesRequestedForDeletion,
                 VerifiedBytesRecovered: verifiedRecoveredBytes,
                 Summary: summary,
-                DiagnosticSummary: errors.Count == 0
-                    ? "No execution errors were recorded."
-                    : $"Skipped errors: {string.Join(", ", errors)}");
+                DiagnosticSummary: diagnostics);
         }
 
-        private static bool IsUnderRoot(string path, string root)
+        private static void AddReason(Dictionary<string, int> reasons, string reason)
         {
-            string normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
-                                    Path.DirectorySeparatorChar;
-            return path.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+            if (reasons.TryGetValue(reason, out int count)) reasons[reason] = count + 1;
+            else if (reasons.Count < 32) reasons[reason] = 1;
         }
 
-        private static long SafeFreeSpace(DriveInfo drive)
+        private static long SafeFreeSpace(string driveRoot)
         {
-            try { return Math.Max(drive.AvailableFreeSpace, 0); }
+            try { return Math.Max(new DriveInfo(driveRoot).AvailableFreeSpace, 0); }
             catch { return 0; }
         }
 
@@ -183,7 +186,6 @@ namespace Sentinel.App.Services
             const double kb = 1024d;
             const double mb = kb * 1024d;
             const double gb = mb * 1024d;
-
             if (bytes >= gb) return $"{bytes / gb:0.00} GB";
             if (bytes >= mb) return $"{bytes / mb:0.00} MB";
             if (bytes >= kb) return $"{bytes / kb:0.00} KB";

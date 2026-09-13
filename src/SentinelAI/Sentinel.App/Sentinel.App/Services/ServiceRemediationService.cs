@@ -11,20 +11,21 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Executes an explicitly approved restart of an exact Windows service.
-    /// The service identity and current state are revalidated immediately before
-    /// any system change, and the final running state is independently verified.
+    /// Performs an approved service restart only through Sentinel's authenticated
+    /// privileged broker. The broker owns the allowlist, dependency check, durable
+    /// rollback reservation, bounded stop/start sequence, crash recovery, and its
+    /// own final-state verification. The desktop then independently verifies Running
+    /// before any success result is returned to the user.
     /// </summary>
     public sealed class ServiceRemediationService
     {
-        private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(20);
-        private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
-
         private readonly RemediationPolicy _policy;
+        private readonly PrivilegedBrokerClient _broker;
 
         public ServiceRemediationService(RemediationPolicy? policy = null)
         {
             _policy = policy ?? new RemediationPolicy();
+            _broker = new PrivilegedBrokerClient();
         }
 
         public async Task<ServiceRemediationResult> RestartAsync(
@@ -35,11 +36,12 @@ namespace Sentinel.App.Services
             bool canRequestElevation,
             CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(serviceName))
-            {
-                return Failed("Sentinel could not verify the service identity.");
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
+            if (string.IsNullOrWhiteSpace(serviceName))
+                return Failed("Sentinel could not verify the service identity.");
+
+            string exactServiceName = serviceName.Trim();
             var decision = _policy.Evaluate(new RemediationPolicy.RemediationRequest(
                 RemediationPolicy.RemediationAction.RestartService,
                 RemediationPolicy.RemediationRisk.Moderate,
@@ -49,9 +51,7 @@ namespace Sentinel.App.Services
                 CanRequestElevation: canRequestElevation));
 
             if (!decision.Allowed)
-            {
                 return Failed(decision.Explanation);
-            }
 
             if (decision.RequiresUserApproval && !userApproved)
             {
@@ -62,87 +62,43 @@ namespace Sentinel.App.Services
                     Message: decision.Explanation);
             }
 
-            try
+            if (!_broker.IsBrokerPresent)
+                return Failed("Sentinel's privileged broker is unavailable. No service state was changed.");
+
+            BrokerInvocationResult brokerResult = await _broker
+                .RestartServiceAsync(exactServiceName, cancellationToken)
+                .ConfigureAwait(false);
+            if (!brokerResult.Succeeded)
+                return Failed(string.IsNullOrWhiteSpace(brokerResult.Message)
+                    ? "The privileged broker did not verify a safe service restart."
+                    : brokerResult.Message);
+
+            bool running = await IsRunningAsync(exactServiceName, cancellationToken).ConfigureAwait(false);
+            if (!running)
             {
-                using var service = new ServiceController(serviceName);
-
-                // Force Windows to resolve the exact service before changing state.
-                _ = service.ServiceName;
-                service.Refresh();
-                cancellationToken.ThrowIfCancellationRequested();
-
-                if (service.Status == ServiceControllerStatus.StopPending)
-                {
-                    await WaitForStatusAsync(service, ServiceControllerStatus.Stopped, StopTimeout, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                else if (service.Status != ServiceControllerStatus.Stopped)
-                {
-                    if (!service.CanStop)
-                    {
-                        return Failed("Windows reports that this service cannot be stopped safely, so Sentinel made no change.");
-                    }
-
-                    service.Stop();
-                    await WaitForStatusAsync(service, ServiceControllerStatus.Stopped, StopTimeout, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                service.Refresh();
-
-                if (service.Status == ServiceControllerStatus.Stopped)
-                {
-                    service.Start();
-                }
-
-                await WaitForStatusAsync(service, ServiceControllerStatus.Running, StartTimeout, cancellationToken)
-                    .ConfigureAwait(false);
-
-                service.Refresh();
-                bool running = service.Status == ServiceControllerStatus.Running;
-
-                return new ServiceRemediationResult(
-                    Succeeded: running,
-                    RequiresUserApproval: false,
-                    ServiceRunning: running,
-                    Message: running
-                        ? "Sentinel restarted the approved service and verified that it is running."
-                        : "Sentinel attempted the approved restart but could not verify that the service returned to a running state.");
+                return Failed(
+                    "The privileged broker completed the restart workflow, but the desktop verification could not confirm the service is Running. Sentinel will not report success.");
             }
-            catch (OperationCanceledException)
-            {
-                return Failed("The service action was canceled before Sentinel could verify the result.");
-            }
-            catch (InvalidOperationException)
-            {
-                return Failed("Sentinel could not access the approved Windows service. No other system changes were made.");
-            }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                return Failed("Windows did not permit Sentinel to restart the approved service. No other system changes were made.");
-            }
-            catch (System.ServiceProcess.TimeoutException)
-            {
-                return Failed("The approved service did not reach the expected state in time. Sentinel will continue investigating.");
-            }
+
+            return new ServiceRemediationResult(
+                Succeeded: true,
+                RequiresUserApproval: false,
+                ServiceRunning: true,
+                Message: $"Sentinel restarted {exactServiceName} through the privileged broker and independently verified that the service is Running.");
         }
 
         public async Task<bool> IsRunningAsync(
             string serviceName,
             CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(serviceName))
-            {
-                return false;
-            }
+            if (string.IsNullOrWhiteSpace(serviceName)) return false;
 
             try
             {
                 return await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    using var service = new ServiceController(serviceName);
+                    using var service = new ServiceController(serviceName.Trim());
                     service.Refresh();
                     return service.Status == ServiceControllerStatus.Running;
                 }, cancellationToken).ConfigureAwait(false);
@@ -153,40 +109,8 @@ namespace Sentinel.App.Services
             }
         }
 
-        private static async Task WaitForStatusAsync(
-            ServiceController service,
-            ServiceControllerStatus desiredStatus,
-            TimeSpan timeout,
-            CancellationToken cancellationToken)
-        {
-            DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
-
-            while (DateTimeOffset.UtcNow < deadline)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                service.Refresh();
-
-                if (service.Status == desiredStatus)
-                {
-                    return;
-                }
-
-                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
-            }
-
-            service.Refresh();
-            if (service.Status != desiredStatus)
-            {
-                throw new System.ServiceProcess.TimeoutException();
-            }
-        }
-
         private static ServiceRemediationResult Failed(string message) =>
-            new(
-                Succeeded: false,
-                RequiresUserApproval: false,
-                ServiceRunning: false,
-                Message: message);
+            new(false, false, false, message);
 
         public sealed record ServiceRemediationResult(
             bool Succeeded,

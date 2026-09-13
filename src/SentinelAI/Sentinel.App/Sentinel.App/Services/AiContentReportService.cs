@@ -18,7 +18,11 @@ namespace Sentinel.App.Services
             "https://sentinel-ai-gateway-49908265995.us-central1.run.app/v1/report-ai-content";
 
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
-        private readonly HttpClient _httpClient = new() { Timeout = RequestTimeout };
+        private readonly HttpClient _httpClient = new()
+        {
+            Timeout = RequestTimeout,
+            MaxResponseContentBufferSize = 64 * 1024
+        };
 
         public async Task<AiContentReportResult> SubmitAsync(
             string category,

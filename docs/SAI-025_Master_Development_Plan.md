@@ -1,92 +1,125 @@
 # SAI-025 — Master Development Plan
 
-Version: 5.3
-
-Status: Active — Current Intelligence and Evidence Accuracy Milestones Complete
-
-Last Updated: 2026-08-06
+Version: 6.0  
+Status: Active — Production security hardening  
+Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
 
 ---
 
-# Purpose
+## Purpose
 
-This document is the authoritative master engineering plan for Sentinel AI.
+This is the authoritative engineering plan for moving Sentinel AI from its existing monitoring/intelligence foundation to a trustworthy active Windows security product.
 
-# Current Release Candidate
+## Current Reality
 
-Sentinel AI version **1.0.25.0** is the current validated release candidate. Installed Sentinel Validation passed 12/12. Discovery 2.0, Adaptive Continuous Discovery, Event-Driven Discovery, Friendly AI Value Summaries, System Evidence Accuracy, and Optimization Transparency are complete for the current milestone set.
+Historical `1.0.25.0 Release Candidate Validated` evidence remains useful as a prior runtime baseline, but it is superseded for release decisions by the September 2026 production assessment at commit `1218f5d...`.
 
-# Product-Wide Sentinel Discovery Rule
+Assessment: **29 findings — 14 High, 15 Medium**.  
+Hardening branch: `security/production-hardening-1218f5d`.  
+Pre-documentation checkpoint: `d8ac4af17a6451cb4f82e86ce45b64523f1ed303`.  
+Release posture: **DO NOT MERGE / NOT PRODUCTION-HARDENED**.
 
-Sentinel must not depend on a nontechnical user knowing which technical question to ask.
+## Product-Wide Evidence Rule
 
-Every technical condition that Sentinel can safely and reliably verify must participate in continuous Sentinel Discovery. Meaningful findings flow through:
+Sentinel must describe only what evidence proves. Unknown/unavailable is not healthy. Detection is not blocking. Unsigned is not automatically malicious. An attempted action is not a successful action. AI text is advisory unless deterministic product state establishes the claim.
 
-**Discover → Analyze → Correlate → Investigate → Confidence/Trust → Exhaust Safe Remediation → Determine Remaining Risk → Repair/Protect when safe → Request approval when required → Verify result → Record in Activity Center → Preserve Investigation Memory → Feed verified result to Ask Sentinel.**
+## Product-Wide Action Rule
 
-Ask Sentinel is the explanation and follow-up interface, not the primary discovery mechanism.
+Every destructive or privileged action must be:
 
-# Governing Evidence Accuracy Rule
+**Discover → Correlate → Establish confidence → Identify exact target → Obtain required approval → Revalidate identity/state → Execute through a narrow boundary → Verify postcondition → Preserve recovery evidence → Record outcome → Explain accurately.**
 
-**Sentinel must describe evidence according to what the source actually proves.**
+## Workstream 1 — Bounded Execution
 
-- If Sentinel cannot verify something, it must say so.
-- A live activity measurement must not be presented as system or internet capability.
-- A single-drive measurement must identify the drive scope.
-- Security inference must not be presented with stronger certainty than the source supports.
-- Timestamps must identify what event they timestamp.
-- Sentinel must not claim attribution for maintenance it cannot prove it performed.
+Status: **SOURCE/CI SUBSTANTIALLY VALIDATED**
 
-# Governing Suppression Rule
+- Concurrent output draining.
+- Timeout/cancellation.
+- Output limits.
+- Process-tree termination.
+- Production PowerShell argument handling.
+- 10 consecutive Windows CI acceptance iterations PASS.
 
-Sentinel must never suppress a finding until it has completed a verified investigation, exhausted every applicable safe remediation, determined that the condition is noncritical, and verified that there is currently nothing more it can safely do. Suppression hides notifications only; it never stops monitoring. Any material change automatically reopens the investigation.
+Remaining: access-denied/kill-failure and packaged runtime cases where practical.
 
-# Sentinel Discovery 2.0 — COMPLETE / LIVE VALIDATED
+## Workstream 2 — Protected Quarantine
 
-Persistent Investigation Intelligence, Verified Persistent Exceptions, Live Persistent Exception Integration, Cross-Investigation Correlation, and Trusted Knowledge Engine are complete and live validated.
+Status: **SOURCE/CI SUBSTANTIALLY HARDENED; RUNTIME ADVERSARIAL WORK OPEN**
 
-# Adaptive Continuous Discovery — COMPLETE
+Implemented/tested:
 
-Adaptive Continuous Discovery makes Sentinel's continuous monitoring cadence responsive to current risk and system conditions rather than relying on one fixed polling interval. Adaptive scheduling may change recheck frequency but never disables monitoring.
+- Protected store + records + transactions.
+- Semantic recovery guard.
+- Ambiguous/forged recovery fails closed.
+- Handle-based restore/delete identity controls.
+- Hash and hard-link protections.
+- No-overwrite restore behavior.
+- Crash-recovery scenarios.
+- Metadata cleanup failure returns non-success and preserves transaction evidence.
 
-# Event-Driven Discovery — COMPLETE
+Remaining: standard-user ACL/owner proof, reparse/junction/symlink/hardlink attacks, races, all crash checkpoints, disk-full/access-denied, orphan states, broker termination, installed UAC/package behavior.
 
-Event-Driven Discovery allows material evidence changes to interrupt ordinary polling cadence and trigger immediate re-evaluation. Critical/security evidence, evidence-fingerprint changes, and materially changed silently monitored persistent conditions receive appropriate immediate handling without recursive refresh loops.
+## Workstream 3 — Privileged Broker
 
-# Friendly AI Value Layer — COMPLETE
+Status: **ACTIVE**
 
-Verified Sentinel work is translated into understandable user value. Failed, incomplete, unknown, or unverified work is never presented as successful work.
+Implemented/source-tested:
 
-# System Evidence Accuracy Audit — COMPLETE / LIVE VERIFIED
+- Versioned allowlisted protocol.
+- Current-user named pipe.
+- Peer PID binding.
+- Exact process target start/path/hash checks.
+- Package-full-name identity binding between broker and client.
+- Policy harness rejects mismatched/missing/unpackaged identities.
+- Generated MSIX contains broker and desktop executable.
 
-The installed UI was verified after field-by-field audit:
+Next: hostile IPC and installed elevated/UAC/package lifecycle matrix.
 
-- CPU Usage — current processor utilization.
-- Physical Memory — current physical RAM usage.
-- Windows System Drive — system-drive capacity usage.
-- Current Network Activity — current receive/send throughput, not internet bandwidth capability.
-- Running Processes — current process count and highest working-memory process.
-- Windows Security Evidence — qualified Defender/Firewall evidence.
-- Evidence Collected — displayed snapshot collection timestamp.
+## Workstream 4 — Ask Sentinel Claim Safety
 
-# Optimization Transparency & Attribution — COMPLETE / LIVE VERIFIED
+Status: **NEXT CODE PRIORITY**
 
-Optimization evaluation is automatic. The user is shown baseline-learning progress and the final optimization assessment. Recent Activity remains separate from Optimization Status so actual Sentinel work cannot be hidden by passive status checks.
+Known gap: MainWindow can replace an already validated orchestrator response for optimization, external-investigation, and driver-answer paths. Add one final deterministic validator/provenance boundary immediately before display after every replacement/composition path, then add regression tests for unsupported security-action claims.
 
-Sentinel may claim a maintenance action only when its own execution record establishes attribution and verified outcome. The Aug. 3 Windows drive optimization observed during audit has no Sentinel attribution record and therefore is not claimed as Sentinel work.
+## Workstream 5 — Authenticode
 
-# Current Progress
+Status: **SOURCE/CI IMPROVED; EXTENDED RUNTIME MATRIX OPEN**
 
-- Version 1.0.25.0 release candidate: **VALIDATED**
-- Sentinel Discovery 2.0: **COMPLETE / LIVE VALIDATED**
-- Adaptive Continuous Discovery: **COMPLETE**
-- Event-Driven Discovery: **COMPLETE**
-- Friendly AI Value Layer: **COMPLETE**
-- System Evidence Accuracy Audit: **COMPLETE / LIVE VERIFIED**
-- Optimization Transparency & Attribution: **COMPLETE / LIVE VERIFIED**
-- Release Operations: **IN PROGRESS**
+Validate embedded/catalog, unsigned/tampered, self-signed/untrusted, timestamps, revocation/offline behavior, replacement races/cache invalidation, and every shipped architecture.
+
+## Workstream 6 — AI Gateway / Entitlements
+
+Status: **SOURCE IMPLEMENTED; GOOGLE CLOUD + STORE VALIDATION BLOCKED**
+
+Source includes signed short-lived sessions, tier enforcement, Store entitlement path, replay request IDs, provider concurrency limits, and server-side provider credentials. Next is deployed staging abuse, IAM/Secret Manager, distributed state/spend, outage/restart, and live Store entitlement validation.
+
+## Workstream 7 — Remaining Findings
+
+Continue A06, A08, A10, A11, A12, A13, A14, A16, A18, A20-A29 with smallest-correct-change + deterministic-test discipline. Unsafe capabilities may remain explicitly disabled/fail-closed rather than restored prematurely.
+
+## Workstream 8 — Final Assurance
+
+After source remediation:
+
+1. Re-audit every original High finding adversarially.
+2. Re-audit all 29 findings.
+3. Build final signed/Store-style package.
+4. Clean install/upgrade/uninstall.
+5. Validate supported Windows and shipped architectures.
+6. Standard/admin/UAC/startup/background/Defender/firewall/recovery matrices.
+7. Fresh final-commit 1-hour and 8-hour stability/resource runs.
+8. Independent final production/security review.
+
+## Current CI Checkpoint
+
+At `d8ac4af1...`:
+
+- Windows workflow PASS: `34671410981` (same-head run `34671409289` also PASS).
+- Package workflow PASS: `34671410865`.
+
+These are internal gates only; no finding should be labeled fully PASS unless all required evidence for that finding exists.
 
 ---
 

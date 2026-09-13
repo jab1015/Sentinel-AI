@@ -5,6 +5,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 
 namespace Sentinel.App.Services
 {
@@ -34,11 +35,7 @@ namespace Sentinel.App.Services
             string planGuid = ExtractGuid(active.Output);
             string planName = ExtractPlanName(active.Output);
             PowerPlanCategory category = Classify(planGuid, planName);
-
-            bool potentiallyPerformanceLimiting =
-                category == PowerPlanCategory.PowerSaver;
-
-            bool optimizationInvestigationWarranted = potentiallyPerformanceLimiting;
+            bool optimizationInvestigationWarranted = category == PowerPlanCategory.PowerSaver;
 
             string summary = category switch
             {
@@ -67,15 +64,10 @@ namespace Sentinel.App.Services
         {
             const string marker = "GUID:";
             int start = output.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (start < 0)
-                return string.Empty;
-
+            if (start < 0) return string.Empty;
             start += marker.Length;
             int end = output.IndexOf(' ', start);
-            string value = end > start
-                ? output.Substring(start, end - start)
-                : output[start..];
-
+            string value = end > start ? output.Substring(start, end - start) : output[start..];
             return value.Trim();
         }
 
@@ -83,9 +75,7 @@ namespace Sentinel.App.Services
         {
             int open = output.LastIndexOf('(');
             int close = output.LastIndexOf(')');
-            if (open < 0 || close <= open)
-                return string.Empty;
-
+            if (open < 0 || close <= open) return string.Empty;
             return output.Substring(open + 1, close - open - 1).Trim();
         }
 
@@ -93,59 +83,48 @@ namespace Sentinel.App.Services
         {
             if (guid.Equals("a1841308-3541-4fab-bc81-f71556f20b4a", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("Power saver", StringComparison.OrdinalIgnoreCase))
-            {
                 return PowerPlanCategory.PowerSaver;
-            }
 
             if (guid.Equals("381b4222-f694-41f0-9685-ff5bb260df2e", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("Balanced", StringComparison.OrdinalIgnoreCase))
-            {
                 return PowerPlanCategory.Balanced;
-            }
 
             if (guid.Equals("8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c", StringComparison.OrdinalIgnoreCase) ||
                 guid.Equals("e9a42b02-d5df-448d-aa00-03f14749eb61", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("High performance", StringComparison.OrdinalIgnoreCase) ||
                 name.Contains("Ultimate Performance", StringComparison.OrdinalIgnoreCase))
-            {
                 return PowerPlanCategory.HighPerformance;
-            }
 
             return PowerPlanCategory.Unknown;
         }
 
-        private static CommandResult Run(string fileName, string arguments)
+        private static CommandResult Run(string fileName, params string[] arguments)
         {
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? fileName : Path.Combine(system, fileName),
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
+                foreach (string argument in arguments)
+                    startInfo.ArgumentList.Add(argument);
 
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(5), maxOutputChars: 64_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(5000))
-                {
-                    try { process.Kill(); } catch { }
-                    return new CommandResult(-1, output, "Power-plan diagnostic timed out.");
-                }
-
-                return new CommandResult(process.ExitCode, output, error);
+                return new CommandResult(
+                    execution.Succeeded ? 0 : execution.ExitCode ?? -1,
+                    execution.StandardOutput,
+                    execution.StandardError.Length > 0 ? execution.StandardError : execution.Detail);
             }
             catch (Exception ex)
             {
-                return new CommandResult(-1, string.Empty, ex.Message);
+                return new CommandResult(-1, string.Empty, ex.GetType().Name);
             }
         }
 

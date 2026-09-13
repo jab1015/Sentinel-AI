@@ -1,210 +1,89 @@
 # SAI-013 — Product Roadmap
 
-Version: 1.0
-
-Status: Active
-
-Last Updated: 2026-07-29
+Version: 2.0  
+Status: Active  
+Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
 
 ---
 
-# Purpose
+## Vision
 
-This document defines the long-term development roadmap for Sentinel AI.
+Deliver a commercial-quality Windows security platform that combines verified native system evidence, understandable AI assistance, safe active protection, recoverable containment, and narrowly scoped privileged remediation.
 
-The roadmap is intended to guide future planning while maintaining a stable and scalable architecture.
+## Phase 1 — Monitoring and Investigation Foundation
 
----
+Status: **ESTABLISHED**
 
-# Vision
+Includes native system monitoring, Defender/Firewall evidence, process/network/system evidence, investigation UX, history, diagnostics, Activity Center, optimization transparency, and Ask Sentinel.
 
-Sentinel AI will become an AI-powered Windows security platform capable of monitoring, analyzing, explaining, and responding to threats in real time.
+## Phase 2 — Production Security Hardening
 
----
+Status: **ACTIVE**
 
-# Development Phases
+Assessment baseline: `1218f5d...`; 29 findings (14 High, 15 Medium).
 
-## Phase 1 — Foundation
+Completed/source-hardened areas include:
 
-Status: In Progress
+- Common bounded subprocess runner and 10x CI reliability gate.
+- Transactional protected quarantine/recovery semantics and adversarial CI.
+- Fail-closed quarantine metadata cleanup.
+- Privileged broker allowlist/identity checks and package-full-name binding.
+- Unsigned x64 MSIX payload verification.
+- Authenticode trust improvements.
+- DISM/SFC deterministic classification.
+- Redaction, event filtering, history, diagnostics, network process collection, and AI gateway security tests.
 
-Objectives
+Exit criteria: all findings fully verified or safely disabled, High re-audit complete, all-29 re-audit complete.
 
-- Project architecture
-- Monitoring Engine
-- Dashboard
-- Core monitor services
-- System Snapshot
-- Documentation
+## Phase 3 — Active Protection
 
-Deliverables
+Status: **PARTIALLY IMPLEMENTED; RUNTIME QUALIFICATION REQUIRED**
 
-- Monitoring Engine
-- CPU Monitor
-- Memory Monitor
-- Disk Monitor
-- Network Monitor
-- Process Monitor
-- Security Monitor
-- Windows Information Monitor
+- Suspicious process/file behavior detection.
+- Malware/ransomware indicators.
+- Protected quarantine/restore/delete.
+- Network containment/unblock where supported.
+- Defender-aware protection and explanation.
+- Exact-target elevated operations.
+- User warning/explanation before or after supported blocking actions as appropriate.
 
----
+Sentinel must not claim comprehensive antivirus/firewall replacement capability where Windows APIs/evidence do not prove it.
 
-## Phase 2 — Native Windows Monitoring
+## Phase 4 — Trusted AI and Cloud Enforcement
 
-Status: Planned
+Status: **ACTIVE / EXTERNAL VALIDATION BLOCKED**
 
-Objectives
+- Final Ask Sentinel response claim/provenance boundary.
+- Server-side authenticated sessions and tier enforcement.
+- Microsoft Store entitlement validation.
+- Google Cloud IAM/Secret Manager deployment.
+- Distributed replay/rate/concurrency/spend controls.
+- Deployed redaction/log inspection.
 
-- Native CPU monitoring
-- Physical memory monitoring
-- Disk health
-- SMART support
-- Network throughput
-- Defender integration
-- Firewall integration
-- Event Log integration
-- Service monitoring
+## Phase 5 — Release Qualification
 
-Deliverables
+Status: **NOT STARTED ON FINAL HARDENED COMMIT**
 
-- Production monitoring engine
-- Accurate performance metrics
-- Native Windows API integration
+- Signed/Store package provenance.
+- Install/upgrade/uninstall.
+- Supported Windows + shipped architectures.
+- UAC/standard/admin/startup/background matrices.
+- Defender/firewall/sleep-wake/network-loss/recovery.
+- Failure injection and crash recovery.
+- 1-hour and 8-hour stability/resource runs.
+- Independent final production/security review.
 
----
+## Immediate Sequence
 
-## Phase 3 — Security Intelligence
-
-Status: Planned
-
-Objectives
-
-- Threat scoring
-- Risk analysis
-- Suspicious process detection
-- Startup analysis
-- Registry monitoring
-- Persistence detection
-- Behavioral analysis
-
-Deliverables
-
-- Threat Analysis Engine
-- Security rules
-- Alert system
-
----
-
-## Phase 4 — Artificial Intelligence
-
-Status: Planned
-
-Objectives
-
-- AI reasoning
-- Recommendation engine
-- Explainable AI
-- Confidence scoring
-- Automated analysis
-
-Deliverables
-
-- AI Engine
-- Recommendation Engine
-- Explanation Engine
-
----
-
-## Phase 5 — Automation
-
-Status: Planned
-
-Objectives
-
-- Automatic remediation
-- Rule engine
-- Scheduled scans
-- Notification engine
-
-Deliverables
-
-- Rules Engine
-- Automation Engine
-- Alert Framework
-
----
-
-## Phase 6 — Enterprise
-
-Status: Planned
-
-Objectives
-
-- Central management
-- Multi-device monitoring
-- Cloud synchronization
-- Policy management
-- Reporting
-
-Deliverables
-
-- Enterprise Console
-- Cloud Services
-- Remote Management
-
----
-
-# Release Strategy
-
-Prototype
-
-↓
-
-Foundation
-
-↓
-
-Production
-
-↓
-
-Commercial
-
-↓
-
-Enterprise
-
----
-
-# Success Criteria
-
-- Stable architecture
-- Accurate monitoring
-- Reliable threat detection
-- Explainable AI
-- Enterprise scalability
-- Maintainable codebase
-
----
-
-# Current Sprint
-
-Sprint 3
-
-Focus
-
-- Replace placeholder monitoring
-- Native Windows integration
-- Production-quality monitoring services
-
----
-
-# Long-Term Goal
-
-Deliver a commercial-quality Windows security platform that combines native system monitoring, artificial intelligence, and automated threat response while remaining fast, reliable, and easy to use.
+1. A07/A15 broker packaged/UAC adversarial validation.
+2. A19 final Ask Sentinel display validation.
+3. A01 Authenticode extended matrix.
+4. A05 cloud/Store staging validation.
+5. Remaining finding remediation.
+6. High and all-29 re-audits.
+7. Final release qualification.
 
 ---
 

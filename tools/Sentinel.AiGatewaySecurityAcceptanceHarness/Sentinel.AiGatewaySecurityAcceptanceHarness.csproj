@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/GatewaySecurity.cs" Link="GatewaySecurity.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/BoundedHttpJson.cs" Link="BoundedHttpJson.cs" />
+  </ItemGroup>
+</Project>

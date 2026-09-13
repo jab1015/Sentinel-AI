@@ -1,0 +1,123 @@
+name: Sentinel Security Hardening Package
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  package-x64:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Locate MSBuild
+        id: msbuild
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe was not found." }
+          $path = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($path)) { throw "MSBuild.exe was not found." }
+          "path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Build unsigned x64 MSIX staging package
+        shell: pwsh
+        run: |
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj" /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=msbuild-package.log;verbosity=diagnostic"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload package MSBuild diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-msbuild-diagnostics
+          path: msbuild-package.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Verify generated MSIX payload
+        shell: pwsh
+        run: |
+          $packageRoot = "src\SentinelAI\Sentinel.App\Sentinel.App (Package)"
+          $msixes = @(Get-ChildItem "$packageRoot\AppPackages" -Recurse -File -Filter "*.msix" -ErrorAction Stop |
+            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($msixes.Count -ne 1) {
+            throw "Expected exactly one generated application MSIX, found $($msixes.Count)."
+          }
+
+          $makeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -File -ErrorAction Stop |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($null -eq $makeAppx) { throw "MakeAppx.exe was not found." }
+
+          $unpackRoot = Join-Path $env:RUNNER_TEMP "sentinel-msix-unpacked"
+          if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $unpackRoot | Out-Null
+          & $makeAppx.FullName unpack /p $msixes[0].FullName /d $unpackRoot /o
+          if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed to unpack the generated MSIX." }
+
+          $apps = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.App.exe")
+          $brokers = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.PrivilegedBroker.exe")
+          if ($apps.Count -ne 1) { throw "Generated MSIX did not contain exactly one Sentinel.App.exe; found $($apps.Count)." }
+          if ($brokers.Count -ne 1) { throw "Generated MSIX did not contain exactly one Sentinel.PrivilegedBroker.exe; found $($brokers.Count)." }
+
+          function Get-PeMachine([string]$Path) {
+            $bytes = [System.IO.File]::ReadAllBytes($Path)
+            if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw "$Path is not a valid PE file." }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) { throw "$Path has an invalid PE header offset." }
+            if ($bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45 -or $bytes[$peOffset + 2] -ne 0 -or $bytes[$peOffset + 3] -ne 0) { throw "$Path has an invalid PE signature." }
+            return [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          }
+
+          $expectedMachine = [uint16]0x8664
+          foreach ($binary in @($apps[0], $brokers[0])) {
+            $machine = Get-PeMachine $binary.FullName
+            if ($machine -ne $expectedMachine) {
+              throw "$($binary.Name) machine 0x$($machine.ToString('x4')) did not match expected 0x8664 for x64."
+            }
+            Write-Host "$($binary.Name): machine 0x$($machine.ToString('x4')) verified for x64"
+          }
+
+          $inventoryPath = Join-Path $env:GITHUB_WORKSPACE "package-payload-inventory.txt"
+          @(
+            "MSIX=$($msixes[0].FullName)",
+            "MSIX_SHA256=$((Get-FileHash $msixes[0].FullName -Algorithm SHA256).Hash)",
+            "Sentinel.App.exe=$($apps[0].FullName)",
+            "Sentinel.App.exe_SHA256=$((Get-FileHash $apps[0].FullName -Algorithm SHA256).Hash)",
+            "Sentinel.PrivilegedBroker.exe=$($brokers[0].FullName)",
+            "Sentinel.PrivilegedBroker.exe_SHA256=$((Get-FileHash $brokers[0].FullName -Algorithm SHA256).Hash)"
+          ) | Set-Content -Path $inventoryPath -Encoding utf8
+          Get-Content $inventoryPath
+
+      - name: Upload package payload inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-payload-inventory
+          path: package-payload-inventory.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record package inventory
+        shell: pwsh
+        run: |
+          $packageRoot = "src\SentinelAI\Sentinel.App\Sentinel.App (Package)"
+          Get-ChildItem $packageRoot -Recurse -File |
+            Where-Object { $_.Name -match '^Sentinel\.(App|PrivilegedBroker)(\.exe|\.dll)$' -or $_.Extension -in '.msix','.appx' } |
+            Select-Object FullName, Length, LastWriteTimeUtc |
+            Format-Table -AutoSize

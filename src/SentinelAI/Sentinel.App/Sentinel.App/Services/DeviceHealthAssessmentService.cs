@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 
 namespace Sentinel.App.Services
@@ -20,9 +21,7 @@ namespace Sentinel.App.Services
     {
         public DeviceHealthAssessment Assess()
         {
-            CommandResult devices = Run(
-                "pnputil.exe",
-                "/enum-devices /problem");
+            CommandResult devices = Run("pnputil.exe", "/enum-devices", "/problem");
 
             if (devices.ExitCode != 0)
             {
@@ -42,13 +41,7 @@ namespace Sentinel.App.Services
                 ? $"Windows reports {problems.Count} device problem(s). Sentinel should correlate the affected device and problem code before recommending any repair."
                 : "Windows reports no Plug and Play device problems requiring attention.";
 
-            return new DeviceHealthAssessment(
-                true,
-                problems,
-                investigationWarranted,
-                summary,
-                devices.Output,
-                devices.Error);
+            return new DeviceHealthAssessment(true, problems, investigationWarranted, summary, devices.Output, devices.Error);
         }
 
         private static IReadOnlyList<DeviceProblemEvidence> ParseProblems(string output)
@@ -67,15 +60,7 @@ namespace Sentinel.App.Services
             void Flush()
             {
                 if (!string.IsNullOrWhiteSpace(instanceId) || !string.IsNullOrWhiteSpace(description))
-                {
-                    results.Add(new DeviceProblemEvidence(
-                        instanceId,
-                        description,
-                        className,
-                        manufacturer,
-                        problemCode,
-                        problem));
-                }
+                    results.Add(new DeviceProblemEvidence(instanceId, description, className, manufacturer, problemCode, problem));
 
                 instanceId = string.Empty;
                 description = string.Empty;
@@ -95,32 +80,23 @@ namespace Sentinel.App.Services
                 }
 
                 int colon = line.IndexOf(':');
-                if (colon <= 0)
-                    continue;
+                if (colon <= 0) continue;
 
                 string key = line[..colon].Trim();
                 string value = line[(colon + 1)..].Trim();
 
-                if (key.Equals("Instance ID", StringComparison.OrdinalIgnoreCase))
-                    instanceId = value;
-                else if (key.Equals("Device Description", StringComparison.OrdinalIgnoreCase))
-                    description = value;
-                else if (key.Equals("Class Name", StringComparison.OrdinalIgnoreCase))
-                    className = value;
-                else if (key.Equals("Manufacturer Name", StringComparison.OrdinalIgnoreCase))
-                    manufacturer = value;
+                if (key.Equals("Instance ID", StringComparison.OrdinalIgnoreCase)) instanceId = value;
+                else if (key.Equals("Device Description", StringComparison.OrdinalIgnoreCase)) description = value;
+                else if (key.Equals("Class Name", StringComparison.OrdinalIgnoreCase)) className = value;
+                else if (key.Equals("Manufacturer Name", StringComparison.OrdinalIgnoreCase)) manufacturer = value;
                 else if (key.Equals("Problem Code", StringComparison.OrdinalIgnoreCase))
                 {
                     problem = value;
                     string digits = new(value.Where(char.IsDigit).ToArray());
-                    if (!string.IsNullOrWhiteSpace(digits) &&
-                        int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
-                    {
+                    if (!string.IsNullOrWhiteSpace(digits) && int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
                         problemCode = parsed;
-                    }
                 }
-                else if (key.Equals("Problem", StringComparison.OrdinalIgnoreCase))
-                    problem = value;
+                else if (key.Equals("Problem", StringComparison.OrdinalIgnoreCase)) problem = value;
             }
 
             Flush();
@@ -133,38 +109,33 @@ namespace Sentinel.App.Services
                 .ToArray();
         }
 
-        private static CommandResult Run(string fileName, string arguments)
+        private static CommandResult Run(string fileName, params string[] arguments)
         {
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? fileName : Path.Combine(system, fileName),
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
+                foreach (string argument in arguments)
+                    startInfo.ArgumentList.Add(argument);
 
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(5), maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(5000))
-                {
-                    try { process.Kill(); } catch { }
-                    return new CommandResult(-1, output, "Device-health diagnostic timed out.");
-                }
-
-                return new CommandResult(process.ExitCode, output, error);
+                return new CommandResult(
+                    execution.Succeeded ? 0 : execution.ExitCode ?? -1,
+                    execution.StandardOutput,
+                    execution.StandardError.Length > 0 ? execution.StandardError : execution.Detail);
             }
             catch (Exception ex)
             {
-                return new CommandResult(-1, string.Empty, ex.Message);
+                return new CommandResult(-1, string.Empty, ex.GetType().Name);
             }
         }
 

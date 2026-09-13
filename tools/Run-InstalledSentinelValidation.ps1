@@ -20,15 +20,16 @@ function Add-Result {
 }
 
 $results = [System.Collections.Generic.List[object]]::new()
-$packageName = '07414ecb-83de-4656-bf2d-b299d64ce5c5'
+$packageIdentityName = 'ModernMethods.SentinelAI'
+$expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
 
 Write-Host '=== Sentinel AI Installed Application Validation ==='
 Write-Host "Observation window: $ObservationSeconds seconds"
 Write-Host ''
 
-$package = Get-AppxPackage -Name $packageName -ErrorAction SilentlyContinue | Select-Object -First 1
+$package = Get-AppxPackage -Name $packageIdentityName -ErrorAction SilentlyContinue | Select-Object -First 1
 Add-Result $results 'Sentinel package installed' ($null -ne $package) $(
-    if ($package) { "Version=$($package.Version); PackageFullName=$($package.PackageFullName)" } else { 'Sentinel AI package is not installed for the current user.' }
+    if ($package) { "Version=$($package.Version); PackageFullName=$($package.PackageFullName); PackageFamilyName=$($package.PackageFamilyName)" } else { "Sentinel AI package identity '$packageIdentityName' is not installed for the current user." }
 )
 
 $publisherPassed = $false
@@ -36,8 +37,8 @@ $publisherEvidence = 'Package unavailable.'
 $startupPassed = $false
 $startupEvidence = 'Package unavailable.'
 if ($package) {
-    $publisherPassed = $package.Publisher -eq 'CN=Modern Methods'
-    $publisherEvidence = "Publisher=$($package.Publisher)"
+    $publisherPassed = $package.Publisher -eq $expectedPublisher
+    $publisherEvidence = "Publisher=$($package.Publisher); Expected=$expectedPublisher"
 
     try {
         [xml]$manifest = Get-AppxPackageManifest -Package $package.PackageFullName -ErrorAction Stop
@@ -51,7 +52,7 @@ if ($package) {
         $startupEvidence = $_.Exception.Message
     }
 }
-Add-Result $results 'Installed publisher is Modern Methods' $publisherPassed $publisherEvidence
+Add-Result $results 'Installed publisher identity matches Sentinel manifest' $publisherPassed $publisherEvidence
 Add-Result $results 'Installed startup task declared' $startupPassed $startupEvidence
 
 $process = Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -109,10 +110,11 @@ Add-Result $results 'Windows network telemetry available' $tcpPassed $tcpEvidenc
 $logCandidates = [System.Collections.Generic.List[string]]::new()
 $logCandidates.Add((Join-Path $env:LOCALAPPDATA 'Modern Methods\Sentinel AI\Logs\sentinel.log'))
 $packagesRoot = Join-Path $env:LOCALAPPDATA 'Packages'
-if (Test-Path $packagesRoot) {
-    Get-ChildItem $packagesRoot -Directory -Filter "$packageName*" -ErrorAction SilentlyContinue | ForEach-Object {
-        $logCandidates.Add((Join-Path $_.FullName 'LocalCache\Local\Modern Methods\Sentinel AI\Logs\sentinel.log'))
-        $logCandidates.Add((Join-Path $_.FullName 'LocalState\Modern Methods\Sentinel AI\Logs\sentinel.log'))
+if ($package -and (Test-Path $packagesRoot)) {
+    $packageStateRoot = Join-Path $packagesRoot $package.PackageFamilyName
+    if (Test-Path $packageStateRoot) {
+        $logCandidates.Add((Join-Path $packageStateRoot 'LocalCache\Local\Modern Methods\Sentinel AI\Logs\sentinel.log'))
+        $logCandidates.Add((Join-Path $packageStateRoot 'LocalState\Modern Methods\Sentinel AI\Logs\sentinel.log'))
     }
 }
 

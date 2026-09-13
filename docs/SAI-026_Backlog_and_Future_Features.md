@@ -1,222 +1,120 @@
 # SAI-026 — Product Backlog & Future Features
 
-Version: 1.0
-
-Status: Active
-
-Last Updated: 2026-07-29
+Version: 2.0  
+Status: Active — Security hardening backlog  
+Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
 
 ---
 
-# Purpose
+## Priority Definitions
+
+- **P0** — Required before production-security sign-off.
+- **P1** — Active-protection capability required for the intended product direction but may ship only when safely verified.
+- **P2** — Significant product/UX improvements.
+- **P3** — Longer-term/enterprise work.
+
+## P0 — Production Security Closure
+
+### Original assessment
+
+- [ ] Close/fully verify all 14 High findings.
+- [ ] Close/fully verify all 15 Medium findings.
+- [ ] Re-audit all High findings.
+- [ ] Re-audit all 29 findings.
+
+### Quarantine
+
+- [x] Deterministic recovery semantic guard.
+- [x] Restore/delete cleanup failure preservation tests.
+- [x] Forged/corrupt/tamper/collision/crash deterministic harness coverage.
+- [ ] Standard-user ACL/owner/DACL proof.
+- [ ] Reparse/junction/symlink/hardlink adversarial matrix.
+- [ ] Source/destination race matrix.
+- [ ] Disk-full/access-denied/orphan/all-checkpoint crash matrix.
+- [ ] Installed broker/UAC quarantine tests.
+
+### Privileged broker
+
+- [x] Allowlisted protocol and exact-target checks.
+- [x] Package-full-name client/broker binding.
+- [x] Deterministic package identity policy harness.
+- [ ] Unauthorized same-user/copy/spoof tests.
+- [ ] Malformed/oversized/extra IPC tests.
+- [ ] UAC accept/cancel/client-exit/broker-hang/disconnect tests.
+- [ ] PID reuse/target replacement/pipe race tests.
+- [ ] Installed package + upgrade lifecycle tests.
+
+### Ask Sentinel
+
+- [ ] Final display-time validator after all response replacements (A19).
+- [ ] Provenance labels/claim regression tests.
+- [ ] Ensure model text cannot invent blocked/quarantined/repaired/security-control outcomes.
+
+### Authenticode
+
+- [ ] Catalog/timestamp/revocation/offline fixture matrix.
+- [ ] Self-signed/untrusted/lookalike cases.
+- [ ] Replacement/cache-invalidation races.
+- [ ] Shipped architectures.
+
+### AI gateway
+
+- [ ] Google Cloud staging deployment validation.
+- [ ] IAM + Secret Manager.
+- [ ] Store entitlement abuse matrix.
+- [ ] Distributed replay/rate/concurrency/spend state.
+- [ ] Provider timeout/outage/restart/secret-unavailable cases.
+
+### Package/runtime assurance
+
+- [x] Unsigned x64 generated-MSIX payload gate.
+- [ ] Store-signed provenance.
+- [ ] Clean install/upgrade/uninstall.
+- [ ] Supported Windows versions/architectures.
+- [ ] Standard/admin/UAC/startup/background matrices.
+- [ ] Defender/firewall/sleep-wake/network-loss/recovery.
+- [ ] Final 1-hour and 8-hour stability/resource runs.
+
+## P1 — Active Protection
+
+- Malware/ransomware behavior indicators.
+- Suspicious file/process detection with honest confidence semantics.
+- Safe blocking/containment where Windows integration proves enforcement.
+- Network containment/unblock workflows where supported.
+- Defender-integrated investigation/remediation.
+- Protected quarantine UX: inspect, restore, permanent delete, recovery-required states.
+- User warning/explanation around supported protective actions.
+
+## P1 — Security Intelligence
+
+- Event-driven evidence expansion.
+- Startup/persistence/service/driver analysis.
+- Better process lineage and signer reputation context.
+- Network attribution improvements including short-lived/UDP/IPv6/QUIC limitations.
+- Threat/risk correlation without overstating evidence.
+
+## P2 — Reporting and UX
+
+- Historical security reports.
+- Export options where privacy-safe.
+- Accessibility/localization.
+- Performance/responsiveness improvements.
+- User-visible recovery/containment explanations.
+
+## P3 — Enterprise / Future Research
+
+- Multi-device management and policy.
+- Central reporting.
+- ETW/event-driven telemetry research.
+- SmartScreen/Windows Security integration research.
+- TPM/Secure Boot posture.
+- Extensibility/plugin architecture only after core security boundary is mature.
 
-This document maintains the long-term engineering backlog for Sentinel AI.
+## Technical Debt Rule
 
-Items are organized by priority and should be reviewed during sprint planning. Inclusion in this backlog does not guarantee implementation in a specific release.
-
----
-
-# Priority Definitions
-
-## P0 — Critical
-
-Required for production readiness.
-
-## P1 — High
-
-Major functionality planned for the next development phase.
-
-## P2 — Medium
-
-Enhancements that significantly improve usability or capability.
-
-## P3 — Low
-
-Future improvements and quality-of-life features.
-
----
-
-# P0 — Production Readiness
-
-## Native Monitoring
-
-- Production CPU monitoring
-- Physical memory monitoring
-- Disk performance monitoring
-- Network throughput monitoring
-- Windows uptime
-- Service monitoring
-
-Status
-
-Active
-
----
-
-## Security Integration
-
-- Microsoft Defender status
-- Windows Firewall status
-- Windows Security Center integration
-- Windows Update status
-- Event Viewer integration
-
-Status
-
-Planned
-
----
-
-## Stability
-
-- Centralized exception handling
-- Logging framework
-- Configuration management
-- Performance optimization
-- Startup improvements
-
-Status
-
-Planned
-
----
-
-# P1 — Security Intelligence
-
-## Threat Detection
-
-- Suspicious process detection
-- Startup persistence detection
-- Registry monitoring
-- Scheduled task analysis
-- Service analysis
-- Driver analysis
-
----
-
-## AI Analysis
-
-- Threat scoring
-- Confidence scoring
-- Behavioral analysis
-- Recommendation engine
-- Explainable AI
-
----
-
-## Notifications
-
-- Toast notifications
-- Critical alerts
-- Warning notifications
-- Alert history
-
----
-
-# P2 — Reporting
-
-Features
-
-- PDF reports
-- CSV export
-- JSON export
-- Historical monitoring
-- Trend analysis
-- System health reports
-
----
-
-# P2 — Dashboard Enhancements
-
-Future widgets
-
-- Performance charts
-- Disk utilization history
-- Memory history
-- Network history
-- Threat timeline
-- Security summary
-- Health score
-
----
-
-# P2 — User Experience
-
-- Theme support
-- Accessibility improvements
-- Keyboard shortcuts
-- Custom dashboard layout
-- Refresh customization
-- Localization
-
----
-
-# P3 — Enterprise Features
-
-- Multi-device monitoring
-- Central management
-- Policy management
-- Role-based access
-- Cloud synchronization
-- Remote reporting
-
----
-
-# P3 — Plugin Framework
-
-Future support for
-
-- Third-party monitors
-- Security plugins
-- Enterprise extensions
-- Reporting extensions
-
----
-
-# Research Backlog
-
-Future investigations include:
-
-- Windows ETW integration
-- SmartScreen APIs
-- TPM health
-- Secure Boot verification
-- Microsoft Graph integration
-- Windows Defender APIs
-- Microsoft Security APIs
-
----
-
-# Technical Debt
-
-Track and prioritize:
-
-- Placeholder implementations
-- Legacy compatibility code
-- Refactoring opportunities
-- Performance bottlenecks
-- Documentation improvements
-
-Technical debt should be reviewed at the end of every sprint.
-
----
-
-# Backlog Review
-
-The backlog should be reviewed:
-
-- Before sprint planning
-- After major releases
-- When architecture changes
-- When new platform capabilities become available
-
----
-
-# Long-Term Goal
-
-Maintain a prioritized, transparent backlog that guides Sentinel AI toward becoming a comprehensive, enterprise-ready Windows monitoring and security platform while ensuring development remains focused on delivering the highest-value functionality first.
+Security correctness outranks feature restoration. A capability that cannot yet be made race-resistant, recoverable, and verifiable should remain explicitly disabled/fail-closed rather than ship with unsafe behavior.
 
 ---
 
