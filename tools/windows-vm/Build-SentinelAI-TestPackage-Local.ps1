@@ -46,13 +46,26 @@ Write-Host "MakeAppx: $makeAppx"
 Write-Host ''
 Write-Host 'Building subscription-free LocalDev x64 VM test MSIX...'
 
-& (Join-Path $PSScriptRoot 'Build-SentinelAI-TestPackage.ps1') `
-    -MsBuild $msbuild `
-    -SignTool $signTool `
-    -MakeAppx $makeAppx `
-    -SourceSha $sourceSha
+$previousRunnerTemp = $env:RUNNER_TEMP
+$localRunnerTemp = Join-Path ([IO.Path]::GetTempPath()) ("SentinelAI-local-runner-" + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $localRunnerTemp -Force | Out-Null
+$env:RUNNER_TEMP = $localRunnerTemp
 
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+try {
+    & (Join-Path $PSScriptRoot 'Build-SentinelAI-TestPackage.ps1') `
+        -MsBuild $msbuild `
+        -SignTool $signTool `
+        -MakeAppx $makeAppx `
+        -SourceSha $sourceSha
+
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+finally {
+    $env:RUNNER_TEMP = $previousRunnerTemp
+    if (Test-Path -LiteralPath $localRunnerTemp) {
+        Remove-Item -LiteralPath $localRunnerTemp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 $outputDir = Join-Path $repoRoot 'artifacts\windows-vm-test'
 Write-Host ''
