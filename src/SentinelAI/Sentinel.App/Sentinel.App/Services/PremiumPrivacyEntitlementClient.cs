@@ -53,6 +53,14 @@ internal sealed class PremiumPrivacyEntitlementClient : IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(PremiumPrivacyEntitlementClient));
         if (!IsSupportedScope(scope))
             return PremiumPrivacyAuthorizationResult.Denied("UnsupportedScope", "The requested Premium Privacy capability is unsupported.");
+
+#if SENTINEL_LOCAL_DEV
+        // VM-only test entitlement. SENTINEL_LOCAL_DEV is defined exclusively by the
+        // LocalDev build configuration. Release/Store builds compile the authoritative
+        // Microsoft Store + Sentinel gateway path below and cannot activate this branch
+        // through an environment variable, local preference, or runtime toggle.
+        return PremiumPrivacyAuthorizationResult.LocalVmTestAllowed(scope);
+#else
         if (_gatewayRoot is null)
             return PremiumPrivacyAuthorizationResult.Unavailable("GatewayUnavailable", "Premium Privacy entitlement verification is not configured.");
 
@@ -158,6 +166,7 @@ internal sealed class PremiumPrivacyEntitlementClient : IDisposable
         {
             return PremiumPrivacyAuthorizationResult.Unavailable("StoreUnavailable", "Microsoft Store entitlement verification is unavailable. No premium operation was authorized.");
         }
+#endif
     }
 
     public void Dispose()
@@ -191,6 +200,11 @@ internal sealed record PremiumPrivacyAuthorizationResult(
 {
     internal static PremiumPrivacyAuthorizationResult Allowed(string scope, string tokenId) =>
         new(true, true, scope, tokenId, "Authorized", "Active Microsoft Store entitlement and one-time feature capability were verified by the Sentinel gateway.");
+
+    internal static PremiumPrivacyAuthorizationResult LocalVmTestAllowed(string scope) =>
+        new(true, true, scope, "LOCAL-VM-TEST-" + Guid.NewGuid().ToString("N"),
+            "LocalVmTestAuthorized",
+            "LOCALDEV VM TEST BUILD: Premium Privacy subscription verification is bypassed for isolated Windows validation. Release and Microsoft Store builds still require authoritative Store and Sentinel gateway verification.");
 
     internal static PremiumPrivacyAuthorizationResult Denied(string code, string message) =>
         new(false, true, string.Empty, string.Empty, code, message);
