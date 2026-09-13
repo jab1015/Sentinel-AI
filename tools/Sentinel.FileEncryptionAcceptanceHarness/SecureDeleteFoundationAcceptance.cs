@@ -87,6 +87,7 @@ internal static class SecureDeleteFoundationAcceptance
 
         SecureDeleteCoordinatorAcceptance.Run();
         SecureDeleteMutationLeaseAcceptance.Run();
+        SecureDeleteOperationJournalAcceptance.Run();
     }
 
     private static void VerifyReparseSourceContract()
