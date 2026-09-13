@@ -49,6 +49,7 @@ Write-Host "MakeAppx: $makeAppx"
 Write-Host "Output: $outputDir"
 Write-Host ''
 Write-Host 'Building subscription-free LocalDev x64 VM test MSIX...'
+Write-Host 'Existing Visual Studio AppPackages folders will be preserved.'
 
 $previousRunnerTemp = $env:RUNNER_TEMP
 $localRunnerTemp = Join-Path ([IO.Path]::GetTempPath()) ("SentinelAI-local-runner-" + [Guid]::NewGuid().ToString('N'))
@@ -58,6 +59,19 @@ $env:RUNNER_TEMP = $localRunnerTemp
 $baseScript = Join-Path $PSScriptRoot 'Build-SentinelAI-TestPackage.ps1'
 $compatScript = Join-Path $localRunnerTemp 'Build-SentinelAI-TestPackage-Compat.ps1'
 $scriptText = Get-Content -LiteralPath $baseScript -Raw
+
+# The CI script's AppPackages cleanup is safe on an ephemeral GitHub runner but not on a
+# developer workstation. Redirect local package-generation output into RUNNER_TEMP so old
+# versioned Visual Studio AppPackages folders are never deleted by this wrapper.
+$oldAppPackages = '$appPackages = ''src\SentinelAI\Sentinel.App\Sentinel.App (Package)\AppPackages'''
+$newAppPackages = '$appPackages = Join-Path $env:RUNNER_TEMP ''SentinelAI-AppPackages'''
+if (-not $scriptText.Contains($oldAppPackages)) { throw 'Expected AppPackages assignment was not found in package script.' }
+$scriptText = $scriptText.Replace($oldAppPackages, $newAppPackages)
+
+$oldMsBuild = '& $MsBuild $packageProject /restore /m /p:Configuration=$configuration /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"'
+$newMsBuild = '& $MsBuild $packageProject /restore /m /p:Configuration=$configuration /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$appPackages\" /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"'
+if (-not $scriptText.Contains($oldMsBuild)) { throw 'Expected MSBuild package command was not found in package script.' }
+$scriptText = $scriptText.Replace($oldMsBuild, $newMsBuild)
 
 $oldRng = '[Security.Cryptography.RandomNumberGenerator]::GetBytes(48)'
 $newRng = '$( $bytes = New-Object byte[] 48; $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }; $bytes )'
