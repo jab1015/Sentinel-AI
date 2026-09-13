@@ -125,3 +125,7 @@ Write-Host "PackageFullName: $($installed.PackageFullName)"
 Write-Host "Version:         $($installed.Version)"
 Write-Host "Architecture:    $($installed.Architecture)"
 Write-Host 'The test certificate remains in Local Computer > Trusted People for this VM test package.'
+Write-Host ''
+Write-Warning 'REBOOT REQUIRED BEFORE EXPLORER TESTING.'
+Write-Host 'Restart Windows before testing Sentinel AI File Explorer context-menu commands.'
+Write-Host 'The Explorer extension may not become available until Explorer/Windows reloads after package installation.'
