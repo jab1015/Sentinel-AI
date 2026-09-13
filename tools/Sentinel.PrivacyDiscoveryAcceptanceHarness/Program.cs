@@ -107,6 +107,19 @@ try
     RelatedArtifactDiscoveryResult bounded = await service.DiscoverAsync(boundedRequest);
     Require(bounded.WasLimited, "File-count bound was not surfaced as a partial/limited result.");
 
+    long sourceLength = new FileInfo(source).Length;
+    RelatedArtifactDiscoveryRequest sentinelByteBoundRequest = new(
+        source,
+        Array.Empty<string>(),
+        SentinelArtifacts: new[] { new SentinelArtifactProvenance(sentinelArtifact, sourceHash, "op-byte-bound", "investigation-export") },
+        Bounds: new RelatedArtifactDiscoveryBounds(10, sourceLength, 2, TimeSpan.FromSeconds(10), 1));
+    RelatedArtifactDiscoveryResult sentinelByteBound = await service.DiscoverAsync(sentinelByteBoundRequest);
+    RelatedArtifactProviderResult sentinelProvider = sentinelByteBound.Providers.Single(p => p.Provider == "SentinelArtifacts");
+    Require(sentinelByteBound.WasLimited && sentinelProvider.State == RelatedArtifactProviderState.Limited &&
+            sentinelProvider.BytesHashed == 0 &&
+            sentinelProvider.Limitation.Contains("byte", StringComparison.OrdinalIgnoreCase),
+        "Sentinel provenance hashing exceeded or failed to surface the global hashed-byte bound.");
+
     using CancellationTokenSource canceled = new();
     canceled.Cancel();
     RelatedArtifactDiscoveryResult canceledResult = await service.DiscoverAsync(request, canceled.Token);
@@ -127,6 +140,7 @@ try
     Console.WriteLine("Exact hash duplicate / renamed copy: PASS");
     Console.WriteLine("Same-name and same-size false-positive resistance: PASS");
     Console.WriteLine("Sentinel provenance attribution: PASS");
+    Console.WriteLine("Sentinel provenance hashed-byte bound: PASS");
     Console.WriteLine("File History / Previous Versions configured-root discovery: PASS");
     Console.WriteLine("Windows Search / Recent metadata-only classification: PASS");
     Console.WriteLine("OneDrive local vs remote-state separation: PASS");
