@@ -90,6 +90,7 @@
     </ProjectReference>
     <ProjectReference Include="..\..\Sentinel.ExplorerExtension\Sentinel.ExplorerExtension.vcxproj">
       <ReferenceOutputAssembly>False</ReferenceOutputAssembly>
+      <SetConfiguration Condition="'$(Configuration)' == 'LocalDev'">Configuration=Release</SetConfiguration>
       <SetPlatform Condition="'$(Platform)' == 'x86'">Platform=Win32</SetPlatform>
       <SetPlatform Condition="'$(Platform)' != 'x86'">Platform=$(Platform)</SetPlatform>
     </ProjectReference>
