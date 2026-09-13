@@ -1,6 +1,6 @@
 name: Sentinel Windows VM Test Package
 
-# Qualification trigger marker: re-run the dedicated Windows VM package workflow after verification refactor.
+# Dedicated signed LocalDev package for isolated Windows VM qualification.
 on:
   workflow_dispatch:
   push:
@@ -18,13 +18,13 @@ permissions:
   statuses: write
 
 concurrency:
-  group: windows-vm-test-package-v3-${{ github.ref_name }}
+  group: windows-vm-test-package-v4-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
   build-sign-validate:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       OUTPUT_DIR: artifacts/windows-vm-test
 
@@ -62,7 +62,27 @@ jobs:
           "signtool=$signtool" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "makeappx=$makeappx" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Build, sign, and qualify Release x64 VM package
+      - name: Verify LocalDev entitlement boundary
+        shell: pwsh
+        run: |
+          $project = Get-Content 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -Raw
+          $client = Get-Content 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/PremiumPrivacyEntitlementClient.cs' -Raw
+          if ($project -notmatch 'SENTINEL_LOCAL_DEV') { throw 'LocalDev compile symbol is missing.' }
+          if ($client -notmatch '#if SENTINEL_LOCAL_DEV') { throw 'Compile-time LocalDev entitlement boundary is missing.' }
+          if ($client -notmatch 'LocalVmTestAllowed') { throw 'LocalDev VM authorization result is missing.' }
+          if ($client -notmatch '#else') { throw 'Release entitlement branch is missing.' }
+          if ($client -notmatch 'v1/store/collections-ticket' -or $client -notmatch 'v1/privacy/capability/validate') { throw 'Authoritative Release Store/gateway path was removed.' }
+          Write-Host 'LocalDev-only test authorization and authoritative Release path are both present.'
+
+      - name: Compile Release x64 entitlement path
+        shell: pwsh
+        run: |
+          dotnet restore 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -r win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -c Release -p:Platform=x64 -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build, sign, and qualify LocalDev x64 VM package
         shell: pwsh
         run: |
           ./tools/windows-vm/Build-SentinelAI-TestPackage.ps1 `
@@ -84,7 +104,8 @@ jobs:
         shell: pwsh
         run: |
           Get-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PACKAGE-METADATA.txt')
-          Write-Host 'Release x64 build, test signature, package contents, manifest registration, PE architecture, helpers, and public certificate validated.'
+          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, test signature, package contents, manifest registration, PE architecture, helpers, and public certificate validated.'
+          Write-Host 'Release x64 app was separately compiled to prove the authoritative Store/gateway entitlement path remains buildable.'
 
       - name: Upload package build diagnostics on failure
         if: failure()
