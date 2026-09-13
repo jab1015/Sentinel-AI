@@ -33,6 +33,39 @@
 
                 <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
                     <StackPanel Spacing="16">
+                        <TextBlock Text="Features" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="See what Sentinel can do and which capabilities are included without a subscription." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="9">
+                                <TextBlock Text="Included with Sentinel" FontSize="17" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock Text="• Microsoft Defender and Windows Firewall status" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• System-health and performance monitoring" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Local investigation summaries and recent activity" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• File and folder inspection from Windows Explorer" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Performance baseline learning" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Startup protection controls" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="9">
+                                <TextBlock Text="With an active subscription" FontSize="17" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock Text="• Advanced Sentinel security monitoring and correlation" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Proactive investigations and Ask Sentinel cloud investigations" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Automatic computer optimization" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Verified repairs, containment, and quarantine" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Premium Privacy: Encrypt File and Sentinel Vault" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Secure Delete and privacy-related artifact discovery" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Premium actions remain unavailable unless Sentinel can verify the required subscription entitlement." FontSize="13" Foreground="#BFDBFE" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
+                    <StackPanel Spacing="16">
                         <TextBlock Text="Sentinel AI subscription" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
                         <TextBlock Text="Basic Microsoft Defender, Windows Firewall, and system-health status stays available without a subscription. An active subscription unlocks advanced Sentinel security monitoring and correlation, proactive investigations, Ask Sentinel cloud investigations, automatic optimization, verified repairs, containment, and quarantine." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
 
@@ -131,6 +164,42 @@
                         <Border Background="#0A2038" CornerRadius="10" Padding="14">
                             <TextBlock x:Name="OptimizationStatusText" Foreground="#BFDBFE" FontSize="14" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
                         </Border>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
+                    <StackPanel Spacing="16">
+                        <TextBlock Text="About Sentinel AI" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock Text="Windows security, investigation, system-health, repair, optimization, and privacy assistance from Modern Methods." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <Grid RowSpacing="10" ColumnSpacing="18">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Version" FontSize="14" FontWeight="SemiBold" Foreground="#BFDBFE"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="AboutVersionText" Text="Loading…" FontSize="14" Foreground="White" TextWrapping="Wrap"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Publisher" FontSize="14" FontWeight="SemiBold" Foreground="#BFDBFE"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="Modern Methods" FontSize="14" Foreground="White" TextWrapping="Wrap"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Package" FontSize="14" FontWeight="SemiBold" Foreground="#BFDBFE"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="AboutPackageText" Text="Loading…" FontSize="14" Foreground="White" TextWrapping="Wrap"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="License" FontSize="14" FontWeight="SemiBold" Foreground="#BFDBFE"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="AboutLicenseText" Text="Checking subscription…" FontSize="14" Foreground="White" TextWrapping="Wrap"/>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="The installed package version shown here is the version Windows is actually running on this computer." FontSize="13" Foreground="#BFDBFE" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
 
