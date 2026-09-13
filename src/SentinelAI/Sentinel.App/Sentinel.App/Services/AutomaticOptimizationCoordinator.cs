@@ -32,6 +32,41 @@ namespace Sentinel.App.Services
             _stateStore = new OptimizationRuntimeStateStore(Path.Combine(directory, "optimization-runtime-state.json"));
         }
 
+        public async Task<AutomaticOptimizationResult> EvaluateOnlyAsync(SystemSnapshot snapshot, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            PerformanceBaselineService.PerformanceBaselineResult baseline = _baselineService.Record(snapshot);
+            UnifiedInvestigationAssessment assessment = _assessmentService.Evaluate(snapshot);
+            OptimizationSettings settings = _settingsService.Load();
+            OptimizationDecision decision = _decisionService.Evaluate(baseline, assessment);
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+
+            OptimizationSettings scanOnlySettings = settings with { AutomaticOptimizationEnabled = false };
+            OptimizationSafetyAssessment safety = _safetyService.Evaluate(decision, scanOnlySettings);
+
+            string summary;
+            if (!baseline.IsEstablished)
+            {
+                summary = $"Manual optimization scan complete. Sentinel is still learning this computer's normal performance baseline ({baseline.SampleCount}/12 checks complete). No changes were made.";
+            }
+            else if (!decision.OptimizationWarranted)
+            {
+                summary = "Manual optimization scan complete. Performance is within this computer's established baseline and no verified optimization is needed right now. No changes were made.";
+            }
+            else if (!subscription.IsActive)
+            {
+                summary = "Manual optimization scan found a verified optimization opportunity. No changes were made. An active Sentinel subscription is required before Sentinel can apply optimization changes.";
+            }
+            else
+            {
+                summary = "Manual optimization scan found a verified optimization opportunity. No changes were made by the scan. Sentinel can apply verified optimizations according to your optimization settings.";
+            }
+
+            return new AutomaticOptimizationResult(false, baseline, decision, safety, null, summary);
+        }
+
         public async Task<AutomaticOptimizationResult> EvaluateAndRunAsync(SystemSnapshot snapshot, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(snapshot);
