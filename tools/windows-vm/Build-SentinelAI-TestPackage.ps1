@@ -74,20 +74,20 @@ try {
     if ($identity.Publisher -ne $expectedPublisher) { throw "Unexpected package publisher: $($identity.Publisher)" }
     Write-Host "Production package identity preserved: $($identity.Name), $($identity.Publisher), version $($identity.Version)."
 
-    # The VM package is intentionally compiled as LocalDev so Premium Privacy can be
-    # exercised without a live paid Store subscription. Verify the bypass is compile-time
-    # isolated before building; no runtime environment variable or local preference may
-    # activate it in Release/Store builds.
+    # This package is intentionally LocalDev-only. The compile symbol is not defined by
+    # Release, so there is no runtime switch that can disable Store/gateway enforcement.
     $appProjectText = Get-Content -LiteralPath $appProject -Raw
-    if ($appProjectText -notmatch "Condition=\"'\$\(Configuration\)' == 'LocalDev'\"" -or
-        $appProjectText -notmatch 'SENTINEL_LOCAL_DEV') {
+    if (-not $appProjectText.Contains('<Configurations>Debug;Release;LocalDev</Configurations>') -or
+        -not $appProjectText.Contains('SENTINEL_LOCAL_DEV')) {
         throw 'Sentinel.App LocalDev configuration does not define SENTINEL_LOCAL_DEV.'
     }
+
     $entitlementText = Get-Content -LiteralPath $entitlementSource -Raw
-    if ($entitlementText -notmatch '#if SENTINEL_LOCAL_DEV' -or
-        $entitlementText -notmatch 'LocalVmTestAllowed' -or
-        $entitlementText -notmatch '#else' -or
-        $entitlementText -notmatch 'v1/privacy/capability/validate') {
+    if (-not $entitlementText.Contains('#if SENTINEL_LOCAL_DEV') -or
+        -not $entitlementText.Contains('LocalVmTestAllowed') -or
+        -not $entitlementText.Contains('#else') -or
+        -not $entitlementText.Contains('v1/store/collections-ticket') -or
+        -not $entitlementText.Contains('v1/privacy/capability/validate')) {
         throw 'Premium Privacy LocalDev/Release entitlement boundary is missing or incomplete.'
     }
     Write-Host 'Verified compile-time LocalDev-only Premium Privacy test entitlement boundary.'
@@ -140,7 +140,9 @@ try {
     $hasCodeSigningEku = $false
     foreach ($extension in $certObject.Extensions) {
         if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
-            foreach ($oid in $extension.EnhancedKeyUsages) { if ($oid.Value -eq '1.3.6.1.5.5.7.3.3') { $hasCodeSigningEku = $true } }
+            foreach ($oid in $extension.EnhancedKeyUsages) {
+                if ($oid.Value -eq '1.3.6.1.5.5.7.3.3') { $hasCodeSigningEku = $true }
+            }
         }
     }
     if (-not $hasCodeSigningEku) { throw 'Generated public certificate is missing the Code Signing EKU.' }
@@ -149,8 +151,6 @@ try {
     Remove-Item -LiteralPath $pfxPath -Force
     Write-Host 'MSIX signing completed; runner-temp private PFX deleted.'
 
-    # Avoid Import-Certificate for self-signed Root trust on hosted runners because it can invoke trust UI.
-    # X509Store.Add performs the same CurrentUser store insertion non-interactively.
     $trustedPeopleStore = [Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople', [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
     $trustedPeopleStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
     $trustedPeopleStore.Add($certObject)
@@ -243,7 +243,8 @@ finally {
                 $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
                 $store.Remove($certObject)
                 $store.Close()
-            } catch {}
+            }
+            catch {}
         }
         $certObject.Dispose()
     }
