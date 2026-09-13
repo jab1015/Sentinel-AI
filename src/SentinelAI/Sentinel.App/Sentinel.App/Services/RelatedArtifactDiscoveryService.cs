@@ -106,8 +106,8 @@ internal sealed record RelatedArtifactDiscoveryRequest(
 
 /// <summary>
 /// Bounded, cancellation-aware related-artifact discovery. Discovery never grants deletion
-/// authority. Exact hash/provenance may classify a candidate, but every future filesystem
-/// cleanup must independently validate that candidate as a new exact target.
+/// authority. Exact hash/provenance may classify a candidate, but every filesystem cleanup
+/// must independently validate that candidate as a new exact target.
 /// </summary>
 internal sealed class RelatedArtifactDiscoveryService
 {
@@ -122,7 +122,7 @@ internal sealed class RelatedArtifactDiscoveryService
         bounds.Validate();
 
         if (!TryNormalizeExistingRegularFile(request.SourcePath, out string source, out string sourceError))
-            return new(false, string.Empty, Array.Empty<RelatedArtifactProviderResult>(), Array.Empty<RelatedArtifactCandidate>(), false, false, sourceError);
+            return Failure(sourceError);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         string sourceHash;
@@ -133,87 +133,59 @@ internal sealed class RelatedArtifactDiscoveryService
         }
         catch (OperationCanceledException)
         {
-            return new(false, string.Empty, Array.Empty<RelatedArtifactProviderResult>(), Array.Empty<RelatedArtifactCandidate>(), false, true, "Discovery was canceled before source hashing completed.");
+            return new(false, string.Empty, Array.Empty<RelatedArtifactProviderResult>(), Array.Empty<RelatedArtifactCandidate>(), false, true,
+                "Discovery was canceled before source hashing completed.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
         {
-            return new(false, string.Empty, Array.Empty<RelatedArtifactProviderResult>(), Array.Empty<RelatedArtifactCandidate>(), false, false,
-                "The selected source could not be hashed safely.");
+            return Failure("The selected source could not be hashed safely.");
         }
 
         FileObjectIdentity? sourceIdentity = TryReadObjectIdentity(source);
         DiscoveryBudget budget = new(bounds, stopwatch, sourceBytes);
-        List<RelatedArtifactProviderResult> providerResults = new();
+        List<RelatedArtifactProviderResult> providers = new();
 
-        providerResults.Add(await DiscoverSentinelArtifactsAsync(
+        providers.Add(await DiscoverSentinelArtifactsAsync(
             source, sourceHash, sourceIdentity, request.SentinelArtifacts, budget, cancellationToken).ConfigureAwait(false));
 
-        providerResults.Add(await DiscoverFilesystemCopiesAsync(
-            "BoundedHashDuplicateSearch",
-            source,
-            sourceHash,
-            sourceIdentity,
-            request.HashSearchRoots,
-            budget,
-            cancellationToken).ConfigureAwait(false));
+        providers.Add(await DiscoverFilesystemCopiesAsync(
+            "BoundedHashDuplicateSearch", source, sourceHash, sourceIdentity,
+            request.HashSearchRoots, budget, cancellationToken).ConfigureAwait(false));
 
-        providerResults.Add(await DiscoverFilesystemCopiesAsync(
-            "FileHistory",
-            source,
-            sourceHash,
-            sourceIdentity,
-            request.FileHistoryRoots ?? Array.Empty<string>(),
-            budget,
-            cancellationToken,
+        providers.Add(await DiscoverFilesystemCopiesAsync(
+            "FileHistory", source, sourceHash, sourceIdentity,
+            request.FileHistoryRoots ?? Array.Empty<string>(), budget, cancellationToken,
             noRootsMeansUnavailable: true,
             unavailableReason: "No safely inspectable File History backup root was supplied/discovered; no broad history deletion was attempted.").ConfigureAwait(false));
 
-        providerResults.Add(await DiscoverFilesystemCopiesAsync(
-            "PreviousVersions",
-            source,
-            sourceHash,
-            sourceIdentity,
-            request.PreviousVersionRoots ?? Array.Empty<string>(),
-            budget,
-            cancellationToken,
+        providers.Add(await DiscoverFilesystemCopiesAsync(
+            "PreviousVersions", source, sourceHash, sourceIdentity,
+            request.PreviousVersionRoots ?? Array.Empty<string>(), budget, cancellationToken,
             noRootsMeansUnavailable: true,
             unavailableReason: "No safely mounted/read-only Previous Versions snapshot root was supplied/discovered; Sentinel did not destroy a shadow set.").ConfigureAwait(false));
 
-        providerResults.Add(DiscoverMetadataReferences(request.MetadataReferences, "WindowsSearch"));
-        providerResults.Add(DiscoverMetadataReferences(request.MetadataReferences, "RecentJumpLists"));
+        providers.Add(DiscoverMetadataReferences(request.MetadataReferences, "WindowsSearch"));
+        providers.Add(DiscoverMetadataReferences(request.MetadataReferences, "RecentJumpLists"));
 
-        providerResults.Add(request.IncludeLocalOneDriveRoots
+        providers.Add(request.IncludeLocalOneDriveRoots
             ? await DiscoverFilesystemCopiesAsync(
-                "OneDriveLocal",
-                source,
-                sourceHash,
-                sourceIdentity,
-                GetOneDriveRoots(),
-                budget,
-                cancellationToken,
+                "OneDriveLocal", source, sourceHash, sourceIdentity,
+                GetOneDriveRoots(), budget, cancellationToken,
                 noRootsMeansUnavailable: true,
                 unavailableReason: "No local OneDrive synchronization root was available. Remote provider state was not queried.").ConfigureAwait(false)
             : new RelatedArtifactProviderResult(
-                "OneDriveLocal",
-                RelatedArtifactProviderState.Unavailable,
-                "local sync roots",
-                Array.Empty<RelatedArtifactCandidate>(),
-                0,
-                0,
+                "OneDriveLocal", RelatedArtifactProviderState.Unavailable, "local sync roots",
+                Array.Empty<RelatedArtifactCandidate>(), 0, 0,
                 "Local OneDrive discovery was not requested. Remote history/state remains unverified."));
 
-        List<RelatedArtifactCandidate> all = providerResults.SelectMany(p => p.Candidates).ToList();
-        bool canceled = providerResults.Any(p => p.State == RelatedArtifactProviderState.Canceled);
-        bool limited = providerResults.Any(p => p.State is RelatedArtifactProviderState.Limited or RelatedArtifactProviderState.Unavailable or RelatedArtifactProviderState.Failed);
-        return new(
-            !canceled,
-            sourceHash,
-            providerResults,
-            all,
-            limited,
-            canceled,
-            BuildSummary(all, providerResults));
+        List<RelatedArtifactCandidate> all = providers.SelectMany(p => p.Candidates).ToList();
+        bool canceled = providers.Any(p => p.State == RelatedArtifactProviderState.Canceled);
+        bool limited = providers.Any(p => p.State is RelatedArtifactProviderState.Limited or RelatedArtifactProviderState.Unavailable or RelatedArtifactProviderState.Failed);
+        return new(!canceled, sourceHash, providers, all, limited, canceled, BuildSummary(all, providers));
     }
+
+    private static RelatedArtifactDiscoveryResult Failure(string message) =>
+        new(false, string.Empty, Array.Empty<RelatedArtifactProviderResult>(), Array.Empty<RelatedArtifactCandidate>(), false, false, message);
 
     private static async Task<RelatedArtifactProviderResult> DiscoverSentinelArtifactsAsync(
         string source,
@@ -223,8 +195,10 @@ internal sealed class RelatedArtifactDiscoveryService
         DiscoveryBudget budget,
         CancellationToken cancellationToken)
     {
+        const string provider = "SentinelArtifacts";
+        const string providerSource = "registered Sentinel provenance";
         if (artifacts is null || artifacts.Count == 0)
-            return new("SentinelArtifacts", RelatedArtifactProviderState.Completed, "registered Sentinel provenance", Array.Empty<RelatedArtifactCandidate>(), 0, 0, string.Empty);
+            return new(provider, RelatedArtifactProviderState.Completed, providerSource, Array.Empty<RelatedArtifactCandidate>(), 0, 0, string.Empty);
 
         List<RelatedArtifactCandidate> candidates = new();
         int files = 0;
@@ -233,46 +207,64 @@ internal sealed class RelatedArtifactDiscoveryService
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!budget.CanContinue())
-                return new("SentinelArtifacts", RelatedArtifactProviderState.Limited, "registered Sentinel provenance", candidates, files, bytes, budget.LimitReason);
+                return Limited(provider, providerSource, candidates, files, bytes, budget);
 
-            if (!IsValidSha256Hex(artifact.SourceSha256) || !artifact.SourceSha256.Equals(sourceHash, StringComparison.OrdinalIgnoreCase) ||
+            if (!IsValidSha256Hex(artifact.SourceSha256) ||
+                !artifact.SourceSha256.Equals(sourceHash, StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrWhiteSpace(artifact.OperationId) || string.IsNullOrWhiteSpace(artifact.Path))
                 continue;
 
-            if (!TryNormalizeExistingRegularFile(artifact.Path, out string candidatePath, out _))
-                continue;
-            if (candidatePath.Equals(source, StringComparison.OrdinalIgnoreCase))
+            if (!TryNormalizeExistingRegularFile(artifact.Path, out string candidatePath, out _) ||
+                candidatePath.Equals(source, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            FileInfo info = new(candidatePath);
-            if (!budget.TryReserveFile(info.Length))
-                return new("SentinelArtifacts", RelatedArtifactProviderState.Limited, "registered Sentinel provenance", candidates, files, bytes, budget.LimitReason);
+            long length;
+            try { length = new FileInfo(candidatePath).Length; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
 
+            if (!budget.TryReserveFile())
+                return Limited(provider, providerSource, candidates, files, bytes, budget);
             files++;
-            bytes += info.Length;
+
+            // Sentinel provenance is strong attribution evidence, but content still must be
+            // hashed for confirmation. Reserve the byte budget before any read so this provider
+            // cannot bypass the same global bound enforced for directory/history providers.
+            if (!budget.TryReserveBytes(length))
+                return Limited(provider, providerSource, candidates, files, bytes, budget);
+
             string candidateHash;
-            try { (candidateHash, _) = await HashFileAsync(candidatePath, cancellationToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return new("SentinelArtifacts", RelatedArtifactProviderState.Canceled, "registered Sentinel provenance", candidates, files, bytes, "Canceled."); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException) { continue; }
+            try
+            {
+                (candidateHash, _) = await HashFileAsync(candidatePath, cancellationToken).ConfigureAwait(false);
+                bytes += length;
+            }
+            catch (OperationCanceledException)
+            {
+                return new(provider, RelatedArtifactProviderState.Canceled, providerSource, candidates, files, bytes, "Canceled.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+            {
+                continue;
+            }
 
             FileObjectIdentity? identity = TryReadObjectIdentity(candidatePath);
             bool sameObject = sourceIdentity.HasValue && identity.HasValue && sourceIdentity.Value == identity.Value;
-            if (candidateHash.Equals(sourceHash, StringComparison.OrdinalIgnoreCase))
-            {
-                candidates.Add(new(
-                    "SentinelArtifacts",
-                    candidatePath,
-                    sameObject ? RelatedArtifactClassification.UnverifiedCandidate : RelatedArtifactClassification.ConfirmedCopy,
-                    sameObject
-                        ? "Sentinel provenance and content match, but this path resolves to the same filesystem object/hardlink and is not an independent deletion target."
-                        : "Stable Sentinel provenance plus exact SHA-256 content match (operation " + artifact.OperationId + ", kind " + artifact.ArtifactKind + ").",
-                    TargetedRemovalSupported: !sameObject,
-                    IsSameFilesystemObject: sameObject,
-                    RemoteStateVerified: false));
-            }
+            if (!candidateHash.Equals(sourceHash, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            candidates.Add(new(
+                provider,
+                candidatePath,
+                sameObject ? RelatedArtifactClassification.UnverifiedCandidate : RelatedArtifactClassification.ConfirmedCopy,
+                sameObject
+                    ? "Sentinel provenance and content match, but this path resolves to the same filesystem object/hardlink and is not an independent deletion target."
+                    : "Stable Sentinel provenance plus exact SHA-256 content match (operation " + artifact.OperationId + ", kind " + artifact.ArtifactKind + ").",
+                TargetedRemovalSupported: !sameObject,
+                IsSameFilesystemObject: sameObject,
+                RemoteStateVerified: false));
         }
 
-        return new("SentinelArtifacts", RelatedArtifactProviderState.Completed, "registered Sentinel provenance", candidates, files, bytes, string.Empty);
+        return new(provider, RelatedArtifactProviderState.Completed, providerSource, candidates, files, bytes, string.Empty);
     }
 
     private static async Task<RelatedArtifactProviderResult> DiscoverFilesystemCopiesAsync(
@@ -280,7 +272,7 @@ internal sealed class RelatedArtifactDiscoveryService
         string source,
         string sourceHash,
         FileObjectIdentity? sourceIdentity,
-        IReadOnlyList<string> roots,
+        IReadOnlyList<string>? roots,
         DiscoveryBudget budget,
         CancellationToken cancellationToken,
         bool noRootsMeansUnavailable = false,
@@ -289,19 +281,21 @@ internal sealed class RelatedArtifactDiscoveryService
         string[] normalizedRoots = NormalizeRoots(roots);
         if (normalizedRoots.Length == 0)
         {
-            return new(
-                provider,
+            return new(provider,
                 noRootsMeansUnavailable ? RelatedArtifactProviderState.Unavailable : RelatedArtifactProviderState.Completed,
                 string.Join(";", roots ?? Array.Empty<string>()),
-                Array.Empty<RelatedArtifactCandidate>(),
-                0,
-                0,
+                Array.Empty<RelatedArtifactCandidate>(), 0, 0,
                 noRootsMeansUnavailable ? unavailableReason : string.Empty);
         }
 
+        string providerSource = string.Join(";", normalizedRoots);
         List<RelatedArtifactCandidate> candidates = new();
         int files = 0;
         long bytes = 0;
+        long sourceLength;
+        try { sourceLength = new FileInfo(source).Length; }
+        catch { return new(provider, RelatedArtifactProviderState.Failed, providerSource, candidates, 0, 0, "The selected source changed or became inaccessible during discovery."); }
+
         foreach (string root in normalizedRoots)
         {
             Stack<(string Path, int Depth)> pending = new();
@@ -309,8 +303,7 @@ internal sealed class RelatedArtifactDiscoveryService
             while (pending.Count > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!budget.CanContinue())
-                    return new(provider, RelatedArtifactProviderState.Limited, string.Join(";", normalizedRoots), candidates, files, bytes, budget.LimitReason);
+                if (!budget.CanContinue()) return Limited(provider, providerSource, candidates, files, bytes, budget);
 
                 (string directory, int depth) = pending.Pop();
                 IEnumerable<string> entries;
@@ -320,55 +313,50 @@ internal sealed class RelatedArtifactDiscoveryService
                 foreach (string entry in entries)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!budget.CanContinue())
-                        return new(provider, RelatedArtifactProviderState.Limited, string.Join(";", normalizedRoots), candidates, files, bytes, budget.LimitReason);
+                    if (!budget.CanContinue()) return Limited(provider, providerSource, candidates, files, bytes, budget);
 
                     FileAttributes attributes;
                     try { attributes = File.GetAttributes(entry); }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
-
-                    if ((attributes & FileAttributes.ReparsePoint) != 0)
-                        continue;
+                    if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
                     if ((attributes & FileAttributes.Directory) != 0)
                     {
-                        if (depth < budget.Bounds.MaximumDirectoryDepth)
-                            pending.Push((entry, depth + 1));
+                        if (depth < budget.Bounds.MaximumDirectoryDepth) pending.Push((entry, depth + 1));
                         continue;
                     }
 
                     string candidatePath;
                     try { candidatePath = Path.GetFullPath(entry); }
                     catch { continue; }
-                    if (candidatePath.Equals(source, StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    if (candidatePath.Equals(source, StringComparison.OrdinalIgnoreCase)) continue;
 
                     long length;
                     try { length = new FileInfo(candidatePath).Length; }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
 
-                    if (!budget.TryReserveFile(length))
-                        return new(provider, RelatedArtifactProviderState.Limited, string.Join(";", normalizedRoots), candidates, files, bytes, budget.LimitReason);
+                    if (!budget.TryReserveFile()) return Limited(provider, providerSource, candidates, files, bytes, budget);
                     files++;
 
-                    // Exact size is only a hashing optimization; it is never classification evidence by itself.
-                    long sourceLength;
-                    try { sourceLength = new FileInfo(source).Length; }
-                    catch { return new(provider, RelatedArtifactProviderState.Failed, string.Join(";", normalizedRoots), candidates, files, bytes, "The selected source changed or became inaccessible during discovery."); }
-                    if (length != sourceLength)
-                        continue;
-
-                    if (!budget.TryReserveBytes(length))
-                        return new(provider, RelatedArtifactProviderState.Limited, string.Join(";", normalizedRoots), candidates, files, bytes, budget.LimitReason);
+                    // Size only avoids unnecessary hashing; size itself never proves attribution.
+                    if (length != sourceLength) continue;
+                    if (!budget.TryReserveBytes(length)) return Limited(provider, providerSource, candidates, files, bytes, budget);
 
                     string candidateHash;
-                    try { (candidateHash, _) = await HashFileAsync(candidatePath, cancellationToken).ConfigureAwait(false); }
-                    catch (OperationCanceledException) { return new(provider, RelatedArtifactProviderState.Canceled, string.Join(";", normalizedRoots), candidates, files, bytes, "Canceled."); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException) { continue; }
-                    bytes += length;
-
-                    if (!candidateHash.Equals(sourceHash, StringComparison.OrdinalIgnoreCase))
+                    try
+                    {
+                        (candidateHash, _) = await HashFileAsync(candidatePath, cancellationToken).ConfigureAwait(false);
+                        bytes += length;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return new(provider, RelatedArtifactProviderState.Canceled, providerSource, candidates, files, bytes, "Canceled.");
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+                    {
                         continue;
+                    }
 
+                    if (!candidateHash.Equals(sourceHash, StringComparison.OrdinalIgnoreCase)) continue;
                     FileObjectIdentity? identity = TryReadObjectIdentity(candidatePath);
                     bool sameObject = sourceIdentity.HasValue && identity.HasValue && sourceIdentity.Value == identity.Value;
                     candidates.Add(new(
@@ -385,8 +373,17 @@ internal sealed class RelatedArtifactDiscoveryService
             }
         }
 
-        return new(provider, RelatedArtifactProviderState.Completed, string.Join(";", normalizedRoots), candidates, files, bytes, string.Empty);
+        return new(provider, RelatedArtifactProviderState.Completed, providerSource, candidates, files, bytes, string.Empty);
     }
+
+    private static RelatedArtifactProviderResult Limited(
+        string provider,
+        string source,
+        IReadOnlyList<RelatedArtifactCandidate> candidates,
+        int files,
+        long bytes,
+        DiscoveryBudget budget) =>
+        new(provider, RelatedArtifactProviderState.Limited, source, candidates, files, bytes, budget.LimitReason);
 
     private static RelatedArtifactProviderResult DiscoverMetadataReferences(
         IReadOnlyList<RelatedArtifactMetadataReference>? references,
@@ -413,8 +410,7 @@ internal sealed class RelatedArtifactDiscoveryService
     private static string[] GetOneDriveRoots()
     {
         string[] names = { "OneDrive", "OneDriveCommercial", "OneDriveConsumer" };
-        return names
-            .Select(Environment.GetEnvironmentVariable)
+        return names.Select(Environment.GetEnvironmentVariable)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Select(v => v!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -432,8 +428,7 @@ internal sealed class RelatedArtifactDiscoveryService
             {
                 if (!Path.IsPathFullyQualified(raw)) continue;
                 string path = Path.GetFullPath(raw);
-                if (!Directory.Exists(path)) continue;
-                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
+                if (!Directory.Exists(path) || (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
                 result.Add(path);
             }
             catch { }
@@ -491,8 +486,7 @@ internal sealed class RelatedArtifactDiscoveryService
         }
     }
 
-    private static bool IsValidSha256Hex(string? value) =>
-        value is { Length: 64 } && value.All(Uri.IsHexDigit);
+    private static bool IsValidSha256Hex(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
 
     private static string BuildSummary(
         IReadOnlyList<RelatedArtifactCandidate> candidates,
@@ -568,7 +562,7 @@ internal sealed class RelatedArtifactDiscoveryService
             return true;
         }
 
-        internal bool TryReserveFile(long length)
+        internal bool TryReserveFile()
         {
             if (!CanContinue()) return false;
             if (_files + 1 > Bounds.MaximumFiles)
