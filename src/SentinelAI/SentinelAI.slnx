@@ -16,7 +16,6 @@
     <Platform Solution="*|x86" Project="x86" />
   </Project>
   <Project Path="Sentinel.ExplorerExtension/Sentinel.ExplorerExtension.vcxproj">
-    <BuildType Solution="LocalDev|*" Project="Release" />
     <Platform Solution="*|ARM64" Project="ARM64" />
     <Platform Solution="*|x64" Project="x64" />
     <Platform Solution="*|x86" Project="Win32" />
