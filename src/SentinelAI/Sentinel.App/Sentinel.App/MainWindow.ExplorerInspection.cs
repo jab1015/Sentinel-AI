@@ -44,7 +44,7 @@ public sealed partial class MainWindow
             {
                 await new ContentDialog
                 {
-                    Title = "Inspection could not start",
+                    Title = "Explorer action could not start",
                     Content = "Sentinel could not reopen every selected filesystem object safely. The selection may have changed, become unavailable, or no longer resolve to a normal filesystem object. No file was changed.",
                     CloseButtonText = "Close",
                     XamlRoot = rootElement.XamlRoot
@@ -59,11 +59,29 @@ public sealed partial class MainWindow
         {
             await new ContentDialog
             {
-                Title = "Inspection could not start",
+                Title = "Explorer action could not start",
                 Content = "Sentinel could not resolve a usable filesystem object from the Explorer selection. No file was changed.",
                 CloseButtonText = "Close",
                 XamlRoot = rootElement.XamlRoot
             }.ShowAsync();
+            return;
+        }
+
+        if (request.Action != ExplorerRequestedAction.Inspect)
+        {
+            if (reopenedPaths.Count != 1 || Directory.Exists(reopenedPaths[0]))
+            {
+                await new ContentDialog
+                {
+                    Title = "One file required",
+                    Content = "Premium Privacy Explorer actions currently accept exactly one normal file at a time. No file was changed.",
+                    CloseButtonText = "Close",
+                    XamlRoot = rootElement.XamlRoot
+                }.ShowAsync();
+                return;
+            }
+
+            await ShowExplorerPremiumPrivacyRequestAsync(request.Action, reopenedPaths[0], rootElement).ConfigureAwait(true);
             return;
         }
 
