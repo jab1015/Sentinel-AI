@@ -29,5 +29,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteMutationLease.cs" Link="SecureDeleteMutationLease.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteOperationJournal.cs" Link="SecureDeleteOperationJournal.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteRecoveryClassifier.cs" Link="SecureDeleteRecoveryClassifier.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteExactObjectExecutor.cs" Link="SecureDeleteExactObjectExecutor.cs" />
   </ItemGroup>
 </Project>
