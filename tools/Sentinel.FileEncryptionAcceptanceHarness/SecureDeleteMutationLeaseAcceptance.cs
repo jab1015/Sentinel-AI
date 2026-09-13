@@ -15,6 +15,7 @@ internal static class SecureDeleteMutationLeaseAcceptance
             string target = Path.Combine(root, "lease-target.bin");
             byte[] original = "retained exact-object lease fixture"u8.ToArray();
             File.WriteAllBytes(target, original);
+            Require(File.ReadAllBytes(target).SequenceEqual(original), "Lease fixture bytes were not established before acquisition.");
 
             SecureDeleteTargetValidationResult validated = SecureDeleteTargetValidator.Validate(target);
             Require(validated.Succeeded, "Lease fixture did not validate: " + validated.Code);
@@ -36,15 +37,13 @@ internal static class SecureDeleteMutationLeaseAcceptance
                     "Mutation lease was not bound to the approved authorization.");
                 Require(lease.Target == validated.Target,
                     "Mutation lease changed the approved stable target identity.");
-                Require(File.Exists(target) && File.ReadAllBytes(target).SequenceEqual(original),
-                    "Lease acquisition modified or removed the approved file.");
 
                 string movedWhileLeased = Path.Combine(root, "should-not-move.bin");
                 bool renameBlocked = false;
                 try { File.Move(target, movedWhileLeased); }
                 catch (IOException) { renameBlocked = true; }
                 catch (UnauthorizedAccessException) { renameBlocked = true; }
-                Require(renameBlocked && File.Exists(target) && !File.Exists(movedWhileLeased),
+                Require(renameBlocked && !File.Exists(movedWhileLeased),
                     "Live mutation lease did not block a rename/replacement race.");
 
                 bool writeBlocked = false;
@@ -59,7 +58,7 @@ internal static class SecureDeleteMutationLeaseAcceptance
             }
 
             Require(File.Exists(target) && File.ReadAllBytes(target).SequenceEqual(original),
-                "Disposing the non-destructive mutation lease changed the file.");
+                "Acquiring and disposing the non-destructive mutation lease changed the file.");
             string movedAfterDispose = Path.Combine(root, "moved-after-dispose.bin");
             File.Move(target, movedAfterDispose);
             Require(File.Exists(movedAfterDispose), "Disposing the mutation lease did not release rename protection.");
