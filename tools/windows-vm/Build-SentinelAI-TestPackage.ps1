@@ -93,8 +93,19 @@ try {
     Write-Host 'Verified compile-time LocalDev-only Premium Privacy test entitlement boundary.'
 
     if (Test-Path $appPackages) { Remove-Item $appPackages -Recurse -Force }
-    & $MsBuild $packageProject /restore /m /p:Configuration=$configuration /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"
-    if ($LASTEXITCODE -ne 0) { throw "MSBuild failed with exit code $LASTEXITCODE." }
+    $msbuildArguments = @(
+        $packageProject,
+        '/restore',
+        '/m',
+        "/p:Configuration=$configuration",
+        '/p:Platform=x64',
+        '/p:AppxBundle=Never',
+        '/p:UapAppxPackageBuildMode=SideloadOnly',
+        '/p:AppxPackageSigningEnabled=false',
+        '/fl',
+        '/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic'
+    )
+    Invoke-BoundedProcess -FilePath $MsBuild -Arguments $msbuildArguments -TimeoutMilliseconds 900000 -LogPath 'windows-vm-test-msbuild-console.log' -Description 'MSBuild LocalDev x64 package build'
 
     $msixes = @(Get-ChildItem $appPackages -Recurse -File -Filter '*.msix' | Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
     if ($msixes.Count -ne 1) { throw "Expected exactly one generated MSIX, found $($msixes.Count)." }
@@ -173,8 +184,7 @@ try {
     $unpackRoot = Join-Path $env:RUNNER_TEMP 'sentinel-windows-vm-test-unpacked'
     if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
     New-Item -ItemType Directory -Path $unpackRoot | Out-Null
-    & $MakeAppx unpack /p $signedPackage /d $unpackRoot /o
-    if ($LASTEXITCODE -ne 0) { throw 'MakeAppx failed to unpack the signed VM test package.' }
+    Invoke-BoundedProcess -FilePath $MakeAppx -Arguments @('unpack','/p',$signedPackage,'/d',$unpackRoot,'/o') -TimeoutMilliseconds 180000 -LogPath 'windows-vm-test-makeappx.log' -Description 'MakeAppx package unpack'
 
     $required = @('Sentinel.App.exe', 'Sentinel.PrivilegedBroker.exe', 'Sentinel.ExplorerExtension.dll')
     foreach ($name in $required) {
