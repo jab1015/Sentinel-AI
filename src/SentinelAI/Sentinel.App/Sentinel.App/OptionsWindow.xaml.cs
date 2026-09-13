@@ -21,6 +21,7 @@ namespace Sentinel.App
         public OptionsWindow()
         {
             InitializeComponent();
+            LoadAboutInformation();
             Activated += OptionsWindow_Activated;
         }
 
@@ -50,11 +51,13 @@ namespace Sentinel.App
             AnnualSubscriptionButton.IsEnabled = false;
             SubscriptionPlanText.Text = "Checking Microsoft Store subscription…";
             SubscriptionStatusText.Text = "Sentinel is verifying your subscription.";
+            AboutLicenseText.Text = "Checking subscription…";
 
             SubscriptionState state = await _subscriptionService.GetStateAsync();
             SubscriptionPlanText.Text = state.DisplayName;
             SubscriptionStatusText.Text = state.Summary;
             _premiumEntitled = state.IsActive;
+            UpdateAboutLicenseState(state);
             ApplyPremiumControlState();
 
             if (state.Plan == SubscriptionPlan.Development)
@@ -240,6 +243,46 @@ namespace Sentinel.App
                 : settings.AutomaticOptimizationEnabled
                     ? $"Automatic optimization is enabled in {settings.Mode} mode. Sentinel will verify evidence before making changes."
                     : "Automatic optimization is off. Sentinel will continue monitoring performance without making optimization changes.";
+        }
+
+        private void LoadAboutInformation()
+        {
+            string version = typeof(OptionsWindow).Assembly.GetName().Version?.ToString() ?? "Unknown";
+            string packageName = "Unpackaged development build";
+
+            try
+            {
+                var packageId = Package.Current.Id;
+                var packageVersion = packageId.Version;
+                version = $"{packageVersion.Major}.{packageVersion.Minor}.{packageVersion.Build}.{packageVersion.Revision}";
+                packageName = packageId.Name;
+            }
+            catch (InvalidOperationException)
+            {
+                // Visual Studio unpackaged runs use the assembly-version fallback above.
+            }
+
+            AboutVersionText.Text = version;
+            AboutPackageText.Text = packageName;
+        }
+
+        private void UpdateAboutLicenseState(SubscriptionState state)
+        {
+            if (state.Plan == SubscriptionPlan.Development)
+            {
+                AboutLicenseText.Text = "Local development entitlement";
+                return;
+            }
+
+            if (state.IsActive)
+            {
+                AboutLicenseText.Text = state.DisplayName;
+                return;
+            }
+
+            AboutLicenseText.Text = string.Equals(state.DisplayName, "Subscription unavailable", StringComparison.OrdinalIgnoreCase)
+                ? "Subscription verification unavailable"
+                : "Free / no active subscription";
         }
 
         private static bool HasInstalledPackageIdentity()
