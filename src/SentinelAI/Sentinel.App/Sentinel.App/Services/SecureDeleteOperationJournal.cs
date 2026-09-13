@@ -108,7 +108,7 @@ internal sealed class SecureDeleteOperationJournal
             JournalEnvelope? envelope = JsonSerializer.Deserialize<JournalEnvelope>(File.ReadAllText(path, Encoding.UTF8));
             if (envelope is null || envelope.SchemaVersion != SchemaVersion || envelope.Record is null)
                 return false;
-            if (envelope.Record.OperationId != operationId || envelope.Record.Target.IsEmpty)
+            if (!IsValidRecord(envelope.Record, operationId))
                 return false;
             record = envelope.Record;
             return true;
@@ -136,8 +136,8 @@ internal sealed class SecureDeleteOperationJournal
 
     private void Persist(SecureDeleteOperationRecord record, bool requireNew)
     {
-        if (record.OperationId == Guid.Empty || record.AuthorizationId == Guid.Empty || record.Target.IsEmpty)
-            throw new InvalidOperationException("Refusing to persist incomplete Secure Delete journal state.");
+        if (!IsValidRecord(record, record.OperationId))
+            throw new InvalidOperationException("Refusing to persist incomplete or invalid Secure Delete journal state.");
 
         string finalPath = GetRecordPath(record.OperationId);
         if (requireNew && File.Exists(finalPath))
@@ -171,8 +171,11 @@ internal sealed class SecureDeleteOperationJournal
                 4096,
                 FileOptions.SequentialScan);
             JournalEnvelope? verify = JsonSerializer.Deserialize<JournalEnvelope>(verifyStream);
-            if (verify is null || verify.SchemaVersion != SchemaVersion || verify.Record != record)
+            if (verify is null || verify.SchemaVersion != SchemaVersion || verify.Record != record ||
+                !IsValidRecord(verify.Record, record.OperationId))
+            {
                 throw new IOException("Secure Delete journal persistence verification failed.");
+            }
         }
         finally
         {
@@ -189,6 +192,21 @@ internal sealed class SecureDeleteOperationJournal
 
     private string GetRecordPath(Guid operationId) =>
         Path.Combine(_journalRoot, operationId.ToString("N") + ".json");
+
+    private static bool IsValidRecord(SecureDeleteOperationRecord record, Guid expectedOperationId)
+    {
+        if (record.OperationId == Guid.Empty || record.OperationId != expectedOperationId ||
+            record.AuthorizationId == Guid.Empty || record.Target.IsEmpty ||
+            string.IsNullOrWhiteSpace(record.VolumeRoot) ||
+            !Enum.IsDefined(record.State) ||
+            record.CreatedUtc == default || record.UpdatedUtc == default ||
+            record.UpdatedUtc < record.CreatedUtc)
+        {
+            return false;
+        }
+
+        return true;
+    }
 
     private static void EnsureSameOperation(
         SecureDeleteOperationRecord expected,
