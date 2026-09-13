@@ -26,6 +26,17 @@ namespace Sentinel.App
                 if (ownerWindow.Content is not FrameworkElement root)
                     return;
 
+                for (int attempt = 0; attempt < 20 && root.XamlRoot is null; attempt++)
+                    await Task.Delay(100);
+
+                if (root.XamlRoot is null)
+                {
+                    _ = _diagnosticLog.WarningAsync(
+                        "ExplorerRestartPrompt",
+                        $"Sentinel AI {version} could not display the restart prompt because the window XamlRoot was not ready. Explorer testing still requires a Windows restart.");
+                    return;
+                }
+
                 ContentDialog dialog = new()
                 {
                     XamlRoot = root.XamlRoot,
