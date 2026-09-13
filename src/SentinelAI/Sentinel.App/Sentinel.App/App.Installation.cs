@@ -61,7 +61,7 @@ namespace Sentinel.App
             }
             catch (Exception ex)
             {
-                _ = _diagnosticLog.WarningAsync("ExplorerRestartPrompt", "Sentinel AI could not display the post-install restart prompt.", ex);
+                _ = _diagnosticLog.ErrorAsync("ExplorerRestartPrompt", "Sentinel AI could not display the post-install restart prompt.", ex);
             }
         }
     }
