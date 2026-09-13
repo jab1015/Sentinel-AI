@@ -27,5 +27,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\StorageCapabilityDetector.cs" Link="StorageCapabilityDetector.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteCoordinator.cs" Link="SecureDeleteCoordinator.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteMutationLease.cs" Link="SecureDeleteMutationLease.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteOperationJournal.cs" Link="SecureDeleteOperationJournal.cs" />
   </ItemGroup>
 </Project>
