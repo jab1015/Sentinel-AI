@@ -14,9 +14,12 @@ namespace Sentinel.App
         private readonly WindowsStartupRegistrationService _startupService = new();
         private readonly OptimizationSettingsService _optimizationSettingsService = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
+        private readonly MonitoringEngine _manualOptimizationEngine = new();
+        private readonly AutomaticOptimizationCoordinator _manualOptimizationCoordinator = new();
         private bool _loading;
         private bool _premiumEntitled;
         private bool _initialLayoutApplied;
+        private bool _optimizationScanRunning;
 
         public OptionsWindow()
         {
@@ -170,6 +173,8 @@ namespace Sentinel.App
                 ? $"Automatic optimization is enabled in {settings.Mode} mode. Sentinel will act only when current evidence supports a safe optimization."
                 : "Automatic optimization is off. Sentinel will continue monitoring performance without making optimization changes.";
 
+            ManualOptimizationScanStatusText.Text = "Run a scan whenever you want a fresh performance check. Manual scans never make optimization changes.";
+
             _loading = false;
             ApplyPremiumControlState();
         }
@@ -184,6 +189,34 @@ namespace Sentinel.App
                 OptimizationStatusText.Text = AutomaticOptimizationToggle.IsOn
                     ? "Automatic optimization is paused because no active subscription was verified. Free performance monitoring continues."
                     : "Free performance monitoring is active. An active subscription is required to enable automatic optimization.";
+            }
+        }
+
+        private async void RunOptimizationScanButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_optimizationScanRunning)
+                return;
+
+            _optimizationScanRunning = true;
+            RunOptimizationScanButton.IsEnabled = false;
+            RunOptimizationScanButton.Content = "Scanning…";
+            ManualOptimizationScanStatusText.Text = "Sentinel is collecting fresh performance evidence and comparing it with this computer's baseline. No changes will be made.";
+
+            try
+            {
+                await _manualOptimizationEngine.RefreshAsync();
+                AutomaticOptimizationResult result = await _manualOptimizationCoordinator.EvaluateOnlyAsync(_manualOptimizationEngine.CurrentSnapshot);
+                ManualOptimizationScanStatusText.Text = $"{result.Summary}\nLast manual scan: {DateTime.Now:MMM d, yyyy h:mm tt}";
+            }
+            catch (Exception ex)
+            {
+                ManualOptimizationScanStatusText.Text = $"Sentinel could not complete the manual optimization scan ({ex.GetType().Name}). No changes were made. You can try again.";
+            }
+            finally
+            {
+                _optimizationScanRunning = false;
+                RunOptimizationScanButton.IsEnabled = true;
+                RunOptimizationScanButton.Content = "Run optimization scan now";
             }
         }
 
