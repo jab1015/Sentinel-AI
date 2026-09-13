@@ -19,11 +19,13 @@ internal static class SecureDeleteRecoveryAcceptance
             VerifyRemovalContradiction(root, journalRoot);
             VerifyRemovalPathReuse(root, journalRoot);
             VerifyRecoveryRequired(root, journalRoot);
+            VerifyTamperedJournalFailsClosed(root, journalRoot);
             VerifyNoMutationSurface();
 
             Console.WriteLine("Secure Delete recovery pre-mutation exact-object classification: PASS");
             Console.WriteLine("Secure Delete recovery path-reuse / contradiction detection: PASS");
             Console.WriteLine("Secure Delete mutation-started ambiguity remains fail-closed: PASS");
+            Console.WriteLine("Secure Delete tampered journal recovery remains fail-closed: PASS");
             Console.WriteLine("Secure Delete recovery classifier remains read-only: PASS");
         }
         finally
@@ -155,6 +157,32 @@ internal static class SecureDeleteRecoveryAcceptance
                 !assessment.MayRequestFreshPreMutationAuthorization && !assessment.MayAutomaticallyResumeMutation,
             "RecoveryRequired did not remain fail-closed.");
         Require(File.Exists(path), "RecoveryRequired classification changed the target.");
+    }
+
+    private static void VerifyTamperedJournalFailsClosed(string root, string journalRoot)
+    {
+        string path = Path.Combine(root, "tampered-journal.bin");
+        File.WriteAllText(path, "tampered journal target must remain untouched");
+        string original = File.ReadAllText(path);
+        string scopedJournalRoot = Path.Combine(journalRoot, "tampered-journal");
+        SecureDeleteOperationJournal journal = new(scopedJournalRoot);
+        SecureDeleteOperationRecord record = Begin(journal, path);
+
+        string journalPath = Path.Combine(scopedJournalRoot, record.OperationId.ToString("N") + ".json");
+        string authenticJson = File.ReadAllText(journalPath);
+        string tamperedJson = authenticJson.Replace("\"State\": 0", "\"State\": 1", StringComparison.Ordinal);
+        Require(!string.Equals(authenticJson, tamperedJson, StringComparison.Ordinal),
+            "Tampered journal fixture did not alter persisted state.");
+        File.WriteAllText(journalPath, tamperedJson);
+
+        SecureDeleteRecoveryAssessment assessment = new SecureDeleteRecoveryClassifier(journal).Assess(record.OperationId);
+        Require(assessment.Phase == SecureDeleteRecoveryPhase.JournalInvalid &&
+                assessment.TargetObservation == SecureDeleteRecoveryTargetObservation.Unknown &&
+                assessment.Record is null && assessment.RequiresUserAttention &&
+                !assessment.MayRequestFreshPreMutationAuthorization && !assessment.MayAutomaticallyResumeMutation,
+            "Recovery classifier trusted a journal whose authenticated state was edited without a matching proof.");
+        Require(File.ReadAllText(path) == original,
+            "Tampered journal recovery classification changed the approved target.");
     }
 
     private static SecureDeleteOperationRecord Begin(SecureDeleteOperationJournal journal, string path)
