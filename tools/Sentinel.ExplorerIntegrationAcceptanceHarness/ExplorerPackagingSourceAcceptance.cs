@@ -35,28 +35,26 @@ internal static class ExplorerPackagingSourceAcceptance
         Require(manifest.Contains("ThreadingModel=\"STA\"", StringComparison.Ordinal),
             "Explorer COM server is not constrained to STA.");
         Require(manifest.Contains("desktop5:ItemType Type=\"*\"", StringComparison.Ordinal),
-            "Inspect command is not registered for selected files.");
+            "Sentinel Explorer root command is not registered for selected files.");
         Require(manifest.Contains("desktop5:ItemType Type=\"Directory\"", StringComparison.Ordinal),
-            "Inspect command is not registered for selected folders.");
-        Require(manifest.Contains("InspectWithSentinelAIFile", StringComparison.Ordinal) &&
-                manifest.Contains("InspectWithSentinelAIFolder", StringComparison.Ordinal),
-            "Inspect-only Explorer verbs are missing.");
-
-        string[] forbiddenManifestVerbs =
-        {
-            "SecureDelete", "EncryptFile", "AddToSentinelVault", "PrivacyCleanup"
-        };
-        foreach (string forbidden in forbiddenManifestVerbs)
-            Require(!manifest.Contains(forbidden, StringComparison.OrdinalIgnoreCase),
-                $"P1 manifest unexpectedly exposes destructive/premium Explorer command: {forbidden}");
+            "Sentinel Explorer root command is not registered for selected folders.");
 
         string[] requiredNativeMarkers =
         {
             "IExplorerCommand",
+            "IEnumExplorerCommand",
+            "ECF_HASSUBCOMMANDS",
             "SIGDN_FILESYSPATH",
             "kMaximumItems = 16",
             "kMaximumRecordBytes = 64 * 1024",
-            "\\\"Command\\\":\\\"inspect\\\"",
+            "Inspect with Sentinel AI",
+            "Encrypt File",
+            "Add to Sentinel Vault",
+            "Secure Delete",
+            "\"inspect\"",
+            "\"encrypt\"",
+            "\"vault\"",
+            "\"secure-delete\"",
             "CreateFileW",
             "CREATE_NEW",
             "FlushFileBuffers",
@@ -72,7 +70,8 @@ internal static class ExplorerPackagingSourceAcceptance
         {
             "WinHttp", "WinINet", "InternetOpen", "InternetConnect", "HttpClient", "URLDownloadToFile",
             "WSAStartup", "socket(", "StoreContext", "collections-ticket", "entitlement", "PrivilegedBroker",
-            "SecureDelete", "FileEncryptionService", "SentinelVault", "AES", "AesGcm"
+            "FileEncryptionService", "SentinelVaultService", "SecureDeleteExactObjectExecutor", "RelatedArtifactDiscoveryService",
+            "CryptProtectData", "BCrypt", "AES", "AesGcm", "SetFileInformationByHandle"
         };
         foreach (string forbidden in forbiddenNativeMarkers)
             Require(!native.Contains(forbidden, StringComparison.OrdinalIgnoreCase),
