@@ -6,6 +6,12 @@ internal static class PasswordProtectionAcceptance
 {
     internal static void Verify()
     {
+        VerifyProtectorRecordSafety();
+        VerifyPortableContainerRoundTrip();
+    }
+
+    private static void VerifyProtectorRecordSafety()
+    {
         char[] password = "correct horse battery staple ✓".ToCharArray();
         char[] wrongPassword = "definitely wrong password".ToCharArray();
         byte[] dek = RandomNumberGenerator.GetBytes(32);
@@ -77,6 +83,101 @@ internal static class PasswordProtectionAcceptance
             Array.Clear(password, 0, password.Length);
             Array.Clear(wrongPassword, 0, wrongPassword.Length);
             CryptographicOperations.ZeroMemory(dek);
+        }
+    }
+
+    private static void VerifyPortableContainerRoundTrip()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "SentinelPortableEncryptionAcceptance", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+
+        char[] senderPassword = "portable sharing password 2026!".ToCharArray();
+        char[] recipientPassword = "portable sharing password 2026!".ToCharArray();
+        char[] wrongPassword = "portable sharing password WRONG".ToCharArray();
+        try
+        {
+            string source = Path.Combine(root, "share-me.txt");
+            string encrypted = source + ".sentinel.senc";
+            string restored = Path.Combine(root, "received-share-me.txt");
+            string wrongOutput = Path.Combine(root, "wrong-password-output.txt");
+            byte[] original = RandomNumberGenerator.GetBytes(SentinelEncryptedContainerV1.MinimumChunkSize + 137);
+            File.WriteAllBytes(source, original);
+            byte[] originalHash = SHA256.HashData(original);
+
+            FileEncryptionService service = new(SentinelEncryptedContainerV1.MinimumChunkSize);
+            using (PasswordFileKeyProtector sender = new(senderPassword))
+            {
+                FileEncryptionResult encryption = service.EncryptAsync(
+                    source,
+                    encrypted,
+                    new IFileKeyProtector[] { sender }).GetAwaiter().GetResult();
+
+                Require(encryption.Succeeded && encryption.Verified,
+                    "Portable password encryption was not verified: " + encryption.Code);
+            }
+
+            Require(File.Exists(source), "Portable encryption removed the original plaintext source.");
+            Require(SHA256.HashData(File.ReadAllBytes(source)).AsSpan().SequenceEqual(originalHash),
+                "Portable encryption modified the original plaintext source.");
+            Require(File.Exists(encrypted), "Portable encryption did not create the .sentinel.senc output.");
+
+            // A fresh protector instance represents a recipient-side Sentinel process. No Windows-bound
+            // protector or sender-side key object is reused here; the password alone must be sufficient.
+            using (PasswordFileKeyProtector recipient = new(recipientPassword))
+            {
+                FileContainerVerificationResult verification = service.VerifyAsync(
+                    encrypted,
+                    new IFileKeyProtector[] { recipient }).GetAwaiter().GetResult();
+                Require(verification.Succeeded, "Recipient password could not authenticate the portable container: " + verification.Code);
+
+                FileDecryptionResult decryption = service.DecryptAsync(
+                    encrypted,
+                    restored,
+                    new IFileKeyProtector[] { recipient }).GetAwaiter().GetResult();
+                Require(decryption.Succeeded, "Recipient password could not decrypt the portable container: " + decryption.Code);
+            }
+
+            Require(File.Exists(restored), "Portable decryption did not create the separate restored plaintext file.");
+            Require(File.ReadAllBytes(restored).AsSpan().SequenceEqual(original),
+                "Portable recipient decryption did not restore the exact original bytes.");
+            Require(File.Exists(encrypted), "Portable decryption removed or changed ownership of the encrypted container.");
+
+            using (PasswordFileKeyProtector wrong = new(wrongPassword))
+            {
+                FileDecryptionResult rejected = service.DecryptAsync(
+                    encrypted,
+                    wrongOutput,
+                    new IFileKeyProtector[] { wrong }).GetAwaiter().GetResult();
+                Require(!rejected.Succeeded && rejected.Code == "KeyUnavailable",
+                    "Wrong sharing password was not rejected as KeyUnavailable.");
+                Require(!rejected.InvalidOutputRemains,
+                    "Wrong sharing password left an invalid plaintext output requiring cleanup.");
+            }
+            Require(!File.Exists(wrongOutput), "Wrong sharing password left plaintext output on disk.");
+
+            string collisionOutput = Path.Combine(root, "existing-output.txt");
+            File.WriteAllText(collisionOutput, "must-not-be-overwritten");
+            using (PasswordFileKeyProtector recipient = new(recipientPassword))
+            {
+                FileDecryptionResult collision = service.DecryptAsync(
+                    encrypted,
+                    collisionOutput,
+                    new IFileKeyProtector[] { recipient }).GetAwaiter().GetResult();
+                Require(!collision.Succeeded && collision.Code == "OutputCollision",
+                    "Portable decryption did not refuse an existing plaintext destination.");
+            }
+            Require(File.ReadAllText(collisionOutput) == "must-not-be-overwritten",
+                "Portable decryption modified an existing destination despite collision refusal.");
+
+            CryptographicOperations.ZeroMemory(original);
+            CryptographicOperations.ZeroMemory(originalHash);
+        }
+        finally
+        {
+            Array.Clear(senderPassword, 0, senderPassword.Length);
+            Array.Clear(recipientPassword, 0, recipientPassword.Length);
+            Array.Clear(wrongPassword, 0, wrongPassword.Length);
+            try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
 
