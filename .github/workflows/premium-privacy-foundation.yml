@@ -13,7 +13,7 @@ concurrency:
 jobs:
   explorer-foundation:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -41,14 +41,32 @@ jobs:
       - name: Run Explorer integration acceptance harness
         run: dotnet run --project "tools/Sentinel.ExplorerIntegrationAcceptanceHarness/Sentinel.ExplorerIntegrationAcceptanceHarness.csproj" -c Release --no-build
 
-      - name: Restore file encryption acceptance harness
+      - name: Restore file encryption and Secure Delete acceptance harness
         run: dotnet restore "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj"
 
-      - name: Build file encryption acceptance harness
+      - name: Build file encryption and Secure Delete acceptance harness
         run: dotnet build "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-restore
 
-      - name: Run file encryption acceptance harness
+      - name: Run file encryption and Secure Delete acceptance harness
         run: dotnet run --project "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore privacy discovery acceptance harness
+        run: dotnet restore "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj"
+
+      - name: Build privacy discovery acceptance harness
+        run: dotnet build "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run privacy discovery acceptance harness
+        run: dotnet run --project "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore gateway entitlement acceptance harness
+        run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
+
+      - name: Build gateway entitlement acceptance harness
+        run: dotnet build "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run gateway entitlement acceptance harness
+        run: dotnet run --project "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-build
 
       - name: Build native Explorer command - x64
         shell: pwsh
@@ -73,6 +91,12 @@ jobs:
 
       - name: Build Sentinel desktop app
         run: dotnet build "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
+
+      - name: Restore Sentinel gateway
+        run: dotnet restore "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj"
+
+      - name: Build Sentinel gateway
+        run: dotnet build "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj" -c Release --no-restore
 
       - name: Build unsigned x64 package with Explorer extension
         shell: pwsh
