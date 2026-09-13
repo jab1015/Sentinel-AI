@@ -38,7 +38,8 @@ namespace
     constexpr CommandDefinition kCommands[] =
     {
         { L"Inspect with Sentinel AI", "inspect", false },
-        { L"Encrypt File", "encrypt", true },
+        { L"Encrypt for This PC", "encrypt", true },
+        { L"Encrypt for Sharing...", "encrypt-share", true },
         { L"Decrypt Sentinel File", "decrypt", true },
         { L"Add to Sentinel Vault", "vault", true },
         { L"Secure Delete", "secure-delete", true }
