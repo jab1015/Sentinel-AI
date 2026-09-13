@@ -58,10 +58,17 @@ $env:RUNNER_TEMP = $localRunnerTemp
 $baseScript = Join-Path $PSScriptRoot 'Build-SentinelAI-TestPackage.ps1'
 $compatScript = Join-Path $localRunnerTemp 'Build-SentinelAI-TestPackage-Compat.ps1'
 $scriptText = Get-Content -LiteralPath $baseScript -Raw
+
 $oldRng = '[Security.Cryptography.RandomNumberGenerator]::GetBytes(48)'
 $newRng = '$( $bytes = New-Object byte[] 48; $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }; $bytes )'
 if (-not $scriptText.Contains($oldRng)) { throw 'Expected RNG expression was not found in package script.' }
 $scriptText = $scriptText.Replace($oldRng, $newRng)
+
+$oldArgumentList = '    foreach ($argument in $Arguments) { [void]$psi.ArgumentList.Add($argument) }'
+$newArguments = '    $psi.Arguments = (($Arguments | ForEach-Object { ''"{0}"'' -f $_ }) -join '' '')'
+if (-not $scriptText.Contains($oldArgumentList)) { throw 'Expected ProcessStartInfo.ArgumentList expression was not found in package script.' }
+$scriptText = $scriptText.Replace($oldArgumentList, $newArguments)
+
 Set-Content -LiteralPath $compatScript -Value $scriptText -Encoding UTF8
 
 try {
