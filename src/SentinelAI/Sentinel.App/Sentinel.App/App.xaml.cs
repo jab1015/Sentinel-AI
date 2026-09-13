@@ -84,6 +84,8 @@ namespace Sentinel.App
                 }
 
                 DeliverPendingExplorerInspection(mainWindow);
+                if (!launchedByWindowsStartup)
+                    _ = PromptForExplorerRestartAfterInstallAsync(mainWindow);
 
                 startupTimer.Stop();
                 _ = _diagnosticLog.InformationAsync("StartupPerformance",
