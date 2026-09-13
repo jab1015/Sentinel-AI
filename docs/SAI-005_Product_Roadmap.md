@@ -1,8 +1,8 @@
 # SAI-005 — Product Roadmap
 
-Version: 3.2  
-Status: Active — source/CI qualified; Windows physical validation active with external staging work in parallel  
-Last Updated: 2026-09-12
+Version: 3.3  
+Status: Active — source/CI qualified; Windows VM package qualification is the immediate gate  
+Last Updated: 2026-09-13
 
 Copyright (c) 2026 Modern Methods.
 
@@ -12,174 +12,111 @@ Copyright (c) 2026 Modern Methods.
 
 Sentinel AI will be a trustworthy Windows security and system-assistance platform that continuously monitors verified evidence, explains findings in plain language, detects suspicious behavior, safely contains/remediates supported threats, preserves user control, and never claims an action succeeded without verification.
 
-## Branch Isolation Rule
+## Branch Isolation
 
-- Hardening branch: `security/production-hardening-1218f5d`
-- Fully qualified hardening source/test checkpoint: `cff46692d1260349eae531632170fb687deed36f`
-- Premium Privacy branch: `feature/premium-privacy-foundation`
-- Premium Privacy source/test checkpoint: `75edc968d243ccda8da84ea05d687d881270f28f`
-- Premium Privacy workflow run: `34734415429` — **SUCCESS**
+- Hardening: `security/production-hardening-1218f5d`
+- Qualified hardening checkpoint: `cff46692d1260349eae531632170fb687deed36f`
+- Hardening automated qualification: **12/12 PASS**
+- Premium Privacy: `feature/premium-privacy-foundation`
+- VM package source checkpoint currently under qualification: `f51a31fe53c64cadd0e346eb32648a86353d23f2`
+- Current package version: `1.0.26.0`
 
-Premium Privacy remains isolated from hardening. Neither branch may be merged automatically to `main`.
+Neither development branch is authorized for automatic merge to `main`.
 
 ## Phase A — Production Security Hardening
 
-Status: **SOURCE/AUTOMATED QUALIFIED — WINDOWS/EXTERNAL VALIDATION ACTIVE**
+Status: **SOURCE/AUTOMATED QUALIFIED — WINDOWS/EXTERNAL VALIDATION REMAINS**
 
-All 12 required source/automated hardening workflows passed at the qualified checkpoint. Remaining work is physical/external: installed UAC/broker, Authenticode, quarantine/recovery, Defender/firewall, devices/drivers, lifecycle, signed packages, real architecture runtime, Store/GCP, stability, and final adversarial re-audit.
+Remaining evidence includes installed UAC/broker, Authenticode, quarantine/recovery, Defender/firewall, devices/drivers, lifecycle, signed package, real architecture runtime, Store/GCP, stability, and final adversarial re-audit.
 
 ## Phase B — Active Protection
 
 Status: **IN DEVELOPMENT / NOT RELEASE-QUALIFIED**
 
-Objectives remain malicious/suspicious behavior detection, honest-confidence ransomware/malware indicators, user warning/explanation, supported blocking/containment, quarantine/restore, network containment, Defender integration, and exact-target elevated remediation.
+Continue toward malicious/suspicious behavior detection, honest-confidence ransomware/malware indicators, warning/explanation, supported blocking/containment, quarantine/restore, network containment, Defender integration, and exact-target elevated remediation while preserving Ask Sentinel and hardware/software monitoring/repair.
 
 ## Phase C — Ask Sentinel Trust Boundary
 
-Status: **SOURCE IMPLEMENTED — WINDOWS RUNTIME VALIDATION ACTIVE**
+Status: **SOURCE IMPLEMENTED — WINDOWS RUNTIME VALIDATION PENDING**
 
-Final displayed answers are revalidated and cannot claim security actions without verified action evidence.
+Displayed answers must remain evidence-bound and may not claim security actions without verified action evidence.
 
-## Phase D — Cloud and Entitlement Validation
+## Phase D — Premium Privacy
 
-Status: **SOURCE/CI VERIFIED — GCP/STORE EXTERNAL VALIDATION OPEN IN PARALLEL**
+Status: **SOURCE/CI FOUNDATION QUALIFIED — WINDOWS RUNTIME VALIDATION PENDING**
 
-The Google Cloud gateway remains the server-authoritative premium entitlement boundary. Implemented Premium Privacy scopes are:
+Implemented foundation includes:
 
-- `privacy.encrypt`
-- `privacy.vault`
-- `privacy.secure-delete`
-- `privacy.discovery`
+- packaged native `IExplorerCommand` integration;
+- AES-256-GCM encrypted containers and recovery modes;
+- Sentinel Vault;
+- exact-object logical Secure Delete with durable authorization/journal semantics;
+- bounded attributable-copy/history discovery;
+- independently authorized related cleanup;
+- Premium capability scopes `privacy.encrypt`, `privacy.vault`, `privacy.secure-delete`, and `privacy.discovery`.
 
-Microsoft Store remains authoritative for paid status (`sentinel-ai-monthly`, Store ID `9N67THV2Z1GP`). Deterministic CI covers entitlement and capability failure modes.
+Explorer carries intent/selection only. Fuzzy similarity never authorizes deletion. Existing encrypted/Vault data remains recoverable without a new paid entitlement.
 
-Multi-instance shared replay/rate/concurrency state is still required before GCP staging can be marked VERIFIED. Secret Manager, least-privilege IAM, restart/failover, safe logging, alerting, budget controls, and real StoreContext/Partner Center lifecycle evidence remain external gates.
+## Phase E — Windows VM Test Package
 
-These external gates do **not** block installed Windows runtime testing; they proceed in parallel.
+Status: **ACTIVE — BLOCKED AT AUTOMATED SIGNATURE VERIFICATION**
 
-## Phase E — Release Qualification
+Authoritative evidence: `docs/testing/SAI-WIN-001_VM_Test_Package.md`.
 
-Status: **WINDOWS PHYSICAL VALIDATION ACTIVE — NOT READY FOR PRODUCTION**
+Latest run `34736783747` / job `103669514840` against source `f51a31fe53c64cadd0e346eb32648a86353d23f2` successfully completed Release x64 MSIX build, ephemeral test-certificate creation, and MSIX signing. The signature-verification step remained active until the 30-minute job timeout and was cancelled.
 
-Current release work includes installed package/runtime validation, supported Windows versions, standard/admin/UAC, Explorer, encryption, Vault, Secure Delete, discovery providers, Defender/firewall, startup/background, sleep/wake/network loss, crash/failure/resource behavior, architecture runtime, Store/GCP external proof, and final stability/security review.
+Next milestone is not a manual Visual Studio package. The required milestone is one reproducible GitHub workflow run that successfully:
 
-## Phase F — Premium Privacy Protection
+1. builds Release/x64 MSIX;
+2. signs with dedicated ephemeral VM test signing material;
+3. cryptographically verifies the signature and exact signer;
+4. verifies package identity/Publisher/x64 architecture;
+5. verifies required app, privileged broker, and Explorer extension binaries exactly once;
+6. verifies Explorer COM/context-menu registrations;
+7. proves no private signing key is in the package/artifact;
+8. publishes the public certificate, install/uninstall helpers, metadata, and SHA-256;
+9. survives independent downloaded-artifact inspection.
 
-Status: **SOURCE IMPLEMENTED / CI VERIFIED — WINDOWS PHYSICAL VALIDATION ACTIVE**
+Only then may `WINDOWS VM TESTING READY` become YES.
 
-Exact source checkpoint `75edc968d243ccda8da84ea05d687d881270f28f` passed the complete Premium Privacy workflow, run `34734415429`.
+## Phase F — Windows Physical Validation
 
-### P1 — File Explorer Integration
+Status: **WAITING FOR QUALIFIED VM PACKAGE**
 
-Status: **SOURCE/CI VERIFIED — WINDOWS RUNTIME ACTIVE**
+After the package gate passes, execute clean install/upgrade/uninstall; Explorer restart/context-menu and selection cases; standard/admin/UAC; encryption/recovery/corruption/crash; Vault lifecycle/recovery/concurrency; Secure Delete race/reparse/hardlink/protected-path/crash cases; File History/Previous Versions/Search/Recent/Jump Lists/OneDrive discovery; Defender/firewall; startup/background/sleep/wake/network loss; quarantine/recovery; and architecture/runtime validation.
 
-The packaged native `IExplorerCommand` exposes:
+Any runtime defect must be corrected at root cause with regression coverage and applicable CI requalification.
 
-- Inspect with Sentinel AI
-- Encrypt File
-- Add to Sentinel Vault
-- Secure Delete
+## Phase G — Cloud and Store External Qualification
 
-Explorer remains thin and carries intent/selection only; Sentinel performs all entitlement, exact-object, confirmation, cryptographic, and destructive safety checks.
+Status: **OPEN IN PARALLEL**
 
-### P2/P3 — Encrypted Container + Encryption Core
+Microsoft Store remains authoritative for paid status (`sentinel-ai-monthly`, Store ID `9N67THV2Z1GP`). The Google Cloud gateway remains the server-authoritative premium enforcement boundary.
 
-Status: **SOURCE/CI VERIFIED — WINDOWS RUNTIME + INDEPENDENT REVIEW ACTIVE/PENDING**
+Still required are shared atomic multi-instance replay/rate/concurrency state, GCP staging with Secret Manager/least-privilege IAM/restart/failover/safe logging/alerts/budget controls, and real Microsoft Store active/inactive/expired/revoked/unavailable entitlement evidence.
 
-AES-256-GCM, per-file DEKs, authenticated/versioned metadata, bounded processing, corruption/truncation rejection, exact-owned cleanup, and verify-before-plaintext-removal semantics are implemented.
+## Phase H — Final Release Qualification
 
-### P4 — Key Modes and Recovery
+Status: **NOT READY**
 
-Status: **SOURCE/CI VERIFIED — WINDOWS RUNTIME ACTIVE**
+After Windows and external qualification, complete final 1-hour/8-hour stability/resource runs, privacy/security review, High-finding re-audit, full 29-finding re-audit, and final signed distribution evidence. Only then consider a production merge/release decision.
 
-Windows current-user protection, password mode, and independent recovery-key material are implemented. Recovery/decryption of user-owned encrypted data is not subscription locked.
+## Immediate Next Milestones
 
-### P5 — Sentinel Vault
+1. Diagnose exact blocking operation in VM package signature verification.
+2. Fix verification/timeout handling without weakening cryptographic validation.
+3. Obtain one fully successful package workflow and inspect its downloaded artifact.
+4. Record exact package source SHA, certificate, artifact and SHA-256.
+5. Begin Windows 11 VM installation one step at a time.
+6. Execute Windows runtime matrices while cloud/Store work proceeds in parallel.
+7. Complete stability and independent re-audits.
 
-Status: **SOURCE/CI VERIFIED FOUNDATION — WINDOWS RUNTIME ACTIVE**
+## Current Decision
 
-Vault Master Key -> per-item DEK hierarchy, durable metadata, item storage/export, lock/unlock safety, protected VMK envelope, and independent recovery-key behavior are implemented.
-
-### P6 — Secure Delete
-
-Status: **EXACT-OBJECT LOGICAL REMOVAL SOURCE/CI VERIFIED — WINDOWS/FILESYSTEM/MEDIA VALIDATION ACTIVE**
-
-Implemented protections include exact target identity, protected/reparse/directory/hardlink rejection, short-lived authorization, durable one-use replay protection, retained exact-object handle through mutation, authenticated durable journal, pre-mutation state persistence, exact-object logical removal, replacement-object isolation, post-removal identity verification, related-cleanup pending state, and fail-closed recovery classification.
-
-There is no unrestricted privileged `DeletePath(string path)` primitive. Overwrite/TRIM/deallocation remains capability-gated/unsupported in the first destructive version, and physical-media absence remains `CANNOT PROVE` unless independently demonstrated.
-
-### P7 — Broad Attributable Copy / History Discovery
-
-Status: **SOURCE/CI VERIFIED FOUNDATION — WINDOWS/PROVIDER VALIDATION ACTIVE**
-
-Implemented providers/foundations include Sentinel provenance + exact hash, bounded exact-hash directory search, configured File History roots, read-only Previous Versions roots, Windows Search metadata/reference inputs, Recent/Jump List metadata/reference inputs, and OneDrive local sync roots with remote state reported separately.
-
-Discovery is bounded and cancellation-aware. Fuzzy similarity never grants deletion authority.
-
-### P8 — Related Copy Cleanup
-
-Status: **SOURCE/CI VERIFIED FOR FILESYSTEM CANDIDATES — WINDOWS/PROVIDER VALIDATION ACTIVE**
-
-Every related filesystem deletion receives fresh exact-target validation, fresh Secure Delete authorization, fresh Premium entitlement validation, and its own journaled exact-object execution. Likely candidates require explicit confirmation; unverified candidates are never auto-deleted.
-
-### P9 — Premium Subscription Integration
-
-Status: **SOURCE/CI VERIFIED — WINDOWS INSTALLED FLOW + GCP/STORE EXTERNAL VALIDATION ACTIVE**
-
-Feature capabilities are HMAC-authenticated, Store-subject-bound, exact-scope-bound, short-lived, and one-time consumed. Offline/backend/Store-unavailable behavior blocks new premium creation/cleanup without blocking recovery/decryption of existing user-owned encrypted data.
-
-## Windows Physical Validation — Current Primary Phase
-
-Begin/continue installed Windows testing now while cloud/Store external work proceeds in parallel.
-
-Priority matrix:
-
-1. Explorer clean install/upgrade/uninstall/restart, context menus, single/multi-select, long/Unicode paths, standard-user behavior, shell crash/app unavailable.
-2. Encryption round trips, wrong credentials, recovery, corruption/truncation, large/empty files, disk full, cancellation/crashes, output collisions, concurrency.
-3. Vault lifecycle, auto/session locking, recovery, corruption, abrupt termination, concurrency, package upgrade.
-4. Secure Delete ordinary/empty/large/read-only/locked/access-denied files; symlink/junction/reparse/hardlink; target/parent replacement; protected paths; UAC; cancellation; crash at every journal phase; volume/storage loss.
-5. Discovery on real File History, Previous Versions, Windows Search, Recent/Jump Lists, OneDrive local sync, duplicate roots, provider unavailability, bounded/cancel behavior, and false-positive resistance.
-6. Installed entitlement flows wherever Store test states are available.
-7. x64 plus every architecture actually intended to ship.
-
-Any source correction discovered by Windows testing must receive a regression test and requalification before continuing.
-
-## External Validation — Parallel Workstream
-
-Still required before release:
-
-1. shared atomic multi-instance replay/rate/concurrency state;
-2. GCP staging deployment/validation with Secret Manager, least-privilege IAM, failover/restart, safe logging, alerts, and budget controls;
-3. real Microsoft Store test-entitlement evidence;
-4. signed Store-style package provenance and lifecycle evidence.
-
-These are production/release blockers, not prerequisites for beginning local Windows physical validation.
-
-## Safety Boundary
-
-- no unrestricted privileged path-delete primitive;
-- destructive work remains bound to retained exact-object identity;
-- every related filesystem candidate receives independent validation/authorization;
-- discovery is not deletion authority;
-- fuzzy similarity never authorizes deletion;
-- no whole File History/shadow-copy/Search/restore-store destruction;
-- no pagefile/swapfile/hiberfil content scanning;
-- no unsupported SSD/NVMe physical-erasure claim;
-- entitlement never overrides filesystem safety;
-- subscription never locks users out of recovery/decryption of their own data;
-- Explorer carries intent only.
-
-## Current Next Milestones
-
-1. Execute Windows physical validation now and record exact package/commit/environment evidence.
-2. Fix any runtime defects at root cause, add regression coverage, and re-run CI.
-3. In parallel, complete GCP shared-state + staging validation.
-4. In parallel, complete real Store test entitlement lifecycle validation.
-5. Complete real provider/runtime discovery validation.
-6. Complete signed package and architecture runtime qualification.
-7. Run final 1-hour/8-hour stability/resource tests.
-8. Perform independent privacy/security review, High-finding re-audit, and full 29-finding re-audit.
-9. Only then consider READY FOR FINAL INDEPENDENT REVIEW / production merge decisions.
+- WINDOWS VM TESTING READY: **NO**
+- PRODUCTION STORE READY: **NO**
+- MERGE TO MAIN: **NO**
+- RELEASE QUALIFIED: **NO**
 
 ---
 
