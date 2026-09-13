@@ -22,6 +22,7 @@ internal sealed class ExplorerHandoffService
     internal const int MaximumRecordBytes = 64 * 1024;
     internal const int MaximumPathCharacters = 32_767;
     internal const string HandoffArgument = "--sentinel-explorer-handoff";
+    internal const string InspectArgument = HandoffArgument;
     internal const string InspectCommand = "inspect";
     internal const string EncryptCommand = "encrypt";
     internal const string VaultCommand = "vault";
@@ -79,7 +80,7 @@ internal sealed class ExplorerHandoffService
     /// Destructive/cryptographic actions require fresh in-app confirmation, authoritative
     /// premium entitlement, and their own exact-object safety validation.
     /// </summary>
-    internal bool TryConsume(Guid handoffId, out ExplorerActionRequest? request, out string reason)
+    internal bool TryConsume(Guid handoffId, out ExplorerInspectionRequest? request, out string reason)
     {
         request = null;
         reason = string.Empty;
@@ -111,7 +112,7 @@ internal sealed class ExplorerHandoffService
             if (!TryValidateRecord(record, out ExplorerRequestedAction action, out IReadOnlyList<string>? paths, out reason))
                 return false;
 
-            request = new ExplorerActionRequest(handoffId, action, paths!);
+            request = new ExplorerInspectionRequest(handoffId, action, paths!);
             return true;
         }
         catch (FileNotFoundException)
@@ -186,8 +187,6 @@ internal sealed class ExplorerHandoffService
             return false;
         }
 
-        // Premium file operations are intentionally one-object-at-a-time in the first
-        // destructive/cryptographic release. Inspect remains safely multi-select.
         if (action != ExplorerRequestedAction.Inspect && record.Items.Count != 1)
         {
             reason = "Premium Privacy Explorer actions currently require exactly one selected file.";
@@ -225,16 +224,29 @@ internal sealed class ExplorerHandoffService
 
     private static bool TryMapCommand(string? command, out ExplorerRequestedAction action)
     {
-        action = command switch
+        if (string.Equals(command, InspectCommand, StringComparison.Ordinal))
         {
-            InspectCommand => ExplorerRequestedAction.Inspect,
-            EncryptCommand => ExplorerRequestedAction.EncryptFile,
-            VaultCommand => ExplorerRequestedAction.AddToVault,
-            SecureDeleteCommand => ExplorerRequestedAction.SecureDelete,
-            _ => default
-        };
+            action = ExplorerRequestedAction.Inspect;
+            return true;
+        }
+        if (string.Equals(command, EncryptCommand, StringComparison.Ordinal))
+        {
+            action = ExplorerRequestedAction.EncryptFile;
+            return true;
+        }
+        if (string.Equals(command, VaultCommand, StringComparison.Ordinal))
+        {
+            action = ExplorerRequestedAction.AddToVault;
+            return true;
+        }
+        if (string.Equals(command, SecureDeleteCommand, StringComparison.Ordinal))
+        {
+            action = ExplorerRequestedAction.SecureDelete;
+            return true;
+        }
 
-        return command is InspectCommand or EncryptCommand or VaultCommand or SecureDeleteCommand;
+        action = default;
+        return false;
     }
 
     private static bool TryNormalizeSelectedPath(string? raw, out string fullPath)
@@ -291,7 +303,11 @@ internal sealed class ExplorerHandoffService
         List<string?> Items);
 }
 
-internal sealed record ExplorerActionRequest(
+internal sealed record ExplorerInspectionRequest(
     Guid HandoffId,
     ExplorerRequestedAction Action,
-    IReadOnlyList<string> Paths);
+    IReadOnlyList<string> Paths)
+{
+    internal ExplorerInspectionRequest(Guid handoffId, IReadOnlyList<string> paths)
+        : this(handoffId, ExplorerRequestedAction.Inspect, paths) { }
+}
