@@ -1,8 +1,6 @@
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using System;
 using System.Diagnostics;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using Windows.ApplicationModel;
 using Windows.Storage;
 
@@ -11,8 +9,15 @@ namespace Sentinel.App
     public partial class App
     {
         private const string ExplorerRestartPromptVersionKey = "ExplorerRestartPromptedPackageVersion";
+        private const uint MbYesNo = 0x00000004;
+        private const uint MbIconInformation = 0x00000040;
+        private const uint MbDefaultButton1 = 0x00000000;
+        private const int IdYes = 6;
 
-        private async Task PromptForExplorerRestartAfterInstallAsync(Window ownerWindow)
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int MessageBoxW(IntPtr hWnd, string lpText, string lpCaption, uint uType);
+
+        internal void PromptForExplorerRestartAfterInstall()
         {
             try
             {
@@ -23,43 +28,31 @@ namespace Sentinel.App
                 if (string.Equals(lastPromptedVersion, version, StringComparison.Ordinal))
                     return;
 
-                if (ownerWindow.Content is not FrameworkElement root)
-                    return;
+                int result = MessageBoxW(
+                    IntPtr.Zero,
+                    "Sentinel AI is installed. Windows must restart before the Sentinel File Explorer right-click commands are considered ready.\n\nRestart Windows now?\n\nChoose Yes to restart now or No to restart later.",
+                    "Restart Windows to finish Sentinel AI setup",
+                    MbYesNo | MbIconInformation | MbDefaultButton1);
 
-                for (int attempt = 0; attempt < 20 && root.XamlRoot is null; attempt++)
-                    await Task.Delay(100);
-
-                if (root.XamlRoot is null)
-                {
-                    _ = _diagnosticLog.WarningAsync(
-                        "ExplorerRestartPrompt",
-                        $"Sentinel AI {version} could not display the restart prompt because the window XamlRoot was not ready. Explorer testing still requires a Windows restart.");
-                    return;
-                }
-
-                ContentDialog dialog = new()
-                {
-                    XamlRoot = root.XamlRoot,
-                    Title = "Restart Windows to finish Sentinel AI setup",
-                    Content = "Sentinel AI is installed. Restart Windows before testing File Explorer right-click commands so the Sentinel Explorer extension can finish registering. You can restart now or restart later.",
-                    PrimaryButtonText = "Restart now",
-                    CloseButtonText = "Restart later",
-                    DefaultButton = ContentDialogButton.Primary
-                };
-
-                ContentDialogResult result = await dialog.ShowAsync();
                 settings.Values[ExplorerRestartPromptVersionKey] = version;
 
-                if (result == ContentDialogResult.Primary)
+                if (result == IdYes)
                 {
                     _ = _diagnosticLog.InformationAsync("ExplorerRestartPrompt", $"User chose to restart Windows after installing Sentinel AI {version}.");
-                    Process.Start(new ProcessStartInfo
+                    try
                     {
-                        FileName = "shutdown.exe",
-                        Arguments = "/r /t 5 /c \"Sentinel AI setup is complete. Restarting Windows to finish File Explorer integration.\"",
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    });
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "shutdown.exe",
+                            Arguments = "/r /t 5 /c \"Sentinel AI setup is complete. Restarting Windows to finish File Explorer integration.\"",
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _ = _diagnosticLog.ErrorAsync("ExplorerRestartPrompt", "Windows could not be restarted automatically. The user can restart manually before testing File Explorer integration.", ex);
+                    }
                 }
                 else
                 {
@@ -72,7 +65,8 @@ namespace Sentinel.App
             }
             catch (Exception ex)
             {
-                _ = _diagnosticLog.ErrorAsync("ExplorerRestartPrompt", "Sentinel AI could not display the post-install restart prompt.", ex);
+                // The post-install prompt is never allowed to prevent Sentinel from starting.
+                _ = _diagnosticLog.ErrorAsync("ExplorerRestartPrompt", "Sentinel AI could not display the post-install restart prompt. Startup will continue normally.", ex);
             }
         }
     }
