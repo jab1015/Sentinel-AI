@@ -2,7 +2,10 @@
 
 ## Status
 
-SOURCE IMPLEMENTED / CI QUALIFICATION IN PROGRESS / STAGING NOT YET VERIFIED / WINDOWS RUNTIME REQUIRED
+SOURCE IMPLEMENTED / CI VERIFIED / STAGING NOT VERIFIED / WINDOWS RUNTIME REQUIRED
+
+Source/test checkpoint: `75edc968d243ccda8da84ea05d687d881270f28f`  
+Premium Privacy workflow: `34734415429` — **SUCCESS**
 
 This document defines the subscription boundary for Premium Privacy. Microsoft Store remains the commercial authority. Sentinel's Google Cloud gateway is the server-authoritative enforcement point for premium capability issuance and execution revalidation. No UI boolean, Explorer handoff value, cached local Store status, or reusable client token is sufficient authorization.
 
@@ -64,6 +67,8 @@ This is an explicit staging qualification blocker under the Premium Privacy rele
 
 A single-instance deployment does not prove the required multi-instance property and must not be used to erase this blocker from the qualification record.
 
+No Google Cloud deployment was performed from this repository session because no authenticated GCP deployment surface is available here, and the shared-state requirement would block a valid multi-instance staging claim even if a deployment command were available.
+
 ## Microsoft Store failure states
 
 Expected authoritative behavior:
@@ -75,6 +80,10 @@ Expected authoritative behavior:
 - network unavailable: fail closed for new premium operations;
 - entitlement changes while an operation is pending: final capability validation re-queries Store before local execution and must deny if the entitlement is no longer active.
 
+Deterministic gateway acceptance at the CI checkpoint covers active, inactive, expired, revoked, unrelated-product, malformed Store response, malformed collections identity, Store outage, network outage, missing server credential, capability tamper, expiry, wrong scope/subject and replay.
+
+Real Partner Center / installed StoreContext evidence is still required. Deterministic fixtures do not upgrade the release state to Store staging verified.
+
 ## Explorer boundary
 
 The native Explorer extension is not an entitlement client. It does not talk to Microsoft Store or Google Cloud. Explorer emits only a bounded one-time action-intent handoff containing the selected filesystem path(s), a timestamp, and one of the allowed command names. Sentinel reopens/revalidates the selected object, presents application UX, verifies entitlement server-side, and performs all cryptographic/filesystem work inside the app/service boundary.
@@ -85,7 +94,9 @@ A forged same-user handoff therefore cannot carry an entitlement token, broker a
 
 - **DESIGN** — complete for the flow described above.
 - **SOURCE IMPLEMENTED** — implemented for scoped gateway capabilities and application-side authoritative checks.
-- **CI VERIFIED** — only after the current Premium Privacy workflow passes the entitlement harness and all unchanged architecture/package gates at the exact source head.
+- **CI VERIFIED** — **YES** at `75edc968d243ccda8da84ea05d687d881270f28f`, run `34734415429` (**SUCCESS**).
 - **STAGING VERIFIED** — **NO** until Google Cloud staging is deployed with required secrets/least privilege and shared multi-instance replay/rate behavior is implemented and validated.
 - **WINDOWS RUNTIME REQUIRED** — **YES** for StoreContext/Partner Center test-account behavior and installed Explorer/application flows.
 - **FULLY QUALIFIED** — **NO** until staging and the later physical Windows privacy validation campaign are complete.
+
+See `SAI-PRIV-007_PreWindows_Adversarial_Review.md` for the source review and blocker classification.
