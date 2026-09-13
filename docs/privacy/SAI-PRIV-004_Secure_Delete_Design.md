@@ -1,249 +1,142 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE + AUTHENTICATED DURABLE JOURNAL + READ-ONLY RECOVERY CLASSIFIER CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
-Version: 1.6  
+Status: EXACT-OBJECT LOGICAL REMOVAL SOURCE IMPLEMENTED — EXACT-HEAD CI / STAGING ENTITLEMENT / WINDOWS MEDIA VALIDATION PENDING  
+Version: 1.7  
 Date: 2026-09-12
 
 ## Purpose
 
-Define a storage-aware, exact-target privacy removal architecture that maximizes safe recovery resistance without damaging unrelated Windows or user data and without claiming certainty that cannot be proven.
+Define a storage-aware exact-target removal architecture that maximizes safe privacy removal without damaging unrelated Windows/user data and without claiming physical certainty the platform cannot prove.
 
 ## Non-goals
 
 Secure Delete is not:
 
-- a whole-drive sanitize command
-- a firmware secure-erase UI
-- a free-form privileged `DeletePath(string path)` primitive
-- permission to erase unrelated history, restore points, or system databases
-- permission to modify `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`
-- proof that physical NAND cells no longer contain prior data
+- a whole-drive sanitize command;
+- firmware secure erase;
+- an unrestricted privileged `DeletePath(string path)` / arbitrary file-delete API;
+- permission to erase unrelated restore/history/search data;
+- permission to scan or manipulate `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys` for selected-file content;
+- proof that SSD/NVMe/NAND physical cells no longer contain historical data.
 
-## Components
+## Implemented components
 
 - `SecureDeleteTargetValidator`
-- `SecureDeleteCoordinator`
 - `StorageCapabilityDetector`
+- `SecureDeleteCoordinator`
 - `SecureDeleteMutationLeaseManager` / `SecureDeleteMutationLease`
 - `SecureDeleteOperationJournal`
 - `SecureDeleteRecoveryClassifier`
-- future exact-handle mutation executor / narrow privileged broker operation
-- future `RelatedArtifactDiscoveryService`
+- `SecureDeleteExactObjectExecutor`
+- `RelatedArtifactDiscoveryService`
+- `RelatedArtifactCleanupService`
 
-## Current source implementation
+## Exact-object safety boundary
 
-Implemented on `feature/premium-privacy-foundation`:
+Before destructive mutation Sentinel requires:
 
-- `SecureDeleteContracts` defines explicit validation and storage-capability result semantics.
-- `SecureDeleteTargetValidator` is a non-destructive exact-target boundary. It requires a fully qualified filesystem path, reopens the exact object with reparse traversal disabled, rejects directories/reparse objects/multiple hard links/device namespaces/protected locations/system-critical files, resolves the final handle path, and binds stable volume/file identity.
-- Directory inspection uses Windows backup-semantics only so directory objects can be identified and rejected explicitly; this does not create destructive directory authority.
-- `SecureDeleteTargetValidator.Revalidate` proves the same volume/file ID and canonical path again; path replacement loses authorization.
-- `StorageCapabilityDetector` reports only mounted-volume/root/filesystem/location facts that can be obtained without guessing. Physical media type, BitLocker state, TRIM/unmap support, and cloud synchronization remain `Unknown` until reviewed platform/provider APIs provide trustworthy evidence.
-- `SecureDeleteCoordinator` is a non-destructive authorization/preflight boundary. It accepts only a previously validated `SecureDeleteTargetIdentity`, never an arbitrary path string.
-- Coordinator authorization is short-lived (currently five minutes), bound to the exact target and storage boundary, and currently limited to local fixed storage.
-- Coordinator authorization permits only a future logical-removal path. `AllowsOverwriteSanitization` is explicitly `false` until media-specific overwrite strategy is separately qualified.
-- `RevalidateForMutation` rejects expired/malformed authorizations, path/object replacement, unsupported storage, changed volume/filesystem boundary, and attempted privilege inflation.
-- `SecureDeleteMutationLeaseManager` consumes only a coordinator authorization, revalidates it, opens the approved exact object with mutation-relevant access and restrictive sharing, verifies final path, reparse/directory/link state, and stable volume/file identity from the live handle, then retains that handle in `SecureDeleteMutationLease`.
-- The retained lease blocks rename/replacement and new write-capable opens while it is active. The lease exposes no raw handle property and, at this milestone, exposes no delete, overwrite, truncate, or media operation.
-- `SecureDeleteOperationJournal` persists the exact operation/authorization/target/storage binding and the destructive-state machine before any future irreversible action. Journal writes use a new temporary file, write-through I/O, explicit flush-to-disk, replacement of the durable record, and immediate readback verification.
-- Journal schema v2 authenticates each exact serialized record with a SHA-256 digest wrapped by the already-qualified Windows DPAPI current-user protector. Reads require both structural validity and a successfully unwrapped fixed-time-matching digest, so a valid-looking state edit with a stale proof fails closed.
-- The journal enforces monotonic state transitions: `Prepared` -> `IdentityVerified` -> `PrimaryMutationStarted` -> `PrimaryRemovalVerified` -> `RelatedCleanupPending` -> `Complete`. `RecoveryRequired` may be entered from an unresolved nonterminal state and cannot silently transition to `Complete`.
-- Journal reads fail closed on missing/invalid JSON, schema mismatch, mismatched operation identity, empty authorization/target/storage binding, undefined persisted enum states, invalid timestamps, reversed update chronology, malformed/tampered DPAPI proof, or any record/proof digest mismatch.
-- The journal never opens or mutates the approved target file. A future executor must successfully persist `PrimaryMutationStarted` before it may perform target mutation.
-- `SecureDeleteRecoveryClassifier` is a read-only crash/restart reconciliation boundary. It accepts only an operation ID, authenticates the persisted journal through `SecureDeleteOperationJournal`, compares current filesystem evidence with the original stable identity, and never grants automatic mutation authority.
-- Recovery classification distinguishes invalid/tampered journal, pre-mutation state, mutation-started ambiguity, recorded primary removal, related-cleanup pending, complete, and explicit `RecoveryRequired`.
-- A pre-mutation record may request only a fresh pre-mutation authorization when the exact original object is still proven present. Replaced, missing, inaccessible, rejected, mutation-started, contradictory post-removal, or explicit recovery-required states fail closed and require review.
-- If the original path now contains a different filesystem object, the replacement is explicitly outside the prior Secure Delete authority and must not be touched. If the journal says primary removal occurred while the exact original object is still present, recovery treats that as a contradiction rather than trusting the journal blindly.
-- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, release of protections after disposal, journal reopen durability, exact target/authorization binding, state-skip rejection, terminal `RecoveryRequired`, undefined numeric-state tamper rejection, valid-looking `RecoveryRequired` -> `Complete` tamper rejection with a stale integrity proof, restoration of the original authenticated record, recovery handling for prepared exact targets, prepared path replacement, mutation-started ambiguity, post-removal contradiction, post-removal path reuse, explicit `RecoveryRequired`, tampered-journal rejection, and byte-for-byte preservation of the approved target throughout non-destructive journal/recovery operations.
+1. a previously validated `SecureDeleteTargetIdentity`;
+2. nonexpired short-lived `SecureDeleteAuthorization`;
+3. exact target revalidation;
+4. storage-boundary revalidation;
+5. retained handle acquisition with mutation-relevant access and restrictive sharing;
+6. final handle-derived canonical path equality;
+7. no reparse point;
+8. not a directory;
+9. exactly one hard link in the first destructive release;
+10. stable volume/file identity equal to the approved identity;
+11. protected/system-critical/Program Files/Sentinel/package/device-namespace policy still satisfied through the validator/coordinator boundary;
+12. server-authoritative `privacy.secure-delete` entitlement immediately before the local destructive operation in app flows.
 
-Not implemented yet:
+If the retained handle cannot prove the approved exact identity, mutation fails closed.
 
-- no destructive Secure Delete executor
-- no privileged Secure Delete broker mutation operation
-- no overwrite/TRIM/deallocation action
-- no related-copy cleanup action
-- no destructive Explorer command
+No executor method accepts an arbitrary pathname for deletion. The only destructive primitive added to the retained lease is `TryRequestLogicalRemoval`, which invokes Windows file-disposition semantics on the already-open, already-verified `SafeFileHandle`.
 
-## Exact-target authorization
+## Durable one-use authorization
 
-Before any destructive step Sentinel must:
+`SecureDeleteOperationJournal.Begin` durably claims each `AuthorizationId` with a create-new write-through claim record before persisting `Prepared`. A second begin with the same authorization is rejected, including after a process restart.
 
-1. canonicalize the user-selected path during selection/inspection
-2. open/reopen the exact filesystem object
-3. bind stable identity evidence from that object
-4. verify the object remains the user-approved target
-5. reject unexpected reparse behavior
-6. reject unexpected hard-link/multiple-link conditions unless explicitly supported by policy
-7. reject protected Windows locations
-8. reject Program Files and Sentinel package/install locations
-9. reject system-critical files and device namespaces
-10. revalidate identity immediately before destructive mutation
-11. **reopen and retain the exact verified object/handle through the destructive mutation itself**
-12. persist `PrimaryMutationStarted` durably before the first irreversible target mutation
-13. reject any journal record whose current-user integrity proof does not match its exact persisted contents
-14. after restart/crash, classify persisted state and live exact-object evidence without automatically resuming mutation
+The claim is intentionally retained even if later operation persistence fails. Requiring a fresh user approval is safer than attempting to recycle destructive authority after ambiguous startup/storage failure.
 
-The current coordinator implements step 10, the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11, the qualified authenticated operation journal implements the durable-state and tamper-evidence prerequisites for steps 12-13, and the qualified read-only recovery classifier implements step 14. A future executor must consume those exact authorities without falling back to path-only authority or reopening an unverified object later.
+This claim complements, rather than replaces, authorization expiration, target/storage revalidation, retained-handle identity verification and authenticated journal state.
 
-User intent, subscription state, path text, filename similarity, and prior inspection are not substitutes for exact-object validation.
+## Destructive executor transaction
 
-## Broker / executor rule
+`SecureDeleteExactObjectExecutor` performs the first destructive version as follows:
 
-No unrestricted delete API is permitted.
+1. coordinator revalidates authorization, expiry, exact identity and storage boundary;
+2. mutation lease manager revalidates again and retains the exact object handle;
+3. executor verifies authorization/target/storage facts match the retained lease;
+4. journal creates `Prepared` under a one-use authorization claim;
+5. journal advances to `IdentityVerified` and the record is read back/authenticated;
+6. journal advances to `PrimaryMutationStarted` and the record is read back/authenticated before irreversible removal;
+7. the retained handle is marked delete-pending through `SetFileInformationByHandle`;
+8. the retained handle closes, allowing Windows to complete logical exact-object removal;
+9. Sentinel observes the original target identity/path boundary;
+10. if the original stable identity still exists, result is failed;
+11. if evidence is ambiguous, journal becomes/remains `RecoveryRequired` and primary status is `UNKNOWN`;
+12. if the pathname now contains a different replacement object, Sentinel records that the original identity is absent and leaves the replacement untouched;
+13. journal advances to `PrimaryRemovalVerified`;
+14. journal advances to `RelatedCleanupPending`;
+15. executor returns structured status and does not automatically mark `Complete`.
 
-A future broker/executor request must contain a narrow operation identifier and sufficient expected identity evidence to independently reopen and verify the exact approved object. The executor must retain the verified object through mutation so another filesystem object cannot be substituted between authorization and deletion. It must fail closed if identity, link count, reparse state, protected-location policy, storage boundary, authorization, authenticated journal state, or recovery classification changes while UAC or IPC is pending.
+## Journal and recovery
 
-The destructive executor must not expose a free-form `DeletePath(string)` or equivalent path-only primitive.
+The journal remains authenticated using an exact-record SHA-256 digest wrapped by the qualified Windows current-user key protector. Records use write-through/flush/readback persistence and monotonic transitions:
 
-## Storage capability classification
+`Prepared -> IdentityVerified -> PrimaryMutationStarted -> PrimaryRemovalVerified -> RelatedCleanupPending -> Complete`
 
-`StorageCapabilityDetector` reports best-effort facts, not marketing promises:
+`RecoveryRequired` may be entered from unresolved nonterminal states and cannot silently transition to `Complete`. Missing, malformed, tampered, undefined-state, reversed-time, mismatched-operation, target/storage/authorization-binding, or integrity-proof failures fail closed.
 
-- filesystem type
-- local/removable/network/cloud-synchronized classification where detectable
-- rotational media indication where Windows exposes it
-- SATA/NVMe/other bus information where Windows exposes it
-- BitLocker/protection state where available
-- TRIM/unmap support indicators where safely queryable
+`SecureDeleteRecoveryClassifier` never automatically resumes destructive work. Before durable `PrimaryMutationStarted`, a still-identical target may only lead to a fresh authorization. After `PrimaryMutationStarted`, ambiguous or contradictory evidence requires recovery review. A different replacement object at the old pathname is outside the old authority. Related cleanup is never automatically resumed as broad deletion.
 
-Unknown information remains Unknown.
+Deterministic journal/recovery acceptance covers prepared/mutation states, tampering, path reuse, contradictory live evidence, missing/replaced targets, terminal recovery and authorization replay. The destructive executor harness covers normal/empty/Unicode removal, read-only fail-closed behavior, expiry, target replacement, durable `RelatedCleanupPending`, and honest media semantics.
 
-The current source foundation intentionally leaves physical-media, BitLocker, TRIM/unmap, and cloud-sync states Unknown rather than infer them from drive letters or filenames. More authoritative Windows/provider detection is a later source step and must include its own runtime fixtures.
+Full injected-failure/device coverage through every destructive timing window remains a required Windows/runtime qualification item and must not be represented as physically qualified by source tests alone.
 
-## Media policy
+## Related artifacts
 
-### HDD / rotational media
+Primary removal never grants authority over another object. Discovery is read-only classification.
 
-Sentinel may support exact-file overwrite strategies only after exact-target handle-retention safeguards, sparse/compressed/encrypted-file behavior, allocation semantics, crash handling, and post-operation verification are reviewed. Overwrite success does not prove every historical sector/remapped sector is gone.
+`RelatedArtifactCleanupService` requires for every filesystem candidate an eligible class, explicit confirmation in the current implementation, fresh exact-target validation, fresh Secure Delete authorization, fresh `privacy.secure-delete` entitlement, and a separate journal/executor operation. Unverified candidates and same-object/hardlink aliases are rejected. Metadata references require provider-specific targeted operations. The primary journal may reach `Complete` only after the related phase is explicitly resolved.
 
-### SSD / NVMe / flash
+## Media behavior
 
-Application-level overwrites do not prove physical NAND erasure because of wear leveling, controller remapping, over-provisioning, and device firmware behavior. Sentinel may overwrite logical content where safe and may request OS-supported deallocation/TRIM where applicable, but the result must distinguish the logical operation from physical certainty.
+The first destructive release implements logical exact-object removal only.
 
-### BitLocker
+Primary removal result values are `VERIFIED`, `FAILED`, or `UNKNOWN`. Media action values are `VERIFIED`, `REQUESTED`, `NOT_SUPPORTED`, or `CANNOT_PROVE`.
 
-Encryption-at-rest is relevant context but is not itself proof that a selected file's historical plaintext/ciphertext copies no longer exist.
+The current executor reports media overwrite/TRIM/deallocation as `NOT_SUPPORTED`. Physical-media absence is `CANNOT_PROVE` unless future independent platform/media evidence genuinely proves otherwise. Application overwrites or TRIM acceptance must never be marketed as proof of SSD/NVMe/NAND physical erasure.
 
-### Cloud-synchronized paths
+## Storage capability policy
 
-Local deletion does not prove remote-version deletion. Cloud copies are handled by discovery/provider-specific targeted cleanup when supported and are reported separately.
+`StorageCapabilityDetector` remains conservative. Unknown physical media, BitLocker, TRIM/unmap and cloud-sync facts remain `Unknown` rather than inferred from drive letters or filenames. First destructive execution is limited to validated local fixed storage. Future media-specific behavior requires separate review and real HDD/SATA SSD/NVMe/BitLocker validation.
 
-## Result model
+## Premium entitlement boundary
 
-### Primary file
+Entitlement does not create filesystem authority. A paid user cannot override target protection, reparse/link restrictions, exact identity or storage safety. Application destructive flows obtain a one-operation `privacy.secure-delete` capability through the existing Store-authoritative gateway and validate it immediately before local execution. Store/gateway unavailability blocks new premium mutation; it does not lock already-owned encrypted data.
 
-- `VERIFIED` — Sentinel verified the approved filesystem object is no longer present at the exact target identity/path boundary it can prove.
-- `FAILED` — the primary removal did not complete or could not be verified.
+See `SAI-PRIV-006_Premium_Entitlement.md`.
 
-### Media action
+## Explorer boundary
 
-- `VERIFIED` — a specific supported logical media action was completed and verified at the API level.
-- `REQUESTED` — the OS/device accepted a request but Sentinel cannot prove lower-layer completion.
-- `NOT SUPPORTED` — no safe supported targeted media action is available.
-
-### Related copies
-
-- `FOUND`
-- `REMOVED`
-- `REMAIN`
-
-### External copies
-
-- `FOUND`
-- `UNKNOWN`
-- `NOT INSPECTABLE`
-
-### Physical media absence
-
-- `CANNOT PROVE` unless exact platform/media evidence genuinely proves otherwise.
-
-## Transaction model
-
-Secure Delete uses a durable authenticated operation journal before the first destructive action.
-
-Implemented states:
-
-- Prepared
-- IdentityVerified
-- PrimaryMutationStarted
-- PrimaryRemovalVerified
-- RelatedCleanupPending
-- Complete
-- RecoveryRequired
-
-Recovery never guesses. Ambiguous state remains actionable and visible.
-
-The journal is a prerequisite, not a destructive executor. A future executor must make `PrimaryMutationStarted` durable before the first irreversible mutation and must not promote an ambiguous, structurally invalid, or integrity-proof-mismatched journal record to success.
-
-The read-only recovery classifier is also a prerequisite, not mutation authority. It does not continue or replay destructive work. Even when a prepared operation still points to the exact original object, recovery may only indicate that a new pre-mutation authorization can be requested; it never reuses stale authority or automatically proceeds.
-
-The DPAPI current-user proof protects the journal at the Windows current-user protection boundary. It is not a claim that Sentinel can resist an attacker who has already fully compromised that same interactive Windows user context and can invoke that user's cryptographic protection APIs. A future privileged broker must still independently revalidate exact target identity, authorization, journal state, and recovery posture.
-
-## Cancellation and crash policy
-
-Cancellation before destructive mutation: no change.
-
-Cancellation after destructive mutation begins: finish only the minimum steps needed to establish and report safe/known state; never convert uncertainty into success.
-
-Crash recovery identifies whether the authenticated operation journal is trustworthy, whether the primary target still exists, whether the exact original identity can still be established, whether the original path has been reused by a different object, whether journal/live evidence contradict each other, and whether any related-artifact cleanup remains pending. No destructive mutation is automatically resumed by the current recovery layer.
+The native Explorer extension performs no deletion, cryptography, entitlement validation, scanning, cloud access, broker access or secret handling. It sends one-time action intent and selection to Sentinel. Sentinel reopens the object, displays confirmation and performs authoritative checks.
 
 ## Claims boundary
 
-Allowed product phrasing:
+Allowed with appropriate context/evidence: Secure Delete; logical exact-object removal verified; storage-aware privacy removal; verified removal where Sentinel can prove it.
 
-- Secure Delete
-- Maximum safe privacy removal
-- Storage-aware secure deletion
-- Verified removal where Sentinel can prove it
+Prohibited without exact independent proof: “100% unrecoverable,” “forensically impossible to recover,” “guaranteed NAND erase,” “guaranteed physical-media absence,” or equivalent claims.
 
-Prohibited without exact independent proof:
+## Required remaining qualification
 
-- forensically impossible to recover
-- unrecoverable on every storage device
-- military-grade deletion
-- guaranteed NAND erase
-
-## Required adversarial tests
-
-- ordinary/empty/large file
-- Unicode/long path
-- read-only/locked/access denied
-- symlink/junction/reparse
-- hardlink
-- target swap after confirmation
-- target swap between preflight and mutation
-- parent replacement
-- protected Windows path
-- Program Files
-- Sentinel install/package path
-- cloud sync path
-- HDD/SATA SSD/NVMe/BitLocker
-- cancellation
-- crash at every transaction phase
-- volume disappears
-- disk/device errors
-- duplicate discovery
-- user declines
-- false-positive duplicate resistance
-- authorization expiry, replay, malformed privilege bits, and storage-boundary change
-- malformed/tampered/undefined journal state and timestamp rollback
-- valid-looking journal state/identity edits with stale or malformed integrity proofs
-- recovery classification with a tampered/missing journal
-- recovery classification when the original path is reused by a different object
-- post-removal journal/live-object contradictions
+Exact-head CI and adversarial source review remain required before the Windows phase. Windows validation must include large/long-path/locked/access-denied files; symlink/junction/reparse and parent-replacement races; hardlinks/protected Windows/Program Files/Sentinel package targets; concurrency; cancellation/failure around destructive timing windows; journal loss/tamper/rollback; path reuse/replacement; volume loss/device errors; real HDD/SATA SSD/NVMe/BitLocker; install/package/UAC; and related-provider behavior.
 
 ## Qualification state
 
-**EXACT-TARGET FOUNDATION CI VERIFIED.** Exact-target binding/revalidation and conservative storage-capability reporting passed the active privacy harness, desktop build, native Explorer x64/x86/ARM64 builds, unsigned x64 MSIX build, and packaged x64 Explorer-extension PE verification at exact head `dd35c6e76a219840a9efeef0f441c9741b590a77`, workflow run `34726434160`.
-
-**NON-DESTRUCTIVE COORDINATOR CI VERIFIED.** The short-lived exact-identity authorization/pre-mutation gate and its adversarial acceptance coverage passed the same complete workflow chain at exact head `42e88b2e6f1d9574eba344057d0db8b546393af3`, workflow run `34726779853`.
-
-**RETAINED EXACT-HANDLE LEASE CI VERIFIED.** The mutation-time exact-object lease, including stable identity verification and active rename/write race blocking, passed the full privacy workflow at exact head `9c2630ccb41f519d1d6a8c60142023606c3534fa`, workflow run `34727592444`. The preceding run at `061ff227465c333dc942ca17a78c039731d24e42` exposed a harness-only sharing-semantics defect: the test attempted a competing read that did not share delete access while the retained lease was intentionally active. The test was corrected without changing product lease behavior.
-
-**DURABLE OPERATION JOURNAL CI VERIFIED.** Exact operation/authorization/target binding, reopen durability, monotonic transitions, terminal recovery semantics, write-through/flush/readback persistence, target non-mutation, and undefined numeric-state tamper rejection passed the full privacy workflow at exact head `5e067877862a54e82de9cac17ef8885c09b737fa`, workflow run `34729111812`. The preceding journal run exposed two defects: the test fixture attempted to replace a symbolic enum name even though JSON stored the enum numerically (classification B), and production journal validation did not reject undefined numeric enum values (classification A). Production now validates persisted state and record invariants before accepting or re-persisting a record; the corrected test corrupts the numeric state to `999` and proves fail-closed rejection.
-
-**AUTHENTICATED DURABLE JOURNAL CI VERIFIED.** Journal schema v2 adds an exact-record SHA-256 integrity proof protected by the already-qualified Windows DPAPI current-user protector. The acceptance harness proves a structurally valid `RecoveryRequired` -> `Complete` edit is rejected because the stale proof no longer matches, authentic records survive reopen, restoring the exact authenticated record restores readability, undefined states remain rejected, and the target file remains byte-for-byte unchanged. The complete privacy workflow passed at exact head `536cef4b24841777d13f847485a30d3ddce2eccb`, workflow run `34729744199`.
-
-**READ-ONLY RECOVERY CLASSIFIER CI VERIFIED.** Crash/restart classification now authenticates the journal, binds recovery decisions to live exact-object evidence, isolates path replacements from prior authority, detects post-removal contradictions, keeps `PrimaryMutationStarted` ambiguous, and never automatically resumes mutation. Its acceptance coverage passed the full privacy workflow at exact head `038ca1c85fb4803dfa59c693c6ce1064583cc2e7`, workflow run `34730457354`. A follow-up adversarial acceptance now also corrupts an authenticated prepared-state journal and requires the recovery classifier to return `JournalInvalid`, grant no fresh or automatic mutation authority, and leave the approved target unchanged.
-
-**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next safe source milestones are stronger recovery adversarial coverage, a narrowly bound non-destructive execution-plan object that consumes the qualified authorization/journal/lease requirements without performing mutation, and bounded read-only related-artifact discovery. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
+- **DESIGN:** complete for the first logical-removal version.
+- **SOURCE IMPLEMENTED:** yes for exact-object logical removal and separate related cleanup foundation.
+- **CI VERIFIED:** pending exact-head workflow conclusion.
+- **STAGING VERIFIED:** no; entitlement staging is blocked on shared multi-instance gateway state.
+- **WINDOWS RUNTIME REQUIRED:** yes.
+- **FULLY QUALIFIED:** no.
