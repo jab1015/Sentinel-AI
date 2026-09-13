@@ -75,9 +75,12 @@ internal static class SecureDeleteOperationJournalAcceptance
 
             string journalPath = Path.Combine(journalRoot, record.OperationId.ToString("N") + ".json");
             string json = File.ReadAllText(journalPath);
-            File.WriteAllText(journalPath, json.Replace("RecoveryRequired", "NotARealState", StringComparison.Ordinal));
+            string stateFragment = $"\"State\": {(int)SecureDeleteOperationState.RecoveryRequired}";
+            Require(json.Contains(stateFragment, StringComparison.Ordinal),
+                "Journal fixture could not locate the serialized numeric state field.");
+            File.WriteAllText(journalPath, json.Replace(stateFragment, "\"State\": 999", StringComparison.Ordinal));
             Require(!reopened.TryRead(record.OperationId, out _),
-                "Journal accepted tampered/invalid state metadata.");
+                "Journal accepted an undefined persisted state value.");
 
             Require(File.Exists(target), "Journal tamper handling affected the approved target.");
             Require(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(target))) == originalHash,
@@ -86,7 +89,7 @@ internal static class SecureDeleteOperationJournalAcceptance
             Console.WriteLine("Secure Delete durable journal reopen / exact-target binding: PASS");
             Console.WriteLine("Secure Delete journal monotonic transition enforcement: PASS");
             Console.WriteLine("Secure Delete RecoveryRequired fail-closed semantics: PASS");
-            Console.WriteLine("Secure Delete journal target non-mutation / tamper rejection: PASS");
+            Console.WriteLine("Secure Delete undefined-state tamper rejection / target preservation: PASS");
         }
         finally
         {
