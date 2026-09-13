@@ -1,0 +1,228 @@
+param(
+    [Parameter(Mandatory = $true)][string]$MsBuild,
+    [Parameter(Mandatory = $true)][string]$SignTool,
+    [Parameter(Mandatory = $true)][string]$MakeAppx,
+    [Parameter(Mandatory = $true)][string]$SourceSha,
+    [string]$OutputDir = 'artifacts/windows-vm-test',
+    [string]$PackageName = 'SentinelAI-WindowsVM-x64.msix',
+    [string]$CertName = 'SentinelAI-TestSigning.cer'
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$manifestPath = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Package.appxmanifest'
+$packageProject = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj'
+$appPackages = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\AppPackages'
+$expectedName = 'ModernMethods.SentinelAI'
+$expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
+$pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
+$certObject = $null
+$trustedPeopleStore = $null
+$rootStore = $null
+
+function Invoke-BoundedProcess {
+    param(
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][int]$TimeoutMilliseconds,
+        [Parameter(Mandatory = $true)][string]$LogPath,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $FilePath
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($argument in $Arguments) { [void]$psi.ArgumentList.Add($argument) }
+
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $psi
+    if (-not $process.Start()) { throw "Failed to start $Description." }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+
+    if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+        try { $process.Kill($true) } catch {}
+        throw "$Description exceeded the $([int]($TimeoutMilliseconds / 1000))-second safety bound."
+    }
+
+    $stdoutText = $stdoutTask.GetAwaiter().GetResult()
+    $stderrText = $stderrTask.GetAwaiter().GetResult()
+    if ($stdoutText) { $stdoutText | Tee-Object -FilePath $LogPath -Append | Write-Host }
+    if ($stderrText) { $stderrText | Tee-Object -FilePath $LogPath -Append | Write-Host }
+    if ($process.ExitCode -ne 0) { throw "$Description failed with exit code $($process.ExitCode)." }
+}
+
+function Get-PeMachine {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw "Invalid PE file: $Path" }
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+    if ($peOffset -lt 0 -or ($peOffset + 6) -gt $bytes.Length) { throw "Invalid PE header offset: $Path" }
+    return [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+}
+
+try {
+    [xml]$sourceManifest = Get-Content -LiteralPath $manifestPath -Raw
+    $identity = $sourceManifest.Package.Identity
+    if ($identity.Name -ne $expectedName) { throw "Unexpected package name: $($identity.Name)" }
+    if ($identity.Publisher -ne $expectedPublisher) { throw "Unexpected package publisher: $($identity.Publisher)" }
+    Write-Host "Production package identity preserved: $($identity.Name), $($identity.Publisher), version $($identity.Version)."
+
+    if (Test-Path $appPackages) { Remove-Item $appPackages -Recurse -Force }
+    & $MsBuild $packageProject /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"
+    if ($LASTEXITCODE -ne 0) { throw "MSBuild failed with exit code $LASTEXITCODE." }
+
+    $msixes = @(Get-ChildItem $appPackages -Recurse -File -Filter '*.msix' | Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+    if ($msixes.Count -ne 1) { throw "Expected exactly one generated MSIX, found $($msixes.Count)." }
+
+    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    $signedPackage = Join-Path $OutputDir $PackageName
+    Copy-Item -LiteralPath $msixes[0].FullName -Destination $signedPackage -Force
+
+    $rsa = [Security.Cryptography.RSA]::Create(3072)
+    try {
+        $dn = [Security.Cryptography.X509Certificates.X500DistinguishedName]::new($expectedPublisher)
+        $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $dn,
+            $rsa,
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+        $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
+        $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature, $true))
+        $ekus = [Security.Cryptography.OidCollection]::new()
+        [void]$ekus.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3', 'Code Signing'))
+        $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($ekus, $true))
+        $signingCert = $request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5), [DateTimeOffset]::UtcNow.AddDays(30))
+        try {
+            if (-not $signingCert.HasPrivateKey) { throw 'Generated test certificate has no private key.' }
+            if ($signingCert.Subject -ne $expectedPublisher) { throw "Certificate subject '$($signingCert.Subject)' does not match package Publisher." }
+
+            $passwordPlain = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+            Write-Output "::add-mask::$passwordPlain"
+            [IO.File]::WriteAllBytes($pfxPath, $signingCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $passwordPlain))
+            $publicCertPath = Join-Path $OutputDir $CertName
+            [IO.File]::WriteAllBytes($publicCertPath, $signingCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+        }
+        finally {
+            $signingCert.Dispose()
+        }
+    }
+    finally {
+        $rsa.Dispose()
+    }
+
+    $certObject = [Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $OutputDir $CertName))
+    if ($certObject.HasPrivateKey) { throw 'Exported public VM certificate unexpectedly contains a private key.' }
+    $hasCodeSigningEku = $false
+    foreach ($extension in $certObject.Extensions) {
+        if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
+            foreach ($oid in $extension.EnhancedKeyUsages) { if ($oid.Value -eq '1.3.6.1.5.5.7.3.3') { $hasCodeSigningEku = $true } }
+        }
+    }
+    if (-not $hasCodeSigningEku) { throw 'Generated public certificate is missing the Code Signing EKU.' }
+
+    Invoke-BoundedProcess -FilePath $SignTool -Arguments @('sign','/f',$pfxPath,'/p',$passwordPlain,'/fd','SHA256','/v',$signedPackage) -TimeoutMilliseconds 120000 -LogPath 'windows-vm-test-signing.log' -Description 'SignTool sign'
+    Remove-Item -LiteralPath $pfxPath -Force
+    Write-Host 'MSIX signing completed; runner-temp private PFX deleted.'
+
+    # Avoid Import-Certificate for self-signed Root trust on hosted runners because it can invoke trust UI.
+    # X509Store.Add performs the same CurrentUser store insertion non-interactively.
+    $trustedPeopleStore = [Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople', [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+    $trustedPeopleStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+    $trustedPeopleStore.Add($certObject)
+    $trustedPeopleStore.Close(); $trustedPeopleStore = $null
+
+    $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+    $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+    $rootStore.Add($certObject)
+    $rootStore.Close(); $rootStore = $null
+
+    Invoke-BoundedProcess -FilePath $SignTool -Arguments @('verify','/pa','/v',$signedPackage) -TimeoutMilliseconds 120000 -LogPath 'windows-vm-test-signing.log' -Description 'SignTool verify'
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $signedPackage
+    if ($signature.Status -ne 'Valid') { throw "Authenticode validation failed: $($signature.Status) - $($signature.StatusMessage)" }
+    if ($null -eq $signature.SignerCertificate) { throw 'Authenticode verification did not return a signer certificate.' }
+    if ($signature.SignerCertificate.Thumbprint -ne $certObject.Thumbprint) { throw 'Signed package signer does not match the generated VM test certificate.' }
+    if ($signature.SignerCertificate.Subject -ne $expectedPublisher) { throw "Signed package subject '$($signature.SignerCertificate.Subject)' does not match Publisher '$expectedPublisher'." }
+    Write-Host "Package signature is valid and bound to $($signature.SignerCertificate.Subject)."
+
+    $unpackRoot = Join-Path $env:RUNNER_TEMP 'sentinel-windows-vm-test-unpacked'
+    if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
+    New-Item -ItemType Directory -Path $unpackRoot | Out-Null
+    & $MakeAppx unpack /p $signedPackage /d $unpackRoot /o
+    if ($LASTEXITCODE -ne 0) { throw 'MakeAppx failed to unpack the signed VM test package.' }
+
+    $required = @('Sentinel.App.exe', 'Sentinel.PrivilegedBroker.exe', 'Sentinel.ExplorerExtension.dll')
+    foreach ($name in $required) {
+        $matches = @(Get-ChildItem $unpackRoot -Recurse -File -Filter $name)
+        if ($matches.Count -ne 1) { throw "Expected exactly one $name in the package, found $($matches.Count)." }
+        $machine = Get-PeMachine -Path $matches[0].FullName
+        if ($machine -ne 0x8664) { throw "$name is not x64 PE (machine=0x$('{0:X4}' -f $machine))." }
+        Write-Host "Validated x64 $name at $($matches[0].FullName.Substring($unpackRoot.Length + 1))."
+    }
+
+    [xml]$packagedManifest = Get-Content -LiteralPath (Join-Path $unpackRoot 'AppxManifest.xml') -Raw
+    $packagedIdentity = $packagedManifest.Package.Identity
+    if ($packagedIdentity.Name -ne $expectedName) { throw "Packaged identity name mismatch: $($packagedIdentity.Name)" }
+    if ($packagedIdentity.Publisher -ne $expectedPublisher) { throw "Packaged Publisher mismatch: $($packagedIdentity.Publisher)" }
+    if ($packagedIdentity.ProcessorArchitecture -ne 'x64') { throw "Expected x64 package architecture, found '$($packagedIdentity.ProcessorArchitecture)'." }
+
+    $manifestText = Get-Content -LiteralPath (Join-Path $unpackRoot 'AppxManifest.xml') -Raw
+    foreach ($fragment in @(
+        'Category="windows.comServer"',
+        'Category="windows.fileExplorerContextMenus"',
+        'Sentinel.ExplorerExtension.dll',
+        '6C5E88B7-2A44-4B6D-9A6C-4F1A5C9F6E21',
+        'Type="*"',
+        'Type="Directory"')) {
+        if ($manifestText -notlike "*$fragment*") { throw "Packaged manifest is missing expected Explorer registration fragment: $fragment" }
+    }
+
+    Copy-Item -LiteralPath 'tools\windows-vm\Install-SentinelAI-Test.ps1' -Destination $OutputDir -Force
+    Copy-Item -LiteralPath 'tools\windows-vm\Uninstall-SentinelAI-Test.ps1' -Destination $OutputDir -Force
+    $hash = (Get-FileHash -LiteralPath $signedPackage -Algorithm SHA256).Hash
+    "$hash  $PackageName" | Set-Content -LiteralPath (Join-Path $OutputDir 'SHA256SUMS.txt') -Encoding ascii
+    @(
+        'Branch=feature/premium-privacy-foundation',
+        "SourceSHA=$SourceSha",
+        'Architecture=x64',
+        'Configuration=Release',
+        'Format=MSIX',
+        "Package=$PackageName",
+        "Certificate=$CertName",
+        "CertificateThumbprint=$($certObject.Thumbprint)",
+        "SHA256=$hash",
+        'Signing=Ephemeral runner-only test PFX; public CER only retained',
+        'SignatureValidation=SignTool /pa plus Get-AuthenticodeSignature',
+        'ManifestRegistration=PASS',
+        'RequiredBinaries=PASS',
+        'PEArchitecture=PASS',
+        'ProductionStoreReady=NO',
+        'MergeToMain=NO'
+    ) | Set-Content -LiteralPath (Join-Path $OutputDir 'PACKAGE-METADATA.txt') -Encoding utf8
+
+    $privateMaterial = @(Get-ChildItem $OutputDir -Recurse -File | Where-Object { $_.Extension -in @('.pfx', '.p12', '.key', '.pem') })
+    if ($privateMaterial.Count -ne 0) { throw 'Private signing material was found in the artifact staging directory.' }
+
+    Write-Host "Package SHA-256: $hash"
+    Write-Host 'WINDOWS VM TEST PACKAGE QUALIFICATION: PASS'
+}
+finally {
+    if ($trustedPeopleStore) { try { $trustedPeopleStore.Close() } catch {} }
+    if ($rootStore) { try { $rootStore.Close() } catch {} }
+    if ($certObject) {
+        foreach ($storeName in @('TrustedPeople', 'Root')) {
+            try {
+                $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+                $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Remove($certObject)
+                $store.Close()
+            } catch {}
+        }
+        $certObject.Dispose()
+    }
+    if (Test-Path -LiteralPath $pfxPath) { Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue }
+}
