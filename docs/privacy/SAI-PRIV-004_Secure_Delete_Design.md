@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE + AUTHENTICATED DURABLE JOURNAL CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
-Version: 1.5  
+Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE + AUTHENTICATED DURABLE JOURNAL + READ-ONLY RECOVERY CLASSIFIER CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
+Version: 1.6  
 Date: 2026-09-12
 
 ## Purpose
@@ -26,6 +26,7 @@ Secure Delete is not:
 - `StorageCapabilityDetector`
 - `SecureDeleteMutationLeaseManager` / `SecureDeleteMutationLease`
 - `SecureDeleteOperationJournal`
+- `SecureDeleteRecoveryClassifier`
 - future exact-handle mutation executor / narrow privileged broker operation
 - future `RelatedArtifactDiscoveryService`
 
@@ -49,7 +50,11 @@ Implemented on `feature/premium-privacy-foundation`:
 - The journal enforces monotonic state transitions: `Prepared` -> `IdentityVerified` -> `PrimaryMutationStarted` -> `PrimaryRemovalVerified` -> `RelatedCleanupPending` -> `Complete`. `RecoveryRequired` may be entered from an unresolved nonterminal state and cannot silently transition to `Complete`.
 - Journal reads fail closed on missing/invalid JSON, schema mismatch, mismatched operation identity, empty authorization/target/storage binding, undefined persisted enum states, invalid timestamps, reversed update chronology, malformed/tampered DPAPI proof, or any record/proof digest mismatch.
 - The journal never opens or mutates the approved target file. A future executor must successfully persist `PrimaryMutationStarted` before it may perform target mutation.
-- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, release of protections after disposal, journal reopen durability, exact target/authorization binding, state-skip rejection, terminal `RecoveryRequired`, undefined numeric-state tamper rejection, valid-looking `RecoveryRequired` -> `Complete` tamper rejection with a stale integrity proof, restoration of the original authenticated record, and byte-for-byte preservation of the approved target throughout journal operations.
+- `SecureDeleteRecoveryClassifier` is a read-only crash/restart reconciliation boundary. It accepts only an operation ID, authenticates the persisted journal through `SecureDeleteOperationJournal`, compares current filesystem evidence with the original stable identity, and never grants automatic mutation authority.
+- Recovery classification distinguishes invalid/tampered journal, pre-mutation state, mutation-started ambiguity, recorded primary removal, related-cleanup pending, complete, and explicit `RecoveryRequired`.
+- A pre-mutation record may request only a fresh pre-mutation authorization when the exact original object is still proven present. Replaced, missing, inaccessible, rejected, mutation-started, contradictory post-removal, or explicit recovery-required states fail closed and require review.
+- If the original path now contains a different filesystem object, the replacement is explicitly outside the prior Secure Delete authority and must not be touched. If the journal says primary removal occurred while the exact original object is still present, recovery treats that as a contradiction rather than trusting the journal blindly.
+- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, release of protections after disposal, journal reopen durability, exact target/authorization binding, state-skip rejection, terminal `RecoveryRequired`, undefined numeric-state tamper rejection, valid-looking `RecoveryRequired` -> `Complete` tamper rejection with a stale integrity proof, restoration of the original authenticated record, recovery handling for prepared exact targets, prepared path replacement, mutation-started ambiguity, post-removal contradiction, post-removal path reuse, explicit `RecoveryRequired`, tampered-journal rejection, and byte-for-byte preservation of the approved target throughout non-destructive journal/recovery operations.
 
 Not implemented yet:
 
@@ -76,8 +81,9 @@ Before any destructive step Sentinel must:
 11. **reopen and retain the exact verified object/handle through the destructive mutation itself**
 12. persist `PrimaryMutationStarted` durably before the first irreversible target mutation
 13. reject any journal record whose current-user integrity proof does not match its exact persisted contents
+14. after restart/crash, classify persisted state and live exact-object evidence without automatically resuming mutation
 
-The current coordinator implements step 10, the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11, and the qualified authenticated operation journal implements the durable-state and tamper-evidence prerequisites for steps 12-13. A future executor must consume those exact authorities without falling back to path-only authority or reopening an unverified object later.
+The current coordinator implements step 10, the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11, the qualified authenticated operation journal implements the durable-state and tamper-evidence prerequisites for steps 12-13, and the qualified read-only recovery classifier implements step 14. A future executor must consume those exact authorities without falling back to path-only authority or reopening an unverified object later.
 
 User intent, subscription state, path text, filename similarity, and prior inspection are not substitutes for exact-object validation.
 
@@ -85,7 +91,7 @@ User intent, subscription state, path text, filename similarity, and prior inspe
 
 No unrestricted delete API is permitted.
 
-A future broker/executor request must contain a narrow operation identifier and sufficient expected identity evidence to independently reopen and verify the exact approved object. The executor must retain the verified object through mutation so another filesystem object cannot be substituted between authorization and deletion. It must fail closed if identity, link count, reparse state, protected-location policy, storage boundary, authorization, or durable journal state changes while UAC or IPC is pending.
+A future broker/executor request must contain a narrow operation identifier and sufficient expected identity evidence to independently reopen and verify the exact approved object. The executor must retain the verified object through mutation so another filesystem object cannot be substituted between authorization and deletion. It must fail closed if identity, link count, reparse state, protected-location policy, storage boundary, authorization, authenticated journal state, or recovery classification changes while UAC or IPC is pending.
 
 The destructive executor must not expose a free-form `DeletePath(string)` or equivalent path-only primitive.
 
@@ -169,7 +175,9 @@ Recovery never guesses. Ambiguous state remains actionable and visible.
 
 The journal is a prerequisite, not a destructive executor. A future executor must make `PrimaryMutationStarted` durable before the first irreversible mutation and must not promote an ambiguous, structurally invalid, or integrity-proof-mismatched journal record to success.
 
-The DPAPI current-user proof protects the journal at the Windows current-user protection boundary. It is not a claim that Sentinel can resist an attacker who has already fully compromised that same interactive Windows user context and can invoke that user's cryptographic protection APIs. A future privileged broker must still independently revalidate exact target identity, authorization, and journal state.
+The read-only recovery classifier is also a prerequisite, not mutation authority. It does not continue or replay destructive work. Even when a prepared operation still points to the exact original object, recovery may only indicate that a new pre-mutation authorization can be requested; it never reuses stale authority or automatically proceeds.
+
+The DPAPI current-user proof protects the journal at the Windows current-user protection boundary. It is not a claim that Sentinel can resist an attacker who has already fully compromised that same interactive Windows user context and can invoke that user's cryptographic protection APIs. A future privileged broker must still independently revalidate exact target identity, authorization, journal state, and recovery posture.
 
 ## Cancellation and crash policy
 
@@ -177,7 +185,7 @@ Cancellation before destructive mutation: no change.
 
 Cancellation after destructive mutation begins: finish only the minimum steps needed to establish and report safe/known state; never convert uncertainty into success.
 
-Crash recovery must identify whether the primary target still exists, whether the exact original identity can still be established, and whether any related-artifact cleanup remains pending.
+Crash recovery identifies whether the authenticated operation journal is trustworthy, whether the primary target still exists, whether the exact original identity can still be established, whether the original path has been reused by a different object, whether journal/live evidence contradict each other, and whether any related-artifact cleanup remains pending. No destructive mutation is automatically resumed by the current recovery layer.
 
 ## Claims boundary
 
@@ -220,6 +228,9 @@ Prohibited without exact independent proof:
 - authorization expiry, replay, malformed privilege bits, and storage-boundary change
 - malformed/tampered/undefined journal state and timestamp rollback
 - valid-looking journal state/identity edits with stale or malformed integrity proofs
+- recovery classification with a tampered/missing journal
+- recovery classification when the original path is reused by a different object
+- post-removal journal/live-object contradictions
 
 ## Qualification state
 
@@ -233,4 +244,6 @@ Prohibited without exact independent proof:
 
 **AUTHENTICATED DURABLE JOURNAL CI VERIFIED.** Journal schema v2 adds an exact-record SHA-256 integrity proof protected by the already-qualified Windows DPAPI current-user protector. The acceptance harness proves a structurally valid `RecoveryRequired` -> `Complete` edit is rejected because the stale proof no longer matches, authentic records survive reopen, restoring the exact authenticated record restores readability, undefined states remain rejected, and the target file remains byte-for-byte unchanged. The complete privacy workflow passed at exact head `536cef4b24841777d13f847485a30d3ddce2eccb`, workflow run `34729744199`.
 
-**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next safe source milestone is recovery classification/reconciliation and/or a narrowly bound execution plan that consumes the qualified authorization, retained exact-object lease, and authenticated durable journal without falling back to path-only authority. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
+**READ-ONLY RECOVERY CLASSIFIER CI VERIFIED.** Crash/restart classification now authenticates the journal, binds recovery decisions to live exact-object evidence, isolates path replacements from prior authority, detects post-removal contradictions, keeps `PrimaryMutationStarted` ambiguous, and never automatically resumes mutation. Its acceptance coverage passed the full privacy workflow at exact head `038ca1c85fb4803dfa59c693c6ce1064583cc2e7`, workflow run `34730457354`. A follow-up adversarial acceptance now also corrupts an authenticated prepared-state journal and requires the recovery classifier to return `JournalInvalid`, grant no fresh or automatic mutation authority, and leave the approved target unchanged.
+
+**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next safe source milestones are stronger recovery adversarial coverage, a narrowly bound non-destructive execution-plan object that consumes the qualified authorization/journal/lease requirements without performing mutation, and bounded read-only related-artifact discovery. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
