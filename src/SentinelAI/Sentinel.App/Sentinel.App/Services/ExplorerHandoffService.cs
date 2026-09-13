@@ -11,6 +11,7 @@ internal enum ExplorerRequestedAction
 {
     Inspect = 0,
     EncryptFile,
+    DecryptFile,
     AddToVault,
     SecureDelete
 }
@@ -25,6 +26,7 @@ internal sealed class ExplorerHandoffService
     internal const string InspectArgument = HandoffArgument;
     internal const string InspectCommand = "inspect";
     internal const string EncryptCommand = "encrypt";
+    internal const string DecryptCommand = "decrypt";
     internal const string VaultCommand = "vault";
     internal const string SecureDeleteCommand = "secure-delete";
 
@@ -74,12 +76,6 @@ internal sealed class ExplorerHandoffService
         return TryParseHandoffId(tokens, out handoffId);
     }
 
-    /// <summary>
-    /// Consumes an untrusted Explorer request. The command and paths are activation intent
-    /// only. They never carry entitlement, cryptographic, broker, or deletion authority.
-    /// Destructive/cryptographic actions require fresh in-app confirmation, authoritative
-    /// premium entitlement, and their own exact-object safety validation.
-    /// </summary>
     internal bool TryConsume(Guid handoffId, out ExplorerInspectionRequest? request, out string reason)
     {
         request = null;
@@ -232,6 +228,11 @@ internal sealed class ExplorerHandoffService
         if (string.Equals(command, EncryptCommand, StringComparison.Ordinal))
         {
             action = ExplorerRequestedAction.EncryptFile;
+            return true;
+        }
+        if (string.Equals(command, DecryptCommand, StringComparison.Ordinal))
+        {
+            action = ExplorerRequestedAction.DecryptFile;
             return true;
         }
         if (string.Equals(command, VaultCommand, StringComparison.Ordinal))
