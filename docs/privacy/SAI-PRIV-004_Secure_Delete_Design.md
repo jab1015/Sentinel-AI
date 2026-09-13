@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE + DURABLE JOURNAL CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
-Version: 1.4  
+Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE + AUTHENTICATED DURABLE JOURNAL CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
+Version: 1.5  
 Date: 2026-09-12
 
 ## Purpose
@@ -45,10 +45,11 @@ Implemented on `feature/premium-privacy-foundation`:
 - `SecureDeleteMutationLeaseManager` consumes only a coordinator authorization, revalidates it, opens the approved exact object with mutation-relevant access and restrictive sharing, verifies final path, reparse/directory/link state, and stable volume/file identity from the live handle, then retains that handle in `SecureDeleteMutationLease`.
 - The retained lease blocks rename/replacement and new write-capable opens while it is active. The lease exposes no raw handle property and, at this milestone, exposes no delete, overwrite, truncate, or media operation.
 - `SecureDeleteOperationJournal` persists the exact operation/authorization/target/storage binding and the destructive-state machine before any future irreversible action. Journal writes use a new temporary file, write-through I/O, explicit flush-to-disk, replacement of the durable record, and immediate readback verification.
+- Journal schema v2 authenticates each exact serialized record with a SHA-256 digest wrapped by the already-qualified Windows DPAPI current-user protector. Reads require both structural validity and a successfully unwrapped fixed-time-matching digest, so a valid-looking state edit with a stale proof fails closed.
 - The journal enforces monotonic state transitions: `Prepared` -> `IdentityVerified` -> `PrimaryMutationStarted` -> `PrimaryRemovalVerified` -> `RelatedCleanupPending` -> `Complete`. `RecoveryRequired` may be entered from an unresolved nonterminal state and cannot silently transition to `Complete`.
-- Journal reads fail closed on missing/invalid JSON, schema mismatch, mismatched operation identity, empty authorization/target/storage binding, undefined persisted enum states, invalid timestamps, or reversed update chronology.
+- Journal reads fail closed on missing/invalid JSON, schema mismatch, mismatched operation identity, empty authorization/target/storage binding, undefined persisted enum states, invalid timestamps, reversed update chronology, malformed/tampered DPAPI proof, or any record/proof digest mismatch.
 - The journal never opens or mutates the approved target file. A future executor must successfully persist `PrimaryMutationStarted` before it may perform target mutation.
-- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, release of protections after disposal, journal reopen durability, exact target/authorization binding, state-skip rejection, terminal `RecoveryRequired`, undefined numeric-state tamper rejection, and byte-for-byte preservation of the approved target throughout journal operations.
+- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, release of protections after disposal, journal reopen durability, exact target/authorization binding, state-skip rejection, terminal `RecoveryRequired`, undefined numeric-state tamper rejection, valid-looking `RecoveryRequired` -> `Complete` tamper rejection with a stale integrity proof, restoration of the original authenticated record, and byte-for-byte preservation of the approved target throughout journal operations.
 
 Not implemented yet:
 
@@ -74,8 +75,9 @@ Before any destructive step Sentinel must:
 10. revalidate identity immediately before destructive mutation
 11. **reopen and retain the exact verified object/handle through the destructive mutation itself**
 12. persist `PrimaryMutationStarted` durably before the first irreversible target mutation
+13. reject any journal record whose current-user integrity proof does not match its exact persisted contents
 
-The current coordinator implements step 10, the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11, and the qualified operation journal implements the durable state prerequisite for step 12. A future executor must consume those exact authorities without falling back to path-only authority or reopening an unverified object later.
+The current coordinator implements step 10, the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11, and the qualified authenticated operation journal implements the durable-state and tamper-evidence prerequisites for steps 12-13. A future executor must consume those exact authorities without falling back to path-only authority or reopening an unverified object later.
 
 User intent, subscription state, path text, filename similarity, and prior inspection are not substitutes for exact-object validation.
 
@@ -151,7 +153,7 @@ Local deletion does not prove remote-version deletion. Cloud copies are handled 
 
 ## Transaction model
 
-Secure Delete uses a durable operation journal before the first destructive action.
+Secure Delete uses a durable authenticated operation journal before the first destructive action.
 
 Implemented states:
 
@@ -165,7 +167,9 @@ Implemented states:
 
 Recovery never guesses. Ambiguous state remains actionable and visible.
 
-The journal is a prerequisite, not a destructive executor. A future executor must make `PrimaryMutationStarted` durable before the first irreversible mutation and must not promote an ambiguous or tampered journal record to success.
+The journal is a prerequisite, not a destructive executor. A future executor must make `PrimaryMutationStarted` durable before the first irreversible mutation and must not promote an ambiguous, structurally invalid, or integrity-proof-mismatched journal record to success.
+
+The DPAPI current-user proof protects the journal at the Windows current-user protection boundary. It is not a claim that Sentinel can resist an attacker who has already fully compromised that same interactive Windows user context and can invoke that user's cryptographic protection APIs. A future privileged broker must still independently revalidate exact target identity, authorization, and journal state.
 
 ## Cancellation and crash policy
 
@@ -215,6 +219,7 @@ Prohibited without exact independent proof:
 - false-positive duplicate resistance
 - authorization expiry, replay, malformed privilege bits, and storage-boundary change
 - malformed/tampered/undefined journal state and timestamp rollback
+- valid-looking journal state/identity edits with stale or malformed integrity proofs
 
 ## Qualification state
 
@@ -226,4 +231,6 @@ Prohibited without exact independent proof:
 
 **DURABLE OPERATION JOURNAL CI VERIFIED.** Exact operation/authorization/target binding, reopen durability, monotonic transitions, terminal recovery semantics, write-through/flush/readback persistence, target non-mutation, and undefined numeric-state tamper rejection passed the full privacy workflow at exact head `5e067877862a54e82de9cac17ef8885c09b737fa`, workflow run `34729111812`. The preceding journal run exposed two defects: the test fixture attempted to replace a symbolic enum name even though JSON stored the enum numerically (classification B), and production journal validation did not reject undefined numeric enum values (classification A). Production now validates persisted state and record invariants before accepting or re-persisting a record; the corrected test corrupts the numeric state to `999` and proves fail-closed rejection.
 
-**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next safe source milestone is recovery classification/reconciliation and/or a narrowly bound execution plan that consumes the qualified authorization, retained exact-object lease, and durable journal without falling back to path-only authority. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
+**AUTHENTICATED DURABLE JOURNAL CI VERIFIED.** Journal schema v2 adds an exact-record SHA-256 integrity proof protected by the already-qualified Windows DPAPI current-user protector. The acceptance harness proves a structurally valid `RecoveryRequired` -> `Complete` edit is rejected because the stale proof no longer matches, authentic records survive reopen, restoring the exact authenticated record restores readability, undefined states remain rejected, and the target file remains byte-for-byte unchanged. The complete privacy workflow passed at exact head `536cef4b24841777d13f847485a30d3ddce2eccb`, workflow run `34729744199`.
+
+**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next safe source milestone is recovery classification/reconciliation and/or a narrowly bound execution plan that consumes the qualified authorization, retained exact-object lease, and authenticated durable journal without falling back to path-only authority. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
