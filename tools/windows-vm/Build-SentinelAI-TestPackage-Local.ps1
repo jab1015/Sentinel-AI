@@ -37,12 +37,16 @@ foreach ($sdkDir in (Get-ChildItem -LiteralPath $kitsRoot -Directory | Sort-Obje
 
 if (-not $signTool -or -not $makeAppx) { throw 'SignTool.exe and/or MakeAppx.exe were not found. Install the Windows SDK signing tools.' }
 
+$outputDir = Join-Path $repoRoot 'artifacts\windows-vm-test'
+New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
 Write-Host "Repository: $repoRoot"
 Write-Host "Branch: $branch"
 Write-Host "Source SHA: $sourceSha"
 Write-Host "MSBuild: $msbuild"
 Write-Host "SignTool: $signTool"
 Write-Host "MakeAppx: $makeAppx"
+Write-Host "Output: $outputDir"
 Write-Host ''
 Write-Host 'Building subscription-free LocalDev x64 VM test MSIX...'
 
@@ -65,7 +69,8 @@ try {
         -MsBuild $msbuild `
         -SignTool $signTool `
         -MakeAppx $makeAppx `
-        -SourceSha $sourceSha
+        -SourceSha $sourceSha `
+        -OutputDir $outputDir
 
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
@@ -76,7 +81,6 @@ finally {
     }
 }
 
-$outputDir = Join-Path $repoRoot 'artifacts\windows-vm-test'
 Write-Host ''
 Write-Host 'LOCAL VM PACKAGE BUILD COMPLETE.'
 Write-Host "Artifacts: $outputDir"
