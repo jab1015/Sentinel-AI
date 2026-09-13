@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
-Version: 1.3  
+Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE + DURABLE JOURNAL CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
+Version: 1.4  
 Date: 2026-09-12
 
 ## Purpose
@@ -25,8 +25,8 @@ Secure Delete is not:
 - `SecureDeleteCoordinator`
 - `StorageCapabilityDetector`
 - `SecureDeleteMutationLeaseManager` / `SecureDeleteMutationLease`
+- `SecureDeleteOperationJournal`
 - future exact-handle mutation executor / narrow privileged broker operation
-- future durable Secure Delete transaction record/result
 - future `RelatedArtifactDiscoveryService`
 
 ## Current source implementation
@@ -44,13 +44,16 @@ Implemented on `feature/premium-privacy-foundation`:
 - `RevalidateForMutation` rejects expired/malformed authorizations, path/object replacement, unsupported storage, changed volume/filesystem boundary, and attempted privilege inflation.
 - `SecureDeleteMutationLeaseManager` consumes only a coordinator authorization, revalidates it, opens the approved exact object with mutation-relevant access and restrictive sharing, verifies final path, reparse/directory/link state, and stable volume/file identity from the live handle, then retains that handle in `SecureDeleteMutationLease`.
 - The retained lease blocks rename/replacement and new write-capable opens while it is active. The lease exposes no raw handle property and, at this milestone, exposes no delete, overwrite, truncate, or media operation.
-- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, and release of protections after disposal.
+- `SecureDeleteOperationJournal` persists the exact operation/authorization/target/storage binding and the destructive-state machine before any future irreversible action. Journal writes use a new temporary file, write-through I/O, explicit flush-to-disk, replacement of the durable record, and immediate readback verification.
+- The journal enforces monotonic state transitions: `Prepared` -> `IdentityVerified` -> `PrimaryMutationStarted` -> `PrimaryRemovalVerified` -> `RelatedCleanupPending` -> `Complete`. `RecoveryRequired` may be entered from an unresolved nonterminal state and cannot silently transition to `Complete`.
+- Journal reads fail closed on missing/invalid JSON, schema mismatch, mismatched operation identity, empty authorization/target/storage binding, undefined persisted enum states, invalid timestamps, or reversed update chronology.
+- The journal never opens or mutates the approved target file. A future executor must successfully persist `PrimaryMutationStarted` before it may perform target mutation.
+- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, release of protections after disposal, journal reopen durability, exact target/authorization binding, state-skip rejection, terminal `RecoveryRequired`, undefined numeric-state tamper rejection, and byte-for-byte preservation of the approved target throughout journal operations.
 
 Not implemented yet:
 
 - no destructive Secure Delete executor
 - no privileged Secure Delete broker mutation operation
-- no durable destructive transaction journal wired to execution
 - no overwrite/TRIM/deallocation action
 - no related-copy cleanup action
 - no destructive Explorer command
@@ -70,8 +73,9 @@ Before any destructive step Sentinel must:
 9. reject system-critical files and device namespaces
 10. revalidate identity immediately before destructive mutation
 11. **reopen and retain the exact verified object/handle through the destructive mutation itself**
+12. persist `PrimaryMutationStarted` durably before the first irreversible target mutation
 
-The current coordinator implements step 10 and the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11. A future executor must consume that retained exact-object authority without falling back to path-only authority or reopening an unverified object later.
+The current coordinator implements step 10, the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11, and the qualified operation journal implements the durable state prerequisite for step 12. A future executor must consume those exact authorities without falling back to path-only authority or reopening an unverified object later.
 
 User intent, subscription state, path text, filename similarity, and prior inspection are not substitutes for exact-object validation.
 
@@ -79,7 +83,7 @@ User intent, subscription state, path text, filename similarity, and prior inspe
 
 No unrestricted delete API is permitted.
 
-A future broker/executor request must contain a narrow operation identifier and sufficient expected identity evidence to independently reopen and verify the exact approved object. The executor must retain the verified object through mutation so another filesystem object cannot be substituted between authorization and deletion. It must fail closed if identity, link count, reparse state, protected-location policy, storage boundary, or authorization changes while UAC or IPC is pending.
+A future broker/executor request must contain a narrow operation identifier and sufficient expected identity evidence to independently reopen and verify the exact approved object. The executor must retain the verified object through mutation so another filesystem object cannot be substituted between authorization and deletion. It must fail closed if identity, link count, reparse state, protected-location policy, storage boundary, authorization, or durable journal state changes while UAC or IPC is pending.
 
 The destructive executor must not expose a free-form `DeletePath(string)` or equivalent path-only primitive.
 
@@ -147,9 +151,9 @@ Local deletion does not prove remote-version deletion. Cloud copies are handled 
 
 ## Transaction model
 
-Secure Delete must use durable transaction state before the first destructive action.
+Secure Delete uses a durable operation journal before the first destructive action.
 
-Minimum states:
+Implemented states:
 
 - Prepared
 - IdentityVerified
@@ -161,7 +165,7 @@ Minimum states:
 
 Recovery never guesses. Ambiguous state remains actionable and visible.
 
-Coordinator authorization and the retained-handle lease are not substitutes for durable destructive transaction state. The next executor milestone must make `PrimaryMutationStarted` durable before the first irreversible mutation.
+The journal is a prerequisite, not a destructive executor. A future executor must make `PrimaryMutationStarted` durable before the first irreversible mutation and must not promote an ambiguous or tampered journal record to success.
 
 ## Cancellation and crash policy
 
@@ -169,7 +173,7 @@ Cancellation before destructive mutation: no change.
 
 Cancellation after destructive mutation begins: finish only the minimum steps needed to establish and report safe/known state; never convert uncertainty into success.
 
-Crash recovery must identify whether the primary target still exists and whether any related-artifact cleanup remains pending.
+Crash recovery must identify whether the primary target still exists, whether the exact original identity can still be established, and whether any related-artifact cleanup remains pending.
 
 ## Claims boundary
 
@@ -210,6 +214,7 @@ Prohibited without exact independent proof:
 - user declines
 - false-positive duplicate resistance
 - authorization expiry, replay, malformed privilege bits, and storage-boundary change
+- malformed/tampered/undefined journal state and timestamp rollback
 
 ## Qualification state
 
@@ -219,4 +224,6 @@ Prohibited without exact independent proof:
 
 **RETAINED EXACT-HANDLE LEASE CI VERIFIED.** The mutation-time exact-object lease, including stable identity verification and active rename/write race blocking, passed the full privacy workflow at exact head `9c2630ccb41f519d1d6a8c60142023606c3534fa`, workflow run `34727592444`. The preceding run at `061ff227465c333dc942ca17a78c039731d24e42` exposed a harness-only sharing-semantics defect: the test attempted a competing read that did not share delete access while the retained lease was intentionally active. The test was corrected without changing product lease behavior.
 
-**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next source milestone is durable transaction state followed by a narrow executor that consumes the retained exact-object lease and records destructive intent before mutation. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
+**DURABLE OPERATION JOURNAL CI VERIFIED.** Exact operation/authorization/target binding, reopen durability, monotonic transitions, terminal recovery semantics, write-through/flush/readback persistence, target non-mutation, and undefined numeric-state tamper rejection passed the full privacy workflow at exact head `5e067877862a54e82de9cac17ef8885c09b737fa`, workflow run `34729111812`. The preceding journal run exposed two defects: the test fixture attempted to replace a symbolic enum name even though JSON stored the enum numerically (classification B), and production journal validation did not reject undefined numeric enum values (classification A). Production now validates persisted state and record invariants before accepting or re-persisting a record; the corrected test corrupts the numeric state to `999` and proves fail-closed rejection.
+
+**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next safe source milestone is recovery classification/reconciliation and/or a narrowly bound execution plan that consumes the qualified authorization, retained exact-object lease, and durable journal without falling back to path-only authority. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
