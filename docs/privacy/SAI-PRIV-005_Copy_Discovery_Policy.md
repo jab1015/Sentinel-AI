@@ -1,7 +1,7 @@
 # SAI-PRIV-005 — Attributable Copy and History Discovery Policy
 
-Status: SOURCE IMPLEMENTED FOUNDATION — CI REQUALIFICATION / PROVIDER RUNTIME VALIDATION PENDING  
-Version: 1.1  
+Status: SOURCE IMPLEMENTED FOUNDATION / CI VERIFIED — PROVIDER + WINDOWS RUNTIME VALIDATION PENDING  
+Version: 1.2  
 Date: 2026-09-12
 
 ## Purpose
@@ -71,7 +71,7 @@ The source contract explicitly bounds:
 
 Default filesystem discovery bounds are conservative and configurable through `RelatedArtifactDiscoveryBounds`. Cancellation is honored. Reparse directories are not traversed. Provider results report `Completed`, `Limited`, `Unavailable`, `Failed` or `Canceled`.
 
-If a bound is reached, Sentinel returns partial/limited results honestly.
+The Sentinel-provenance provider now reserves the same global hashed-byte budget before reading candidate content; it cannot bypass the aggregate hash-byte limit. If a bound is reached, Sentinel returns partial/limited results honestly.
 
 ## Provider result contract
 
@@ -137,6 +137,7 @@ Current acceptance coverage includes:
 - same filename / different content rejection;
 - same size / different content rejection;
 - Sentinel provenance + hash;
+- Sentinel-provenance hashed-byte bound enforcement;
 - File History configured-root result;
 - Previous Versions configured-root result;
 - reliable metadata-only reference;
@@ -166,7 +167,9 @@ Current UI/result wording must separate:
 
 - **DESIGN:** complete for the current provider model.
 - **SOURCE IMPLEMENTED:** yes for the provider/cleanup foundation above.
-- **CI VERIFIED:** pending exact-head requalification of the current branch.
+- **CI VERIFIED:** **YES** at source checkpoint `75edc968d243ccda8da84ea05d687d881270f28f`, workflow run `34734415429` (**SUCCESS**).
 - **STAGING VERIFIED:** not applicable to local providers; cloud remote-provider support is not claimed.
 - **WINDOWS RUNTIME REQUIRED:** yes.
 - **FULLY QUALIFIED:** no.
+
+See `SAI-PRIV-007_PreWindows_Adversarial_Review.md` for the separate adversarial review and remaining external/runtime gates.
