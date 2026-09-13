@@ -1,7 +1,7 @@
 # SAI-WIN-001 — Windows VM Test Package
 
-Version: 1.0  
-Status: BLOCKED AT AUTOMATED SIGNATURE VERIFICATION — NOT YET VM-READY  
+Version: 1.1  
+Status: LOCALDEV VM PACKAGE IMPLEMENTED — CURRENT SIGNED QUALIFICATION RUN IN PROGRESS  
 Last Updated: 2026-09-13
 
 Copyright (c) 2026 Modern Methods.
@@ -16,10 +16,10 @@ This document is the handoff and evidence record for producing the isolated sign
 
 - Repository: `jab1015/Sentinel-AI`
 - Branch: `feature/premium-privacy-foundation`
-- Current package-source/live head before this documentation commit: `f51a31fe53c64cadd0e346eb32648a86353d23f2`
-- Package version: `1.0.26.0`
+- LocalDev VM package implementation checkpoint before this documentation synchronization: `36f8dafda6e11ed7234440f7009e5b3be266c32d`
+- Package version: `1.0.28.0`
 - Architecture: `x64`
-- Configuration: `Release`
+- Configuration: `LocalDev`
 - Package format: `MSIX`
 - Expected test package name: `SentinelAI-WindowsVM-x64.msix`
 - Test public certificate: `SentinelAI-TestSigning.cer`
@@ -27,15 +27,42 @@ This document is the handoff and evidence record for producing the isolated sign
 - Private key committed: **NO**
 - Private key artifact published: **NO**
 
-If the branch advances after this document is committed, distinguish the live documentation head from the actual package-source SHA.
+## Test-Only Subscription Behavior
+
+The Windows VM package is intentionally compiled with the existing `LocalDev` configuration. `Sentinel.App.csproj` defines `SENTINEL_LOCAL_DEV` only for that configuration.
+
+`PremiumPrivacyEntitlementClient` has a compile-time `#if SENTINEL_LOCAL_DEV` authorization path that allows the supported Premium Privacy scopes for isolated VM validation without requiring an active Microsoft Store subscription:
+
+- `privacy.encrypt`
+- `privacy.vault`
+- `privacy.secure-delete`
+- `privacy.discovery`
+
+The VM authorization result is visibly identified as `LocalVmTestAuthorized` and uses a `LOCAL-VM-TEST-...` token identifier.
+
+This is **not** a runtime preference, environment-variable bypass, hidden UI toggle, or reusable production token. Release/Store builds compile the normal authoritative Microsoft Store + Sentinel gateway flow and still require real entitlement verification.
+
+The dedicated VM workflow separately compiles the Release x64 application before creating the LocalDev package so accidental removal or breakage of the authoritative Release entitlement path is detected.
 
 ## Packaging Workflow
 
 Workflow: `.github/workflows/windows-vm-test-package.yml`
 
-The workflow builds the Windows Application Packaging Project in Release/x64/SideloadOnly mode, creates an ephemeral runner-only RSA 3072 Code Signing certificate whose subject matches the existing production package Publisher, exports only the public `.cer` to the staged artifact, signs the MSIX, deletes the temporary PFX, verifies the signature, unpacks and inspects the package, checks manifest registrations and x64 PE architecture, stages install/uninstall helpers, computes SHA-256, and uploads the final test artifact only after all gates pass.
+The workflow:
 
-Production package identity remains intentionally unchanged:
+1. verifies the compile-time LocalDev entitlement boundary and continued presence of the authoritative Store/gateway path;
+2. compiles the Release x64 app as a regression gate;
+3. builds the Windows Application Packaging Project in `LocalDev / x64 / SideloadOnly` mode;
+4. maps the native Explorer extension to its qualified `Release` native configuration because the C++ project intentionally has no LocalDev configuration and contains no entitlement logic;
+5. creates an ephemeral runner-only RSA 3072 Code Signing certificate whose subject matches the existing package Publisher;
+6. exports only the public `.cer` to the artifact;
+7. signs the MSIX and deletes the temporary PFX;
+8. verifies the package signature and signer;
+9. unpacks and verifies package contents, manifest registrations and x64 PE architecture;
+10. stages install/uninstall helpers and SHA-256 metadata;
+11. refuses to publish private signing material.
+
+Production package identity remains unchanged:
 
 - Name: `ModernMethods.SentinelAI`
 - Publisher: `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`
@@ -57,50 +84,47 @@ The packaged manifest must preserve:
 - `Type="*"`
 - `Type="Directory"`
 
-## Latest Qualification Attempt
+## Current Qualification Attempt
 
-GitHub Actions run: `34736783747`  
-Job: `103669514840`  
-Source SHA: `f51a31fe53c64cadd0e346eb32648a86353d23f2`
+Dedicated workflow run: `34777838659`  
+Source SHA: `36f8dafda6e11ed7234440f7009e5b3be266c32d`  
+State at documentation update: **IN PROGRESS**
 
-Observed results:
+Do not mark the package VM-ready until this run completes successfully and publishes the signed artifact.
 
-- Checkout: PASS
-- .NET setup: PASS
-- Windows build-tool discovery: PASS
-- Production package identity guard: PASS
-- Unsigned Release x64 MSIX build: PASS
-- Ephemeral provider-independent test certificate creation: PASS
-- MSIX signing: PASS
-- Signed MSIX verification: **CANCELLED / BLOCKED**
-- Package content/manifest inspection: NOT RUN because verification did not complete
-- Artifact staging/upload: NOT RUN
-- Final SHA-256: NOT YET AVAILABLE
+## Required Success Evidence
 
-The verification step began at approximately 04:02:52Z and remained active until approximately 04:28:58Z, when the 30-minute job limit caused cancellation. The workflow intended a 120-second bound around `SignTool verify`, so the next investigation must identify which operation actually remained blocked and correct the timeout/verification implementation without weakening cryptographic validation.
+Before installation begins require:
 
-## Important Interpretation
+- compile-time LocalDev entitlement boundary: PASS
+- Release x64 entitlement path compile: PASS
+- LocalDev x64 MSIX build: PASS
+- test signature creation: PASS
+- signature verification: PASS
+- signer Publisher match: PASS
+- `Sentinel.App.exe`: present and x64
+- `Sentinel.PrivilegedBroker.exe`: present and x64
+- `Sentinel.ExplorerExtension.dll`: present and x64
+- Explorer COM/context-menu manifest registration: PASS
+- SHA-256 published
+- public `.cer` published
+- install/uninstall helpers published
+- no PFX/private key/password in artifact
 
-The build and signing stages are proven to work. The package is **not yet approved for VM installation** because cryptographic signature verification, package-content inspection, manifest registration inspection, final artifact staging, and final SHA-256 publication have not completed in one successful qualification run.
+## Installation Rule
 
-Do not work around this by manually producing an unrelated Visual Studio package unless the automated path is proven unusable. The goal is one reproducible package from the recorded source SHA.
+For this VM test package, use **LocalDev**, not Release.
 
-## Next Required Actions
+- `LocalDev`: subscription-free isolated Windows testing.
+- `Release`: real Microsoft Store + Sentinel gateway entitlement remains required.
 
-1. Fetch the full log for job `103669514840` and isolate the last output from `Verify signed VM test MSIX`.
-2. Determine whether the block is `SignTool verify`, `Get-AuthenticodeSignature`, certificate trust handling, or process-timeout behavior.
-3. Correct the workflow narrowly without weakening signature validation.
-4. Re-run the Windows VM test-package workflow.
-5. Require PASS for signature validation and exact signer subject/thumbprint matching.
-6. Require PASS for package contents, x64 PE checks, Publisher/identity, Explorer COM/context-menu registrations, and private-key absence.
-7. Download and independently inspect the final artifact ZIP.
-8. Confirm the artifact contains the MSIX, public `.cer`, install/uninstall scripts, `SHA256SUMS.txt`, and `PackageBuildInfo.txt`, and contains no `.pfx`, `.p12`, `.key`, private-key PEM, or signing password.
-9. Record the exact successful package source SHA, workflow run, artifact, certificate, and SHA-256 here.
-10. Only then mark `WINDOWS VM TESTING READY: YES` and begin clean Windows 11 VM installation one step at a time.
+A LocalDev package must never be submitted to the Microsoft Store or treated as production evidence for subscription enforcement.
 
 ## Current Readiness
 
-- WINDOWS VM TESTING READY: **NO**
+- WINDOWS VM TESTING READY: **PENDING CURRENT SIGNED PACKAGE WORKFLOW**
+- SUBSCRIPTION REQUIRED IN LOCALDEV VM PACKAGE: **NO**
+- SUBSCRIPTION REQUIRED IN RELEASE/STORE BUILD: **YES**
 - PRODUCTION STORE READY: **NO**
 - MERGE TO MAIN: **NO**
 
