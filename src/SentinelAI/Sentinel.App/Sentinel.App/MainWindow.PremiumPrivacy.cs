@@ -21,6 +21,9 @@ public sealed partial class MainWindow
             case ExplorerRequestedAction.EncryptFile:
                 await EncryptExplorerFileAsync(path, rootElement).ConfigureAwait(true);
                 return;
+            case ExplorerRequestedAction.DecryptFile:
+                await DecryptExplorerFileAsync(path, rootElement).ConfigureAwait(true);
+                return;
             case ExplorerRequestedAction.AddToVault:
                 await AddExplorerFileToVaultAsync(path, rootElement).ConfigureAwait(true);
                 return;
@@ -32,13 +35,56 @@ public sealed partial class MainWindow
         }
     }
 
+    internal async Task DecryptExplorerFileAsync(string path, FrameworkElement rootElement)
+    {
+        const string suffix = ".sentinel.senc";
+        if (!path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Not a Sentinel encrypted file",
+                "Decrypt is available for files ending in .sentinel.senc. No file was changed.");
+            return;
+        }
+
+        string output = path[..^suffix.Length];
+        if (File.Exists(output) || Directory.Exists(output))
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Decryption output already exists",
+                $"Sentinel will not overwrite an existing plaintext file. Move or rename this file first:\n\n{output}\n\nThen try Decrypt again.");
+            return;
+        }
+
+        ContentDialog confirmation = new()
+        {
+            Title = "Decrypt Sentinel File",
+            Content = $"Encrypted container:\n{path}\n\nRestored plaintext output:\n{output}\n\nSentinel will authenticate the encrypted container before accepting the restored file. The encrypted container will remain unchanged. Decryption of your existing Sentinel data does not require a current subscription.",
+            PrimaryButtonText = "Decrypt",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = rootElement.XamlRoot
+        };
+        if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+
+        FileEncryptionService encryption = new();
+        FileDecryptionResult result = await encryption.DecryptAsync(
+            path,
+            output,
+            new IFileKeyProtector[] { new WindowsCurrentUserFileKeyProtector() }).ConfigureAwait(true);
+
+        await ShowPrivacyMessageAsync(
+            rootElement,
+            result.Succeeded ? "Decrypted and verified" : "Decryption did not complete",
+            result.Succeeded
+                ? $"Sentinel authenticated the encrypted container and restored a separate plaintext file.\n\nRestored file:\n{output}\n\nPlaintext bytes restored: {result.PlaintextBytes:N0}\n\nThe encrypted .sentinel.senc file remains unchanged."
+                : $"Sentinel did not accept a plaintext output.\n\nStatus: {result.Code}\n{result.Message}\n\nInvalid plaintext output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
+    }
+
     private async Task EncryptExplorerFileAsync(string path, FrameworkElement rootElement)
     {
         string output = path + ".sentinel.senc";
         if (File.Exists(output) || Directory.Exists(output))
         {
             await ShowPrivacyMessageAsync(rootElement, "Encryption output already exists",
-                "Sentinel will not overwrite an existing output. Rename or move the existing .sentinel.senc file and try again.");
+                $"This file has already produced an encrypted Sentinel container at:\n\n{output}\n\nSentinel will never overwrite that encrypted copy. If you intentionally want a new encrypted copy, rename or move the existing .sentinel.senc file first.");
             return;
         }
 
@@ -46,7 +92,7 @@ public sealed partial class MainWindow
         ContentDialog confirmation = new()
         {
             Title = "Encrypt File",
-            Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\nProtection: AES-256-GCM encrypted Sentinel container\nKey protection: current Windows user\nOutput:\n{output}\n\nPremium entitlement: verified with the Sentinel gateway and Microsoft Store immediately before creation.\n\nThe original file is not deleted by encryption.",
+            Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\nProtection: AES-256-GCM encrypted Sentinel container\nKey protection: current Windows user\nEncrypted copy:\n{output}\n\nThe original plaintext file will remain unchanged. Encryption does not delete the original. If you later want the plaintext removed, use Secure Delete as a separate explicit action.",
             PrimaryButtonText = "Encrypt",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -73,7 +119,7 @@ public sealed partial class MainWindow
             rootElement,
             result.Succeeded && result.Verified ? "Encrypted and verified" : "Encryption did not complete",
             result.Succeeded && result.Verified
-                ? $"Sentinel created and authenticated the encrypted container.\n\n{output}\n\nPlaintext bytes protected: {result.PlaintextBytes:N0}\n\nYour original file remains unchanged."
+                ? $"Encryption succeeded. Sentinel created, reopened, and authenticated this encrypted copy:\n\n{output}\n\nPlaintext bytes protected: {result.PlaintextBytes:N0}\n\nYour original file is still present and readable by design. To restore this encrypted copy later, use Decrypt on the .sentinel.senc file."
                 : $"Sentinel did not report a verified encrypted output.\n\nStatus: {result.Code}\n{result.Message}\n\nInvalid output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
     }
 
@@ -93,7 +139,7 @@ public sealed partial class MainWindow
                 ContentDialog recoveryDialog = new()
                 {
                     Title = "Save your Sentinel Vault recovery key",
-                    Content = $"This is the independent recovery key for a new Sentinel Vault. Save it somewhere separate from this PC before continuing. Sentinel does not upload or retain the plaintext recovery key.\n\n{recoveryText}\n\nIf Windows account protection is later unavailable, this key is the recovery path to your Vault.",
+                    Content = $"Sentinel Vault is a private encrypted storage area managed by Sentinel. Files added to it are stored as encrypted Vault items inside Sentinel's app data instead of as ordinary readable copies.\n\nThis is the independent recovery key for your new Vault. Save it somewhere separate from this PC before continuing. Sentinel does not upload or retain the plaintext recovery key.\n\n{recoveryText}\n\nIf Windows account protection is later unavailable, this key is the recovery path to your Vault.",
                     PrimaryButtonText = "I saved it",
                     CloseButtonText = "Cancel",
                     DefaultButton = ContentDialogButton.Close,
@@ -105,7 +151,7 @@ public sealed partial class MainWindow
             ContentDialog confirmation = new()
             {
                 Title = "Add to Sentinel Vault",
-                Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\n\nSentinel will create a verified encrypted Vault item. The selected source file remains in place unless you separately use Secure Delete.\n\nPremium entitlement will be verified with the Sentinel gateway and Microsoft Store immediately before the Vault changes.",
+                Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\n\nSentinel will create a verified encrypted Vault item inside Sentinel's private app storage. The selected source file remains in place unless you separately use Secure Delete.\n\nA full Vault browse/restore manager is being qualified separately; this action only adds a verified encrypted item.",
                 PrimaryButtonText = "Add to Vault",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
@@ -177,8 +223,6 @@ public sealed partial class MainWindow
         };
         if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
 
-        // Capture attributable copies while the selected source still exists. Discovery is
-        // advisory only; it grants no authority to delete any related object.
         RelatedArtifactDiscoveryResult discovery;
         using (PremiumPrivacyEntitlementClient discoveryEntitlement = new())
         {
