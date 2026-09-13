@@ -75,10 +75,23 @@ internal static class SecureDeleteOperationJournalAcceptance
 
             string journalPath = Path.Combine(journalRoot, record.OperationId.ToString("N") + ".json");
             string json = File.ReadAllText(journalPath);
-            string stateFragment = $"\"State\": {(int)SecureDeleteOperationState.RecoveryRequired}";
-            Require(json.Contains(stateFragment, StringComparison.Ordinal),
-                "Journal fixture could not locate the serialized numeric state field.");
-            File.WriteAllText(journalPath, json.Replace(stateFragment, "\"State\": 999", StringComparison.Ordinal));
+            string recoveryState = $"\"State\": {(int)SecureDeleteOperationState.RecoveryRequired}";
+            Require(json.Contains(recoveryState, StringComparison.Ordinal),
+                "Journal fixture could not locate the serialized state field.");
+
+            string validLookingTamper = json.Replace(
+                recoveryState,
+                $"\"State\": {(int)SecureDeleteOperationState.Complete}",
+                StringComparison.Ordinal);
+            File.WriteAllText(journalPath, validLookingTamper);
+            Require(!reopened.TryRead(record.OperationId, out _),
+                "Journal accepted a structurally valid state edit with a stale integrity proof.");
+
+            File.WriteAllText(journalPath, json);
+            Require(reopened.TryRead(record.OperationId, out SecureDeleteOperationRecord? restored) && restored == recovery,
+                "Restoring the authenticated journal payload did not restore readability.");
+
+            File.WriteAllText(journalPath, json.Replace(recoveryState, "\"State\": 999", StringComparison.Ordinal));
             Require(!reopened.TryRead(record.OperationId, out _),
                 "Journal accepted an undefined persisted state value.");
 
@@ -89,6 +102,7 @@ internal static class SecureDeleteOperationJournalAcceptance
             Console.WriteLine("Secure Delete durable journal reopen / exact-target binding: PASS");
             Console.WriteLine("Secure Delete journal monotonic transition enforcement: PASS");
             Console.WriteLine("Secure Delete RecoveryRequired fail-closed semantics: PASS");
+            Console.WriteLine("Secure Delete DPAPI-backed valid-state tamper rejection: PASS");
             Console.WriteLine("Secure Delete undefined-state tamper rejection / target preservation: PASS");
         }
         finally
