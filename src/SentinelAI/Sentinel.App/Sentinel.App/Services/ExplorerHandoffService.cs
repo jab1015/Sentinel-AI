@@ -11,6 +11,7 @@ internal enum ExplorerRequestedAction
 {
     Inspect = 0,
     EncryptFile,
+    EncryptForSharing,
     DecryptFile,
     AddToVault,
     SecureDelete
@@ -26,6 +27,7 @@ internal sealed class ExplorerHandoffService
     internal const string InspectArgument = HandoffArgument;
     internal const string InspectCommand = "inspect";
     internal const string EncryptCommand = "encrypt";
+    internal const string EncryptForSharingCommand = "encrypt-share";
     internal const string DecryptCommand = "decrypt";
     internal const string VaultCommand = "vault";
     internal const string SecureDeleteCommand = "secure-delete";
@@ -228,6 +230,11 @@ internal sealed class ExplorerHandoffService
         if (string.Equals(command, EncryptCommand, StringComparison.Ordinal))
         {
             action = ExplorerRequestedAction.EncryptFile;
+            return true;
+        }
+        if (string.Equals(command, EncryptForSharingCommand, StringComparison.Ordinal))
+        {
+            action = ExplorerRequestedAction.EncryptForSharing;
             return true;
         }
         if (string.Equals(command, DecryptCommand, StringComparison.Ordinal))
