@@ -34,6 +34,28 @@ function Get-ExpectedPackageHash {
     throw "SHA256SUMS.txt does not contain an entry for $PackageFileName."
 }
 
+function Prompt-ForReboot {
+    Write-Host ''
+    Write-Warning 'REBOOT REQUIRED BEFORE EXPLORER TESTING.'
+    Write-Host 'Sentinel AI File Explorer context-menu commands may not appear until Windows has restarted.'
+    Write-Host ''
+
+    while ($true) {
+        $choice = (Read-Host 'Restart the VM now? Enter Y to reboot now or N to reboot later').Trim()
+        if ($choice -match '^(?i)y(es)?$') {
+            Write-Host 'Restarting Windows now...'
+            Restart-Computer -Force
+            return
+        }
+        if ($choice -match '^(?i)n(o)?$') {
+            Write-Host ''
+            Write-Warning 'REBOOT PENDING: Restart Windows before testing Sentinel AI Explorer context-menu commands.'
+            return
+        }
+        Write-Host 'Please enter Y or N.'
+    }
+}
+
 Assert-Administrator
 
 $PackagePath = [IO.Path]::GetFullPath($PackagePath)
@@ -125,7 +147,5 @@ Write-Host "PackageFullName: $($installed.PackageFullName)"
 Write-Host "Version:         $($installed.Version)"
 Write-Host "Architecture:    $($installed.Architecture)"
 Write-Host 'The test certificate remains in Local Computer > Trusted People for this VM test package.'
-Write-Host ''
-Write-Warning 'REBOOT REQUIRED BEFORE EXPLORER TESTING.'
-Write-Host 'Restart Windows before testing Sentinel AI File Explorer context-menu commands.'
-Write-Host 'The Explorer extension may not become available until Explorer/Windows reloads after package installation.'
+
+Prompt-ForReboot
