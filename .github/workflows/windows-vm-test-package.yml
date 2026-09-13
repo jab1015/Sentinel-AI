@@ -1,5 +1,6 @@
 name: Sentinel Windows VM Test Package
 
+# Qualification trigger marker: re-run the dedicated Windows VM package workflow after verification refactor.
 on:
   workflow_dispatch:
   push:
