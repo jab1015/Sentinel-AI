@@ -1,7 +1,7 @@
 # SAI-005 — Product Roadmap
 
-Version: 2.9  
-Status: Active — Hardening physical qualification + isolated Premium Privacy implementation  
+Version: 3.0  
+Status: Active — hardening source-qualified; Premium Privacy pre-Windows qualification active  
 Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
@@ -14,245 +14,171 @@ Sentinel AI will be a trustworthy Windows security and system-assistance platfor
 
 ## Branch Isolation Rule
 
-- Hardening qualification branch: `security/production-hardening-1218f5d`
-- Hardening source/test qualified checkpoint: `cff46692d1260349eae531632170fb687deed36f`
+- Hardening branch: `security/production-hardening-1218f5d`
+- Hardening live documentation head verified at start of this work: `259905c3d5b9f69b037463bc367985f2e73b6ced`
+- Fully qualified hardening source/test checkpoint: `cff46692d1260349eae531632170fb687deed36f`
 - Premium Privacy branch: `feature/premium-privacy-foundation`
-- Premium Privacy implementation checkpoint before this documentation synchronization: `16e2dc91cbe71d3ca96275d89cf333ba40356236`
 
-Premium Privacy remains isolated from the hardening qualification branch. Neither branch may be merged automatically to `main`.
+Premium Privacy remains isolated from hardening. Neither branch may be merged automatically to `main`.
 
 ## Phase A — Production Security Hardening
 
-Status: **SOURCE/AUTOMATED QUALIFIED — PHYSICAL/EXTERNAL VALIDATION ACTIVE**
+Status: **12/12 SOURCE/AUTOMATED WORKFLOWS PASS — PHYSICAL/EXTERNAL QUALIFICATION REMAINS**
 
-All 12 required hardening workflows are green at exact checkpoint `cff46692d1260349eae531632170fb687deed36f`.
-
-Remaining hardening work:
-
-1. Installed broker/UAC adversarial testing.
-2. Authenticode runtime fixtures.
-3. Installed quarantine/crash/recovery matrix.
-4. Defender/firewall, driver/device, temp cleanup, service restart, Ask Sentinel UI, network churn, persistence, startup/lifecycle, install/update/uninstall, sleep/wake, failure matrices.
-5. A05 Google Cloud + Store entitlement staging.
-6. Signed Store package and real x86/x64/ARM64 runtime qualification.
-7. Fresh final 1-hour and 8-hour stability/resource runs.
-8. Final High-finding and full 29-finding adversarial re-audit.
+No hardening source was modified by this Premium Privacy work. Installed/UAC, Authenticode, quarantine/recovery, Defender/firewall, devices/drivers, startup/lifecycle, signed package, real architecture, Store/GCP, stability and final adversarial re-audit remain separate qualification work.
 
 ## Phase B — Active Protection
 
-Status: **IN DEVELOPMENT / NOT YET RELEASE-QUALIFIED**
+Status: **IN DEVELOPMENT / NOT RELEASE-QUALIFIED**
 
 Objectives remain malicious/suspicious behavior detection, honest-confidence ransomware/malware indicators, user warning/explanation, supported blocking/containment, quarantine/restore, network containment, Defender integration, and exact-target elevated remediation.
 
 ## Phase C — Ask Sentinel Trust Boundary
 
-Status: **SOURCE IMPLEMENTED — RUNTIME VALIDATION REMAINS**
+Status: **SOURCE IMPLEMENTED — WINDOWS RUNTIME VALIDATION REMAINS**
 
 Final displayed answers are revalidated and cannot claim security actions without verified action evidence.
 
 ## Phase D — Cloud and Entitlement Validation
 
-Status: **BLOCKED ON EXTERNAL VALIDATION**
+Status: **SOURCE ADVANCED — STAGING BLOCKED ON SHARED DISTRIBUTED STATE**
 
-Google Cloud staging, IAM, Secret Manager, distributed replay/rate state, Store entitlement lifecycle, abuse/load/outage/restart behavior, alerts/logging and spend controls remain required.
+The existing Google Cloud gateway remains the server-authoritative entitlement boundary. Premium Privacy adds one-operation scopes:
+
+- `privacy.encrypt`
+- `privacy.vault`
+- `privacy.secure-delete`
+- `privacy.discovery`
+
+Microsoft Store remains authoritative for paid status (`sentinel-ai-monthly`, Store ID `9N67THV2Z1GP`). The gateway re-checks Store at capability issue and again at final validation immediately before the local premium action.
+
+Before staging can be marked verified, shared atomic replay/rate/concurrency state must replace the current process-local privacy replay and request/provider limiting behavior. Secret Manager, least-privilege IAM, restart/outage behavior, multi-instance tests, logs without secrets, alerting and budget/spend controls must then be validated on a staging-only deployment.
 
 ## Phase E — Release Qualification
 
-Status: **ACTIVE AFTER SOURCE QUALIFICATION**
+Status: **NOT READY FOR PRODUCTION**
 
-Signed package, install/upgrade/uninstall, supported Windows, standard/admin/UAC, startup/background, Defender/firewall, sleep/wake/network loss, crash/failure/resource testing, architecture runtime and final stability remain required.
+Signed package, install/upgrade/uninstall, supported Windows, standard/admin/UAC, startup/background, Defender/firewall, sleep/wake/network loss, crash/failure/resource testing, architecture runtime, destructive privacy testing and final stability remain required.
 
 ## Phase F — Premium Privacy Protection
 
-Status: **AUTHORIZED — ACTIVE ON `feature/premium-privacy-foundation`**
-
-Current exact-head privacy evidence before this documentation update:
-
-- Premium Privacy workflow run `34732339536` at `16e2dc91cbe71d3ca96275d89cf333ba40356236`: **SUCCESS**.
-- Explorer acceptance: PASS.
-- encryption/Vault/Secure Delete acceptance: PASS.
-- native Explorer x64/x86/ARM64 builds: PASS.
-- desktop build: PASS.
-- unsigned x64 MSIX with Explorer extension: PASS.
-- packaged Explorer extension PE verification: PASS.
+Status: **SOURCE IMPLEMENTATION SUBSTANTIALLY COMPLETE — EXACT-HEAD CI/STAGING/WINDOWS VALIDATION REMAIN**
 
 ### P1 — File Explorer Integration
 
-Status: **SOURCE IMPLEMENTED / CI QUALIFIED — INSTALLED RUNTIME PENDING**
+Status: **SOURCE IMPLEMENTED — CURRENT CI REQUALIFICATION / WINDOWS RUNTIME PENDING**
 
-Implemented:
+The packaged native `IExplorerCommand` now exposes a `Sentinel AI` submenu containing:
 
-- native packaged `IExplorerCommand` extension;
-- `Inspect with Sentinel AI` only;
-- bounded filesystem selection;
-- bounded one-time handoff;
-- strict Sentinel-side parsing, canonicalization and revalidation;
-- no encryption/deletion/network/cloud/entitlement/broker work inside Explorer;
-- x86/x64/ARM64 native builds and x64 package verification.
-
-Remaining: installed Explorer runtime matrix including install/upgrade/uninstall, restart, menu behavior, file/folder/multi-select, unsupported items, long/Unicode paths, shell crash/app unavailable and standard user.
-
-Authoritative design: `docs/privacy/SAI-PRIV-000_Explorer_Integration.md`.
-
-### P2 — Encrypted Container Specification
-
-Status: **DESIGN IMPLEMENTED IN SOURCE / CI QUALIFIED — INDEPENDENT REVIEW PENDING**
-
-Version 1 uses AES-256-GCM, fresh 256-bit per-file DEKs, unique nonce material, authenticated/versioned metadata, bounded chunked processing, strict corruption/truncation rejection, and verify-before-plaintext-removal transactions.
-
-Authoritative design: `docs/privacy/SAI-PRIV-001_Encrypted_Container_Format.md`.
-
-### P3 — Encryption Core
-
-Status: **SOURCE IMPLEMENTED / CI QUALIFIED — RUNTIME/CRYPTO REVIEW PENDING**
-
-Implemented:
-
-- `FileEncryptionService`;
-- separate encrypted output;
-- bounded processing;
-- flush/reopen/authenticate/verify behavior;
-- structured failure handling;
-- exact-owned failed-output cleanup;
-- original preservation on encryption/verification failure.
-
-Destructive in-place encryption remains prohibited.
-
-### P4 — Key Modes and Recovery
-
-Status: **SOURCE IMPLEMENTED / CI QUALIFIED — RUNTIME/REVIEW PENDING**
-
-Implemented:
-
-- Windows current-user key protection;
-- portable password protection;
-- independent recovery key material;
-- recovery round-trip/tamper coverage;
-- corrected recovery-key encoding;
-- no silent escrow by design.
-
-Authoritative design: `docs/privacy/SAI-PRIV-002_Key_Management_and_Recovery.md`.
-
-### P5 — Sentinel Vault
-
-Status: **SOURCE IMPLEMENTED / CI QUALIFIED FOUNDATION — RUNTIME/ADVERSARIAL REVIEW PENDING**
-
-Implemented:
-
-- Vault Master Key -> wrapped per-item DEK hierarchy;
-- vault key protection;
-- durable metadata store;
-- item storage/export;
-- lock/unlock race handling;
-- export revocation after lock;
-- exact-owned plaintext cleanup after revoked/failed export;
-- metadata, item-store, export, key-foundation and recovery acceptance coverage.
-
-Remaining: installed timeout/session-lock, filesystem faults, package upgrade, crash/concurrency, final UX and independent crypto/privacy review.
-
-Authoritative design: `docs/privacy/SAI-PRIV-003_Vault_Architecture.md`.
-
-### P6 — Secure Delete
-
-Status: **AUTHORIZATION + TRANSACTION/RECOVERY FOUNDATION IMPLEMENTED / CI QUALIFIED — DESTRUCTIVE EXECUTOR PENDING**
-
-Implemented:
-
-- exact target validation/revalidation;
-- stable volume/file identity;
-- protected/system-critical/device-namespace refusal;
-- reparse/directory/hard-link refusal;
-- storage capability snapshot;
-- short-lived mutation authorization;
-- expiry/path-swap/storage-boundary revocation;
-- mutation lease;
-- durable operation journal;
-- recovery classifier;
-- tampered-journal rejection;
-- extended recovery adversarial coverage.
-
-The current coordinator remains deliberately non-destructive. `MutationGateReady` is not a path-delete primitive and overwrite sanitization remains disabled.
-
-Next required implementation:
-
-1. narrow exact-object destructive executor/broker boundary;
-2. stable mutation-time handle retention;
-3. durable transaction transitions around mutation;
-4. crash recovery at each checkpoint;
-5. media-specific capability strategy;
-6. installed filesystem/storage runtime testing;
-7. independent privacy/security review.
-
-There must never be an unrestricted privileged `DeletePath(string path)` primitive.
-
-Authoritative design: `docs/privacy/SAI-PRIV-004_Secure_Delete_Design.md`.
-
-### P7 — Broad Attributable Copy / History Discovery
-
-Status: **DESIGN COMPLETE — IMPLEMENTATION PENDING**
-
-Search supported Windows/provider sources as broadly as safely possible and classify candidates as:
-
-- CONFIRMED COPY
-- LIKELY ATTRIBUTABLE COPY
-- METADATA / REFERENCE ONLY
-- UNVERIFIED CANDIDATE
-
-Fuzzy filename similarity alone never authorizes deletion. Discovery and deletion remain separate. Reports must identify sources searched, unavailable sources, found candidates, removals, remaining items and limitations.
-
-Authoritative design: `docs/privacy/SAI-PRIV-005_Copy_Discovery_Policy.md`.
-
-### P8 — Explorer Privacy Commands
-
-Status: **GATED — NOT USER-ENABLED**
-
-Later commands:
-
+- Inspect with Sentinel AI
 - Encrypt File
 - Add to Sentinel Vault
 - Secure Delete
 
-Explorer still only activates Sentinel. Underlying operations, entitlement and runtime qualification must complete before these verbs are exposed.
+Explorer remains thin. It sends bounded one-time action intent and selected filesystem paths to Sentinel. It performs no cryptography, deletion, Store/GCP access, subscription validation, scanning, secret handling or broker work. Premium file commands are one-file-at-a-time in the first destructive release.
 
-### P9 — Subscription Integration
+### P2/P3 — Encrypted Container + Encryption Core
 
-Status: **PENDING FOR PRIVACY FEATURES**
+Status: **SOURCE IMPLEMENTED — CURRENT CI REQUALIFICATION / INDEPENDENT REVIEW / WINDOWS RUNTIME REMAIN**
 
-Existing server-authoritative entitlement remains authoritative. Explorer contains no reusable entitlement secret. Entitlement never overrides filesystem safety validation.
+AES-256-GCM, fresh per-file DEKs, authenticated/versioned metadata, bounded processing, corruption/truncation rejection and verify-before-plaintext-removal semantics remain. Explorer Encrypt creates a separate verified `.senc` output after server-authoritative premium validation; it does not silently delete the source.
+
+### P4 — Key Modes and Recovery
+
+Status: **SOURCE IMPLEMENTED — RUNTIME/REVIEW PENDING**
+
+Windows current-user protection, password mode and independent recovery-key material remain. Subscription does not gate decryption/recovery of already-owned encrypted data.
+
+### P5 — Sentinel Vault
+
+Status: **SOURCE IMPLEMENTED FOUNDATION — CURRENT CI/WINDOWS/ADVERSARIAL REVIEW PENDING**
+
+Vault Master Key -> per-item DEK hierarchy, durable metadata, item storage/export and lock/unlock safety remain. A persisted authenticated Vault master-key envelope is now wired for app use: the plaintext VMK is never persisted; new Vault creation uses Windows current-user protection plus an independent recovery key; the user must save the recovery key before the first Explorer Vault creation; an existing unrecoverable Vault is not silently overwritten. New item creation is premium-gated while recovery/decrypt access remains available independently of subscription.
+
+### P6 — Secure Delete
+
+Status: **EXACT-OBJECT LOGICAL REMOVAL SOURCE IMPLEMENTED — CURRENT CI/WINDOWS/MEDIA REVIEW PENDING**
+
+Implemented:
+
+1. exact target validation and stable volume/file identity;
+2. protected Windows/Program Files/Sentinel/system-critical/device/reparse/directory/multiple-link rejection;
+3. short-lived authorization and storage-boundary revalidation;
+4. durable one-use authorization claim to reject replay across restart;
+5. retained verified object handle through mutation;
+6. authenticated durable operation journal;
+7. `Prepared -> IdentityVerified -> PrimaryMutationStarted` persisted/read back before irreversible removal;
+8. logical removal requested only on the retained handle;
+9. original exact identity absence verification without confusing a replacement object for the deleted one;
+10. `PrimaryRemovalVerified -> RelatedCleanupPending`, never automatic completion;
+11. fail-closed recovery classification;
+12. structured `VERIFIED / FAILED / UNKNOWN` primary status;
+13. overwrite/TRIM/physical-media erasure disabled unless independently supported and proven.
+
+There is still no unrestricted privileged `DeletePath(string path)` or generic path-delete API.
+
+### P7 — Broad Attributable Copy / History Discovery
+
+Status: **SOURCE IMPLEMENTED FOUNDATION — CURRENT CI/PROVIDER/WINDOWS VALIDATION PENDING**
+
+Implemented provider model includes:
+
+- Sentinel-created artifact provenance;
+- bounded exact-SHA-256 user/configured-root duplicates;
+- configured File History roots;
+- configured read-only Previous Versions roots;
+- Windows Search metadata/reference inputs;
+- Recent/Jump List metadata/reference inputs;
+- OneDrive local sync roots with remote state reported separately.
+
+Results are only `CONFIRMED_COPY`, `LIKELY_ATTRIBUTABLE_COPY`, `METADATA_REFERENCE_ONLY` or `UNVERIFIED_CANDIDATE`. Filename/extension/timestamp/size similarity alone never creates deletion authority. Reparse traversal is refused. Bounds cover file count, hashed bytes, depth, duration and cancellation; provider unavailability/limits are reported instead of being mislabeled “nothing found.”
+
+### P8 — Related Copy Cleanup
+
+Status: **SOURCE IMPLEMENTED FOR FILESYSTEM CANDIDATES — WINDOWS/PROVIDER VALIDATION PENDING**
+
+Every related filesystem removal requires a fresh exact-target validation, a fresh Secure Delete authorization, a fresh Premium capability and its own journaled exact-object execution. The primary authorization is never reused. Likely candidates require explicit confirmation; unverified candidates are never auto-deleted. Metadata references require provider-specific targeted cleanup and must not trigger broad history/search-store destruction.
+
+### P9 — Premium Subscription Integration
+
+Status: **SOURCE IMPLEMENTED — CURRENT CI/STAGING/STORE TEST EVIDENCE PENDING**
+
+The existing server-authoritative Store/gateway architecture remains the only premium authority. Feature capabilities are HMAC-authenticated, Store-subject-bound, exact-scope-bound, 45 seconds, one-time consumed and revalidated against Store immediately before the operation. Wrong feature/subject, expiry, replay, tamper and malformed capabilities fail closed.
+
+Offline/backend/Store-unavailable behavior blocks new premium creation/cleanup without blocking recovery/decryption of user-owned encrypted data.
+
+Authoritative design: `docs/privacy/SAI-PRIV-006_Premium_Entitlement.md`.
 
 ## Premium Privacy Safety Boundary
 
 - no unrestricted privileged path-delete primitive;
-- exact-object revalidation and mutation-time identity retention;
-- protected/reparse/link/race defenses;
-- durable fail-closed transactions and recovery;
-- discovery separate from deletion;
-- fuzzy filename similarity alone never authorizes deletion;
-- normal single-file Secure Delete does not directly manipulate `pagefile.sys`, `swapfile.sys`, `hiberfil.sys` or silently wipe unrelated restore/history/system data;
-- do not claim guaranteed forensic irrecoverability where the platform cannot prove it;
-- encryption verifies the separate encrypted output before optional plaintext removal;
-- result semantics remain **VERIFIED / REQUESTED / REMAINS / CANNOT PROVE**.
+- destructive work remains bound to retained exact-object identity;
+- each destructive authorization is one-use and durably claimed;
+- protected/reparse/link/race defenses remain in force after subscription validation;
+- discovery is never deletion authority;
+- every related filesystem candidate receives independent validation/authorization;
+- fuzzy similarity never authorizes deletion;
+- no whole File History, shadow-copy, Windows Search or restore-store destruction;
+- no pagefile/swapfile/hiberfil content scanning;
+- no claim of guaranteed SSD/NVMe physical irrecoverability from logical removal;
+- subscription never becomes a lock on user-owned encrypted data;
+- Explorer carries intent only, never security authority.
 
 ## Current Next Milestones
 
+### Premium Privacy branch — before full physical Windows matrix
+
+1. Obtain exact-head green Premium Privacy CI and fix any regression without weakening gates.
+2. Finish adversarial source review and correct remaining High/Medium findings where feasible.
+3. Synchronize Secure Delete/copy-discovery/entitlement documentation with exact source behavior.
+4. Implement shared multi-instance replay/rate/concurrency state for the gateway.
+5. Deploy and validate staging-only Google Cloud gateway with Secret Manager/IAM/alerts/budget controls.
+6. Validate Microsoft Store test entitlement lifecycle with exact evidence.
+7. Only then begin the installed physical Windows privacy matrix.
+
 ### Hardening branch
 
-1. Run installed Windows/UAC/adversarial matrices.
-2. Execute A05 Google Cloud + Store staging.
-3. Complete signed package and real-architecture qualification.
-4. Run 1-hour/8-hour final stability.
-5. Re-audit High findings and all 29 findings.
-6. Stop at `READY FOR FINAL INDEPENDENT REVIEW`.
-
-### Premium Privacy branch
-
-1. Implement the narrow destructive Secure Delete executor behind exact-object handle retention and durable journal/recovery semantics.
-2. Implement broad attributable-copy discovery providers and false-positive resistance.
-3. Complete installed Explorer/encryption/Vault/Secure Delete runtime matrices.
-4. Integrate server-authoritative privacy entitlement.
-5. Enable destructive/privacy Explorer verbs only after underlying qualification.
-6. Perform independent crypto/privacy review.
-7. Create combined integration-validation branch only after the hardening gate permits it.
+Continue the separate physical/external qualification campaign without merging Premium Privacy into it.
 
 ---
 
