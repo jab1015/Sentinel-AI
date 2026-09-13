@@ -9,9 +9,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    // Reject oversized JSON before minimal-API model binding can allocate the complete body.
-    // Current Sentinel gateway requests are intentionally small; 64 KiB leaves headroom for
-    // JSON framing while preserving the tighter per-field checks below.
     options.Limits.MaxRequestBodySize = 64 * 1024;
 });
 
@@ -23,6 +20,7 @@ builder.Services.AddHttpClient("openai", client =>
 builder.Services.AddHttpClient("entra", client => client.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddHttpClient("store", client => client.Timeout = TimeSpan.FromSeconds(20));
 builder.Services.AddSingleton<GatewaySecurity>();
+builder.Services.AddSingleton<PrivacyCapabilitySecurity>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -42,6 +40,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 app.UseRateLimiter();
+app.MapPrivacyCapabilityEndpoints();
 
 app.MapGet("/health", () => Results.Ok(new
 {
@@ -49,12 +48,10 @@ app.MapGet("/health", () => Results.Ok(new
     status = "healthy",
     providerConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")),
     storeConfigured = StoreConfigurationPresent(),
-    sessionSigningConfigured = SessionSigningConfigured()
+    sessionSigningConfigured = SessionSigningConfigured(),
+    privacyCapabilityReplayState = "process-local"
 }));
 
-// This endpoint returns a narrowly scoped Microsoft Entra collections-creation token.
-// It never returns the Store service token or the Entra client secret. The Windows app
-// passes this short-lived ticket to StoreContext.GetCustomerCollectionsIdAsync.
 app.MapGet("/v1/store/collections-ticket", async (
     GatewaySecurity security,
     CancellationToken cancellationToken) =>
@@ -68,8 +65,6 @@ app.MapGet("/v1/store/collections-ticket", async (
         PublisherUserId: Guid.NewGuid().ToString("N")));
 });
 
-// Free Ask Sentinel remains available, but only through a server-issued Basic session.
-// The session establishes an authenticated gateway capability; it is not a paid entitlement.
 app.MapPost("/v1/session/free", (HttpContext context, GatewaySecurity security) =>
 {
     string subject = "free:" + HashForLog(context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
@@ -79,7 +74,6 @@ app.MapPost("/v1/session/free", (HttpContext context, GatewaySecurity security) 
         : Results.Ok(new GatewaySessionResponse(token, "Basic", 600));
 });
 
-// Paid sessions are issued only after the gateway verifies the Microsoft Store entitlement.
 app.MapPost("/v1/session/store", async (
     StoreSessionRequest request,
     GatewaySecurity security,
@@ -117,8 +111,6 @@ app.MapPost("/v1/report-ai-content", (AiContentReportRequest request) =>
     if (string.IsNullOrWhiteSpace(responseId) || string.IsNullOrWhiteSpace(category) || string.IsNullOrWhiteSpace(responseText))
         return Results.BadRequest(new { error = "Report is incomplete." });
 
-    // Do not write user prompt/response contents to application logs. Retention and any
-    // future report storage must be implemented as an explicit privacy-controlled subsystem.
     var auditRecord = new
     {
         eventType = "AI_CONTENT_REPORT_RECEIVED",
