@@ -24,11 +24,13 @@ internal enum SecureDeleteMutationLeaseCode
 /// <summary>
 /// Holds the exact filesystem object open after independent mutation-time verification.
 /// The live handle intentionally denies write/delete sharing so the approved object cannot
-/// be renamed, replaced, or opened for new writes while a future narrow mutation executes.
-/// This type exposes no delete, overwrite, truncate, or raw-handle operation.
+/// be renamed, replaced, or opened for new writes while the narrow mutation executes.
+/// The only destructive operation exposed is a delete-pending request on this retained,
+/// already-verified object; callers never receive the raw handle or a path-delete primitive.
 /// </summary>
 internal sealed class SecureDeleteMutationLease : IDisposable
 {
+    private const int FileDispositionInfoClass = 4;
     private SafeFileHandle? _handle;
 
     internal SecureDeleteMutationLease(
@@ -48,11 +50,58 @@ internal sealed class SecureDeleteMutationLease : IDisposable
     internal StorageCapabilitySnapshot Storage { get; }
     internal bool IsActive => _handle is { IsInvalid: false, IsClosed: false };
 
+    /// <summary>
+    /// Requests logical removal of the exact object retained by this lease. Windows completes
+    /// deletion when the retained handle closes. No pathname is accepted or reopened here.
+    /// </summary>
+    internal bool TryRequestLogicalRemoval(out int win32Error)
+    {
+        win32Error = 0;
+        SafeFileHandle? handle = _handle;
+        if (handle is null || handle.IsInvalid || handle.IsClosed)
+        {
+            win32Error = 6; // ERROR_INVALID_HANDLE
+            return false;
+        }
+
+        FILE_DISPOSITION_INFO disposition = new() { DeleteFile = true };
+        int size = Marshal.SizeOf<FILE_DISPOSITION_INFO>();
+        IntPtr buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            Marshal.StructureToPtr(disposition, buffer, false);
+            if (!SetFileInformationByHandle(handle, FileDispositionInfoClass, buffer, (uint)size))
+            {
+                win32Error = Marshal.GetLastWin32Error();
+                return false;
+            }
+            return true;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     public void Dispose()
     {
         SafeFileHandle? handle = Interlocked.Exchange(ref _handle, null);
         handle?.Dispose();
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILE_DISPOSITION_INFO
+    {
+        [MarshalAs(UnmanagedType.U1)] public bool DeleteFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(
+        SafeFileHandle file,
+        int fileInformationClass,
+        IntPtr fileInformation,
+        uint bufferSize);
 }
 
 internal sealed record SecureDeleteMutationLeaseResult(
@@ -64,7 +113,7 @@ internal sealed record SecureDeleteMutationLeaseResult(
 {
     internal static SecureDeleteMutationLeaseResult Success(SecureDeleteMutationLease lease) =>
         new(true, SecureDeleteMutationLeaseCode.Acquired,
-            "Exact Secure Delete target is retained by a non-destructive mutation lease.",
+            "Exact Secure Delete target is retained by a mutation lease.",
             lease, SecureDeleteCoordinatorCode.MutationGateReady);
 
     internal static SecureDeleteMutationLeaseResult Failure(
@@ -75,9 +124,9 @@ internal sealed record SecureDeleteMutationLeaseResult(
 }
 
 /// <summary>
-/// Acquires a non-destructive, retained exact-object lease for a previously prepared
-/// Secure Delete authorization. Path text is used only to reopen the authorized object;
-/// stable handle-derived identity must match before the lease is returned.
+/// Acquires a retained exact-object lease for a previously prepared Secure Delete
+/// authorization. Path text is used only to reopen the authorized object; stable
+/// handle-derived identity must match before the lease is returned.
 /// </summary>
 internal sealed class SecureDeleteMutationLeaseManager
 {
