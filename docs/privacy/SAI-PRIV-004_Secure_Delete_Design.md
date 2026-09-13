@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: EXACT-TARGET FOUNDATION + NON-DESTRUCTIVE COORDINATOR CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
-Version: 1.2  
+Status: EXACT-TARGET FOUNDATION + COORDINATOR + RETAINED-HANDLE LEASE CI VERIFIED — DESTRUCTIVE EXECUTOR NOT IMPLEMENTED  
+Version: 1.3  
 Date: 2026-09-12
 
 ## Purpose
@@ -24,6 +24,7 @@ Secure Delete is not:
 - `SecureDeleteTargetValidator`
 - `SecureDeleteCoordinator`
 - `StorageCapabilityDetector`
+- `SecureDeleteMutationLeaseManager` / `SecureDeleteMutationLease`
 - future exact-handle mutation executor / narrow privileged broker operation
 - future durable Secure Delete transaction record/result
 - future `RelatedArtifactDiscoveryService`
@@ -41,16 +42,18 @@ Implemented on `feature/premium-privacy-foundation`:
 - Coordinator authorization is short-lived (currently five minutes), bound to the exact target and storage boundary, and currently limited to local fixed storage.
 - Coordinator authorization permits only a future logical-removal path. `AllowsOverwriteSanitization` is explicitly `false` until media-specific overwrite strategy is separately qualified.
 - `RevalidateForMutation` rejects expired/malformed authorizations, path/object replacement, unsupported storage, changed volume/filesystem boundary, and attempted privilege inflation.
-- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, path-swap revocation, and the coordinator's non-destructive behavior.
+- `SecureDeleteMutationLeaseManager` consumes only a coordinator authorization, revalidates it, opens the approved exact object with mutation-relevant access and restrictive sharing, verifies final path, reparse/directory/link state, and stable volume/file identity from the live handle, then retains that handle in `SecureDeleteMutationLease`.
+- The retained lease blocks rename/replacement and new write-capable opens while it is active. The lease exposes no raw handle property and, at this milestone, exposes no delete, overwrite, truncate, or media operation.
+- Acceptance coverage proves ordinary and empty files, Unicode paths, invalid/device namespaces, explicit directory rejection, protected application location, system-critical filenames, hard links, target replacement, conservative unknown media semantics, authorization expiry, privilege-inflation rejection, preflight path-swap revocation, retained-handle identity binding, active-lease rename/write race blocking, path-swap rejection before lease acquisition, and release of protections after disposal.
 
 Not implemented yet:
 
 - no destructive Secure Delete executor
 - no privileged Secure Delete broker mutation operation
+- no durable destructive transaction journal wired to execution
 - no overwrite/TRIM/deallocation action
 - no related-copy cleanup action
 - no destructive Explorer command
-- no claim that preflight authorization alone closes mutation-time TOCTOU
 
 ## Exact-target authorization
 
@@ -68,7 +71,7 @@ Before any destructive step Sentinel must:
 10. revalidate identity immediately before destructive mutation
 11. **reopen and retain the exact verified object/handle through the destructive mutation itself**
 
-The current coordinator implements steps through non-destructive pre-mutation revalidation. It does **not** yet implement step 11. A future executor must not convert a successful `MutationGateReady` result into path-only authority and then reopen an unverified object later.
+The current coordinator implements step 10 and the qualified retained-handle lease implements the non-destructive acquisition/retention foundation for step 11. A future executor must consume that retained exact-object authority without falling back to path-only authority or reopening an unverified object later.
 
 User intent, subscription state, path text, filename similarity, and prior inspection are not substitutes for exact-object validation.
 
@@ -158,7 +161,7 @@ Minimum states:
 
 Recovery never guesses. Ambiguous state remains actionable and visible.
 
-The current coordinator authorization is not a substitute for this future durable destructive transaction state.
+Coordinator authorization and the retained-handle lease are not substitutes for durable destructive transaction state. The next executor milestone must make `PrimaryMutationStarted` durable before the first irreversible mutation.
 
 ## Cancellation and crash policy
 
@@ -214,4 +217,6 @@ Prohibited without exact independent proof:
 
 **NON-DESTRUCTIVE COORDINATOR CI VERIFIED.** The short-lived exact-identity authorization/pre-mutation gate and its adversarial acceptance coverage passed the same complete workflow chain at exact head `42e88b2e6f1d9574eba344057d0db8b546393af3`, workflow run `34726779853`.
 
-**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle deletion, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next source milestone is a narrow executor/broker boundary that independently opens, verifies, and **retains the exact filesystem object through mutation**, backed by durable transaction state and acceptance tests. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
+**RETAINED EXACT-HANDLE LEASE CI VERIFIED.** The mutation-time exact-object lease, including stable identity verification and active rename/write race blocking, passed the full privacy workflow at exact head `9c2630ccb41f519d1d6a8c60142023606c3534fa`, workflow run `34727592444`. The preceding run at `061ff227465c333dc942ca17a78c039731d24e42` exposed a harness-only sharing-semantics defect: the test attempted a competing read that did not share delete access while the retained lease was intentionally active. The test was corrected without changing product lease behavior.
+
+**DESTRUCTIVE EXECUTOR NOT IMPLEMENTED.** No Secure Delete broker mutation, retained-handle logical removal, overwrite, TRIM/deallocation, related-copy removal, or Explorer Secure Delete command exists yet. The next source milestone is durable transaction state followed by a narrow executor that consumes the retained exact-object lease and records destructive intent before mutation. Overwrite sanitization remains disabled until media-specific strategy is separately qualified.
