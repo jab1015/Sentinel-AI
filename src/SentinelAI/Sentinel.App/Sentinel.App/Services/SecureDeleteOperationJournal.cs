@@ -198,7 +198,7 @@ internal sealed class SecureDeleteOperationJournal
         if (record.OperationId == Guid.Empty || record.OperationId != expectedOperationId ||
             record.AuthorizationId == Guid.Empty || record.Target.IsEmpty ||
             string.IsNullOrWhiteSpace(record.VolumeRoot) ||
-            !Enum.IsDefined(record.State) ||
+            !IsKnownState(record.State) ||
             record.CreatedUtc == default || record.UpdatedUtc == default ||
             record.UpdatedUtc < record.CreatedUtc)
         {
@@ -207,6 +207,18 @@ internal sealed class SecureDeleteOperationJournal
 
         return true;
     }
+
+    private static bool IsKnownState(SecureDeleteOperationState state) => state switch
+    {
+        SecureDeleteOperationState.Prepared => true,
+        SecureDeleteOperationState.IdentityVerified => true,
+        SecureDeleteOperationState.PrimaryMutationStarted => true,
+        SecureDeleteOperationState.PrimaryRemovalVerified => true,
+        SecureDeleteOperationState.RelatedCleanupPending => true,
+        SecureDeleteOperationState.Complete => true,
+        SecureDeleteOperationState.RecoveryRequired => true,
+        _ => false
+    };
 
     private static void EnsureSameOperation(
         SecureDeleteOperationRecord expected,
