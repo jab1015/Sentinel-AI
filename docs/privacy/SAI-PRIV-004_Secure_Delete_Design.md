@@ -1,7 +1,7 @@
 # SAI-PRIV-004 — Secure Delete Design
 
-Status: EXACT-OBJECT LOGICAL REMOVAL SOURCE IMPLEMENTED — EXACT-HEAD CI / STAGING ENTITLEMENT / WINDOWS MEDIA VALIDATION PENDING  
-Version: 1.7  
+Status: EXACT-OBJECT LOGICAL REMOVAL SOURCE IMPLEMENTED / CI VERIFIED — STAGING ENTITLEMENT + WINDOWS MEDIA VALIDATION PENDING  
+Version: 1.8  
 Date: 2026-09-12
 
 ## Purpose
@@ -130,13 +130,15 @@ Prohibited without exact independent proof: “100% unrecoverable,” “forensi
 
 ## Required remaining qualification
 
-Exact-head CI and adversarial source review remain required before the Windows phase. Windows validation must include large/long-path/locked/access-denied files; symlink/junction/reparse and parent-replacement races; hardlinks/protected Windows/Program Files/Sentinel package targets; concurrency; cancellation/failure around destructive timing windows; journal loss/tamper/rollback; path reuse/replacement; volume loss/device errors; real HDD/SATA SSD/NVMe/BitLocker; install/package/UAC; and related-provider behavior.
+Windows validation must include large/long-path/locked/access-denied files; symlink/junction/reparse and parent-replacement races; hardlinks/protected Windows/Program Files/Sentinel package targets; concurrency; cancellation/failure around destructive timing windows; journal loss/tamper/rollback; path reuse/replacement; volume loss/device errors; real HDD/SATA SSD/NVMe/BitLocker; install/package/UAC; and related-provider behavior.
 
 ## Qualification state
 
 - **DESIGN:** complete for the first logical-removal version.
 - **SOURCE IMPLEMENTED:** yes for exact-object logical removal and separate related cleanup foundation.
-- **CI VERIFIED:** pending exact-head workflow conclusion.
+- **CI VERIFIED:** **YES** at source checkpoint `75edc968d243ccda8da84ea05d687d881270f28f`, workflow run `34734415429` (**SUCCESS**).
 - **STAGING VERIFIED:** no; entitlement staging is blocked on shared multi-instance gateway state.
 - **WINDOWS RUNTIME REQUIRED:** yes.
 - **FULLY QUALIFIED:** no.
+
+See `SAI-PRIV-007_PreWindows_Adversarial_Review.md` for the separate adversarial source review.
