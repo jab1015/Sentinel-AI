@@ -1,7 +1,7 @@
 # SAI-000 — Project Status
 
-Version: 3.3  
-Status: Active — Production security hardening  
+Version: 3.4  
+Status: Active — Production security hardening + isolated Premium Privacy foundation qualification  
 Last Updated: 2026-09-12
 
 Copyright (c) 2026 Modern Methods.
@@ -14,6 +14,7 @@ Sentinel AI is in an active production-security hardening program based on asses
 
 - Production branch: `main`
 - Hardening branch: `security/production-hardening-1218f5d`
+- Premium Privacy branch: `feature/premium-privacy-foundation`
 - Last fully proven broad checkpoint: `3ef08da9226e33a222768938b3dff13373ba7f61`
 - Latest production-source/test hardening checkpoint before this documentation synchronization: `6943e9d93daa0a2f3863cb5c8d41510263c454be`
 - A05 replay correction: `f8fa7086f47e327b3d24cce5ba32fc7ab97d809a` binds replay identity to authenticated subject plus canonical request ID rather than short-lived token ID.
@@ -42,7 +43,7 @@ Focused evidence after that checkpoint:
 
 ## Current CI Qualification Checkpoint
 
-At the latest observation, the workflow wave generated for source/test checkpoint `6943e9d93daa0a2f3863cb5c8d41510263c454be` was still **QUEUED/PENDING**. Queued/running work is not counted as PASS. The exact-head wave includes:
+At the latest hardening observation recorded here, the workflow wave generated for source/test checkpoint `6943e9d93daa0a2f3863cb5c8d41510263c454be` was still **QUEUED/PENDING**. Queued/running work is not counted as PASS. The exact-head wave includes:
 
 - Driver Repair `34706604576`
 - External Research `34706604562`
@@ -58,6 +59,26 @@ At the latest observation, the workflow wave generated for source/test checkpoin
 - Security Hardening Package `34706604586`
 
 Documentation synchronization after `6943e9d9...` may generate another workflow wave. That does not replace the need to interpret commit-bound results for the source/test checkpoint. Do not create production-source churn merely to reset the queue. A real failing job must be classified and corrected at root cause; an incomplete job is not a defect.
+
+## Premium Privacy Implementation Checkpoint
+
+Premium Privacy work is isolated on `feature/premium-privacy-foundation`; nothing in this section changes the hardening branch release posture or authorizes a merge to `main`.
+
+The pre-destructive privacy foundation is now backed by exact-head CI evidence:
+
+- `dd35c6e76a219840a9efeef0f441c9741b590a77`, Premium Privacy workflow `34726434160`: **PASS** across Explorer integration acceptance, file-encryption/Vault/Secure Delete foundation acceptance, native Explorer x64/x86/ARM64 builds, desktop restore/build, unsigned x64 MSIX creation, and packaged Explorer-extension x64 PE-machine verification.
+- `42e88b2e6f1d9574eba344057d0db8b546393af3`, Premium Privacy workflow `34726779853`: **PASS** across the same complete chain after adding `SecureDeleteCoordinator` and its adversarial acceptance coverage.
+
+Current qualified privacy-source state includes:
+
+- authenticated file encryption/decryption foundations and failure cleanup semantics;
+- Vault VMK/per-item-DEK hierarchy, durable metadata transaction/recovery behavior, exact export semantics, and lock-triggered revocation of an already in-flight export after DEK unwrap with exact-owned plaintext cleanup;
+- recovery-key round trip/tamper protection and corrected recovery-key encoding;
+- non-destructive Secure Delete exact-object validation with stable volume/file identity, reparse/directory/hard-link/protected-location/system-critical/device-namespace refusal, and target replacement revocation;
+- conservative storage classification that leaves physical media, BitLocker, TRIM/unmap, and cloud synchronization `Unknown` when they are not independently proven;
+- a short-lived `SecureDeleteCoordinator` authorization/pre-mutation gate that accepts only a validated identity, is currently limited to local fixed storage, rejects expiry/path swaps/storage-boundary changes/privilege inflation, and explicitly keeps overwrite sanitization disabled.
+
+**No destructive Secure Delete executor is implemented yet.** `MutationGateReady` is preflight evidence, not mutation authority by itself. The next destructive-layer design must independently reopen and verify the exact filesystem object and retain that exact object/handle through mutation; it must not fall back to a path-only `DeletePath(string)`-style primitive. Durable destructive transaction state, crash recovery, media-specific strategy, related-copy cleanup, and destructive Explorer exposure remain future qualified steps.
 
 ## Latest Hardening Progress
 
@@ -80,29 +101,30 @@ Documentation synchronization after `6943e9d9...` may generate another workflow 
 
 ## Current Priority
 
-1. Read the exact-head CI wave for `6943e9d93daa0a2f3863cb5c8d41510263c454be` as runners complete.
-2. If a workflow fails, inspect the exact failing job/log, classify the failure, reproduce narrowly, correct root cause without weakening assertions, and add regression coverage.
-3. Promote A09/A17, A21/A22, and A24 to source-complete only after their required exact-head focused/broad gates are green.
-4. Reconfirm A08 exact-head Windows/broker harness coverage after the new provider-query fail-closed changes; do not treat source acceptance alone as runtime proof.
-5. If exact-head CI is green and one final static/adversarial source sweep remains clean, declare the automated/source hardening side ready to begin physical validation — **not production ready**.
-6. Begin installed Windows runtime validation: broker/UAC, Authenticode fixtures, quarantine/recovery, Defender/firewall, A14 cleanup, A16 service restart/recovery, Ask Sentinel final claims, network churn, startup/lifecycle, driver/device behavior, crash/failure matrices, and install/update/uninstall.
-7. Execute A05 Google Cloud and Microsoft Store entitlement staging, including multi-instance replay/rate behavior and server-side entitlement enforcement.
-8. Complete signed Store release qualification and real x86/x64/ARM64 runtime qualification for every shipped architecture.
-9. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
+1. Keep hardening evidence and Premium Privacy evidence branch-scoped; do not merge either branch to `main` from this status document.
+2. For any exact-head workflow failure, inspect the failing job/log, classify it, correct root cause without weakening assertions, and add regression coverage where appropriate.
+3. Continue installed Windows runtime validation for the hardening program: broker/UAC, Authenticode fixtures, quarantine/recovery, Defender/firewall, A14 cleanup, A16 service restart/recovery, Ask Sentinel final claims, network churn, startup/lifecycle, driver/device behavior, crash/failure matrices, and install/update/uninstall.
+4. Execute A05 Google Cloud and Microsoft Store entitlement staging, including multi-instance replay/rate behavior and server-side entitlement enforcement.
+5. Complete signed Store release qualification and real x86/x64/ARM64 runtime qualification for every shipped architecture.
+6. Run fresh final-commit 1-hour and 8-hour stability tests, then adversarially re-audit every High finding and all 29 findings.
+7. On the isolated Premium Privacy branch, implement the next Secure Delete layer only as a narrow exact-object executor/broker boundary with mutation-time handle retention and durable transaction semantics; no unrestricted path-delete primitive.
+8. Keep overwrite/TRIM/deallocation, media claims, related-copy deletion, and destructive Explorer UI disabled until their individual capability, failure, and adversarial tests are designed and qualified.
 
-## Planned Premium Privacy Protection
+## Premium Privacy Protection — Authorized Foundation Work Active
 
-The post-hardening Premium Privacy Protection phase in `SAI-005_Product_Roadmap.md` remains authoritative and preserved. It includes supported Explorer integration, Inspect with Sentinel AI, media-aware Secure Delete, broad attributable-copy/history discovery, AES-256-GCM authenticated encryption, Windows-account and password modes, independent recovery keys, Sentinel Vault, optional future Windows Hello/TPM, server-side entitlement, and independent privacy/crypto review.
+The Premium Privacy Protection plan in `SAI-005_Product_Roadmap.md` remains authoritative. Explicit authorization has been given to build and qualify the privacy foundation on the isolated branch. The planned scope includes supported Explorer integration, Inspect with Sentinel AI, media-aware Secure Delete, broad attributable-copy/history discovery, AES-256-GCM authenticated encryption, Windows-account and password modes, independent recovery keys, Sentinel Vault, optional future Windows Hello/TPM, server-side entitlement, and independent privacy/crypto review.
 
 Broad attributable-copy discovery must search as broadly as Windows and configured storage services safely permit for reasonably discoverable copies, versions, history entries, references, and Sentinel-created artifacts related to the selected file. Candidates remain classified as **CONFIRMED COPY**, **LIKELY ATTRIBUTABLE COPY**, **METADATA / REFERENCE ONLY**, or **UNVERIFIED CANDIDATE**. Fuzzy filename similarity alone must never authorize deletion. Discovery and deletion remain separate operations, and Sentinel must report supported sources searched, items found/removed/remaining, sources it could not inspect, and facts it cannot prove.
 
 Privacy operations must use exact-object revalidation, protected-location/link/reparse/race defenses, fail-closed transactions, and VERIFIED / REQUESTED / REMAINS / CANNOT PROVE result semantics. A single-file action must not silently wipe unrelated restore/history/system data or directly manipulate `pagefile.sys`, `swapfile.sys`, or `hiberfil.sys`. Unsupported guarantees of forensic irrecoverability are prohibited.
 
-**Do not implement Premium Privacy destructive/encryption features until current hardening/release gates are complete or explicit authorization is given.**
+Premium Privacy source work may continue on its isolated branch under these safeguards. Destructive Secure Delete implementation must proceed incrementally behind exact-object authorization, mutation-time handle retention, durable transaction/crash-recovery design, media-aware capability gates, and adversarial acceptance coverage before any user-facing destructive Explorer command is enabled.
 
 ## Definition of Done
 
 A finding is complete only when its required source correction, deterministic tests, Windows/runtime evidence, package evidence, and external validation are satisfied. Final release additionally requires signed/Store package qualification, supported Windows/architecture coverage, fresh final-commit stability runs, and a complete adversarial re-audit of all 29 findings.
+
+Premium Privacy features additionally require exact-head source/CI qualification for each destructive boundary, real Windows/filesystem/media runtime validation where applicable, signed/package validation, accurate user-facing result semantics, and an independent privacy/crypto review before production claims exceed what Sentinel can actually prove.
 
 ---
 
