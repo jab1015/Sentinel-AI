@@ -44,6 +44,7 @@
                                 <TextBlock Text="• Local investigation summaries and recent activity" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
                                 <TextBlock Text="• File and folder inspection from Windows Explorer" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
                                 <TextBlock Text="• Performance baseline learning" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Manual optimization scans" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
                                 <TextBlock Text="• Startup protection controls" FontSize="14" Foreground="#E5E7EB" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>
@@ -111,7 +112,25 @@
                 <Border Background="#123252" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="16" Padding="26">
                     <StackPanel Spacing="16">
                         <TextBlock Text="Computer optimization" FontSize="23" FontWeight="SemiBold" Foreground="White"/>
-                        <TextBlock Text="Sentinel learns this computer's normal performance for free. Applying verified optimizations is a subscription feature." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+                        <TextBlock Text="Sentinel learns this computer's normal performance for free. You can run a manual scan at any time. Applying verified optimizations is a subscription feature." FontSize="15" Foreground="#E5E7EB" TextWrapping="Wrap"/>
+
+                        <Border Background="#0A2038" CornerRadius="10" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Check my computer now" FontSize="16" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock Text="Run a fresh optimization scan for peace of mind. The scan checks current performance against Sentinel's local baseline and never changes your computer." FontSize="13" Foreground="#BFDBFE" TextWrapping="Wrap"/>
+                                <Button x:Name="RunOptimizationScanButton"
+                                        Content="Run optimization scan now"
+                                        HorizontalAlignment="Left"
+                                        MinHeight="42"
+                                        Click="RunOptimizationScanButton_Click"
+                                        AutomationProperties.Name="Run optimization scan now"/>
+                                <TextBlock x:Name="ManualOptimizationScanStatusText"
+                                           Foreground="#BFDBFE"
+                                           FontSize="14"
+                                           TextWrapping="Wrap"
+                                           AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                        </Border>
 
                         <Border Background="#0A2038" CornerRadius="10" Padding="16">
                             <StackPanel Spacing="10">
