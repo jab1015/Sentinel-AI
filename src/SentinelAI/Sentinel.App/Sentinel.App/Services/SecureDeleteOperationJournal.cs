@@ -1,7 +1,9 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace Sentinel.App.Services;
 
@@ -30,14 +32,16 @@ internal sealed record SecureDeleteOperationRecord(
 /// <summary>
 /// Durable, non-destructive journal for Secure Delete operation state. This component only
 /// persists transaction metadata under its own journal root; it never opens or mutates the
-/// approved target file. A later executor must persist PrimaryMutationStarted successfully
-/// before it is allowed to perform any target mutation.
+/// approved target file. Each record carries a Windows current-user protected digest so a
+/// structurally valid edit is rejected unless its integrity proof also verifies. A later
+/// executor must persist PrimaryMutationStarted successfully before any target mutation.
 /// </summary>
 internal sealed class SecureDeleteOperationJournal
 {
-    private const int SchemaVersion = 1;
+    private const int SchemaVersion = 2;
     private readonly string _journalRoot;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly WindowsCurrentUserFileKeyProtector _integrityProtector = new();
 
     internal SecureDeleteOperationJournal(string journalRoot, Func<DateTimeOffset>? utcNow = null)
     {
@@ -106,11 +110,9 @@ internal sealed class SecureDeleteOperationJournal
         try
         {
             JournalEnvelope? envelope = JsonSerializer.Deserialize<JournalEnvelope>(File.ReadAllText(path, Encoding.UTF8));
-            if (envelope is null || envelope.SchemaVersion != SchemaVersion || envelope.Record is null)
+            if (!VerifyEnvelope(envelope, operationId))
                 return false;
-            if (!IsValidRecord(envelope.Record, operationId))
-                return false;
-            record = envelope.Record;
+            record = envelope!.Record;
             return true;
         }
         catch (JsonException)
@@ -122,6 +124,10 @@ internal sealed class SecureDeleteOperationJournal
             return false;
         }
         catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (CryptographicException)
         {
             return false;
         }
@@ -144,7 +150,8 @@ internal sealed class SecureDeleteOperationJournal
             throw new IOException("Secure Delete journal operation already exists.");
 
         string tempPath = finalPath + ".tmp-" + Guid.NewGuid().ToString("N");
-        JournalEnvelope envelope = new(SchemaVersion, record);
+        WrappedFileKeyRecord integrityProof = CreateIntegrityProof(record);
+        JournalEnvelope envelope = new(SchemaVersion, record, integrityProof);
         byte[] payload = JsonSerializer.SerializeToUtf8Bytes(envelope, new JsonSerializerOptions { WriteIndented = true });
 
         try
@@ -171,11 +178,8 @@ internal sealed class SecureDeleteOperationJournal
                 4096,
                 FileOptions.SequentialScan);
             JournalEnvelope? verify = JsonSerializer.Deserialize<JournalEnvelope>(verifyStream);
-            if (verify is null || verify.SchemaVersion != SchemaVersion || verify.Record != record ||
-                !IsValidRecord(verify.Record, record.OperationId))
-            {
+            if (!VerifyEnvelope(verify, record.OperationId) || verify!.Record != record)
                 throw new IOException("Secure Delete journal persistence verification failed.");
-            }
         }
         finally
         {
@@ -189,6 +193,48 @@ internal sealed class SecureDeleteOperationJournal
             }
         }
     }
+
+    private WrappedFileKeyRecord CreateIntegrityProof(SecureDeleteOperationRecord record)
+    {
+        byte[] digest = ComputeRecordDigest(record);
+        try
+        {
+            return _integrityProtector.WrapAsync(digest, CancellationToken.None)
+                .AsTask().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(digest);
+        }
+    }
+
+    private bool VerifyEnvelope(JournalEnvelope? envelope, Guid expectedOperationId)
+    {
+        if (envelope is null || envelope.SchemaVersion != SchemaVersion || envelope.Record is null ||
+            envelope.IntegrityProof is null || !IsValidRecord(envelope.Record, expectedOperationId))
+        {
+            return false;
+        }
+
+        byte[] expectedDigest = ComputeRecordDigest(envelope.Record);
+        byte[]? protectedDigest = null;
+        try
+        {
+            protectedDigest = _integrityProtector.TryUnwrapAsync(envelope.IntegrityProof, CancellationToken.None)
+                .AsTask().GetAwaiter().GetResult();
+            return protectedDigest is { Length: 32 } &&
+                   CryptographicOperations.FixedTimeEquals(expectedDigest, protectedDigest);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(expectedDigest);
+            if (protectedDigest is not null)
+                CryptographicOperations.ZeroMemory(protectedDigest);
+        }
+    }
+
+    private static byte[] ComputeRecordDigest(SecureDeleteOperationRecord record) =>
+        SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(record));
 
     private string GetRecordPath(Guid operationId) =>
         Path.Combine(_journalRoot, operationId.ToString("N") + ".json");
@@ -252,5 +298,8 @@ internal sealed class SecureDeleteOperationJournal
         };
     }
 
-    private sealed record JournalEnvelope(int SchemaVersion, SecureDeleteOperationRecord Record);
+    private sealed record JournalEnvelope(
+        int SchemaVersion,
+        SecureDeleteOperationRecord Record,
+        WrappedFileKeyRecord IntegrityProof);
 }
