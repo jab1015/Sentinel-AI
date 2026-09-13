@@ -14,6 +14,9 @@ Set-StrictMode -Version Latest
 $manifestPath = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Package.appxmanifest'
 $packageProject = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj'
 $appPackages = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\AppPackages'
+$appProject = 'src\SentinelAI\Sentinel.App\Sentinel.App\Sentinel.App.csproj'
+$entitlementSource = 'src\SentinelAI\Sentinel.App\Sentinel.App\Services\PremiumPrivacyEntitlementClient.cs'
+$configuration = 'LocalDev'
 $expectedName = 'ModernMethods.SentinelAI'
 $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
 $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
@@ -71,8 +74,26 @@ try {
     if ($identity.Publisher -ne $expectedPublisher) { throw "Unexpected package publisher: $($identity.Publisher)" }
     Write-Host "Production package identity preserved: $($identity.Name), $($identity.Publisher), version $($identity.Version)."
 
+    # The VM package is intentionally compiled as LocalDev so Premium Privacy can be
+    # exercised without a live paid Store subscription. Verify the bypass is compile-time
+    # isolated before building; no runtime environment variable or local preference may
+    # activate it in Release/Store builds.
+    $appProjectText = Get-Content -LiteralPath $appProject -Raw
+    if ($appProjectText -notmatch "Condition=\"'\$\(Configuration\)' == 'LocalDev'\"" -or
+        $appProjectText -notmatch 'SENTINEL_LOCAL_DEV') {
+        throw 'Sentinel.App LocalDev configuration does not define SENTINEL_LOCAL_DEV.'
+    }
+    $entitlementText = Get-Content -LiteralPath $entitlementSource -Raw
+    if ($entitlementText -notmatch '#if SENTINEL_LOCAL_DEV' -or
+        $entitlementText -notmatch 'LocalVmTestAllowed' -or
+        $entitlementText -notmatch '#else' -or
+        $entitlementText -notmatch 'v1/privacy/capability/validate') {
+        throw 'Premium Privacy LocalDev/Release entitlement boundary is missing or incomplete.'
+    }
+    Write-Host 'Verified compile-time LocalDev-only Premium Privacy test entitlement boundary.'
+
     if (Test-Path $appPackages) { Remove-Item $appPackages -Recurse -Force }
-    & $MsBuild $packageProject /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"
+    & $MsBuild $packageProject /restore /m /p:Configuration=$configuration /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"
     if ($LASTEXITCODE -ne 0) { throw "MSBuild failed with exit code $LASTEXITCODE." }
 
     $msixes = @(Get-ChildItem $appPackages -Recurse -File -Filter '*.msix' | Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
@@ -189,7 +210,9 @@ try {
         'Branch=feature/premium-privacy-foundation',
         "SourceSHA=$SourceSha",
         'Architecture=x64',
-        'Configuration=Release',
+        "Configuration=$configuration",
+        'SubscriptionMode=LOCALDEV_VM_TEST_BYPASS_ONLY',
+        'ReleaseStoreEntitlement=UNCHANGED_AND_REQUIRED',
         'Format=MSIX',
         "Package=$PackageName",
         "Certificate=$CertName",
@@ -208,7 +231,7 @@ try {
     if ($privateMaterial.Count -ne 0) { throw 'Private signing material was found in the artifact staging directory.' }
 
     Write-Host "Package SHA-256: $hash"
-    Write-Host 'WINDOWS VM TEST PACKAGE QUALIFICATION: PASS'
+    Write-Host 'WINDOWS VM LOCALDEV TEST PACKAGE QUALIFICATION: PASS'
 }
 finally {
     if ($trustedPeopleStore) { try { $trustedPeopleStore.Close() } catch {} }
