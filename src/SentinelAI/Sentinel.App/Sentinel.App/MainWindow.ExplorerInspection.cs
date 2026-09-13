@@ -87,6 +87,32 @@ public sealed partial class MainWindow
             return;
         }
 
+        if (reopenedPaths.Count == 1 &&
+            File.Exists(reopenedPaths[0]) &&
+            reopenedPaths[0].EndsWith(".sentinel.senc", StringComparison.OrdinalIgnoreCase))
+        {
+            string encryptedPath = reopenedPaths[0];
+            ContentDialog encryptedDialog = new()
+            {
+                Title = "Sentinel encrypted file",
+                Content = $"Sentinel recognized this as an encrypted Sentinel container:\n\n{encryptedPath}\n\nYou can restore it to a separate plaintext file or inspect the encrypted container without changing it.",
+                PrimaryButtonText = "Decrypt / Restore",
+                SecondaryButtonText = "Inspect",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                XamlRoot = rootElement.XamlRoot
+            };
+
+            ContentDialogResult encryptedChoice = await encryptedDialog.ShowAsync();
+            if (encryptedChoice == ContentDialogResult.Primary)
+            {
+                await DecryptExplorerFileAsync(encryptedPath, rootElement).ConfigureAwait(true);
+                return;
+            }
+            if (encryptedChoice != ContentDialogResult.Secondary)
+                return;
+        }
+
         string[] names = reopenedPaths
             .Take(5)
             .Select(path => Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
@@ -131,8 +157,7 @@ public sealed partial class MainWindow
         {
             if (shown >= 5)
             {
-                summary.AppendLine($"…and {paths.Count - shown} more item(s)."
-                );
+                summary.AppendLine($"…and {paths.Count - shown} more item(s).");
                 break;
             }
 
