@@ -30,11 +30,11 @@ internal sealed record SecureDeleteOperationRecord(
     string? Detail);
 
 /// <summary>
-/// Durable, non-destructive journal for Secure Delete operation state. This component only
-/// persists transaction metadata under its own journal root; it never opens or mutates the
-/// approved target file. Each record carries a Windows current-user protected digest so a
-/// structurally valid edit is rejected unless its integrity proof also verifies. A later
-/// executor must persist PrimaryMutationStarted successfully before any target mutation.
+/// Durable journal for Secure Delete operation state. Each authorization is claimed exactly
+/// once with a create-new durable claim before its Prepared record is persisted, preventing
+/// concurrent/restart replay within the Sentinel journal boundary. Records carry a Windows
+/// current-user protected digest so structurally valid edits fail closed without a matching
+/// integrity proof.
 /// </summary>
 internal sealed class SecureDeleteOperationJournal
 {
@@ -62,8 +62,9 @@ internal sealed class SecureDeleteOperationJournal
             throw new InvalidOperationException("The authorization has no storage boundary.");
 
         DateTimeOffset now = _utcNow();
+        Guid operationId = Guid.NewGuid();
         SecureDeleteOperationRecord record = new(
-            Guid.NewGuid(),
+            operationId,
             authorization.AuthorizationId,
             authorization.Target,
             authorization.VolumeRoot,
@@ -73,6 +74,9 @@ internal sealed class SecureDeleteOperationJournal
             now,
             null);
 
+        ClaimAuthorizationOnce(authorization.AuthorizationId, operationId);
+        // The claim deliberately remains even if record persistence fails. Retrying with the
+        // same destructive authorization would be less safe than requiring a fresh approval.
         Persist(record, requireNew: true);
         return record;
     }
@@ -115,22 +119,10 @@ internal sealed class SecureDeleteOperationJournal
             record = envelope!.Record;
             return true;
         }
-        catch (JsonException)
-        {
-            return false;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-        catch (CryptographicException)
-        {
-            return false;
-        }
+        catch (JsonException) { return false; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+        catch (CryptographicException) { return false; }
     }
 
     internal SecureDeleteOperationRecord ReadRequired(Guid operationId)
@@ -138,6 +130,28 @@ internal sealed class SecureDeleteOperationJournal
         if (!TryRead(operationId, out SecureDeleteOperationRecord? record) || record is null)
             throw new InvalidOperationException("Secure Delete journal state was unavailable, invalid, or tampered.");
         return record;
+    }
+
+    private void ClaimAuthorizationOnce(Guid authorizationId, Guid operationId)
+    {
+        string claimPath = GetAuthorizationClaimPath(authorizationId);
+        byte[] bytes = Encoding.ASCII.GetBytes(operationId.ToString("N"));
+        try
+        {
+            using FileStream stream = new(
+                claimPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                FileOptions.WriteThrough);
+            stream.Write(bytes, 0, bytes.Length);
+            stream.Flush(flushToDisk: true);
+        }
+        catch (IOException)
+        {
+            throw new InvalidOperationException("This Secure Delete authorization has already been claimed and cannot be replayed.");
+        }
     }
 
     private void Persist(SecureDeleteOperationRecord record, bool requireNew)
@@ -187,10 +201,7 @@ internal sealed class SecureDeleteOperationJournal
             {
                 if (File.Exists(tempPath)) File.Delete(tempPath);
             }
-            catch
-            {
-                // Best-effort cleanup of the journal's own temporary file only.
-            }
+            catch { }
         }
     }
 
@@ -212,9 +223,7 @@ internal sealed class SecureDeleteOperationJournal
     {
         if (envelope is null || envelope.SchemaVersion != SchemaVersion || envelope.Record is null ||
             envelope.IntegrityProof is null || !IsValidRecord(envelope.Record, expectedOperationId))
-        {
             return false;
-        }
 
         byte[] expectedDigest = ComputeRecordDigest(envelope.Record);
         byte[]? protectedDigest = null;
@@ -228,8 +237,7 @@ internal sealed class SecureDeleteOperationJournal
         finally
         {
             CryptographicOperations.ZeroMemory(expectedDigest);
-            if (protectedDigest is not null)
-                CryptographicOperations.ZeroMemory(protectedDigest);
+            if (protectedDigest is not null) CryptographicOperations.ZeroMemory(protectedDigest);
         }
     }
 
@@ -239,6 +247,9 @@ internal sealed class SecureDeleteOperationJournal
     private string GetRecordPath(Guid operationId) =>
         Path.Combine(_journalRoot, operationId.ToString("N") + ".json");
 
+    private string GetAuthorizationClaimPath(Guid authorizationId) =>
+        Path.Combine(_journalRoot, "authorization-" + authorizationId.ToString("N") + ".claim");
+
     private static bool IsValidRecord(SecureDeleteOperationRecord record, Guid expectedOperationId)
     {
         if (record.OperationId == Guid.Empty || record.OperationId != expectedOperationId ||
@@ -247,9 +258,7 @@ internal sealed class SecureDeleteOperationJournal
             !IsKnownState(record.State) ||
             record.CreatedUtc == default || record.UpdatedUtc == default ||
             record.UpdatedUtc < record.CreatedUtc)
-        {
             return false;
-        }
 
         return true;
     }
@@ -266,9 +275,7 @@ internal sealed class SecureDeleteOperationJournal
         _ => false
     };
 
-    private static void EnsureSameOperation(
-        SecureDeleteOperationRecord expected,
-        SecureDeleteOperationRecord persisted)
+    private static void EnsureSameOperation(SecureDeleteOperationRecord expected, SecureDeleteOperationRecord persisted)
     {
         if (expected.OperationId != persisted.OperationId ||
             expected.AuthorizationId != persisted.AuthorizationId ||
@@ -277,9 +284,7 @@ internal sealed class SecureDeleteOperationJournal
             !string.Equals(expected.FileSystem, persisted.FileSystem, StringComparison.OrdinalIgnoreCase) ||
             expected.State != persisted.State ||
             expected.CreatedUtc != persisted.CreatedUtc)
-        {
             throw new InvalidOperationException("Secure Delete journal state changed unexpectedly.");
-        }
     }
 
     private static bool IsAllowedTransition(SecureDeleteOperationState current, SecureDeleteOperationState next)
