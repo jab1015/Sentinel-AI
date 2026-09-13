@@ -148,4 +148,24 @@ Write-Host "Version:         $($installed.Version)"
 Write-Host "Architecture:    $($installed.Architecture)"
 Write-Host 'The test certificate remains in Local Computer > Trusted People for this VM test package.'
 
-Prompt-ForReboot
+$launched = $false
+try {
+    $appUserModelId = "$($installed.PackageFamilyName)!App"
+    Write-Host ''
+    Write-Host 'Launching Sentinel AI so first-run setup can complete...'
+    Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
+    Start-Sleep -Seconds 2
+    $launched = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue).Count -gt 0
+}
+catch {
+    Write-Warning "Sentinel AI was installed but could not be launched automatically: $($_.Exception.Message)"
+}
+
+if ($launched) {
+    Write-Host 'Sentinel AI launched. Follow the Restart Windows prompt shown by Sentinel.'
+    Write-Warning 'Explorer right-click testing is not valid until Windows has restarted.'
+}
+else {
+    Write-Warning 'Sentinel AI did not confirm an automatic launch. Open Sentinel AI manually, then restart Windows before Explorer testing.'
+    Prompt-ForReboot
+}
