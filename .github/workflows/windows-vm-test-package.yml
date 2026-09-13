@@ -23,7 +23,7 @@ concurrency:
 jobs:
   build-sign-validate:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       PACKAGE_NAME: SentinelAI-WindowsVM-x64.msix
       CERT_NAME: SentinelAI-TestSigning.cer
@@ -89,33 +89,43 @@ jobs:
           if ($msixes.Count -ne 1) { throw "Expected exactly one generated MSIX, found $($msixes.Count)." }
           "UNSIGNED_MSIX=$($msixes[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Create ephemeral VM test code-signing certificate
+      - name: Create provider-independent ephemeral VM test certificate
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path $env:OUTPUT_DIR -Force | Out-Null
           [xml]$manifest = Get-Content -LiteralPath 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Package.appxmanifest' -Raw
           $publisher = [string]$manifest.Package.Identity.Publisher
 
-          $cert = New-SelfSignedCertificate `
-            -Type Custom `
-            -Subject $publisher `
-            -FriendlyName 'Sentinel AI Windows VM Test Signing' `
-            -CertStoreLocation 'Cert:\CurrentUser\My' `
-            -KeyAlgorithm RSA `
-            -KeyLength 3072 `
-            -HashAlgorithm SHA256 `
-            -KeySpec Signature `
-            -KeyExportPolicy Exportable `
-            -KeyUsage DigitalSignature `
-            -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3') `
-            -NotAfter (Get-Date).AddDays(30)
+          $rsa = [Security.Cryptography.RSA]::Create(3072)
+          $distinguishedName = [Security.Cryptography.X509Certificates.X500DistinguishedName]::new($publisher)
+          $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $distinguishedName,
+            $rsa,
+            [Security.Cryptography.HashAlgorithmName]::SHA256,
+            [Security.Cryptography.RSASignaturePadding]::Pkcs1)
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature, $true))
+          $ekus = [Security.Cryptography.OidCollection]::new()
+          [void]$ekus.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3', 'Code Signing'))
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($ekus, $true))
 
-          if ($null -eq $cert -or -not $cert.HasPrivateKey) { throw 'Failed to create ephemeral test signing certificate with a private key.' }
+          $cert = $request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5), [DateTimeOffset]::UtcNow.AddDays(30))
+          if ($null -eq $cert -or -not $cert.HasPrivateKey) { throw 'Failed to create in-memory test signing certificate with private key.' }
           if ($cert.Subject -ne $publisher) { throw "Certificate subject '$($cert.Subject)' does not match package Publisher '$publisher'." }
 
+          $passwordPlain = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+          Write-Output "::add-mask::$passwordPlain"
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
+          [IO.File]::WriteAllBytes($pfxPath, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $passwordPlain))
+          if (-not (Test-Path -LiteralPath $pfxPath -PathType Leaf)) { throw 'Failed to create runner-temp signing PFX.' }
+
+          $publicCert = Join-Path $env:OUTPUT_DIR $env:CERT_NAME
+          [IO.File]::WriteAllBytes($publicCert, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
+          $exported = [Security.Cryptography.X509Certificates.X509Certificate2]::new($publicCert)
+          if ($exported.HasPrivateKey) { throw 'Exported VM certificate unexpectedly contains a private key.' }
           $codeSigningOid = '1.3.6.1.5.5.7.3.3'
           $hasCodeSigningEku = $false
-          foreach ($extension in $cert.Extensions) {
+          foreach ($extension in $exported.Extensions) {
             if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
               foreach ($oid in $extension.EnhancedKeyUsages) {
                 if ($oid.Value -eq $codeSigningOid) { $hasCodeSigningEku = $true }
@@ -124,53 +134,73 @@ jobs:
           }
           if (-not $hasCodeSigningEku) { throw 'Generated certificate is missing the Code Signing EKU.' }
 
-          $publicCert = Join-Path $env:OUTPUT_DIR $env:CERT_NAME
-          Export-Certificate -Cert $cert -FilePath $publicCert -Type CERT | Out-Null
-          $exported = [Security.Cryptography.X509Certificates.X509Certificate2]::new($publicCert)
-          if ($exported.HasPrivateKey) { throw 'Exported VM certificate unexpectedly contains a private key.' }
-
-          # Use a one-run random password and a runner-temp PFX so SignTool can sign noninteractively.
-          # The PFX is never committed, staged, or uploaded and is deleted in the always() cleanup step.
-          $passwordPlain = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
-          Write-Output "::add-mask::$passwordPlain"
-          $password = ConvertTo-SecureString -String $passwordPlain -AsPlainText -Force
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
-          Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $password -ChainOption EndEntityCertOnly -NoProperties | Out-Null
-          if (-not (Test-Path -LiteralPath $pfxPath -PathType Leaf)) { throw 'Failed to create runner-temp signing PFX.' }
-
-          "TEST_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TEST_CERT_THUMBPRINT=$($exported.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "TEST_CERT_SUBJECT=$publisher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "TEST_SIGNING_PFX=$pfxPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "TEST_SIGNING_PASSWORD=$passwordPlain" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Created ephemeral test signing material for $($cert.Thumbprint). Only the public certificate is staged as an artifact."
+          Write-Host "Created provider-independent ephemeral test signing material for $($exported.Thumbprint). Only the public certificate is staged."
+          $cert.Dispose()
+          $rsa.Dispose()
 
       - name: Sign VM test MSIX
         shell: pwsh
         run: |
           $signedPackage = Join-Path $env:OUTPUT_DIR $env:PACKAGE_NAME
-          $signLog = 'windows-vm-test-signing.log'
           Copy-Item -LiteralPath $env:UNSIGNED_MSIX -Destination $signedPackage -Force
-
           if (-not (Test-Path -LiteralPath $env:TEST_SIGNING_PFX -PathType Leaf)) { throw 'Ephemeral signing PFX is unavailable.' }
-          "Signing $signedPackage with ephemeral VM test certificate $env:TEST_CERT_THUMBPRINT" | Set-Content -LiteralPath $signLog -Encoding utf8
-          & '${{ steps.tools.outputs.signtool }}' sign /f $env:TEST_SIGNING_PFX /p $env:TEST_SIGNING_PASSWORD /fd SHA256 /v $signedPackage 2>&1 | Tee-Object -FilePath $signLog -Append
-          if ($LASTEXITCODE -ne 0) { throw "SignTool sign failed with exit code $LASTEXITCODE. See $signLog." }
 
-          # Delete private signing material immediately after signing, before package inspection/upload.
+          $stdout = Join-Path $env:RUNNER_TEMP 'signtool-sign.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'signtool-sign.stderr.log'
+          $arguments = @(
+            'sign',
+            '/f', ('"' + $env:TEST_SIGNING_PFX + '"'),
+            '/p', $env:TEST_SIGNING_PASSWORD,
+            '/fd', 'SHA256',
+            '/v', ('"' + $signedPackage + '"'))
+          $process = Start-Process -FilePath '${{ steps.tools.outputs.signtool }}' -ArgumentList $arguments -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (-not $process.WaitForExit(120000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $stdout -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $stderr -ErrorAction SilentlyContinue
+            throw 'SignTool sign exceeded the 120-second safety bound.'
+          }
+          Get-Content -LiteralPath $stdout -ErrorAction SilentlyContinue | Tee-Object -FilePath 'windows-vm-test-signing.log'
+          Get-Content -LiteralPath $stderr -ErrorAction SilentlyContinue | Tee-Object -FilePath 'windows-vm-test-signing.log' -Append
+          if ($process.ExitCode -ne 0) { throw "SignTool sign failed with exit code $($process.ExitCode)." }
+          if (-not (Test-Path -LiteralPath $signedPackage -PathType Leaf)) { throw 'Signed package was not produced.' }
+
           Remove-Item -LiteralPath $env:TEST_SIGNING_PFX -Force -ErrorAction Stop
+          Write-Host 'MSIX signing completed and runner-temp private PFX was deleted.'
 
-          # The certificate is self-signed and runner-local. Trust only the public cert for verification.
+      - name: Verify signed VM test MSIX
+        shell: pwsh
+        run: |
+          $signedPackage = Join-Path $env:OUTPUT_DIR $env:PACKAGE_NAME
           $publicCert = Join-Path $env:OUTPUT_DIR $env:CERT_NAME
           Import-Certificate -FilePath $publicCert -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
           Import-Certificate -FilePath $publicCert -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
 
-          & '${{ steps.tools.outputs.signtool }}' verify /pa /v $signedPackage 2>&1 | Tee-Object -FilePath $signLog -Append
-          if ($LASTEXITCODE -ne 0) { throw "SignTool verify failed with exit code $LASTEXITCODE. See $signLog." }
+          $stdout = Join-Path $env:RUNNER_TEMP 'signtool-verify.stdout.log'
+          $stderr = Join-Path $env:RUNNER_TEMP 'signtool-verify.stderr.log'
+          $arguments = @('verify', '/pa', '/v', ('"' + $signedPackage + '"'))
+          $process = Start-Process -FilePath '${{ steps.tools.outputs.signtool }}' -ArgumentList $arguments -PassThru -NoNewWindow -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (-not $process.WaitForExit(120000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $stdout -ErrorAction SilentlyContinue
+            Get-Content -LiteralPath $stderr -ErrorAction SilentlyContinue
+            throw 'SignTool verify exceeded the 120-second safety bound.'
+          }
+          Get-Content -LiteralPath $stdout -ErrorAction SilentlyContinue | Tee-Object -FilePath 'windows-vm-test-signing.log' -Append
+          Get-Content -LiteralPath $stderr -ErrorAction SilentlyContinue | Tee-Object -FilePath 'windows-vm-test-signing.log' -Append
+          if ($process.ExitCode -ne 0) { throw "SignTool verify failed with exit code $($process.ExitCode)." }
 
           $signature = Get-AuthenticodeSignature -LiteralPath $signedPackage
           if ($signature.Status -ne 'Valid') { throw "Authenticode validation failed: $($signature.Status) - $($signature.StatusMessage)" }
           if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $env:TEST_CERT_THUMBPRINT) {
             throw 'Signed package signer does not match the generated VM test certificate.'
+          }
+          if ($signature.SignerCertificate.Subject -ne $env:TEST_CERT_SUBJECT) {
+            throw "Signed package subject '$($signature.SignerCertificate.Subject)' does not match Publisher '$env:TEST_CERT_SUBJECT'."
           }
           Write-Host "Package signature is valid and bound to $($signature.SignerCertificate.Subject)."
 
@@ -296,7 +326,6 @@ jobs:
           if ($env:TEST_CERT_THUMBPRINT) {
             Remove-Item -LiteralPath "Cert:\CurrentUser\TrustedPeople\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
             Remove-Item -LiteralPath "Cert:\CurrentUser\Root\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
           }
 
       - name: Upload package build diagnostics on failure
