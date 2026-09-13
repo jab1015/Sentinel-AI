@@ -1,0 +1,274 @@
+name: Sentinel Windows VM Test Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/premium-privacy-foundation
+    paths:
+      - '.github/workflows/windows-vm-test-package.yml'
+      - 'tools/windows-vm/**'
+      - 'src/SentinelAI/Sentinel.App/**'
+      - 'src/SentinelAI/Sentinel.PrivilegedBroker/**'
+      - 'src/SentinelAI/Sentinel.ExplorerExtension/**'
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: windows-vm-test-package-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-sign-validate:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PACKAGE_NAME: SentinelAI-WindowsVM-x64.msix
+      CERT_NAME: SentinelAI-TestSigning.cer
+      OUTPUT_DIR: artifacts/windows-vm-test
+
+    steps:
+      - name: Checkout Premium Privacy source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Locate Windows build tools
+        id: tools
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe was not found.' }
+          $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($msbuild)) { throw 'MSBuild.exe was not found.' }
+
+          $sdkRoots = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Directory -ErrorAction Stop | Sort-Object Name -Descending
+          $signtool = $null
+          $makeappx = $null
+          foreach ($root in $sdkRoots) {
+            $candidateSign = Join-Path $root.FullName 'x64\signtool.exe'
+            $candidateMake = Join-Path $root.FullName 'x64\makeappx.exe'
+            if ((Test-Path $candidateSign) -and (Test-Path $candidateMake)) {
+              $signtool = $candidateSign
+              $makeappx = $candidateMake
+              break
+            }
+          }
+          if ($null -eq $signtool -or $null -eq $makeappx) { throw 'SignTool.exe/MakeAppx.exe were not found.' }
+
+          "msbuild=$msbuild" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "signtool=$signtool" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "makeappx=$makeappx" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Verify production package identity is unchanged
+        shell: pwsh
+        run: |
+          $manifestPath = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Package.appxmanifest'
+          [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
+          $identity = $manifest.Package.Identity
+          if ($identity.Name -ne 'ModernMethods.SentinelAI') { throw "Unexpected package name: $($identity.Name)" }
+          if ($identity.Publisher -ne 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A') { throw "Unexpected package publisher: $($identity.Publisher)" }
+          Write-Host "Production package identity preserved: $($identity.Name), $($identity.Publisher), version $($identity.Version)."
+
+      - name: Build unsigned Release x64 MSIX
+        shell: pwsh
+        run: |
+          $packageProject = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj'
+          $appPackages = 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\AppPackages'
+          if (Test-Path $appPackages) { Remove-Item $appPackages -Recurse -Force }
+
+          & '${{ steps.tools.outputs.msbuild }}' $packageProject /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $msixes = @(Get-ChildItem $appPackages -Recurse -File -Filter '*.msix' -ErrorAction Stop | Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($msixes.Count -ne 1) { throw "Expected exactly one generated MSIX, found $($msixes.Count)." }
+          "UNSIGNED_MSIX=$($msixes[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Create ephemeral VM test code-signing certificate
+        id: certificate
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:OUTPUT_DIR -Force | Out-Null
+          [xml]$manifest = Get-Content -LiteralPath 'src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Package.appxmanifest' -Raw
+          $publisher = [string]$manifest.Package.Identity.Publisher
+
+          $cert = New-SelfSignedCertificate `
+            -Type Custom `
+            -Subject $publisher `
+            -FriendlyName 'Sentinel AI Windows VM Test Signing' `
+            -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -KeyAlgorithm RSA `
+            -KeyLength 3072 `
+            -HashAlgorithm SHA256 `
+            -KeySpec Signature `
+            -KeyExportPolicy Exportable `
+            -KeyUsage DigitalSignature `
+            -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3') `
+            -NotAfter (Get-Date).AddDays(30)
+
+          if ($null -eq $cert -or -not $cert.HasPrivateKey) { throw 'Failed to create ephemeral test signing certificate with a private key.' }
+          if ($cert.Subject -ne $publisher) { throw "Certificate subject '$($cert.Subject)' does not match package Publisher '$publisher'." }
+
+          $publicCert = Join-Path $env:OUTPUT_DIR $env:CERT_NAME
+          Export-Certificate -Cert $cert -FilePath $publicCert -Type CERT | Out-Null
+          $exported = [Security.Cryptography.X509Certificates.X509Certificate2]::new($publicCert)
+          if ($exported.HasPrivateKey) { throw 'Exported VM certificate unexpectedly contains a private key.' }
+
+          "TEST_CERT_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TEST_CERT_SUBJECT=$publisher" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Created ephemeral signing certificate $($cert.Thumbprint). Private key remains only in the runner certificate store."
+
+      - name: Sign VM test MSIX
+        shell: pwsh
+        run: |
+          $signedPackage = Join-Path $env:OUTPUT_DIR $env:PACKAGE_NAME
+          Copy-Item -LiteralPath $env:UNSIGNED_MSIX -Destination $signedPackage -Force
+
+          & '${{ steps.tools.outputs.signtool }}' sign /sha1 $env:TEST_CERT_THUMBPRINT /fd SHA256 /v $signedPackage
+          if ($LASTEXITCODE -ne 0) { throw 'SignTool failed to sign the VM test MSIX.' }
+
+          # Trust only in the ephemeral runner user's TrustedPeople store so WinTrust can validate the self-signed test certificate.
+          Import-Certificate -FilePath (Join-Path $env:OUTPUT_DIR $env:CERT_NAME) -CertStoreLocation 'Cert:\CurrentUser\TrustedPeople' | Out-Null
+
+          & '${{ steps.tools.outputs.signtool }}' verify /pa /v $signedPackage
+          if ($LASTEXITCODE -ne 0) { throw 'SignTool verification failed for the signed VM test MSIX.' }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $signedPackage
+          if ($signature.Status -ne 'Valid') { throw "Authenticode validation failed: $($signature.Status) - $($signature.StatusMessage)" }
+          if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $env:TEST_CERT_THUMBPRINT) {
+            throw 'Signed package signer does not match the generated VM test certificate.'
+          }
+          Write-Host "Package signature is valid and bound to $($signature.SignerCertificate.Subject)."
+
+      - name: Inspect signed package contents and manifest
+        shell: pwsh
+        run: |
+          $signedPackage = Join-Path $env:OUTPUT_DIR $env:PACKAGE_NAME
+          $unpackRoot = Join-Path $env:RUNNER_TEMP 'sentinel-windows-vm-test-unpacked'
+          if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $unpackRoot | Out-Null
+
+          & '${{ steps.tools.outputs.makeappx }}' unpack /p $signedPackage /d $unpackRoot /o
+          if ($LASTEXITCODE -ne 0) { throw 'MakeAppx failed to unpack the signed VM test package.' }
+
+          $required = @('Sentinel.App.exe', 'Sentinel.PrivilegedBroker.exe', 'Sentinel.ExplorerExtension.dll')
+          foreach ($name in $required) {
+            $matches = @(Get-ChildItem $unpackRoot -Recurse -File -Filter $name)
+            if ($matches.Count -ne 1) { throw "Expected exactly one $name in the package, found $($matches.Count)." }
+            Write-Host "Found $name at $($matches[0].FullName.Substring($unpackRoot.Length + 1))."
+          }
+
+          [xml]$appxManifest = Get-Content -LiteralPath (Join-Path $unpackRoot 'AppxManifest.xml') -Raw
+          $identity = $appxManifest.Package.Identity
+          if ($identity.Name -ne 'ModernMethods.SentinelAI') { throw "Packaged identity name mismatch: $($identity.Name)" }
+          if ($identity.Publisher -ne $env:TEST_CERT_SUBJECT) { throw "Packaged Publisher '$($identity.Publisher)' does not match signing subject '$env:TEST_CERT_SUBJECT'." }
+          if ($identity.ProcessorArchitecture -ne 'x64') { throw "Expected x64 package architecture, found '$($identity.ProcessorArchitecture)'." }
+
+          $manifestText = Get-Content -LiteralPath (Join-Path $unpackRoot 'AppxManifest.xml') -Raw
+          foreach ($requiredFragment in @(
+              'Category="windows.comServer"',
+              'Category="windows.fileExplorerContextMenus"',
+              'Sentinel.ExplorerExtension.dll',
+              '6C5E88B7-2A44-4B6D-9A6C-4F1A5C9F6E21',
+              'Type="*"',
+              'Type="Directory"')) {
+            if ($manifestText -notlike "*$requiredFragment*") { throw "Packaged manifest is missing expected Explorer registration fragment: $requiredFragment" }
+          }
+
+          function Get-PeMachine([string]$Path) {
+            $bytes = [IO.File]::ReadAllBytes($Path)
+            if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw "$Path is not a valid PE file." }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) { throw "$Path has an invalid PE header offset." }
+            return [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          }
+
+          foreach ($name in $required) {
+            $path = (Get-ChildItem $unpackRoot -Recurse -File -Filter $name | Select-Object -First 1).FullName
+            $machine = Get-PeMachine $path
+            if ($machine -ne [uint16]0x8664) { throw "$name machine 0x$($machine.ToString('x4')) did not match x64 0x8664." }
+            Write-Host "$name is x64 PE machine 0x8664."
+          }
+
+          $privateKeyFiles = @(Get-ChildItem $unpackRoot -Recurse -File | Where-Object { $_.Extension -in @('.pfx', '.p12', '.p8', '.key') })
+          if ($privateKeyFiles.Count -ne 0) { throw "Package contains private-key-like files: $($privateKeyFiles.FullName -join ', ')" }
+          $privateKeyMarkers = @(Get-ChildItem $unpackRoot -Recurse -File -Include '*.json','*.config','*.xml','*.txt' | Select-String -SimpleMatch '-----BEGIN PRIVATE KEY-----' -ErrorAction SilentlyContinue)
+          if ($privateKeyMarkers.Count -ne 0) { throw 'Package contains a plaintext private-key marker.' }
+
+          Write-Host 'Package content, architecture, Publisher, Explorer COM/context-menu registration, and private-key checks passed.'
+
+      - name: Stage install helpers and package metadata
+        shell: pwsh
+        run: |
+          Copy-Item 'tools\windows-vm\Install-SentinelAI-Test.ps1' $env:OUTPUT_DIR -Force
+          Copy-Item 'tools\windows-vm\Uninstall-SentinelAI-Test.ps1' $env:OUTPUT_DIR -Force
+
+          $packagePath = Join-Path $env:OUTPUT_DIR $env:PACKAGE_NAME
+          $hash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToUpperInvariant()
+          "$hash  $env:PACKAGE_NAME" | Set-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'SHA256SUMS.txt') -Encoding ascii
+
+          @(
+            "Branch=feature/premium-privacy-foundation",
+            "SourceCommit=$env:GITHUB_SHA",
+            'Architecture=x64',
+            'Configuration=Release',
+            "Package=$env:PACKAGE_NAME",
+            'PackageFormat=MSIX',
+            'Signed=YES',
+            "Certificate=$env:CERT_NAME",
+            "CertificateSubject=$env:TEST_CERT_SUBJECT",
+            "CertificateThumbprint=$env:TEST_CERT_THUMBPRINT",
+            "SHA256=$hash",
+            'PrivateKeyExported=NO',
+            'ProductionStoreSigningKeyUsed=NO'
+          ) | Set-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PackageBuildInfo.txt') -Encoding utf8
+
+          "PACKAGE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Final package SHA-256: $hash"
+
+      - name: Upload signed Windows VM test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SentinelAI-WindowsVM-x64-${{ github.sha }}
+          path: artifacts/windows-vm-test/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish package verification status
+        uses: actions/github-script@v7
+        env:
+          PACKAGE_SHA256: ${{ env.PACKAGE_SHA256 }}
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'windows-vm-test-package',
+              description: `PASS sha256=${process.env.PACKAGE_SHA256}`,
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+
+      - name: Remove ephemeral test certificate private key
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:TEST_CERT_THUMBPRINT) {
+            Remove-Item -LiteralPath "Cert:\CurrentUser\TrustedPeople\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath "Cert:\CurrentUser\My\$env:TEST_CERT_THUMBPRINT" -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload package build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-vm-test-package-diagnostics-${{ github.sha }}
+          path: windows-vm-test-package.log
+          if-no-files-found: warn
+          retention-days: 7
