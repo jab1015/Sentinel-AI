@@ -29,6 +29,9 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(VisualStudioVersion)', '18.0'))" Label="VisualStudio2026Toolset">
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Platform)'=='ARM64'" Label="Configuration">
     <PlatformToolset>v145</PlatformToolset>
   </PropertyGroup>
