@@ -40,6 +40,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <PreprocessorDefinitions>UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ForcedIncludeFiles>SentinelExplorerCompat.h;%(ForcedIncludeFiles)</ForcedIncludeFiles>
     </ClCompile>
     <Link>
       <ModuleDefinitionFile>Sentinel.ExplorerExtension.def</ModuleDefinitionFile>
@@ -50,6 +51,7 @@
     <ClCompile Include="SentinelExplorerCommand.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="SentinelExplorerCompat.h" />
     <None Include="Sentinel.ExplorerExtension.def" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
