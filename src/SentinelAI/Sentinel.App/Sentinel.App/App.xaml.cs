@@ -80,6 +80,7 @@ namespace Sentinel.App
                 else
                 {
                     _pendingInteractiveActivation = false;
+                    PromptForExplorerRestartAfterInstall();
                     _window.Activate();
                 }
 
