@@ -6,21 +6,45 @@
 using Sentinel.App.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 
 namespace Sentinel.App.Services
 {
     /// <summary>
     /// Maintains a rolling local baseline so optimization decisions are based on
     /// this computer's normal behavior instead of generic tuning assumptions.
-    /// This service is observational only; it never changes Windows settings.
+    /// Baseline history is persisted locally so ordinary app restarts do not force
+    /// Sentinel to relearn the same computer from zero. This service is observational
+    /// only; it never changes Windows settings.
     /// </summary>
     public sealed class PerformanceBaselineService
     {
         private const int MaximumSamples = 720;
+        private const int PersistenceSchemaVersion = 1;
         private static readonly TimeSpan MinimumSampleInterval = TimeSpan.FromMinutes(1);
         private readonly Queue<PerformanceSample> _samples = new();
         private readonly object _sync = new();
+        private readonly string _persistencePath;
+
+        public PerformanceBaselineService()
+            : this(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Modern Methods",
+                "Sentinel AI",
+                "performance-baseline.json"))
+        {
+        }
+
+        internal PerformanceBaselineService(string persistencePath)
+        {
+            if (string.IsNullOrWhiteSpace(persistencePath))
+                throw new ArgumentException("A performance-baseline persistence path is required.", nameof(persistencePath));
+
+            _persistencePath = Path.GetFullPath(persistencePath);
+            LoadPersistedSamples();
+        }
 
         public PerformanceBaselineResult Record(SystemSnapshot snapshot)
         {
@@ -50,6 +74,7 @@ namespace Sentinel.App.Services
                 while (_samples.Count > MaximumSamples)
                     _samples.Dequeue();
 
+                PersistSamplesBestEffort(_samples.ToArray());
                 return BuildResult(sample, _samples.ToArray());
             }
         }
@@ -65,6 +90,93 @@ namespace Sentinel.App.Services
                 return BuildResult(samples[^1], samples);
             }
         }
+
+        private void LoadPersistedSamples()
+        {
+            try
+            {
+                if (!File.Exists(_persistencePath)) return;
+
+                PersistedBaseline? persisted = JsonSerializer.Deserialize<PersistedBaseline>(
+                    File.ReadAllText(_persistencePath));
+                if (persisted is null ||
+                    persisted.SchemaVersion != PersistenceSchemaVersion ||
+                    persisted.Samples is null ||
+                    persisted.Samples.Count > MaximumSamples)
+                    return;
+
+                PerformanceSample[] ordered = persisted.Samples
+                    .Where(IsValidPersistedSample)
+                    .OrderBy(sample => sample.Timestamp)
+                    .ToArray();
+
+                PerformanceSample? previous = null;
+                foreach (PerformanceSample sample in ordered)
+                {
+                    if (previous is not null &&
+                        sample.Timestamp - previous.Timestamp < MinimumSampleInterval)
+                        continue;
+
+                    _samples.Enqueue(sample);
+                    previous = sample;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
+            {
+                // A damaged/unavailable local baseline must never prevent Sentinel from
+                // monitoring. Fail closed to an empty observational history and relearn.
+                _samples.Clear();
+            }
+        }
+
+        private void PersistSamplesBestEffort(IReadOnlyCollection<PerformanceSample> samples)
+        {
+            string? directory = Path.GetDirectoryName(_persistencePath);
+            string tempPath = _persistencePath + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(directory))
+                    Directory.CreateDirectory(directory);
+
+                PersistedBaseline payload = new(PersistenceSchemaVersion, samples.ToArray());
+                byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload);
+                using (FileStream stream = new(
+                           tempPath,
+                           FileMode.CreateNew,
+                           FileAccess.Write,
+                           FileShare.None,
+                           4096,
+                           FileOptions.WriteThrough))
+                {
+                    stream.Write(json, 0, json.Length);
+                    stream.Flush(flushToDisk: true);
+                }
+
+                File.Move(tempPath, _persistencePath, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                // Persistence improves continuity but is not itself an optimization safety
+                // prerequisite. Keep the in-memory history and try again on the next sample.
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+                catch { }
+            }
+        }
+
+        private static bool IsValidPersistedSample(PerformanceSample sample) =>
+            sample.Timestamp != default &&
+            double.IsFinite(sample.CpuPercent) && sample.CpuPercent is >= 0 and <= 100 &&
+            double.IsFinite(sample.MemoryPercent) && sample.MemoryPercent is >= 0 and <= 100 &&
+            double.IsFinite(sample.DiskUsedPercent) && sample.DiskUsedPercent is >= 0 and <= 100 &&
+            sample.ProcessCount >= 0 &&
+            double.IsFinite(sample.DownloadMbps) && sample.DownloadMbps >= 0 &&
+            double.IsFinite(sample.UploadMbps) && sample.UploadMbps >= 0;
 
         private static PerformanceBaselineResult BuildResult(
             PerformanceSample current,
@@ -120,6 +232,10 @@ namespace Sentinel.App.Services
         }
 
         private static double Clamp(double value) => Math.Clamp(value, 0, 100);
+
+        private sealed record PersistedBaseline(
+            int SchemaVersion,
+            IReadOnlyList<PerformanceSample> Samples);
 
         private sealed record PerformanceSample(
             DateTime Timestamp,
