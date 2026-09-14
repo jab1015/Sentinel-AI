@@ -1,6 +1,6 @@
 name: Sentinel Windows VM Test Package
 
-# Dedicated signed LocalDev package for isolated Windows VM qualification.
+# Dedicated signed LocalDev package for isolated Windows VM qualification; workflow-only changes intentionally re-qualify the exact branch head.
 on:
   workflow_dispatch:
   push:
