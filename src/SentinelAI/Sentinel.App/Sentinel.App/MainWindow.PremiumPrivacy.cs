@@ -121,7 +121,7 @@ public sealed partial class MainWindow
         if (File.Exists(output) || Directory.Exists(output))
         {
             await ShowPrivacyMessageAsync(rootElement, "Encryption output already exists",
-                $"This file has already produced an encrypted Sentinel container at:\n\n{output}\n\nSentinel will never overwrite that encrypted copy. If you intentionally want a new encrypted copy, rename or move the existing .sentinel.senc file first.");
+                $"This file already has a Sentinel encrypted file at:\n\n{output}\n\nSentinel will never overwrite it. Move or rename the existing .sentinel.senc file first if you intentionally need to encrypt this plaintext file again.");
             return;
         }
 
@@ -129,7 +129,7 @@ public sealed partial class MainWindow
         ContentDialog confirmation = new()
         {
             Title = "Encrypt for This PC",
-            Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\nProtection: AES-256-GCM encrypted Sentinel container\nKey protection: current Windows user\nEncrypted copy:\n{output}\n\nThis mode is convenient protection against offline access, copied files, and other Windows profiles. It is not intended to protect plaintext from someone who already controls your unlocked Windows user session. Use Encrypt for Sharing when you need a password-protected file that is independent of this Windows profile.\n\nThe original plaintext file will remain unchanged. Encryption does not delete the original. If you later want the plaintext removed, use Secure Delete as a separate explicit action.",
+            Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\nProtection: AES-256-GCM encrypted Sentinel container\nKey protection: current Windows user\nEncrypted file:\n{output}\n\nThis mode is convenient protection against offline access, copied files, and other Windows profiles. It is not intended to protect plaintext from someone who already controls your unlocked Windows user session. Use Encrypt for Sharing when you need a password-protected file that is independent of this Windows profile.\n\nSentinel will first create, flush, reopen, and authenticate the encrypted file. Only after that succeeds will Sentinel remove the exact readable plaintext source automatically. If encryption or verification fails, the original remains. This removes the ordinary plaintext file but does not claim that storage-media remnants are physically unrecoverable.",
             PrimaryButtonText = "Encrypt for This PC",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -146,8 +146,8 @@ public sealed partial class MainWindow
             return;
         }
 
-        FileEncryptionService encryption = new();
-        FileEncryptionResult result = await encryption.EncryptAsync(
+        FileEncryptionReplacementService replacement = new();
+        FileEncryptionResult result = await replacement.EncryptReplacingSourceAsync(
             path,
             output,
             new IFileKeyProtector[] { new WindowsCurrentUserFileKeyProtector() }).ConfigureAwait(true);
@@ -156,8 +156,8 @@ public sealed partial class MainWindow
             rootElement,
             result.Succeeded && result.Verified ? "Encrypted and verified" : "Encryption did not complete",
             result.Succeeded && result.Verified
-                ? $"Encryption succeeded. Sentinel created, reopened, and authenticated this encrypted copy:\n\n{output}\n\nPlaintext bytes protected: {result.PlaintextBytes:N0}\n\nYour original file is still present and readable by design. To restore this encrypted copy later, use Decrypt on the .sentinel.senc file."
-                : $"Sentinel did not report a verified encrypted output.\n\nStatus: {result.Code}\n{result.Message}\n\nInvalid output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
+                ? $"Sentinel created, reopened, and authenticated the encrypted file, then removed the readable plaintext source.\n\nEncrypted file:\n{output}\n\nPlaintext bytes protected: {result.PlaintextBytes:N0}\n\nTo restore the file later, use Decrypt on the .sentinel.senc file."
+                : $"Sentinel did not complete the verified replacement operation.\n\nStatus: {result.Code}\n{result.Message}\n\nEncrypted output verification: {(result.Verified ? "VERIFIED" : "NOT VERIFIED")}\nInvalid partial output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
     }
 
     private async Task EncryptExplorerFileForSharingAsync(string path, FrameworkElement rootElement)
@@ -166,7 +166,7 @@ public sealed partial class MainWindow
         if (File.Exists(output) || Directory.Exists(output))
         {
             await ShowPrivacyMessageAsync(rootElement, "Encryption output already exists",
-                $"Sentinel will not overwrite this existing encrypted copy:\n\n{output}\n\nRename or move the existing .sentinel.senc file before creating another shared encrypted copy.").ConfigureAwait(true);
+                $"Sentinel will not overwrite this existing encrypted file:\n\n{output}\n\nMove or rename the existing .sentinel.senc file before encrypting this plaintext file again.").ConfigureAwait(true);
             return;
         }
 
@@ -174,7 +174,7 @@ public sealed partial class MainWindow
         ContentDialog confirmation = new()
         {
             Title = "Encrypt for Sharing",
-            Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\nPortable encrypted copy:\n{output}\n\nSentinel will protect this file with a password-derived key using Argon2id and authenticated AES-256-GCM encryption. The encrypted file will not depend on your Windows user profile, so it can be sent to another Sentinel user and decrypted there with the password.\n\nSend the password separately from the encrypted file. Sentinel does not store or recover the password.\n\nThe original plaintext file will remain unchanged. Secure Delete is always a separate explicit action.",
+            Content = $"Selected file:\n{path}\n\nSize: {FormatBytes(file.Length)}\nPortable encrypted file:\n{output}\n\nSentinel will protect this file with a password-derived key using Argon2id and authenticated AES-256-GCM encryption. The encrypted file will not depend on your Windows user profile, so it can be sent to another Sentinel user and decrypted there with the password.\n\nSend the password separately from the encrypted file. Sentinel does not store or recover the password.\n\nSentinel will remove the readable plaintext source automatically only after the portable encrypted file has been flushed, reopened, and authenticated successfully. If encryption or verification fails, the original remains. This is normal exact-file removal and is not a claim of physical-media erasure.",
             PrimaryButtonText = "Continue",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -204,8 +204,8 @@ public sealed partial class MainWindow
         {
             using PasswordFileKeyProtector protector = new(password);
             Array.Clear(password, 0, password.Length);
-            FileEncryptionService encryption = new();
-            result = await encryption.EncryptAsync(
+            FileEncryptionReplacementService replacement = new();
+            result = await replacement.EncryptReplacingSourceAsync(
                 path,
                 output,
                 new IFileKeyProtector[] { protector }).ConfigureAwait(true);
@@ -219,8 +219,8 @@ public sealed partial class MainWindow
             rootElement,
             result.Succeeded && result.Verified ? "Portable encrypted file verified" : "Encryption did not complete",
             result.Succeeded && result.Verified
-                ? $"Sentinel created, reopened, and authenticated the portable encrypted file:\n\n{output}\n\nPlaintext bytes protected: {result.PlaintextBytes:N0}\n\nThis .sentinel.senc file can be sent to another Sentinel user. They will need the sharing password to decrypt it. Send that password separately.\n\nYour original plaintext file is still present and unchanged."
-                : $"Sentinel did not report a verified portable encrypted output.\n\nStatus: {result.Code}\n{result.Message}\n\nInvalid output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}\n\nThe original plaintext file was not deleted.").ConfigureAwait(true);
+                ? $"Sentinel created, reopened, and authenticated the portable encrypted file, then removed the readable plaintext source.\n\nEncrypted file:\n{output}\n\nPlaintext bytes protected: {result.PlaintextBytes:N0}\n\nThis .sentinel.senc file can be sent to another Sentinel user. They will need the sharing password to decrypt it. Send that password separately."
+                : $"Sentinel did not complete the portable encryption replacement.\n\nStatus: {result.Code}\n{result.Message}\n\nEncrypted output verification: {(result.Verified ? "VERIFIED" : "NOT VERIFIED")}\nInvalid partial output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
     }
 
     private static async Task<char[]?> PromptForPortablePasswordAsync(
