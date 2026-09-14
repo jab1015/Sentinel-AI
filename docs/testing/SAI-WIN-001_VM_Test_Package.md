@@ -1,8 +1,8 @@
 # SAI-WIN-001 — Windows VM Test Package
 
-Version: 1.1  
-Status: LOCALDEV VM PACKAGE IMPLEMENTED — CURRENT SIGNED QUALIFICATION RUN IN PROGRESS  
-Last Updated: 2026-09-13
+Version: 1.2  
+Status: LOCALDEV SOURCE BUILD PASS — AUTOMATED SIGNED PACKAGE QUALIFICATION STILL OPEN  
+Last Updated: 2026-09-14
 
 Copyright (c) 2026 Modern Methods.
 
@@ -10,119 +10,116 @@ Copyright (c) 2026 Modern Methods.
 
 ## Purpose
 
-This document is the handoff and evidence record for producing the isolated signed Sentinel AI Windows 11 VM test package. It is not a production-release or Microsoft Store authorization.
+This document is the handoff and evidence record for producing and validating the isolated signed Sentinel AI Windows 11 VM test package. It is not Microsoft Store or production-release authorization.
 
 ## Current Source
 
 - Repository: `jab1015/Sentinel-AI`
 - Branch: `feature/premium-privacy-foundation`
-- LocalDev VM package implementation checkpoint before this documentation synchronization: `36f8dafda6e11ed7234440f7009e5b3be266c32d`
-- Package version: `1.0.28.0`
+- Exact source checkpoint used for the current manual LocalDev build: `c0b60c06e4f03f9486965c799f7af028dd450a05`
+- Package version: `1.0.27.0`
 - Architecture: `x64`
 - Configuration: `LocalDev`
 - Package format: `MSIX`
-- Expected test package name: `SentinelAI-WindowsVM-x64.msix`
-- Test public certificate: `SentinelAI-TestSigning.cer`
-- Production Store signing key used: **NO**
-- Private key committed: **NO**
-- Private key artifact published: **NO**
+- Production identity retained: `ModernMethods.SentinelAI`
+- Publisher retained: `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`
+- Production Store signing key used for LocalDev test package: **NO**
+
+Documentation commits after this checkpoint do not change which source SHA the current manual build came from.
+
+## Exact-Head CI Evidence
+
+Premium Privacy workflow run `34792512987` against `c0b60c06e4f03f9486965c799f7af028dd450a05`: **PASS**.
+
+That run qualified the Premium Privacy source foundation, including Explorer acceptance, file-encryption/Secure Delete acceptance, privacy discovery, gateway entitlement coverage, native Explorer builds for x64/x86/ARM64, desktop app build, gateway build, unsigned x64 package creation, and packaged Explorer-extension verification.
+
+Dedicated Windows VM package workflow run `34792512975` against the same SHA:
+
+- LocalDev entitlement-boundary verification: PASS
+- Release x64 entitlement-path compile: PASS
+- Build/sign/qualify LocalDev x64 VM package: remained active until workflow cancellation
+- Overall conclusion: **CANCELLED**
+
+Therefore automated signed-package qualification is still open. Do not relabel that workflow as passing.
+
+## Manual Visual Studio Evidence
+
+On 2026-09-13, source `c0b60c06...` was pulled locally and Visual Studio was configured as:
+
+- Configuration: `LocalDev`
+- Platform: `x64`
+
+`Build -> Rebuild Solution` completed with:
+
+`2 succeeded, 0 failed, 1 up-to-date, 0 skipped`
+
+The user then entered the Visual Studio `Create App Packages` signing wizard. The existing selected certificate showed Publisher-compatible subject `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`, SHA256 signing, and expiration in 2027.
+
+This manual package is for isolated VM testing only. It is not Store/production evidence and does not replace the still-open automated signed-package qualification problem.
 
 ## Test-Only Subscription Behavior
 
-The Windows VM package is intentionally compiled with the existing `LocalDev` configuration. `Sentinel.App.csproj` defines `SENTINEL_LOCAL_DEV` only for that configuration.
+The Windows VM package is intentionally compiled with `LocalDev`. `Sentinel.App.csproj` defines `SENTINEL_LOCAL_DEV` only for that configuration.
 
-`PremiumPrivacyEntitlementClient` has a compile-time `#if SENTINEL_LOCAL_DEV` authorization path that allows the supported Premium Privacy scopes for isolated VM validation without requiring an active Microsoft Store subscription:
+`PremiumPrivacyEntitlementClient` contains a compile-time `#if SENTINEL_LOCAL_DEV` path permitting supported Premium Privacy scopes for isolated VM validation without an active Store subscription. Release/Store builds compile the authoritative Microsoft Store + Sentinel gateway flow.
 
-- `privacy.encrypt`
-- `privacy.vault`
-- `privacy.secure-delete`
-- `privacy.discovery`
+This bypass must remain impossible to enable through a runtime preference, environment variable, hidden UI toggle, or reusable production token.
 
-The VM authorization result is visibly identified as `LocalVmTestAuthorized` and uses a `LOCAL-VM-TEST-...` token identifier.
+## Packaging Requirements
 
-This is **not** a runtime preference, environment-variable bypass, hidden UI toggle, or reusable production token. Release/Store builds compile the normal authoritative Microsoft Store + Sentinel gateway flow and still require real entitlement verification.
+The final VM package must preserve:
 
-The dedicated VM workflow separately compiles the Release x64 application before creating the LocalDev package so accidental removal or breakage of the authoritative Release entitlement path is detected.
+- package version `1.0.27.0`;
+- identity `ModernMethods.SentinelAI`;
+- Publisher `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`;
+- x64 architecture;
+- exactly one each of `Sentinel.App.exe`, `Sentinel.PrivilegedBroker.exe`, and `Sentinel.ExplorerExtension.dll`;
+- Explorer COM/context-menu registration with CLSID `6C5E88B7-2A44-4B6D-9A6C-4F1A5C9F6E21`;
+- `windows.comServer` and `windows.fileExplorerContextMenus` manifest registrations.
 
-## Packaging Workflow
+## Encryption UX Requirement for VM Validation
 
-Workflow: `.github/workflows/windows-vm-test-package.yml`
+The current source checkpoint still leaves the original plaintext file untouched after creating `.sentinel.senc`. That behavior has now been rejected for the intended user experience.
 
-The workflow:
+Required next implementation:
 
-1. verifies the compile-time LocalDev entitlement boundary and continued presence of the authoritative Store/gateway path;
-2. compiles the Release x64 app as a regression gate;
-3. builds the Windows Application Packaging Project in `LocalDev / x64 / SideloadOnly` mode;
-4. maps the native Explorer extension to its qualified `Release` native configuration because the C++ project intentionally has no LocalDev configuration and contains no entitlement logic;
-5. creates an ephemeral runner-only RSA 3072 Code Signing certificate whose subject matches the existing package Publisher;
-6. exports only the public `.cer` to the artifact;
-7. signs the MSIX and deletes the temporary PFX;
-8. verifies the package signature and signer;
-9. unpacks and verifies package contents, manifest registrations and x64 PE architecture;
-10. stages install/uninstall helpers and SHA-256 metadata;
-11. refuses to publish private signing material.
+- `Encrypt for This PC` and `Encrypt for Sharing...` must create and verify the `.sentinel.senc` file first;
+- only after verified success, automatically remove the plaintext source;
+- no `Keep original` option should be shown;
+- any encryption/finalization/verification failure must leave the plaintext source intact;
+- removal of the plaintext source must not damage or invalidate the self-contained `.senc` container;
+- existing older `.senc` files must remain decryptable.
 
-Production package identity remains unchanged:
+Do not treat this requirement as implemented until source, regression tests, and qualification are updated.
 
-- Name: `ModernMethods.SentinelAI`
-- Publisher: `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`
+## Required Runtime Tests
 
-## Required Package Contents
+For the installed LocalDev package, validate at minimum:
 
-The final package must contain exactly one of each:
-
-- `Sentinel.App.exe`
-- `Sentinel.PrivilegedBroker.exe`
-- `Sentinel.ExplorerExtension.dll`
-
-The packaged manifest must preserve:
-
-- `windows.comServer`
-- `windows.fileExplorerContextMenus`
-- `Sentinel.ExplorerExtension.dll`
-- CLSID `6C5E88B7-2A44-4B6D-9A6C-4F1A5C9F6E21`
-- `Type="*"`
-- `Type="Directory"`
-
-## Current Qualification Attempt
-
-Dedicated workflow run: `34777838659`  
-Source SHA: `36f8dafda6e11ed7234440f7009e5b3be266c32d`  
-State at documentation update: **IN PROGRESS**
-
-Do not mark the package VM-ready until this run completes successfully and publishes the signed artifact.
-
-## Required Success Evidence
-
-Before installation begins require:
-
-- compile-time LocalDev entitlement boundary: PASS
-- Release x64 entitlement path compile: PASS
-- LocalDev x64 MSIX build: PASS
-- test signature creation: PASS
-- signature verification: PASS
-- signer Publisher match: PASS
-- `Sentinel.App.exe`: present and x64
-- `Sentinel.PrivilegedBroker.exe`: present and x64
-- `Sentinel.ExplorerExtension.dll`: present and x64
-- Explorer COM/context-menu manifest registration: PASS
-- SHA-256 published
-- public `.cer` published
-- install/uninstall helpers published
-- no PFX/private key/password in artifact
-
-## Installation Rule
-
-For this VM test package, use **LocalDev**, not Release.
-
-- `LocalDev`: subscription-free isolated Windows testing.
-- `Release`: real Microsoft Store + Sentinel gateway entitlement remains required.
-
-A LocalDev package must never be submitted to the Microsoft Store or treated as production evidence for subscription enforcement.
+1. install/upgrade/uninstall;
+2. launch and startup behavior;
+3. Explorer context-menu registration and restart behavior;
+4. `Encrypt for This PC`;
+5. `Encrypt for Sharing...` with password confirmation;
+6. decrypt local-profile container;
+7. decrypt portable container with correct password;
+8. wrong password failure;
+9. tamper failure;
+10. plaintext source-removal behavior after the pending UX change;
+11. source preservation on encryption failure;
+12. Vault lifecycle/recovery;
+13. Secure Delete;
+14. standard-user/admin/UAC behavior;
+15. Defender/firewall interaction;
+16. quarantine/recovery and crash/failure behavior;
+17. stability/resource behavior.
 
 ## Current Readiness
 
-- WINDOWS VM TESTING READY: **PENDING CURRENT SIGNED PACKAGE WORKFLOW**
+- PREMIUM PRIVACY EXACT-HEAD CI: **PASS at c0b60c06...**
+- MANUAL LOCALDEV X64 REBUILD: **PASS**
+- MANUAL LOCALDEV MSIX CREATION: **IN PROGRESS**
+- AUTOMATED SIGNED VM PACKAGE QUALIFICATION: **NO / CANCELLED**
 - SUBSCRIPTION REQUIRED IN LOCALDEV VM PACKAGE: **NO**
 - SUBSCRIPTION REQUIRED IN RELEASE/STORE BUILD: **YES**
 - PRODUCTION STORE READY: **NO**
