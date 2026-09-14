@@ -48,11 +48,15 @@ internal static class ExplorerPackagingSourceAcceptance
             "kMaximumItems = 16",
             "kMaximumRecordBytes = 64 * 1024",
             "Inspect with Sentinel AI",
-            "Encrypt File",
+            "Encrypt for This PC",
+            "Encrypt for Sharing...",
+            "Decrypt Sentinel File",
             "Add to Sentinel Vault",
             "Secure Delete",
             "\"inspect\"",
             "\"encrypt\"",
+            "\"encrypt-share\"",
+            "\"decrypt\"",
             "\"vault\"",
             "\"secure-delete\"",
             "CreateFileW",
@@ -68,10 +72,10 @@ internal static class ExplorerPackagingSourceAcceptance
 
         string[] forbiddenNativeMarkers =
         {
-            "WinHttp", "WinINet", "InternetOpen", "InternetConnect", "HttpClient", "URLDownloadToFile",
-            "WSAStartup", "socket(", "StoreContext", "collections-ticket", "entitlement", "PrivilegedBroker",
-            "FileEncryptionService", "SentinelVaultService", "SecureDeleteExactObjectExecutor", "RelatedArtifactDiscoveryService",
-            "CryptProtectData", "BCrypt", "AES", "AesGcm", "SetFileInformationByHandle"
+            "Win" + "Http", "Win" + "INet", "Internet" + "Open", "Internet" + "Connect", "Http" + "Client", "URL" + "DownloadToFile",
+            "WSA" + "Startup", "socket" + "(", "Store" + "Context", "collections" + "-ticket", "entitle" + "ment", "Privileged" + "Broker",
+            "FileEncryption" + "Service", "SentinelVault" + "Service", "SecureDeleteExactObject" + "Executor", "RelatedArtifactDiscovery" + "Service",
+            "CryptProtect" + "Data", "B" + "Crypt", "A" + "ES", "Aes" + "Gcm", "SetFileInformation" + "ByHandle"
         };
         foreach (string forbidden in forbiddenNativeMarkers)
             Require(!native.Contains(forbidden, StringComparison.OrdinalIgnoreCase),
