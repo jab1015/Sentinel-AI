@@ -24,6 +24,8 @@ namespace Sentinel.App.Services
         private const int MaximumSamples = 720;
         private const int PersistenceSchemaVersion = 1;
         private static readonly TimeSpan MinimumSampleInterval = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan MaximumPersistedSampleAge = TimeSpan.FromHours(24);
+        private static readonly TimeSpan MaximumFutureClockSkew = TimeSpan.FromMinutes(5);
         private readonly Queue<PerformanceSample> _samples = new();
         private readonly object _sync = new();
         private readonly string _persistencePath;
@@ -50,17 +52,19 @@ namespace Sentinel.App.Services
         {
             ArgumentNullException.ThrowIfNull(snapshot);
 
+            DateTime timestamp = NormalizeTimestamp(snapshot.Timestamp);
             PerformanceSample sample = new(
-                snapshot.Timestamp,
-                Clamp(snapshot.CpuUsagePercent),
-                Clamp(snapshot.MemoryUsagePercent),
-                Clamp(snapshot.DiskUsagePercent),
+                timestamp,
+                ClampFinite(snapshot.CpuUsagePercent),
+                ClampFinite(snapshot.MemoryUsagePercent),
+                ClampFinite(snapshot.DiskUsagePercent),
                 Math.Max(snapshot.ProcessCount, 0),
-                Math.Max(snapshot.DownloadMbps, 0),
-                Math.Max(snapshot.UploadMbps, 0));
+                NonNegativeFinite(snapshot.DownloadMbps),
+                NonNegativeFinite(snapshot.UploadMbps));
 
             lock (_sync)
             {
+                PruneExpiredSamples(timestamp);
                 PerformanceSample[] existing = _samples.ToArray();
                 if (existing.Length > 0 &&
                     sample.Timestamp - existing[^1].Timestamp < MinimumSampleInterval)
@@ -83,6 +87,7 @@ namespace Sentinel.App.Services
         {
             lock (_sync)
             {
+                PruneExpiredSamples(DateTime.UtcNow);
                 PerformanceSample[] samples = _samples.ToArray();
                 if (samples.Length == 0)
                     return PerformanceBaselineResult.NotReady;
@@ -105,8 +110,12 @@ namespace Sentinel.App.Services
                     persisted.Samples.Count > MaximumSamples)
                     return;
 
+                DateTime nowUtc = DateTime.UtcNow;
+                DateTime oldestAcceptedUtc = nowUtc - MaximumPersistedSampleAge;
+                DateTime newestAcceptedUtc = nowUtc + MaximumFutureClockSkew;
                 PerformanceSample[] ordered = persisted.Samples
-                    .Where(IsValidPersistedSample)
+                    .Where(sample => IsValidPersistedSample(sample, oldestAcceptedUtc, newestAcceptedUtc))
+                    .Select(sample => sample with { Timestamp = sample.Timestamp.ToUniversalTime() })
                     .OrderBy(sample => sample.Timestamp)
                     .ToArray();
 
@@ -121,12 +130,20 @@ namespace Sentinel.App.Services
                     previous = sample;
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or ArgumentException)
             {
                 // A damaged/unavailable local baseline must never prevent Sentinel from
                 // monitoring. Fail closed to an empty observational history and relearn.
                 _samples.Clear();
             }
+        }
+
+        private void PruneExpiredSamples(DateTime referenceTimestamp)
+        {
+            DateTime referenceUtc = NormalizeTimestamp(referenceTimestamp);
+            DateTime oldestAcceptedUtc = referenceUtc - MaximumPersistedSampleAge;
+            while (_samples.Count > 0 && _samples.Peek().Timestamp.ToUniversalTime() < oldestAcceptedUtc)
+                _samples.Dequeue();
         }
 
         private void PersistSamplesBestEffort(IReadOnlyCollection<PerformanceSample> samples)
@@ -169,14 +186,32 @@ namespace Sentinel.App.Services
             }
         }
 
-        private static bool IsValidPersistedSample(PerformanceSample sample) =>
-            sample.Timestamp != default &&
-            double.IsFinite(sample.CpuPercent) && sample.CpuPercent is >= 0 and <= 100 &&
-            double.IsFinite(sample.MemoryPercent) && sample.MemoryPercent is >= 0 and <= 100 &&
-            double.IsFinite(sample.DiskUsedPercent) && sample.DiskUsedPercent is >= 0 and <= 100 &&
-            sample.ProcessCount >= 0 &&
-            double.IsFinite(sample.DownloadMbps) && sample.DownloadMbps >= 0 &&
-            double.IsFinite(sample.UploadMbps) && sample.UploadMbps >= 0;
+        private static bool IsValidPersistedSample(
+            PerformanceSample sample,
+            DateTime oldestAcceptedUtc,
+            DateTime newestAcceptedUtc)
+        {
+            if (sample.Timestamp == default) return false;
+
+            DateTime timestampUtc;
+            try
+            {
+                timestampUtc = sample.Timestamp.ToUniversalTime();
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+
+            return timestampUtc >= oldestAcceptedUtc &&
+                   timestampUtc <= newestAcceptedUtc &&
+                   double.IsFinite(sample.CpuPercent) && sample.CpuPercent is >= 0 and <= 100 &&
+                   double.IsFinite(sample.MemoryPercent) && sample.MemoryPercent is >= 0 and <= 100 &&
+                   double.IsFinite(sample.DiskUsedPercent) && sample.DiskUsedPercent is >= 0 and <= 100 &&
+                   sample.ProcessCount >= 0 &&
+                   double.IsFinite(sample.DownloadMbps) && sample.DownloadMbps >= 0 &&
+                   double.IsFinite(sample.UploadMbps) && sample.UploadMbps >= 0;
+        }
 
         private static PerformanceBaselineResult BuildResult(
             PerformanceSample current,
@@ -204,7 +239,7 @@ namespace Sentinel.App.Services
 
             bool enoughHistory = samples.Count >= 12;
             string summary = !enoughHistory
-                ? $"Sentinel is learning this computer's normal performance ({samples.Count}/12 baseline samples)."
+                ? $"Sentinel is learning this computer's normal performance ({samples.Count}/12 one-minute baseline samples)."
                 : state switch
                 {
                     PerformanceBaselineState.Degraded => "Current performance differs materially from this computer's normal baseline.",
@@ -231,7 +266,14 @@ namespace Sentinel.App.Services
                 summary);
         }
 
-        private static double Clamp(double value) => Math.Clamp(value, 0, 100);
+        private static DateTime NormalizeTimestamp(DateTime value) =>
+            value == default ? DateTime.UtcNow : value.ToUniversalTime();
+
+        private static double ClampFinite(double value) =>
+            double.IsFinite(value) ? Math.Clamp(value, 0, 100) : 0;
+
+        private static double NonNegativeFinite(double value) =>
+            double.IsFinite(value) ? Math.Max(value, 0) : 0;
 
         private sealed record PersistedBaseline(
             int SchemaVersion,
