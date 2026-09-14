@@ -1,7 +1,7 @@
 # SAI-WIN-001 — Windows VM Test Package
 
-Version: 1.2  
-Status: LOCALDEV SOURCE BUILD PASS — AUTOMATED SIGNED PACKAGE QUALIFICATION STILL OPEN  
+Version: 1.3  
+Status: SOURCE/CI QUALIFIED — FRESH AUTOMATED SIGNED LOCALDEV PACKAGE QUALIFICATION IN PROGRESS  
 Last Updated: 2026-09-14
 
 Copyright (c) 2026 Modern Methods.
@@ -10,13 +10,16 @@ Copyright (c) 2026 Modern Methods.
 
 ## Purpose
 
-This document is the handoff and evidence record for producing and validating the isolated signed Sentinel AI Windows 11 VM test package. It is not Microsoft Store or production-release authorization.
+This document is the authoritative handoff and evidence record for producing and validating the isolated signed Sentinel AI Windows 11 VM test package. It is not Microsoft Store or production-release authorization.
 
-## Current Source
+## Current Source and Package Rules
 
 - Repository: `jab1015/Sentinel-AI`
 - Branch: `feature/premium-privacy-foundation`
-- Exact source checkpoint used for the current manual LocalDev build: `c0b60c06e4f03f9486965c799f7af028dd450a05`
+- Latest source/test-qualified checkpoint before this documentation synchronization: `8899a9d8afa04056b2131a989f4cd6f1c832f801`
+- Latest Premium Privacy qualification run: `34909736208` (#271), **PASS**
+- Active dedicated VM package run: `34908583736` (#69)
+- Package run source SHA: `a12af475b7212edf1d78e37fbcf07c9fb0bc34dd`
 - Package version: `1.0.27.0`
 - Architecture: `x64`
 - Configuration: `LocalDev`
@@ -25,45 +28,48 @@ This document is the handoff and evidence record for producing and validating th
 - Publisher retained: `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`
 - Production Store signing key used for LocalDev test package: **NO**
 
-Documentation commits after this checkpoint do not change which source SHA the current manual build came from.
+The source/test commits after `a12af475...` add acceptance/workflow-test corrections and do not change the shipping app payload being packaged by run #69. Documentation commits may advance the branch further and must not be mistaken for a different packaged source SHA.
 
-## Exact-Head CI Evidence
+## Exact-Head Premium Privacy Evidence
 
-Premium Privacy workflow run `34792512987` against `c0b60c06e4f03f9486965c799f7af028dd450a05`: **PASS**.
+Premium Privacy workflow run `34909736208` (#271) completed successfully against `8899a9d8afa04056b2131a989f4cd6f1c832f801`.
 
-That run qualified the Premium Privacy source foundation, including Explorer acceptance, file-encryption/Secure Delete acceptance, privacy discovery, gateway entitlement coverage, native Explorer builds for x64/x86/ARM64, desktop app build, gateway build, unsigned x64 package creation, and packaged Explorer-extension verification.
+It passed:
 
-Dedicated Windows VM package workflow run `34792512975` against the same SHA:
+- Explorer integration acceptance;
+- file-encryption and Secure Delete acceptance;
+- persistent performance-baseline acceptance;
+- privacy discovery acceptance;
+- gateway entitlement/capability acceptance;
+- native Explorer x64/x86/ARM64 builds;
+- Sentinel desktop app build;
+- Sentinel gateway build;
+- unsigned x64 package build;
+- packaged Explorer-extension presence and x64 PE verification.
 
-- LocalDev entitlement-boundary verification: PASS
-- Release x64 entitlement-path compile: PASS
-- Build/sign/qualify LocalDev x64 VM package: remained active until workflow cancellation
-- Overall conclusion: **CANCELLED**
+## Dedicated Signed VM Package Evidence
 
-Therefore automated signed-package qualification is still open. Do not relabel that workflow as passing.
+Workflow: `.github/workflows/windows-vm-test-package.yml`.
 
-## Manual Visual Studio Evidence
+Run `34908583736` (#69), source `a12af475b7212edf1d78e37fbcf07c9fb0bc34dd`, is the current fresh signed-package qualification. At this synchronization it has passed:
 
-On 2026-09-13, source `c0b60c06...` was pulled locally and Visual Studio was configured as:
+- checkout/tool discovery;
+- compile-time LocalDev entitlement-boundary verification;
+- authoritative Release x64 entitlement-path compilation.
 
-- Configuration: `LocalDev`
-- Platform: `x64`
+Its `Build, sign, and qualify LocalDev x64 VM package` step remains in progress. Do not call the package qualified until the workflow reaches terminal success and uploads the final artifact.
 
-`Build -> Rebuild Solution` completed with:
+Earlier run `34901580179` (#68) was superseded/cancelled after its build/sign/qualify step itself completed successfully; artifact upload was cancelled. That proves the package script and signer-verification path can complete, but it is not a downloadable qualified artifact.
 
-`2 succeeded, 0 failed, 1 up-to-date, 0 skipped`
-
-The user then entered the Visual Studio `Create App Packages` signing wizard. The existing selected certificate showed Publisher-compatible subject `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`, SHA256 signing, and expiration in 2027.
-
-This manual package is for isolated VM testing only. It is not Store/production evidence and does not replace the still-open automated signed-package qualification problem.
+Do not weaken or bypass signing, Publisher/signer verification, package-content inspection, Explorer manifest verification, or x64 PE verification to turn CI green.
 
 ## Test-Only Subscription Behavior
 
 The Windows VM package is intentionally compiled with `LocalDev`. `Sentinel.App.csproj` defines `SENTINEL_LOCAL_DEV` only for that configuration.
 
-`PremiumPrivacyEntitlementClient` contains a compile-time `#if SENTINEL_LOCAL_DEV` path permitting supported Premium Privacy scopes for isolated VM validation without an active Store subscription. Release/Store builds compile the authoritative Microsoft Store + Sentinel gateway flow.
+`PremiumPrivacyEntitlementClient` uses compile-time `#if SENTINEL_LOCAL_DEV` behavior for isolated VM validation without an active Store subscription. Release/Store builds compile the authoritative Microsoft Store + Sentinel gateway entitlement flow.
 
-This bypass must remain impossible to enable through a runtime preference, environment variable, hidden UI toggle, or reusable production token.
+This bypass must remain impossible to enable through a runtime preference, environment variable, hidden UI toggle, command-line switch, or reusable production token.
 
 ## Packaging Requirements
 
@@ -75,53 +81,93 @@ The final VM package must preserve:
 - x64 architecture;
 - exactly one each of `Sentinel.App.exe`, `Sentinel.PrivilegedBroker.exe`, and `Sentinel.ExplorerExtension.dll`;
 - Explorer COM/context-menu registration with CLSID `6C5E88B7-2A44-4B6D-9A6C-4F1A5C9F6E21`;
-- `windows.comServer` and `windows.fileExplorerContextMenus` manifest registrations.
+- `windows.comServer` and `windows.fileExplorerContextMenus` manifest registrations;
+- cryptographic package signature and expected signer/Publisher relationship.
 
-## Encryption UX Requirement for VM Validation
+## Encryption Replacement — Implemented and Acceptance Covered
 
-The current source checkpoint still leaves the original plaintext file untouched after creating `.sentinel.senc`. That behavior has now been rejected for the intended user experience.
+The previously rejected plaintext-duplicate behavior has been corrected in source.
 
-Required next implementation:
+For both `Encrypt for This PC` and `Encrypt for Sharing...`:
 
-- `Encrypt for This PC` and `Encrypt for Sharing...` must create and verify the `.sentinel.senc` file first;
-- only after verified success, automatically remove the plaintext source;
-- no `Keep original` option should be shown;
-- any encryption/finalization/verification failure must leave the plaintext source intact;
-- removal of the plaintext source must not damage or invalidate the self-contained `.senc` container;
-- existing older `.senc` files must remain decryptable.
+- create and finalize the `.sentinel.senc` container first;
+- verify the encrypted result;
+- only after verified success retire the original plaintext source;
+- do not offer a `Keep original` choice;
+- preserve plaintext on encryption/finalization/verification/cancellation failure;
+- do not report full success when source retirement is incomplete;
+- never silently overwrite collisions;
+- preserve legacy `.senc` decryption compatibility.
 
-Do not treat this requirement as implemented until source, regression tests, and qualification are updated.
+Acceptance coverage includes successful portable round-trip, encryption failure, unverified-result rejection, cancellation, collision, source-retirement failure, and legacy v1 decryption.
 
-## Required Runtime Tests
+## Runtime Defects Corrected in Source — Revalidation Required
 
-For the installed LocalDev package, validate at minimum:
+The previous VM package exposed several runtime/UX defects. Source corrections now exist for:
 
-1. install/upgrade/uninstall;
-2. launch and startup behavior;
-3. Explorer context-menu registration and restart behavior;
-4. `Encrypt for This PC`;
-5. `Encrypt for Sharing...` with password confirmation;
-6. decrypt local-profile container;
-7. decrypt portable container with correct password;
-8. wrong password failure;
-9. tamper failure;
-10. plaintext source-removal behavior after the pending UX change;
-11. source preservation on encryption failure;
-12. Vault lifecycle/recovery;
-13. Secure Delete;
-14. standard-user/admin/UAC behavior;
-15. Defender/firewall interaction;
-16. quarantine/recovery and crash/failure behavior;
-17. stability/resource behavior.
+- Explorer Inspect opening the full dashboard;
+- Encrypt for This PC / Sharing opening the full dashboard;
+- portable password prompts not retrying short/empty/mismatched values;
+- decryption leaving the encrypted `.sentinel.senc` after successful authenticated recovery;
+- portable wrong-password retry behavior;
+- Vault recovery key not being selectable/copyable;
+- optimization baseline resetting after app restart.
+
+These are source/CI qualified but are **not yet installed-runtime qualified**.
+
+## Optimization Baseline Runtime Expectation
+
+The performance baseline persists under `%LOCALAPPDATA%\Modern Methods\Sentinel AI\performance-baseline.json` and should:
+
+- accept at most one baseline sample per minute;
+- require 12 accepted samples to establish the baseline;
+- survive Sentinel restart;
+- discard stale history beyond 24 hours;
+- reject samples more than five minutes in the future;
+- fail closed to relearning for corrupt persisted state;
+- continue accepting legitimate new samples after invalid future state is rejected.
+
+Manual optimization is an evaluation/scan and should not silently apply remediation. Automatic optimization remains subject to entitlement and safety controls.
+
+## Required Installed VM Revalidation
+
+Using the fresh qualified LocalDev x64 package, validate:
+
+1. clean install and launch;
+2. upgrade/uninstall where applicable;
+3. Explorer context-menu registration after Explorer restart;
+4. Inspect opens compact dialog only, without surfacing the full Sentinel dashboard;
+5. `Encrypt for This PC` creates a verified container and removes plaintext only after verified success;
+6. encryption failure preserves plaintext;
+7. `Encrypt for Sharing...` retries too-short/empty/mismatched passwords and performs verified replacement;
+8. local-profile decrypt restores exact plaintext;
+9. portable decrypt with correct password restores exact plaintext;
+10. wrong portable password re-prompts and leaves container intact;
+11. successful authenticated decrypt retires the exact encrypted source only after restore succeeds;
+12. tamper failure preserves encrypted source and does not accept plaintext;
+13. destination collisions never silently overwrite;
+14. older `.senc` remains decryptable;
+15. Vault recovery key can be selected/copied;
+16. optimization baseline survives restart and advances on the intended cadence;
+17. standard-user/admin/UAC behavior;
+18. Defender/firewall interaction;
+19. quarantine/recovery and crash/failure behavior;
+20. startup/background and stability/resource behavior.
+
+## Vault Limitation
+
+The Vault cryptographic/storage foundation is substantial and acceptance-covered, but the complete user-facing Vault workflow is not finished. VM observations must not be used to claim Vault product completion.
 
 ## Current Readiness
 
-- PREMIUM PRIVACY EXACT-HEAD CI: **PASS at c0b60c06...**
-- MANUAL LOCALDEV X64 REBUILD: **PASS**
-- MANUAL LOCALDEV MSIX CREATION: **IN PROGRESS**
-- AUTOMATED SIGNED VM PACKAGE QUALIFICATION: **NO / CANCELLED**
+- HARDENING SOURCE/AUTOMATED QUALIFICATION: **PASS**
+- PREMIUM PRIVACY SOURCE/CI: **PASS at `8899a9d8...`, run `34909736208`**
+- ENCRYPTION REPLACEMENT SOURCE/CI: **PASS**
+- PERSISTENT OPTIMIZATION BASELINE SOURCE/CI: **PASS**
+- FRESH AUTOMATED SIGNED LOCALDEV X64 PACKAGE: **IN PROGRESS — run `34908583736`**
 - SUBSCRIPTION REQUIRED IN LOCALDEV VM PACKAGE: **NO**
 - SUBSCRIPTION REQUIRED IN RELEASE/STORE BUILD: **YES**
+- WINDOWS INSTALLED RUNTIME REVALIDATION: **NOT COMPLETE**
 - PRODUCTION STORE READY: **NO**
 - MERGE TO MAIN: **NO**
 
