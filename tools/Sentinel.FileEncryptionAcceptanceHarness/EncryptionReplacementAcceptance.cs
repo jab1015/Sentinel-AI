@@ -1,11 +1,9 @@
 using Sentinel.App.Services;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 
 internal static class EncryptionReplacementAcceptance
 {
-    [ModuleInitializer]
-    internal static void VerifyAtStartup()
+    internal static void Verify()
     {
         string root = Path.Combine(Path.GetTempPath(), "SentinelEncryptionReplacementAcceptance", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -61,6 +59,7 @@ internal static class EncryptionReplacementAcceptance
             Array.Clear(senderPassword, 0, senderPassword.Length);
             Array.Clear(recipientPassword, 0, recipientPassword.Length);
             CryptographicOperations.ZeroMemory(original);
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch { }
         }
     }
 
