@@ -75,8 +75,18 @@ internal sealed class FileEncryptionReplacementService
                 keyProtectors,
                 cancellationToken).ConfigureAwait(false);
 
-            if (!encrypted.Succeeded || !encrypted.Verified)
+            if (!encrypted.Succeeded)
                 return encrypted;
+
+            if (!encrypted.Verified)
+            {
+                return encrypted with
+                {
+                    Succeeded = false,
+                    Code = "VerificationNotCompleted",
+                    Message = "Sentinel did not complete authenticated verification of the encrypted container. The plaintext source was kept and the replacement operation was not accepted as successful."
+                };
+            }
 
             // Release our source lease only after the encrypted container has been flushed,
             // reopened, and authenticated by FileEncryptionService. The stable identity is
