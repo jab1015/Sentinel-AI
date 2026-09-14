@@ -35,6 +35,7 @@ static int DataOffset(byte[] container) => checked(HeaderLength(container) + 16)
 Console.WriteLine("=== Sentinel File Encryption Acceptance ===");
 
 RunAcceptance(nameof(ExactOwnedOutputCleanupAcceptance), ExactOwnedOutputCleanupAcceptance.Verify);
+RunAcceptance(nameof(EncryptionReplacementAcceptance), EncryptionReplacementAcceptance.Verify);
 RunAcceptance(nameof(PasswordProtectionAcceptance), PasswordProtectionAcceptance.Verify);
 RunAcceptance(nameof(RecoveryKeyAcceptance), RecoveryKeyAcceptance.Verify);
 RunAcceptance(nameof(WindowsCurrentUserProtectionAcceptance), WindowsCurrentUserProtectionAcceptance.Verify);
