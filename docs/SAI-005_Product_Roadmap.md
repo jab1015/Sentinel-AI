@@ -1,8 +1,8 @@
 # SAI-005 — Product Roadmap
 
-Version: 3.3  
-Status: Active — source/CI qualified; Windows VM package qualification is the immediate gate  
-Last Updated: 2026-09-13
+Version: 3.4  
+Status: Active — Premium Privacy source qualified; LocalDev VM/runtime validation and encryption UX correction are next  
+Last Updated: 2026-09-14
 
 Copyright (c) 2026 Modern Methods.
 
@@ -18,8 +18,8 @@ Sentinel AI will be a trustworthy Windows security and system-assistance platfor
 - Qualified hardening checkpoint: `cff46692d1260349eae531632170fb687deed36f`
 - Hardening automated qualification: **12/12 PASS**
 - Premium Privacy: `feature/premium-privacy-foundation`
-- VM package source checkpoint currently under qualification: `f51a31fe53c64cadd0e346eb32648a86353d23f2`
-- Current package version: `1.0.26.0`
+- Exact-head source/CI checkpoint before this documentation synchronization: `c0b60c06e4f03f9486965c799f7af028dd450a05`
+- Current package version: `1.0.27.0`
 
 Neither development branch is authorized for automatic merge to `main`.
 
@@ -48,8 +48,10 @@ Status: **SOURCE/CI FOUNDATION QUALIFIED — WINDOWS RUNTIME VALIDATION PENDING*
 Implemented foundation includes:
 
 - packaged native `IExplorerCommand` integration;
-- AES-256-GCM encrypted containers and recovery modes;
-- Sentinel Vault;
+- AES-256-GCM encrypted containers;
+- local Windows-profile protection;
+- password-protected portable `Encrypt for Sharing...` containers independent of the originating Windows profile;
+- Sentinel Vault foundation;
 - exact-object logical Secure Delete with durable authorization/journal semantics;
 - bounded attributable-copy/history discovery;
 - independently authorized related cleanup;
@@ -57,33 +59,42 @@ Implemented foundation includes:
 
 Explorer carries intent/selection only. Fuzzy similarity never authorizes deletion. Existing encrypted/Vault data remains recoverable without a new paid entitlement.
 
+### Approved Encryption UX Correction
+
+Current source creates `.sentinel.senc` successfully but leaves the plaintext original untouched. That is no longer the desired product behavior.
+
+Required next behavior for both local and portable encryption:
+
+1. create the encrypted container;
+2. verify successful finalization/authenticated container creation;
+3. automatically remove the original plaintext source;
+4. provide no `Keep original` choice;
+5. preserve the source on any encryption/verification failure;
+6. preserve backward compatibility with existing `.sentinel.senc` files.
+
+This is a required source/test change, not yet completed at checkpoint `c0b60c06...`.
+
 ## Phase E — Windows VM Test Package
 
-Status: **ACTIVE — BLOCKED AT AUTOMATED SIGNATURE VERIFICATION**
+Status: **MANUAL LOCALDEV BUILD PASS; AUTOMATED SIGNED-PACKAGE QUALIFICATION STILL OPEN**
 
 Authoritative evidence: `docs/testing/SAI-WIN-001_VM_Test_Package.md`.
 
-Latest run `34736783747` / job `103669514840` against source `f51a31fe53c64cadd0e346eb32648a86353d23f2` successfully completed Release x64 MSIX build, ephemeral test-certificate creation, and MSIX signing. The signature-verification step remained active until the 30-minute job timeout and was cancelled.
+Exact-head Premium Privacy workflow `34792512987` passed on `c0b60c06...`.
 
-Next milestone is not a manual Visual Studio package. The required milestone is one reproducible GitHub workflow run that successfully:
+Dedicated VM package workflow `34792512975` on the same SHA passed LocalDev entitlement verification and Release x64 compilation but was cancelled after the build/sign/qualify package step remained active until the workflow limit.
 
-1. builds Release/x64 MSIX;
-2. signs with dedicated ephemeral VM test signing material;
-3. cryptographically verifies the signature and exact signer;
-4. verifies package identity/Publisher/x64 architecture;
-5. verifies required app, privileged broker, and Explorer extension binaries exactly once;
-6. verifies Explorer COM/context-menu registrations;
-7. proves no private signing key is in the package/artifact;
-8. publishes the public certificate, install/uninstall helpers, metadata, and SHA-256;
-9. survives independent downloaded-artifact inspection.
+A manual Visual Studio rebuild of the same source using `LocalDev | x64` completed successfully with `2 succeeded, 0 failed, 1 up-to-date, 0 skipped`. Manual MSIX creation then began for isolated VM testing.
 
-Only then may `WINDOWS VM TESTING READY` become YES.
+Manual VM testing is useful runtime evidence, but it does not turn the cancelled automated packaging workflow into a pass and is not Store/production signing evidence.
 
 ## Phase F — Windows Physical Validation
 
-Status: **WAITING FOR QUALIFIED VM PACKAGE**
+Status: **ACTIVE / NOT COMPLETE**
 
-After the package gate passes, execute clean install/upgrade/uninstall; Explorer restart/context-menu and selection cases; standard/admin/UAC; encryption/recovery/corruption/crash; Vault lifecycle/recovery/concurrency; Secure Delete race/reparse/hardlink/protected-path/crash cases; File History/Previous Versions/Search/Recent/Jump Lists/OneDrive discovery; Defender/firewall; startup/background/sleep/wake/network loss; quarantine/recovery; and architecture/runtime validation.
+Execute clean install/upgrade/uninstall; Explorer restart/context-menu and selection cases; standard/admin/UAC; encryption/recovery/corruption/crash; portable sharing; Vault lifecycle/recovery/concurrency; Secure Delete race/reparse/hardlink/protected-path/crash cases; discovery providers; Defender/firewall; startup/background/sleep/wake/network loss; quarantine/recovery; and architecture/runtime validation.
+
+After the encryption UX correction, explicitly prove that plaintext is removed only after successful verified encryption and preserved on every failure path.
 
 Any runtime defect must be corrected at root cause with regression coverage and applicable CI requalification.
 
@@ -103,17 +114,20 @@ After Windows and external qualification, complete final 1-hour/8-hour stability
 
 ## Immediate Next Milestones
 
-1. Diagnose exact blocking operation in VM package signature verification.
-2. Fix verification/timeout handling without weakening cryptographic validation.
-3. Obtain one fully successful package workflow and inspect its downloaded artifact.
-4. Record exact package source SHA, certificate, artifact and SHA-256.
-5. Begin Windows 11 VM installation one step at a time.
-6. Execute Windows runtime matrices while cloud/Store work proceeds in parallel.
+1. Implement the approved encryption replacement behavior and regression coverage.
+2. Keep package version `1.0.27.0` and preserve production identity/Publisher.
+3. Complete the LocalDev x64 MSIX and Windows 11 VM install/runtime matrix one step at a time.
+4. Diagnose and fix the automated VM-package workflow stall without weakening verification.
+5. Re-run applicable exact-head CI after any source change.
+6. Continue cloud/Store external qualification.
 7. Complete stability and independent re-audits.
 
 ## Current Decision
 
-- WINDOWS VM TESTING READY: **NO**
+- PREMIUM PRIVACY SOURCE/CI: **PASS at c0b60c06...**
+- MANUAL LOCALDEV X64 BUILD: **PASS**
+- AUTOMATED SIGNED VM PACKAGE: **NOT QUALIFIED**
+- WINDOWS RUNTIME QUALIFICATION: **NOT COMPLETE**
 - PRODUCTION STORE READY: **NO**
 - MERGE TO MAIN: **NO**
 - RELEASE QUALIFIED: **NO**
