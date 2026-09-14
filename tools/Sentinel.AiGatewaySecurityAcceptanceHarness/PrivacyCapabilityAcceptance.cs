@@ -46,8 +46,7 @@ internal static class PrivacyCapabilityAcceptance
                 "Subject-mismatch validation consumed a valid capability.");
 
             PrivacyCapabilityIssueResult tamperFixture = security.Issue(subject, "privacy.vault");
-            char replacement = tamperFixture.Token[^1] == 'A' ? 'B' : 'A';
-            string tampered = tamperFixture.Token[..^1] + replacement;
+            string tampered = TamperSignature(tamperFixture.Token);
             Require(!security.ValidateAndConsume(tampered, "privacy.vault", subject).Authorized,
                 "Tampered privacy capability was accepted.");
 
@@ -78,6 +77,20 @@ internal static class PrivacyCapabilityAcceptance
         {
             Environment.SetEnvironmentVariable("SENTINEL_GATEWAY_SESSION_SIGNING_KEY", prior);
         }
+    }
+
+    private static string TamperSignature(string token)
+    {
+        string[] parts = token.Split('.');
+        Require(parts.Length == 2, "Tamper fixture token format was unexpected.");
+        byte[] signature = Base64UrlDecode(parts[1]);
+        Require(signature.Length > 0, "Tamper fixture signature was empty.");
+
+        // Mutate an authenticated byte rather than a Base64URL character. Changing the
+        // final encoded character can alter only unused padding bits and decode back to
+        // the exact same signature, making the fixture nondeterministic.
+        signature[0] ^= 0x01;
+        return parts[0] + "." + Base64UrlEncode(signature);
     }
 
     private static string ForgeExpired(string token, string keyText)
