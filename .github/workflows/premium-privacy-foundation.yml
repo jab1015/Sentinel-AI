@@ -50,6 +50,15 @@ jobs:
       - name: Run file encryption and Secure Delete acceptance harness
         run: dotnet run --project "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore performance baseline persistence acceptance harness
+        run: dotnet restore "tools/Sentinel.PerformanceBaselineCadenceAcceptanceHarness/Sentinel.PerformanceBaselineCadenceAcceptanceHarness.csproj"
+
+      - name: Build performance baseline persistence acceptance harness
+        run: dotnet build "tools/Sentinel.PerformanceBaselineCadenceAcceptanceHarness/Sentinel.PerformanceBaselineCadenceAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run performance baseline persistence acceptance harness
+        run: dotnet run --project "tools/Sentinel.PerformanceBaselineCadenceAcceptanceHarness/Sentinel.PerformanceBaselineCadenceAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Restore privacy discovery acceptance harness
         run: dotnet restore "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj"
 
