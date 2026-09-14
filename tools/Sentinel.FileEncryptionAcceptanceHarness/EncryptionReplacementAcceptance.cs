@@ -133,8 +133,8 @@ internal static class EncryptionReplacementAcceptance
                 output,
                 Array.Empty<IFileKeyProtector>()).GetAwaiter().GetResult();
 
-            Require(result.Succeeded && !result.Verified && result.Code == "InjectedUnverifiedResult",
-                "Acceptance injection did not reach the unverified-result transaction boundary.");
+            Require(!result.Succeeded && !result.Verified && result.Code == "VerificationNotCompleted",
+                "Replacement transaction did not fail closed when authenticated verification was incomplete.");
             Require(File.Exists(source) && File.ReadAllBytes(source).AsSpan().SequenceEqual(original),
                 "An unverified encrypted result retired or modified the plaintext source.");
         }
