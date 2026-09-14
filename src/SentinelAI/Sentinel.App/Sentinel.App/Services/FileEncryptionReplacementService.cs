@@ -7,10 +7,11 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services;
 
 /// <summary>
-/// User-facing encryption transaction that keeps the plaintext source pinned to the
-/// exact filesystem object while the encrypted container is created and verified, then
-/// removes that exact plaintext object only after successful authenticated verification.
-/// The lower-level FileEncryptionService remains non-destructive for internal callers.
+/// User-facing encryption replacement transaction. The plaintext source is pinned to its
+/// exact Windows filesystem object while the encrypted container is created and verified;
+/// only then is that same plaintext object removed. There is no keep-original branch in
+/// this transaction. The lower-level FileEncryptionService remains non-destructive for
+/// internal callers that need container creation without source-retirement ownership.
 /// </summary>
 internal sealed class FileEncryptionReplacementService
 {
