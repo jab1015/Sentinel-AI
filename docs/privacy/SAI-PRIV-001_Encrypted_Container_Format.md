@@ -1,12 +1,12 @@
 # SAI-PRIV-001 — Encrypted Container Format
 
-Status: DESIGN COMPLETE — SOURCE IMPLEMENTATION IN PROGRESS  
-Version: 1.1  
-Date: 2026-09-12
+Status: SOURCE IMPLEMENTED — WINDOWS/PACKAGE VALIDATION REQUIRED  
+Version: 1.2  
+Date: 2026-09-13
 
 ## Purpose
 
-Define the Sentinel encrypted-file container before encryption code is implemented. The format is versioned, authenticated, streaming-friendly, and designed so a failed encryption or verification never destroys the source file.
+Define the Sentinel encrypted-file container and its user-facing replacement transaction. The format is versioned, authenticated, streaming-friendly, and designed so a failed encryption or verification never destroys the source file.
 
 ## Security goals
 
@@ -113,17 +113,24 @@ The same file DEK is used only with unique nonces inside that container. Version
 
 ## Source transaction
 
-The initial implementation must never encrypt in place.
+Version 1 never encrypts plaintext in place. The lower-level `FileEncryptionService` remains deliberately non-destructive so internal callers can create an authenticated container without owning source-retirement policy.
 
-`SOURCE -> validate -> create separate output -> encrypt -> flush -> reopen -> authenticate -> verify -> report verified encrypted copy`
+The normal user-facing Explorer commands `Encrypt for This PC` and `Encrypt for Sharing...` use a verified replacement transaction instead of leaving two ordinary files beside each other:
 
-Only after this sequence may a separate plaintext-removal operation be offered.
+`SOURCE -> acquire stable exact-object lease -> create separate output -> encrypt -> flush -> reopen -> authenticate -> verify -> release source lease -> remove the same exact plaintext object -> report complete`
 
-If encryption fails: keep the original.  
-If verification fails: keep the original and treat output as invalid.  
-If optional plaintext removal later fails: keep the verified encrypted copy and report that plaintext remains.
+There is no **Keep Original** option in the normal Encrypt flow. The readable source is removed automatically only after the encrypted container has been fully authenticated from disk.
 
-A failed/canceled encryption may remove its own incomplete output. If cleanup of incomplete output fails, the structured result must explicitly report that an invalid partial artifact remains; it must never describe that artifact as an encrypted copy.
+Safety rules:
+
+- If encryption fails: keep the original.
+- If verification fails: keep the original and treat the output as invalid.
+- If Sentinel cannot bind the source to a stable Windows file identity before encryption: do not start the replacement transaction.
+- If exact-source removal fails after successful verification: do not report the replacement as complete. The verified encrypted output may remain and the UI must explicitly report that the readable original may also remain.
+- Never delete a pathname replacement merely because it now occupies the original source name.
+- Automatic post-encryption source removal is logical exact-file removal. Sentinel does not claim that deleted storage-media remnants are physically unrecoverable.
+
+A failed/canceled encryption may remove its own incomplete output. If cleanup of incomplete output fails, the structured result must explicitly report that an invalid partial artifact remains; it must never describe that artifact as a completed encrypted file.
 
 ## Size limits
 
@@ -181,4 +188,4 @@ Logs may contain bounded operation IDs, result codes, byte counts, algorithm/ver
 
 ## Qualification state
 
-DESIGN COMPLETE. P3 source implementation is now authorized against this v1.1 serialization contract. Source implementation, corruption/adversarial harnesses, Windows runtime tests, crash/disk-full tests, key-mode tests, and independent cryptographic review remain required before release qualification.
+The v1 container implementation, Windows-current-user protection, portable password protection, corruption/adversarial checks, and verified user-facing replacement transaction are implemented in source. Dedicated acceptance coverage verifies that a user-facing encrypted replacement remains decryptable after the readable source is retired. Windows installed/runtime validation, crash/disk-full testing, package qualification, and independent cryptographic/privacy review remain required before release qualification.
