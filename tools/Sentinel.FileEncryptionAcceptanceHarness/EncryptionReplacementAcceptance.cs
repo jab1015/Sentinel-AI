@@ -155,24 +155,20 @@ internal static class EncryptionReplacementAcceptance
 
         try
         {
-            FileEncryptionService primitive = new(SentinelEncryptedContainerV1.MinimumChunkSize);
-            FileEncryptionReplacementService replacement = new(primitive);
-            TestKeyProtector protector = new(93, RandomNumberGenerator.GetBytes(32));
-            using CancellationTokenSource canceled = new();
-            canceled.Cancel();
+            FileEncryptionReplacementService replacement = new((_, _, _, _) =>
+                Task.FromException<FileEncryptionResult>(new OperationCanceledException("Acceptance injection: canceled before verified completion.")));
 
             FileEncryptionResult result = replacement.EncryptReplacingSourceAsync(
                 source,
                 output,
-                new IFileKeyProtector[] { protector },
-                canceled.Token).GetAwaiter().GetResult();
+                Array.Empty<IFileKeyProtector>()).GetAwaiter().GetResult();
 
-            Require(!result.Succeeded && result.Code == "Canceled",
+            Require(!result.Succeeded && !result.Verified && result.Code == "Canceled",
                 "Canceled replacement encryption did not fail closed as Canceled.");
             Require(File.Exists(source) && File.ReadAllBytes(source).AsSpan().SequenceEqual(original),
                 "Canceled replacement encryption did not preserve the exact plaintext source.");
-            Require(!File.Exists(output) || result.InvalidOutputRemains,
-                "Canceled replacement encryption left an unreported partial encrypted output.");
+            Require(!File.Exists(output),
+                "Injected cancellation unexpectedly created an encrypted output.");
         }
         finally
         {
