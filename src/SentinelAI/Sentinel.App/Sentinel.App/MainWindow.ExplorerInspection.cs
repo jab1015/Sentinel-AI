@@ -21,23 +21,34 @@ public sealed partial class MainWindow
 
     private async Task ShowExplorerInspectionRequestAsync(ExplorerInspectionRequest request)
     {
-        AppWindow.Show();
-        Activate();
-
-        FrameworkElement rootElement = (FrameworkElement)Content;
-        if (rootElement.XamlRoot is null)
+        // Explorer commands intentionally use their own compact XAML host. The full Sentinel
+        // dashboard must not appear just because the user invoked a File Explorer command.
+        Window dialogHost = new();
+        Grid rootElement = new()
         {
-            TaskCompletionSource<bool> loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            RoutedEventHandler? handler = null;
-            handler = (_, _) =>
-            {
-                rootElement.Loaded -= handler;
-                loaded.TrySetResult(true);
-            };
-            rootElement.Loaded += handler;
-            await loaded.Task.ConfigureAwait(true);
-        }
+            MinWidth = 560,
+            MinHeight = 320
+        };
+        dialogHost.Content = rootElement;
+        dialogHost.AppWindow.Title = "Sentinel AI";
+        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(680, 520));
+        dialogHost.Activate();
+        await WaitForXamlRootAsync(rootElement).ConfigureAwait(true);
 
+        try
+        {
+            await ShowExplorerInspectionRequestCoreAsync(request, rootElement).ConfigureAwait(true);
+        }
+        finally
+        {
+            dialogHost.Close();
+        }
+    }
+
+    private async Task ShowExplorerInspectionRequestCoreAsync(
+        ExplorerInspectionRequest request,
+        FrameworkElement rootElement)
+    {
         HashSet<string> unique = new(StringComparer.OrdinalIgnoreCase);
         List<string> reopenedPaths = new(request.Paths.Count);
         foreach (string suppliedPath in request.Paths)
@@ -95,7 +106,7 @@ public sealed partial class MainWindow
             ContentDialog encryptedDialog = new()
             {
                 Title = "Sentinel encrypted file",
-                Content = $"Sentinel recognized this as an encrypted Sentinel container:\n\n{encryptedPath}\n\nYou can restore it to a separate plaintext file or inspect the encrypted container without changing it.",
+                Content = $"Sentinel recognized this as an encrypted Sentinel container:\n\n{encryptedPath}\n\nYou can restore it to a plaintext file or inspect the encrypted container without changing it.",
                 PrimaryButtonText = "Decrypt / Restore",
                 SecondaryButtonText = "Inspect",
                 CloseButtonText = "Cancel",
