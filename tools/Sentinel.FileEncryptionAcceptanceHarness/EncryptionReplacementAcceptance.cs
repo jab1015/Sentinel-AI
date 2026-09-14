@@ -191,7 +191,7 @@ internal static class EncryptionReplacementAcceptance
         {
             FileEncryptionService primitive = new(SentinelEncryptedContainerV1.MinimumChunkSize);
             FileEncryptionReplacementService replacement = new(primitive);
-            TestKeyProtector protector = new(94, RandomNumberGenerator.GetBytes(32));
+            TestKeyProtector protector = new(3, RandomNumberGenerator.GetBytes(32));
 
             FileEncryptionResult result = replacement.EncryptReplacingSourceAsync(
                 source,
@@ -225,7 +225,7 @@ internal static class EncryptionReplacementAcceptance
         {
             FileEncryptionService primitive = new(SentinelEncryptedContainerV1.MinimumChunkSize);
             FileEncryptionReplacementService replacement = new(primitive);
-            TestKeyProtector protector = new(95, RandomNumberGenerator.GetBytes(32));
+            TestKeyProtector protector = new(3, RandomNumberGenerator.GetBytes(32));
 
             // On Windows, this handle permits readers (including Sentinel's encryptor) but denies delete sharing.
             // The container can therefore be completed and verified while exact source retirement is forced to fail.
@@ -265,7 +265,7 @@ internal static class EncryptionReplacementAcceptance
             // FileEncryptionService is the pre-replacement, non-destructive container writer that existing
             // Sentinel v1 .senc files used. Replacement UX must not alter the reader/container format.
             FileEncryptionService primitive = new(SentinelEncryptedContainerV1.MinimumChunkSize);
-            TestKeyProtector protector = new(96, RandomNumberGenerator.GetBytes(32));
+            TestKeyProtector protector = new(3, RandomNumberGenerator.GetBytes(32));
             FileEncryptionResult legacyStyle = primitive.EncryptAsync(
                 source,
                 encrypted,
