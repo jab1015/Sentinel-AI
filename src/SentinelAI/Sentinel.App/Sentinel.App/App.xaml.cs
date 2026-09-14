@@ -71,7 +71,15 @@ namespace Sentinel.App
                 _window.AppWindow.Closing += MainAppWindow_Closing;
                 _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);
 
-                if (launchedByWindowsStartup && !_pendingInteractiveActivation && !explorerInspectionActivation)
+                if (explorerInspectionActivation)
+                {
+                    // Explorer commands are intentionally dialog-only. Keep the dashboard hidden;
+                    // MainWindow owns the command handlers but presents them through a dedicated
+                    // compact dialog host instead of activating the full Sentinel dashboard.
+                    _pendingInteractiveActivation = false;
+                    _window.AppWindow.Hide();
+                }
+                else if (launchedByWindowsStartup && !_pendingInteractiveActivation)
                 {
                     mainWindow.StartBackgroundMonitoring();
                     _window.AppWindow.Hide();
@@ -88,9 +96,11 @@ namespace Sentinel.App
 
                 startupTimer.Stop();
                 _ = _diagnosticLog.InformationAsync("StartupPerformance",
-                    launchedByWindowsStartup
-                        ? $"Background startup completed in {startupTimer.ElapsedMilliseconds} ms."
-                        : $"Main window activated in {startupTimer.ElapsedMilliseconds} ms.");
+                    explorerInspectionActivation
+                        ? $"Explorer dialog activation completed in {startupTimer.ElapsedMilliseconds} ms without opening the dashboard."
+                        : launchedByWindowsStartup
+                            ? $"Background startup completed in {startupTimer.ElapsedMilliseconds} ms."
+                            : $"Main window activated in {startupTimer.ElapsedMilliseconds} ms.");
 
 #if DEBUG
                 DevelopmentRegressionChecks.Run();
@@ -149,13 +159,21 @@ namespace Sentinel.App
             Window? window = _window;
             if (window is null)
             {
-                _pendingInteractiveActivation = true;
+                _pendingInteractiveActivation = !explorerInspectionActivation;
+                return;
+            }
+
+            if (explorerInspectionActivation && window is MainWindow mainWindow)
+            {
+                // Do not surface the dashboard merely because Explorer invoked a command.
+                // If the user already has the dashboard open, leave its state alone; otherwise
+                // the command is presented only through the dedicated compact dialog host.
+                DeliverPendingExplorerInspection(mainWindow);
+                _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI instance handled an Explorer command without opening the dashboard.");
                 return;
             }
 
             ShowMainWindow();
-            if (explorerInspectionActivation && window is MainWindow mainWindow)
-                DeliverPendingExplorerInspection(mainWindow);
             _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI window handled a redirected activation.");
         }
 
