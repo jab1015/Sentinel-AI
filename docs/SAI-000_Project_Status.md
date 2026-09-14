@@ -1,8 +1,8 @@
 # SAI-000 — Project Status
 
-Version: 3.9  
-Status: Active — source/CI qualified; Windows VM package qualification blocked at signature verification  
-Last Updated: 2026-09-13
+Version: 4.0  
+Status: Active — Premium Privacy exact-head CI qualified; LocalDev Windows package/runtime qualification in progress  
+Last Updated: 2026-09-14
 
 Copyright (c) 2026 Modern Methods.
 
@@ -17,25 +17,26 @@ Sentinel AI remains in the production-security hardening program established fro
 - Fully qualified hardening checkpoint: `cff46692d1260349eae531632170fb687deed36f`
 - Hardening automated state: **12/12 required source/automated workflows PASS**
 - Premium Privacy branch: `feature/premium-privacy-foundation`
-- Premium Privacy source/CI foundation: qualified
-- Current VM package source checkpoint: `f51a31fe53c64cadd0e346eb32648a86353d23f2`
-- Current package version: `1.0.26.0`
+- Premium Privacy exact-head source/CI checkpoint before this documentation synchronization: `c0b60c06e4f03f9486965c799f7af028dd450a05`
+- Premium Privacy workflow run `34792512987`: **PASS**
+- Current package version: `1.0.27.0`
 - Premium Privacy remains isolated from hardening.
 - Release posture: **NOT production ready; DO NOT MERGE TO MAIN**
 
-Documentation commits may advance the Premium Privacy branch beyond the package-source checkpoint. Always record the actual package source SHA separately from the live documentation head.
+Documentation commits may advance the branch beyond the last source-qualified checkpoint. Record the source SHA used for every package separately from the live documentation head.
 
 ## Current Phase
 
-Windows physical validation is the next primary phase, but the clean Windows 11 VM installation must wait until the dedicated VM package workflow completes all signature, content, manifest, architecture, and artifact-integrity gates.
+The current focus is LocalDev Windows package creation and installed Windows 11 VM validation. The automated signed VM-package workflow has not yet completed successfully, but the same exact source checkpoint has passed Premium Privacy CI and has now rebuilt successfully in Visual Studio as `LocalDev | x64` with `2 succeeded, 0 failed, 1 up-to-date, 0 skipped`.
 
-The current state is therefore:
+Current state:
 
 - hardening source/automated qualification: PASS;
-- Premium Privacy source/automated qualification: PASS;
-- signed VM package build: partially qualified;
-- Windows VM installation readiness: **NO**;
-- GCP/Store external qualification: still open in parallel;
+- Premium Privacy exact-head source/automated qualification: PASS;
+- manual Visual Studio `LocalDev | x64` rebuild at `c0b60c06...`: PASS;
+- automated signed VM package qualification: NOT COMPLETE;
+- Windows installed/runtime validation: IN PROGRESS / NOT COMPLETE;
+- GCP/Store external qualification: OPEN;
 - production readiness: **NO**.
 
 ## Windows VM Test Package
@@ -43,56 +44,62 @@ The current state is therefore:
 Authoritative package handoff: `docs/testing/SAI-WIN-001_VM_Test_Package.md`.
 
 Workflow: `.github/workflows/windows-vm-test-package.yml`  
-Latest attempted run: `34736783747`  
-Job: `103669514840`  
-Package source: `f51a31fe53c64cadd0e346eb32648a86353d23f2`
+Latest exact-head run: `34792512975`  
+Source SHA: `c0b60c06e4f03f9486965c799f7af028dd450a05`  
+Conclusion: **CANCELLED** after the package build/sign/qualification step remained active until the workflow limit.
 
-Verified in that run:
+Passed before the package step:
 
-- Release configuration;
-- x64 package build;
-- production identity guard;
-- ephemeral dedicated test certificate creation;
-- MSIX signing;
-- runner-temp PFX cleanup.
+- checkout/tool discovery;
+- LocalDev compile-time entitlement boundary;
+- authoritative Release x64 entitlement-path compile.
 
-Not yet verified in one successful run:
+The exact-head Premium Privacy workflow completed successfully on the same source SHA. The manual Visual Studio LocalDev x64 rebuild also completed successfully. These facts permit controlled manual VM-package/runtime testing, but they do **not** convert the cancelled automated signed-package workflow into a pass and do not constitute Store/production release evidence.
 
-- cryptographic signature verification;
-- exact signer subject/thumbprint verification;
-- final package contents;
-- packaged Explorer COM/context-menu registrations;
-- required x64 PE architecture checks;
-- final artifact publication;
-- final SHA-256 and independent artifact inspection.
+## Encryption UX Decision — REQUIRED
 
-The verification step remained active until the job timeout and was cancelled. This is the current immediate blocker. The next agent must inspect the full verification log and correct the exact blocking operation without weakening cryptographic verification.
+Encryption must behave as a replace/protect operation rather than leaving an unexplained plaintext duplicate behind.
 
-Do not bypass this by manually creating an unrelated Visual Studio package. The goal is a reproducible signed test package tied to an exact source SHA.
+Required behavior for both `Encrypt for This PC` and `Encrypt for Sharing...`:
 
-## Required VM Package Contents
+1. create the `.sentinel.senc` container;
+2. verify that encryption/container finalization succeeded;
+3. only after successful verification, remove the original plaintext source automatically;
+4. do not present a `Keep original` choice;
+5. if encryption or verification fails, leave the original source untouched and report failure;
+6. never report full success while an unintended plaintext source remains;
+7. decryption restores a normal plaintext file from the self-contained `.sentinel.senc` container.
 
-The final package must contain exactly one each of:
+The existing implementation at checkpoint `c0b60c06...` intentionally leaves the source unchanged, so this UX rule is **approved but still requires source implementation and regression tests in the next work session**. Do not describe it as implemented until that change is committed and qualified.
 
-- `Sentinel.App.exe`
-- `Sentinel.PrivilegedBroker.exe`
-- `Sentinel.ExplorerExtension.dll`
-
-The package must retain identity `ModernMethods.SentinelAI`, Publisher `CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A`, x64 architecture, and the required Explorer COM/context-menu registration including CLSID `6C5E88B7-2A44-4B6D-9A6C-4F1A5C9F6E21`.
-
-The final test artifact must contain the signed MSIX, public `.cer`, install/uninstall helpers, SHA-256 information, and package-build metadata. It must contain no private key or signing password.
+Portable sharing remains password-protected and independent of the originating Windows profile. Existing `.sentinel.senc` files must remain decryptable and backward-compatible.
 
 ## Premium Privacy Implemented Foundation
 
-Source/CI-qualified Premium Privacy work includes packaged native Explorer integration; AES-256-GCM encrypted containers; Windows current-user/password/recovery modes; Sentinel Vault; exact-object logical Secure Delete with durable authorization/journaling; bounded attributable-copy/history discovery; related cleanup with fresh exact-target authorization; and Store-subject/scope-bound Premium capability enforcement.
+Source/CI-qualified Premium Privacy work includes native Explorer integration; local-profile and portable password-protected AES-256-GCM encrypted containers; Sentinel Vault foundation; exact-object logical Secure Delete; bounded attributable-copy/history discovery; related cleanup authorization; and Store/gateway Premium capability enforcement.
 
-Explorer remains a thin intent/selection transport. Discovery does not grant deletion authority. Fuzzy similarity never authorizes deletion. Subscription gating never locks users out of recovery/decryption of already-owned encrypted data.
+Explorer remains a thin intent/selection transport. Discovery does not grant deletion authority. Fuzzy similarity never authorizes deletion. Subscription expiry must never lock users out of recovery/decryption of already-owned encrypted data.
 
-## Windows Physical Validation — Pending Qualified Package
+Sentinel Vault remains a substantial source/backend foundation, not a completed user-facing Vault experience.
 
-Once the VM package is fully qualified, test clean install/upgrade/uninstall, Explorer behavior, standard/admin/UAC, encryption, Vault, Secure Delete, discovery providers, entitlement flows where available, Defender/firewall, startup/lifecycle, quarantine/recovery, crash/failure behavior, resource/stability behavior, and every architecture actually intended to ship.
+## LocalDev Entitlement Rule
 
-Record exact Windows version, package identity, architecture, privilege state, storage/filesystem, test case, observed outcome, evidence, and package/source SHA.
+The VM build uses compile-time-only `SENTINEL_LOCAL_DEV` authorization. Release/Store continues to require authoritative Microsoft Store + gateway entitlement. No runtime flag, preference, environment variable, or hidden switch may enable the LocalDev bypass in Release.
+
+## Windows Physical Validation
+
+Continue controlled Windows 11 VM testing with exact source/package evidence. Validate install/upgrade/uninstall, Explorer behavior, standard/admin/UAC, encryption/decryption, portable sharing, Vault, Secure Delete, discovery providers, Defender/firewall, startup/lifecycle, quarantine/recovery, failure behavior, and stability/resource behavior.
+
+For the new encryption replacement behavior specifically test:
+
+- source removed only after verified encryption success;
+- source preserved on encryption failure;
+- source preserved on verification/finalization failure;
+- `.senc` remains decryptable after source removal;
+- wrong portable password fails without damaging the container;
+- tampered header/wrapped key/ciphertext fails safely;
+- existing older `.senc` files remain decryptable;
+- no accidental overwrite of an existing destination/restored file.
 
 ## External Validation — Parallel Workstream
 
@@ -103,22 +110,21 @@ Still required before production release:
 - real Microsoft Store entitlement lifecycle evidence;
 - signed Store provenance/lifecycle evidence.
 
-These external gates do not invalidate local Windows runtime testing once the VM package itself is qualified.
-
 ## Current Priority
 
-1. Resolve the VM package signature-verification hang without weakening validation.
-2. Complete one successful build/sign/verify/inspect/artifact workflow.
-3. Independently inspect the downloaded artifact and record SHA-256/source SHA.
-4. Mark Windows VM testing ready only after all package gates pass.
-5. Begin clean Windows 11 VM testing one step at a time.
-6. Continue GCP shared-state/staging and Microsoft Store test-entitlement work in parallel.
-7. Correct runtime defects at root cause and add regression coverage.
-8. Complete final stability and independent 29-finding re-audit before any production decision.
+1. Implement the approved encryption replacement behavior with fail-safe source preservation and regression tests.
+2. Preserve `1.0.27.0`, production identity, Explorer integration, LocalDev compile-only entitlement boundary, and Release entitlement behavior.
+3. Finish creating/installing the LocalDev x64 MSIX on the Windows VM and execute runtime validation one step at a time.
+4. Diagnose the reproducible automated VM-package workflow stall/cancellation separately; do not weaken verification merely to obtain green CI.
+5. Continue GCP/Store external qualification.
+6. Correct runtime defects at root cause and add regression coverage.
+7. Complete final stability and independent 29-finding re-audit before any production decision.
 
 ## Current Decision
 
-- WINDOWS VM TESTING READY: **NO**
+- MANUAL LOCALDEV SOURCE BUILD: **PASS at c0b60c06...**
+- AUTOMATED SIGNED VM PACKAGE QUALIFICATION: **NO / CANCELLED**
+- WINDOWS RUNTIME QUALIFICATION: **NOT COMPLETE**
 - PRODUCTION STORE READY: **NO**
 - MERGE TO MAIN: **NO**
 - PRODUCTION READY: **NO**
