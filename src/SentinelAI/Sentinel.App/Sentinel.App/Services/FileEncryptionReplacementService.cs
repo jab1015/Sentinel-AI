@@ -15,11 +15,24 @@ namespace Sentinel.App.Services;
 /// </summary>
 internal sealed class FileEncryptionReplacementService
 {
-    private readonly FileEncryptionService _encryption;
+    private readonly Func<string, string, IReadOnlyList<IFileKeyProtector>, CancellationToken, Task<FileEncryptionResult>> _encryptAndVerify;
 
     internal FileEncryptionReplacementService(FileEncryptionService? encryption = null)
+        : this((source, output, protectors, cancellationToken) =>
+            (encryption ?? new FileEncryptionService()).EncryptAsync(source, output, protectors, cancellationToken))
     {
-        _encryption = encryption ?? new FileEncryptionService();
+    }
+
+    /// <summary>
+    /// Internal deterministic seam for acceptance testing the replacement transaction itself.
+    /// Production callers use the FileEncryptionService constructor above. This does not expose
+    /// a runtime setting or bypass: it only supplies the already-completed encrypt/verify result
+    /// consumed by this internal coordinator.
+    /// </summary>
+    internal FileEncryptionReplacementService(
+        Func<string, string, IReadOnlyList<IFileKeyProtector>, CancellationToken, Task<FileEncryptionResult>> encryptAndVerify)
+    {
+        _encryptAndVerify = encryptAndVerify ?? throw new ArgumentNullException(nameof(encryptAndVerify));
     }
 
     internal async Task<FileEncryptionResult> EncryptReplacingSourceAsync(
@@ -56,7 +69,7 @@ internal sealed class FileEncryptionReplacementService
                     output);
             }
 
-            FileEncryptionResult encrypted = await _encryption.EncryptAsync(
+            FileEncryptionResult encrypted = await _encryptAndVerify(
                 source,
                 output,
                 keyProtectors,
