@@ -59,10 +59,15 @@ public sealed partial class MainWindow
             return;
         }
 
+        // Bind the encrypted source before decryption. If it changes while recovery is in
+        // progress, the exact-object retirement gate will fail closed instead of deleting a
+        // replacement object that merely appears at the same path.
+        SecureDeleteTargetValidationResult encryptedSourceIdentity = SecureDeleteTargetValidator.Validate(path);
+
         ContentDialog confirmation = new()
         {
             Title = "Decrypt Sentinel File",
-            Content = $"Encrypted container:\n{path}\n\nRestored plaintext output:\n{output}\n\nSentinel will authenticate the encrypted container before accepting the restored file. The encrypted container will remain unchanged. Decryption of your existing Sentinel data does not require a current subscription.\n\nFor files protected for this PC, Sentinel will first try the current Windows user. For portable shared files, Sentinel will ask for the sharing password if needed.",
+            Content = $"Encrypted container:\n{path}\n\nRestored plaintext output:\n{output}\n\nSentinel will authenticate the encrypted container before accepting the restored file. After a successful verified restore, Sentinel will retire the exact encrypted source object. If source retirement cannot be proved safe, the restored plaintext is kept and the encrypted source remains for review. Decryption of your existing Sentinel data does not require a current subscription.\n\nFor files protected for this PC, Sentinel will first try the current Windows user. For portable shared files, Sentinel will ask for the sharing password if needed.",
             PrimaryButtonText = "Decrypt",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
@@ -76,16 +81,16 @@ public sealed partial class MainWindow
             output,
             new IFileKeyProtector[] { new WindowsCurrentUserFileKeyProtector() }).ConfigureAwait(true);
 
-        if (!result.Succeeded &&
-            string.Equals(result.Code, "KeyUnavailable", StringComparison.Ordinal) &&
-            !result.InvalidOutputRemains &&
-            !File.Exists(output) &&
-            !Directory.Exists(output))
+        while (!result.Succeeded &&
+               string.Equals(result.Code, "KeyUnavailable", StringComparison.Ordinal) &&
+               !result.InvalidOutputRemains &&
+               !File.Exists(output) &&
+               !Directory.Exists(output))
         {
             char[]? password = await PromptForPortablePasswordAsync(
                 rootElement,
                 "Password required",
-                "This Sentinel file was not unlocked by the current Windows user. If it was encrypted for sharing, enter the password supplied by the sender. Sentinel does not store or recover this password.",
+                "This Sentinel file was not unlocked by the current Windows user. If it was encrypted for sharing, enter the password supplied by the sender. If the password is not accepted, Sentinel will let you try again. Sentinel does not store or recover this password.",
                 requireConfirmation: false,
                 enforceCreationPolicy: false).ConfigureAwait(true);
 
@@ -103,16 +108,60 @@ public sealed partial class MainWindow
             {
                 Array.Clear(password, 0, password.Length);
             }
+
+            if (!result.Succeeded &&
+                string.Equals(result.Code, "KeyUnavailable", StringComparison.Ordinal) &&
+                !result.InvalidOutputRemains &&
+                !File.Exists(output) &&
+                !Directory.Exists(output))
+            {
+                await ShowPrivacyMessageAsync(rootElement, "Password not accepted",
+                    "Sentinel could not unlock this portable encrypted file with that password. The encrypted file was not changed. You can try the password again or cancel.").ConfigureAwait(true);
+            }
+        }
+
+        if (!result.Succeeded)
+        {
+            await ShowPrivacyMessageAsync(
+                rootElement,
+                "Decryption did not complete",
+                string.Equals(result.Code, "KeyUnavailable", StringComparison.Ordinal)
+                    ? $"Sentinel could not unlock this encrypted file with the supplied Windows identity or password. No plaintext output was accepted.\n\nStatus: {result.Code}\n\nIf this is a shared file, verify the password with the sender using a separate communication channel."
+                    : $"Sentinel did not accept a plaintext output.\n\nStatus: {result.Code}\n{result.Message}\n\nInvalid plaintext output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
+            return;
+        }
+
+        bool encryptedSourceRemoved = false;
+        string retirementDetail;
+        if (!encryptedSourceIdentity.Succeeded)
+        {
+            retirementDetail = "Sentinel restored and authenticated the plaintext, but it could not safely bind the encrypted source to an exact filesystem identity before recovery. The encrypted .sentinel.senc file was therefore kept.";
+        }
+        else
+        {
+            SecureDeleteCoordinator coordinator = new();
+            SecureDeletePreparationResult prepared = coordinator.Prepare(encryptedSourceIdentity.Target);
+            if (!prepared.Succeeded || prepared.Authorization is null)
+            {
+                retirementDetail = "Sentinel restored and authenticated the plaintext, but the exact encrypted source could not be approved for safe logical retirement. The encrypted .sentinel.senc file was kept. " + prepared.Message;
+            }
+            else
+            {
+                string journalRoot = Path.Combine(ApplicationData.Current.LocalFolder.Path, "Privacy", "SecureDeleteJournal");
+                SecureDeleteOperationJournal journal = new(journalRoot);
+                SecureDeleteExactObjectExecutor executor = new(coordinator, journal);
+                SecureDeleteExecutionResult retirement = executor.Execute(prepared.Authorization);
+                encryptedSourceRemoved = retirement.Succeeded && retirement.PrimaryRemoval == SecureDeletePrimaryRemovalStatus.Verified;
+                retirementDetail = encryptedSourceRemoved
+                    ? "The exact encrypted source object was logically removed and its absence was verified. Sentinel does not claim that SSD/NVMe physical-media remnants are provably erased."
+                    : $"The plaintext restore succeeded, but Sentinel could not prove safe removal of the encrypted source. The .sentinel.senc file remains for review. Status: {retirement.Code}. {retirement.Message}";
+            }
         }
 
         await ShowPrivacyMessageAsync(
             rootElement,
-            result.Succeeded ? "Decrypted and verified" : "Decryption did not complete",
-            result.Succeeded
-                ? $"Sentinel authenticated the encrypted container and restored a separate plaintext file.\n\nRestored file:\n{output}\n\nPlaintext bytes restored: {result.PlaintextBytes:N0}\n\nThe encrypted .sentinel.senc file remains unchanged."
-                : string.Equals(result.Code, "KeyUnavailable", StringComparison.Ordinal)
-                    ? $"Sentinel could not unlock this encrypted file with the supplied Windows identity or password. No plaintext output was accepted.\n\nStatus: {result.Code}\n\nIf this is a shared file, verify the password with the sender using a separate communication channel."
-                    : $"Sentinel did not accept a plaintext output.\n\nStatus: {result.Code}\n{result.Message}\n\nInvalid plaintext output remains: {(result.InvalidOutputRemains ? "YES — review required" : "NO")}").ConfigureAwait(true);
+            encryptedSourceRemoved ? "Decrypted, verified, and source retired" : "Decrypted and verified — encrypted source kept",
+            $"Sentinel authenticated the encrypted container and restored the plaintext file.\n\nRestored file:\n{output}\n\nPlaintext bytes restored: {result.PlaintextBytes:N0}\n\n{retirementDetail}").ConfigureAwait(true);
     }
 
     private async Task EncryptExplorerFileAsync(string path, FrameworkElement rootElement)
@@ -194,7 +243,7 @@ public sealed partial class MainWindow
         char[]? password = await PromptForPortablePasswordAsync(
             rootElement,
             "Create sharing password",
-            $"Choose a password of at least {PortableEncryptionMinimumPasswordLength} characters. The recipient must know this exact password to decrypt the file. Share it through a different communication channel than the encrypted file.",
+            $"Choose a password of at least {PortableEncryptionMinimumPasswordLength} characters. Enter it twice. If it is too short or the two entries do not match, Sentinel will keep the password dialog open for another try. The recipient must know this exact password to decrypt the file. Share it through a different communication channel than the encrypted file.",
             requireConfirmation: true,
             enforceCreationPolicy: true).ConfigureAwait(true);
         if (password is null) return;
@@ -230,77 +279,80 @@ public sealed partial class MainWindow
         bool requireConfirmation,
         bool enforceCreationPolicy)
     {
-        PasswordBox passwordBox = new()
+        while (true)
         {
-            Header = "Password",
-            MaxLength = PortableEncryptionMaximumPasswordLength,
-            PlaceholderText = requireConfirmation ? "Create a strong password" : "Enter sharing password"
-        };
-        PasswordBox? confirmationBox = requireConfirmation
-            ? new PasswordBox
+            PasswordBox passwordBox = new()
             {
-                Header = "Confirm password",
+                Header = "Password",
                 MaxLength = PortableEncryptionMaximumPasswordLength,
-                PlaceholderText = "Enter the same password again"
+                PlaceholderText = requireConfirmation ? "Create a strong password" : "Enter sharing password"
+            };
+            PasswordBox? confirmationBox = requireConfirmation
+                ? new PasswordBox
+                {
+                    Header = "Confirm password",
+                    MaxLength = PortableEncryptionMaximumPasswordLength,
+                    PlaceholderText = "Enter the same password again"
+                }
+                : null;
+
+            StackPanel panel = new() { Spacing = 10, MinWidth = 420 };
+            panel.Children.Add(new TextBlock { Text = instructions, TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(passwordBox);
+            if (confirmationBox is not null) panel.Children.Add(confirmationBox);
+
+            ContentDialog dialog = new()
+            {
+                Title = title,
+                Content = panel,
+                PrimaryButtonText = requireConfirmation ? "Encrypt" : "Unlock",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = rootElement.XamlRoot
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                passwordBox.Password = string.Empty;
+                if (confirmationBox is not null) confirmationBox.Password = string.Empty;
+                return null;
             }
-            : null;
 
-        StackPanel panel = new() { Spacing = 10, MinWidth = 420 };
-        panel.Children.Add(new TextBlock { Text = instructions, TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(passwordBox);
-        if (confirmationBox is not null) panel.Children.Add(confirmationBox);
-
-        ContentDialog dialog = new()
-        {
-            Title = title,
-            Content = panel,
-            PrimaryButtonText = requireConfirmation ? "Encrypt" : "Unlock",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = rootElement.XamlRoot
-        };
-
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
+            char[] password = passwordBox.Password.ToCharArray();
+            char[] confirmation = confirmationBox?.Password.ToCharArray() ?? Array.Empty<char>();
             passwordBox.Password = string.Empty;
             if (confirmationBox is not null) confirmationBox.Password = string.Empty;
-            return null;
-        }
 
-        char[] password = passwordBox.Password.ToCharArray();
-        char[] confirmation = confirmationBox?.Password.ToCharArray() ?? Array.Empty<char>();
-        passwordBox.Password = string.Empty;
-        if (confirmationBox is not null) confirmationBox.Password = string.Empty;
-
-        try
-        {
-            if (password.Length == 0)
+            try
             {
-                Array.Clear(password, 0, password.Length);
-                await ShowPrivacyMessageAsync(rootElement, "Password required", "No password was entered. No file was changed.").ConfigureAwait(true);
-                return null;
-            }
+                if (password.Length == 0)
+                {
+                    Array.Clear(password, 0, password.Length);
+                    await ShowPrivacyMessageAsync(rootElement, "Password required", "No password was entered. Enter a password to continue, or choose Cancel to leave the file unchanged.").ConfigureAwait(true);
+                    continue;
+                }
 
-            if (enforceCreationPolicy && password.Length < PortableEncryptionMinimumPasswordLength)
+                if (enforceCreationPolicy && password.Length < PortableEncryptionMinimumPasswordLength)
+                {
+                    Array.Clear(password, 0, password.Length);
+                    await ShowPrivacyMessageAsync(rootElement, "Password is too short",
+                        $"Use at least {PortableEncryptionMinimumPasswordLength} characters for a portable encrypted file. The password entry will open again so you can try another password.").ConfigureAwait(true);
+                    continue;
+                }
+
+                if (requireConfirmation && !password.AsSpan().SequenceEqual(confirmation))
+                {
+                    Array.Clear(password, 0, password.Length);
+                    await ShowPrivacyMessageAsync(rootElement, "Passwords do not match", "The two passwords were different. The password entry will open again so you can re-enter both values.").ConfigureAwait(true);
+                    continue;
+                }
+
+                return password;
+            }
+            finally
             {
-                Array.Clear(password, 0, password.Length);
-                await ShowPrivacyMessageAsync(rootElement, "Password is too short",
-                    $"Use at least {PortableEncryptionMinimumPasswordLength} characters for a portable encrypted file. No file was changed.").ConfigureAwait(true);
-                return null;
+                Array.Clear(confirmation, 0, confirmation.Length);
             }
-
-            if (requireConfirmation && !password.AsSpan().SequenceEqual(confirmation))
-            {
-                Array.Clear(password, 0, password.Length);
-                await ShowPrivacyMessageAsync(rootElement, "Passwords do not match", "The two passwords were different. No file was changed.").ConfigureAwait(true);
-                return null;
-            }
-
-            return password;
-        }
-        finally
-        {
-            Array.Clear(confirmation, 0, confirmation.Length);
         }
     }
 
@@ -317,10 +369,31 @@ public sealed partial class MainWindow
             {
                 newRecovery = RecoveryKeyMaterial.Generate();
                 string recoveryText = newRecovery.ToDisplayString();
+
+                StackPanel recoveryPanel = new() { Spacing = 10, MinWidth = 480 };
+                recoveryPanel.Children.Add(new TextBlock
+                {
+                    Text = "Sentinel Vault is a private encrypted storage area managed by Sentinel. Files added to it are stored as encrypted Vault items inside Sentinel's app data instead of as ordinary readable copies.\n\nThis is the independent recovery key for your new Vault. Copy it and save it somewhere separate from this PC before continuing. Sentinel does not upload or retain the plaintext recovery key.",
+                    TextWrapping = TextWrapping.Wrap
+                });
+                recoveryPanel.Children.Add(new TextBox
+                {
+                    Header = "Vault recovery key — selectable and copyable",
+                    Text = recoveryText,
+                    IsReadOnly = true,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsSpellCheckEnabled = false
+                });
+                recoveryPanel.Children.Add(new TextBlock
+                {
+                    Text = "Use Ctrl+A then Ctrl+C in the recovery-key box, or select the key and copy it. If Windows account protection is later unavailable, this key is the recovery path to your Vault.",
+                    TextWrapping = TextWrapping.Wrap
+                });
+
                 ContentDialog recoveryDialog = new()
                 {
                     Title = "Save your Sentinel Vault recovery key",
-                    Content = $"Sentinel Vault is a private encrypted storage area managed by Sentinel. Files added to it are stored as encrypted Vault items inside Sentinel's app data instead of as ordinary readable copies.\n\nThis is the independent recovery key for your new Vault. Save it somewhere separate from this PC before continuing. Sentinel does not upload or retain the plaintext recovery key.\n\n{recoveryText}\n\nIf Windows account protection is later unavailable, this key is the recovery path to your Vault.",
+                    Content = recoveryPanel,
                     PrimaryButtonText = "I saved it",
                     CloseButtonText = "Cancel",
                     DefaultButton = ContentDialogButton.Close,
