@@ -1,4 +1,6 @@
 using Sentinel.App.Services;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 internal static class SecureDeleteRecoveryExtendedAcceptance
 {
@@ -60,9 +62,21 @@ internal static class SecureDeleteRecoveryExtendedAcceptance
         SecureDeleteOperationRecord record = Begin(journal, path);
         string journalPath = Path.Combine(scopedJournalRoot, record.OperationId.ToString("N") + ".json");
         string authentic = File.ReadAllText(journalPath);
-        string originalTimestamp = record.UpdatedUtc.ToString("O");
-        string rolledBackTimestamp = record.UpdatedUtc.AddDays(-1).ToString("O");
-        string tampered = authentic.Replace(originalTimestamp, rolledBackTimestamp, StringComparison.Ordinal);
+
+        JsonNode rootNode = JsonNode.Parse(authentic)
+            ?? throw new InvalidOperationException("Timestamp tamper fixture could not parse the authenticated journal.");
+        JsonObject envelope = rootNode.AsObject();
+        JsonObject recordNode = envelope["Record"]?.AsObject()
+            ?? throw new InvalidOperationException("Timestamp tamper fixture could not locate the authenticated record.");
+
+        string? persistedTimestamp = recordNode["UpdatedUtc"]?.GetValue<string>();
+        Require(!string.IsNullOrWhiteSpace(persistedTimestamp),
+            "Timestamp tamper fixture could not locate the persisted UpdatedUtc value.");
+
+        DateTimeOffset parsedTimestamp = DateTimeOffset.Parse(persistedTimestamp!, System.Globalization.CultureInfo.InvariantCulture);
+        recordNode["UpdatedUtc"] = parsedTimestamp.AddDays(-1).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+
+        string tampered = rootNode.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         Require(!string.Equals(authentic, tampered, StringComparison.Ordinal),
             "Timestamp tamper fixture did not alter the authenticated journal.");
         File.WriteAllText(journalPath, tampered);
