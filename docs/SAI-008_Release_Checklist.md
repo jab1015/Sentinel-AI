@@ -1,8 +1,8 @@
 # SAI-008 — Release Checklist
 
-Version: 2.1  
-Status: REOPENED — Windows VM package qualification in progress; production release not authorized  
-Last Updated: 2026-09-13
+Version: 2.2  
+Status: REOPENED — LocalDev Windows testing underway; production release not authorized  
+Last Updated: 2026-09-14
 
 Copyright (c) 2026 Modern Methods.
 
@@ -12,7 +12,7 @@ Copyright (c) 2026 Modern Methods.
 
 The historical `1.0.25.0 Release Candidate Validated` state is superseded by the September production-security program. Sentinel AI must not be described as production-hardened or release-qualified until all applicable runtime, external, stability, package, and independent-review gates are complete.
 
-Current application/package version under VM preparation: `1.0.26.0`.
+Current application/package version under VM preparation: `1.0.27.0`.
 
 ## Qualified Hardening Baseline
 
@@ -27,68 +27,75 @@ Current application/package version under VM preparation: `1.0.26.0`.
 ## Premium Privacy Source Qualification
 
 - [x] Premium Privacy branch isolated: `feature/premium-privacy-foundation`
-- [x] Premium Privacy source/CI foundation qualified
+- [x] Exact-head Premium Privacy CI passed at `c0b60c06e4f03f9486965c799f7af028dd450a05`
 - [x] Explorer integration source/CI
-- [x] Encryption/recovery source/CI
-- [x] Vault source/CI
+- [x] Local-profile encryption/decryption source/CI
+- [x] Portable password-protected `Encrypt for Sharing...` source/CI
+- [x] Vault source foundation/CI
 - [x] Secure Delete logical exact-object execution source/CI
 - [x] Broad attributable-copy discovery foundation source/CI
 - [x] Premium Privacy entitlement/capability source/CI
+- [ ] Approved encryption replacement UX implemented and regression-qualified
 - [ ] Installed Windows privacy matrix complete
 - [ ] Real provider/runtime evidence complete
 - [ ] GCP multi-instance shared-state/staging evidence complete
 - [ ] Real Microsoft Store entitlement lifecycle evidence complete
 
-## Windows VM Test Package — ACTIVE BLOCKER
+### Encryption Replacement UX — REQUIRED NEXT SOURCE CHANGE
+
+Current qualified source leaves the plaintext input in place after creating `.sentinel.senc`. Product decision as of 2026-09-14:
+
+- [ ] `Encrypt for This PC` automatically removes the plaintext source after verified successful encryption
+- [ ] `Encrypt for Sharing...` automatically removes the plaintext source after verified successful encryption
+- [ ] no `Keep original` choice is presented
+- [ ] encryption failure leaves the source untouched
+- [ ] finalization/verification failure leaves the source untouched
+- [ ] `.senc` decrypts correctly after source removal
+- [ ] wrong portable password fails safely
+- [ ] tampered encrypted data fails safely
+- [ ] older `.senc` files remain backward-compatible
+- [ ] destination collisions never silently overwrite user data
+
+Do not mark these complete until implemented and tested.
+
+## Windows VM Test Package
 
 Authoritative handoff: `docs/testing/SAI-WIN-001_VM_Test_Package.md`.
 
-Package-source checkpoint currently under qualification: `f51a31fe53c64cadd0e346eb32648a86353d23f2`.
+Exact source checkpoint used for the current manual LocalDev build: `c0b60c06e4f03f9486965c799f7af028dd450a05`.
 
-Latest packaging run: `34736783747`, job `103669514840`.
-
-- [x] Package version `1.0.26.0`
-- [x] Configuration Release
+- [x] Package version `1.0.27.0`
+- [x] Configuration `LocalDev` available for isolated subscription-free VM testing
 - [x] Architecture x64
 - [x] Format MSIX
-- [x] Production package identity guard passed
-- [x] Unsigned Release x64 MSIX build passed
-- [x] Ephemeral dedicated VM test certificate creation passed
-- [x] MSIX signing passed
-- [x] Temporary signing PFX deleted by workflow
-- [x] Production Store signing key not used
-- [x] Private signing key not committed
+- [x] Compile-time LocalDev entitlement boundary verified in CI
+- [x] Authoritative Release x64 entitlement path compiled in CI
+- [x] Exact-head Premium Privacy workflow `34792512987` passed
+- [x] Manual Visual Studio `LocalDev | x64` rebuild passed: `2 succeeded, 0 failed, 1 up-to-date, 0 skipped`
+- [ ] Manual LocalDev MSIX creation completed and recorded
+- [ ] Manual LocalDev MSIX installed on Windows 11 VM
+- [ ] Installed LocalDev runtime matrix complete
+- [ ] Automated dedicated signed VM-package workflow completes successfully
 - [ ] Automated cryptographic signature verification passed
 - [ ] Exact signer certificate/subject/thumbprint verification passed
-- [ ] Package contents inspection passed
-- [ ] `Sentinel.App.exe` exactly once
-- [ ] `Sentinel.PrivilegedBroker.exe` exactly once
-- [ ] `Sentinel.ExplorerExtension.dll` exactly once
-- [ ] Required Explorer COM/context-menu registrations verified in packaged manifest
-- [ ] Required shipped binaries verified x64 PE machine `0x8664`
-- [ ] Final artifact uploaded
-- [ ] Public `SentinelAI-TestSigning.cer` included
-- [ ] Install/uninstall helpers included
-- [ ] `SHA256SUMS.txt` and `PackageBuildInfo.txt` included
-- [ ] Final artifact independently checked for absence of `.pfx`, `.p12`, `.key`, private-key PEM, and signing password
-- [ ] Final package SHA-256 independently confirmed
-- [ ] WINDOWS VM TESTING READY
+- [ ] Automated package contents inspection passed
+- [ ] Automated Explorer COM/context-menu packaged-manifest verification passed
+- [ ] Automated shipped-binary x64 PE verification passed
+- [ ] Automated final artifact uploaded and independently inspected
 
-### Current VM Package Failure
-
-Run `34736783747` successfully built and signed the MSIX. `Verify signed VM test MSIX` then remained active until the 30-minute job timeout and was cancelled. The workflow contains an intended 120-second SignTool bound, therefore the next action is to inspect the full verification log, identify the exact blocked operation, and correct the timeout/verification implementation without weakening cryptographic verification.
-
-Do not substitute an unrelated manual Visual Studio build merely to bypass this gate. The intended result is one reproducible signed test artifact tied to an exact source SHA.
+Latest automated VM package run `34792512975` on `c0b60c06...` was **cancelled** after its build/sign/qualify package step remained active until the workflow limit. This remains an automation defect/gate to diagnose separately; do not weaken cryptographic or package verification simply to turn it green.
 
 ## Windows Runtime Qualification
 
 - [ ] Clean Windows 11 VM install
-- [ ] Upgrade
+- [ ] Upgrade from existing 1.0.27.0 VM installation where applicable
 - [ ] Uninstall
 - [ ] Standard-user/admin/UAC matrices
 - [ ] Installed privileged broker identity and caller rejection
 - [ ] Explorer restart/context-menu/single/multi-select/Unicode/long-path behavior
 - [ ] Encryption normal/failure/recovery/corruption/crash cases
+- [ ] Portable cross-profile/machine sharing behavior
+- [ ] Plaintext replacement behavior after approved UX source change
 - [ ] Vault lifecycle/recovery/crash/concurrency cases
 - [ ] Secure Delete exact-object/race/reparse/hardlink/protected-path/UAC/crash cases
 - [ ] File History / Previous Versions / Search / Recent / Jump Lists / OneDrive discovery behavior
@@ -120,7 +127,10 @@ Do not substitute an unrelated manual Visual Studio build merely to bypass this 
 
 Current decision:
 
-- WINDOWS VM TESTING READY: **NO**
+- PREMIUM PRIVACY SOURCE/CI: **PASS at c0b60c06...**
+- MANUAL LOCALDEV X64 REBUILD: **PASS**
+- WINDOWS VM RUNTIME QUALIFICATION: **NOT COMPLETE**
+- AUTOMATED SIGNED VM PACKAGE QUALIFICATION: **NOT COMPLETE**
 - PRODUCTION STORE READY: **NO**
 - MERGE TO MAIN: **NO**
 - RELEASE QUALIFIED: **NO**
