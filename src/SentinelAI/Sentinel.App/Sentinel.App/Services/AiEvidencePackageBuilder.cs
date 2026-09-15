@@ -56,12 +56,17 @@ namespace Sentinel.App.Services
                 if (external.MatchedTerms.Count > 0) Add(facts, "external-matches", string.Join(", ", external.MatchedTerms.Take(10)));
                 if (external.Sources.Count > 0) Add(facts, "authorities", string.Join(", ", external.Sources.Where(x => x.Reached).Select(x => x.SourceName).Distinct().Take(5)));
 
-                foreach (ExternalResearchPassage passage in external.Sources
-                             .Where(source => source.Passages is not null)
-                             .SelectMany(source => source.Passages!)
-                             .Take(6))
+                int passageCount = 0;
+                foreach (ExternalSourceEvidence source in external.Sources)
                 {
-                    Add(facts, "authoritative-source-passage", $"{passage.SourceName}: {passage.Text}");
+                    if (source.Passages is null) continue;
+                    foreach (ExternalResearchPassage passage in source.Passages)
+                    {
+                        Add(facts, "authoritative-source-passage", $"{source.SourceName}: {passage.Passage}");
+                        passageCount++;
+                        if (passageCount >= 6) break;
+                    }
+                    if (passageCount >= 6) break;
                 }
             }
 
