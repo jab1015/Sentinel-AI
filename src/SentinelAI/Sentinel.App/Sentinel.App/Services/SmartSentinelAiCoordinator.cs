@@ -113,11 +113,12 @@ namespace Sentinel.App.Services
             return removed;
         }
 
-        private static string CreateStableCachePayload(string payload)
+        internal static string CreateStableCachePayload(string payload)
         {
             string[] lines = payload.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-            return string.Join("\n", Array.FindAll(lines,
-                line => !line.StartsWith("- snapshot-time:", StringComparison.OrdinalIgnoreCase)));
+            return string.Join("\n", Array.FindAll(lines, line =>
+                !line.StartsWith("- snapshot-time:", StringComparison.OrdinalIgnoreCase) &&
+                !line.StartsWith("- external-summary:", StringComparison.OrdinalIgnoreCase)));
         }
 
         private static void TrimCacheIfNeeded()
