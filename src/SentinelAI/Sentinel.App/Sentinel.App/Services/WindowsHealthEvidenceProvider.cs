@@ -61,13 +61,23 @@ namespace Sentinel.App.Services
 
         public string GetPendingRestartStatus()
         {
-            bool? restart = TryGetRestartPending();
-            return restart switch
-            {
-                true => "Windows has verified local indicators showing that a restart is pending.",
-                false => "Sentinel found no verified local Windows indicators requiring a restart.",
-                null => "Sentinel could not verify pending-restart status on this computer."
-            };
+            RestartEvidence? evidence = TryGetRestartEvidence();
+            if (evidence is null)
+                return "Sentinel could not verify pending-restart status because Windows did not expose the required local registry evidence to this process.";
+
+            if (!evidence.IsPending)
+                return "Sentinel checked Windows Update, Windows component servicing, and pending file-replacement indicators. None currently reports that Windows is waiting for a restart.";
+
+            StringBuilder reasons = new();
+            if (evidence.WindowsUpdate)
+                reasons.Append("Windows Update is requesting a restart. ");
+            if (evidence.ComponentServicing)
+                reasons.Append("Windows component servicing has work waiting for a restart. ");
+            if (evidence.PendingFileRename)
+                reasons.Append("Windows also has pending file replacement or rename work, which is commonly left by an installer, driver update, or Windows update. ");
+
+            reasons.Append("These Windows indicators verify why a restart is pending at the subsystem level, but they do not always identify the exact application, driver, or KB that created the request. Sentinel will not invent a more specific cause without matching evidence.");
+            return reasons.ToString().Trim();
         }
 
         public string GetTpmStatus()
@@ -208,12 +218,21 @@ namespace Sentinel.App.Services
 
         private static bool? TryGetRestartPending()
         {
+            RestartEvidence? evidence = TryGetRestartEvidence();
+            return evidence?.IsPending;
+        }
+
+        private static RestartEvidence? TryGetRestartEvidence()
+        {
             try
             {
                 using RegistryKey? updateRestart = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired");
                 using RegistryKey? servicingRestart = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending");
                 using RegistryKey? sessionManager = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager");
-                return updateRestart is not null || servicingRestart is not null || sessionManager?.GetValue("PendingFileRenameOperations") is not null;
+                return new RestartEvidence(
+                    updateRestart is not null,
+                    servicingRestart is not null,
+                    sessionManager?.GetValue("PendingFileRenameOperations") is not null);
             }
             catch (UnauthorizedAccessException) { return null; }
             catch (System.Security.SecurityException) { return null; }
@@ -251,6 +270,14 @@ namespace Sentinel.App.Services
             string normalized = value.Replace("\r", " ", StringComparison.Ordinal).Replace("\n", " ", StringComparison.Ordinal).Replace(';', ',').Trim();
             while (normalized.Contains("  ", StringComparison.Ordinal)) normalized = normalized.Replace("  ", " ", StringComparison.Ordinal);
             return normalized.Length <= 500 ? normalized : normalized[..497] + "...";
+        }
+
+        private sealed record RestartEvidence(
+            bool WindowsUpdate,
+            bool ComponentServicing,
+            bool PendingFileRename)
+        {
+            public bool IsPending => WindowsUpdate || ComponentServicing || PendingFileRename;
         }
 
         public sealed record WindowsHealthDiscoverySnapshot(
