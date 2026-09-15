@@ -140,8 +140,8 @@ AskSentinelConversationContextDecision buttonPrompt = conversation.Decide(
     now);
 Require(!buttonPrompt.UsePriorExchange,
     "A self-contained follow-up-button prompt redundantly inherited implicit conversation memory.");
-Require(whyFollowUp.SupplementalContext.Length < 1_800,
-    "Conversation context exceeded the intended bounded evidence size.");
+Require(whyFollowUp.SupplementalContext.Length < 1_400,
+    "Conversation context exceeded the evidence-line ceiling and could truncate its safety rules.");
 
 var escalation = new AiEscalationPolicy();
 AiEscalationDecision firstPass = escalation.Evaluate(routing.CreateBasicAiContext(

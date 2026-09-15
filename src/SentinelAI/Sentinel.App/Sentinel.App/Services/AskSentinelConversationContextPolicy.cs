@@ -17,9 +17,9 @@ namespace Sentinel.App.Services
     public sealed class AskSentinelConversationContextPolicy
     {
         private static readonly TimeSpan MaximumContextAge = TimeSpan.FromMinutes(30);
-        private const int MaximumCurrentQuestionCharacters = 220;
-        private const int MaximumPreviousQuestionCharacters = 320;
-        private const int MaximumPreviousAnswerCharacters = 520;
+        private const int MaximumCurrentQuestionCharacters = 180;
+        private const int MaximumPreviousQuestionCharacters = 260;
+        private const int MaximumPreviousAnswerCharacters = 400;
 
         public AskSentinelConversationContextDecision Decide(
             string currentQuestion,
