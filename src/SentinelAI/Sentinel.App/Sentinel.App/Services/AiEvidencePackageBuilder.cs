@@ -55,6 +55,14 @@ namespace Sentinel.App.Services
                 Add(facts, "external-summary", external.Summary);
                 if (external.MatchedTerms.Count > 0) Add(facts, "external-matches", string.Join(", ", external.MatchedTerms.Take(10)));
                 if (external.Sources.Count > 0) Add(facts, "authorities", string.Join(", ", external.Sources.Where(x => x.Reached).Select(x => x.SourceName).Distinct().Take(5)));
+
+                foreach (ExternalResearchPassage passage in external.Sources
+                             .Where(source => source.Passages is not null)
+                             .SelectMany(source => source.Passages!)
+                             .Take(6))
+                {
+                    Add(facts, "authoritative-source-passage", $"{passage.SourceName}: {passage.Text}");
+                }
             }
 
             Add(facts, "machine-specific supplemental evidence", supplementalEvidence);
@@ -65,7 +73,7 @@ namespace Sentinel.App.Services
             builder.AppendLine("SENTINEL_AI_EVIDENCE_V1");
             builder.AppendLine($"purpose: {Sanitize(purpose, ref redactionApplied)}");
             if (!string.IsNullOrWhiteSpace(sanitizedQuestion)) builder.AppendLine($"question: {Limit(sanitizedQuestion, 500)}");
-            builder.AppendLine("rules: use only supplied verified evidence; distinguish fact from inference; do not authorize repairs; request more evidence only if Sentinel cannot collect it locally.");
+            builder.AppendLine("rules: machine-specific claims must use supplied verified evidence; stable general Windows/computer explanations may use general knowledge but must be labeled as general guidance; current/latest/vendor-specific claims require authoritative research; distinguish fact from inference; do not authorize repairs; request more local evidence only when it is actually needed.");
             builder.AppendLine("facts:");
 
             foreach (string fact in facts.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -115,8 +123,6 @@ namespace Sentinel.App.Services
 
         private static string RedactIpLiterals(string input)
         {
-            // Candidate tokenization followed by IPAddress.TryParse avoids treating arbitrary
-            // colon-containing text as IPv6 while covering IPv4 and IPv6 literals.
             return Regex.Replace(input, @"(?<![A-Za-z0-9])\[?[0-9A-Fa-f:.%]{2,}\]?(?![A-Za-z0-9])", match =>
             {
                 string candidate = match.Value.Trim('[', ']');
