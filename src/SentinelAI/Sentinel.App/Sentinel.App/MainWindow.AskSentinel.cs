@@ -15,6 +15,7 @@ namespace Sentinel.App
         private readonly AskSentinelResponseOrchestrator _askSentinelResponseOrchestrator = new();
         private readonly AskSentinelResponseSafetyValidator _askSentinelResponseSafetyValidator = new();
         private readonly ExternalInvestigationGateway _externalInvestigationGateway = new();
+        private readonly SmartSentinelAiCoordinator _askSentinelAiCoordinator = new();
         private readonly DriverAutomaticRepairCoordinator _driverRepairCoordinator = new();
         private readonly MaintenanceOutcomeRecorder _askSentinelOutcomeRecorder = new();
         private bool _askSentinelBusy;
@@ -94,6 +95,34 @@ namespace Sentinel.App
 
                 bool crashQuestion = IsCrashQuestion(question);
                 bool driverIssue = !optimizationQuestion && !crashQuestion && IsDriverIssue(question, snapshot, response.Answer);
+                SmartAiResult? basicAi = null;
+
+                if (response.IsInsufficientEvidence && !RequiresFreshExternalResearch(question))
+                {
+                    AskSentinelProgressText.Text = "Using Sentinel AI to understand your question…";
+                    AiEscalationContext basicContext = CreateBasicAskSentinelAiContext(question);
+                    basicAi = await _askSentinelAiCoordinator.AnalyzeAsync(
+                        "ask-sentinel-basic",
+                        question,
+                        snapshot,
+                        null,
+                        basicContext);
+
+                    if (basicAi.UsedCloudAi && !string.IsNullOrWhiteSpace(basicAi.Answer))
+                    {
+                        response = response with
+                        {
+                            Answer = basicAi.Answer,
+                            IsInsufficientEvidence = basicAi.RequiresMoreEvidence,
+                            PassedFinalSafetyValidation = false,
+                            GroundingSummary = basicAi.FromCache
+                                ? "Sentinel reused a recent Basic AI interpretation of the same redacted verified evidence."
+                                : "Sentinel used Basic AI to interpret the user's question against redacted verified local evidence."
+                        };
+                        responseProvenance = AskSentinelProvenanceLabel.Advisory;
+                        driverIssue = !optimizationQuestion && !crashQuestion && IsDriverIssue(question, snapshot, response.Answer);
+                    }
+                }
 
                 if (response.IsInsufficientEvidence)
                 {
@@ -103,12 +132,15 @@ namespace Sentinel.App
                     if (external.RequiresSubscription)
                     {
                         driverIssue = false;
+                        string answer = basicAi?.UsedCloudAi == true && !string.IsNullOrWhiteSpace(basicAi.Answer)
+                            ? basicAi.Answer + "\n\nI can also check approved external sources and use Advanced AI for deeper investigation when the subscription is active."
+                            : BuildFreeExternalResearchFallback(external, snapshot);
                         response = response with
                         {
-                            Answer = external.Summary,
+                            Answer = answer,
                             IsInsufficientEvidence = false,
                             PassedFinalSafetyValidation = false,
-                            GroundingSummary = "Answer limited to free local evidence because premium external investigation was not entitled."
+                            GroundingSummary = "Sentinel returned available free local/Basic AI help; approved external research and Advanced AI require the paid entitlement."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
@@ -127,13 +159,26 @@ namespace Sentinel.App
                     }
                     else
                     {
+                        SmartAiResult externalAi = await _askSentinelAiCoordinator.AnalyzeAsync(
+                            "external-investigation",
+                            question,
+                            snapshot,
+                            external,
+                            CreateExternalAskSentinelAiContext(question, external));
+
+                        string externalAnswer = externalAi.UsedCloudAi && !string.IsNullOrWhiteSpace(externalAi.Answer)
+                            ? externalAi.Answer
+                            : BuildConsumerExternalAnswer(external);
                         response = response with
                         {
-                            Answer = BuildConsumerExternalAnswer(external),
+                            Answer = externalAnswer,
+                            IsInsufficientEvidence = externalAi.UsedCloudAi ? externalAi.RequiresMoreEvidence : !external.Verified,
                             PassedFinalSafetyValidation = false,
-                            GroundingSummary = external.Verified
-                                ? "Sentinel combined verified local evidence with approved authoritative research."
-                                : "Sentinel checked approved sources but did not find enough verified information to make a stronger claim."
+                            GroundingSummary = externalAi.UsedCloudAi
+                                ? "Sentinel combined verified local evidence, bounded approved-source passages, and AI interpretation."
+                                : external.Verified
+                                    ? "Sentinel combined verified local evidence with approved authoritative research."
+                                    : "Sentinel checked approved sources but did not find enough verified information to make a stronger claim."
                         };
                         responseProvenance = external.Verified
                             ? AskSentinelProvenanceLabel.Inferred
@@ -192,17 +237,19 @@ namespace Sentinel.App
                 else HideAskSentinelRepairActions();
 
                 AskSentinelStatusText.Text = response.IsInsufficientEvidence
-                    ? "Sentinel checked this computer and approved external sources."
+                    ? "Sentinel checked local evidence, available AI help, and approved sources where entitled."
                     : response.UsedInvestigationHistory
                         ? "Answered from current evidence and Sentinel's verified investigation history."
-                        : "Answered from current verified evidence on this computer.";
+                        : responseProvenance == AskSentinelProvenanceLabel.Advisory
+                            ? "Answered with Sentinel AI using bounded local evidence and available approved research."
+                            : "Answered from current verified evidence on this computer.";
             }
             catch (Exception)
             {
-                AskSentinelAnswerText.Text = "I couldn't finish checking the evidence, so I won't guess. I'll keep monitoring and try again when the information is available.";
+                AskSentinelAnswerText.Text = "I couldn't finish checking the evidence, so I won't guess. I can still answer another question or try the investigation again.";
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 HideAskSentinelRepairActions();
-                AskSentinelStatusText.Text = "Verified evidence is temporarily unavailable.";
+                AskSentinelStatusText.Text = "Verified evidence or AI assistance is temporarily unavailable.";
             }
             finally
             {
@@ -218,6 +265,66 @@ namespace Sentinel.App
         private bool IsCurrentOptimizationStatusVerifiedHealthy() =>
             _optimizationStatusSummary.Contains("No verified performance optimization is needed", StringComparison.OrdinalIgnoreCase) ||
             _optimizationStatusSummary.Contains("performance is within this computer's established baseline", StringComparison.OrdinalIgnoreCase);
+
+        private static AiEscalationContext CreateBasicAskSentinelAiContext(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool highRisk = ContainsAny(value, "security", "malware", "virus", "ransomware", "spyware", "hack", "breach", "firewall", "credential", "password");
+            bool highComplexity = question.Length > 180 || ContainsAny(value, "compare", "analyze", "root cause", "why", "explain", "multiple", "several");
+            return new AiEscalationContext(
+                LocalEvidenceAvailable: true,
+                LocalEvidenceInsufficient: true,
+                LocalConclusionVerified: false,
+                CachedVerifiedFindingAvailable: false,
+                ExternalResearchApplicable: false,
+                AuthoritativeResearchAttempted: false,
+                AuthoritativeExternalConclusionVerified: false,
+                NeedsInterpretation: true,
+                NeedsUserExplanation: true,
+                HighComplexity: highComplexity,
+                HighRisk: highRisk);
+        }
+
+        private static AiEscalationContext CreateExternalAskSentinelAiContext(string question, ExternalInvestigationResult external)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool highRisk = external.Topic.Equals("security", StringComparison.OrdinalIgnoreCase) ||
+                            external.Topic.Equals("firewall", StringComparison.OrdinalIgnoreCase) ||
+                            ContainsAny(value, "malware", "virus", "ransomware", "breach", "hack");
+            return new AiEscalationContext(
+                LocalEvidenceAvailable: true,
+                LocalEvidenceInsufficient: true,
+                LocalConclusionVerified: false,
+                CachedVerifiedFindingAvailable: false,
+                ExternalResearchApplicable: true,
+                AuthoritativeResearchAttempted: true,
+                AuthoritativeExternalConclusionVerified: external.Verified,
+                NeedsInterpretation: true,
+                NeedsUserExplanation: true,
+                HighComplexity: external.Sources.Count > 1 || question.Length > 180,
+                HighRisk: highRisk);
+        }
+
+        private static bool RequiresFreshExternalResearch(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            return ContainsAny(value,
+                "search online", "search the internet", "look online", "look it up", "external source", "external sources",
+                "authoritative source", "official source", "official documentation", "microsoft says", "vendor says", "manufacturer says",
+                "latest", "current version", "current release", "release notes", "known issue", "known issues", "cve", "security advisory",
+                "research this", "check online", "check the internet");
+        }
+
+        private static string BuildFreeExternalResearchFallback(ExternalInvestigationResult external, dynamic snapshot)
+        {
+            string local = snapshot.InvestigationRequiresAttention
+                ? $"From this computer's verified local evidence, Sentinel is currently reporting: {snapshot.InvestigationSummary}"
+                : $"From this computer's verified local evidence, Sentinel does not currently report a condition requiring attention. Defender is {snapshot.DefenderStatus} and Firewall is {snapshot.FirewallStatus}.";
+            return $"{local}\n\n{external.Summary}\n\nYou can still ask me about the local evidence, what a Windows feature means, how to interpret a setting or error, or what information I need next. Approved external research and Advanced AI require the paid subscription.";
+        }
+
+        private static bool ContainsAny(string value, params string[] terms) =>
+            terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
 
         private static bool IsOptimizationQuestion(string question)
         {
@@ -246,8 +353,11 @@ namespace Sentinel.App
 
         private static string BuildConsumerExternalAnswer(ExternalInvestigationResult external)
         {
-            if (!external.Verified) return "I checked this computer and approved external sources, but I don't have enough verified information to give you a reliable answer yet. I won't guess.";
-            return "I checked this computer and approved authoritative sources. I found relevant information and matched it against the local evidence. Sentinel will use that verified evidence for the next safe action rather than relying on an unsupported guess.";
+            if (!external.Verified)
+                return external.Sources.Count > 0
+                    ? external.Summary + "\n\nI found approved-source material, but I do not have enough support to turn it into a stronger machine-specific conclusion."
+                    : "I checked approved external sources, but I don't have enough verified information to give you a reliable machine-specific answer yet. I won't guess.";
+            return external.Summary;
         }
 
         private static bool IsCrashQuestion(string question)
