@@ -338,7 +338,11 @@ public sealed partial class MainWindow
             .Where(item => item.CollectionId == selected.CollectionId)
             .OrderBy(item => item.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        if (collection.Length == 0 || !TryBuildVaultCollectionRestorePlan(collection, destinationParent, out string destinationRoot, out Dictionary<Guid, string> destinations, out string planError))
+
+        string destinationRoot = string.Empty;
+        Dictionary<Guid, string> destinations = new();
+        string planError = string.Empty;
+        if (collection.Length == 0 || !TryBuildVaultCollectionRestorePlan(collection, destinationParent, out destinationRoot, out destinations, out planError))
         {
             await ShowPrivacyMessageAsync(rootElement, "Vault folder cannot be restored", string.IsNullOrWhiteSpace(planError) ? "Sentinel could not build a safe restore plan for this folder collection." : planError).ConfigureAwait(true);
             return;
@@ -352,12 +356,12 @@ public sealed partial class MainWindow
 
             foreach (string directory in destinations.Values
                          .Select(Path.GetDirectoryName)
-                         .Where(value => !string.IsNullOrWhiteSpace(value))
+                         .OfType<string>()
                          .Distinct(StringComparer.OrdinalIgnoreCase)
-                         .OrderBy(value => value!.Length))
+                         .OrderBy(value => value.Length))
             {
-                Directory.CreateDirectory(directory!);
-                if ((File.GetAttributes(directory!) & System.IO.FileAttributes.ReparsePoint) != 0)
+                Directory.CreateDirectory(directory);
+                if ((File.GetAttributes(directory) & System.IO.FileAttributes.ReparsePoint) != 0)
                     throw new IOException("A restore directory resolved as a reparse point.");
             }
         }
@@ -467,7 +471,7 @@ public sealed partial class MainWindow
                 if (string.IsNullOrWhiteSpace(cursor)) return false;
             }
 
-            rootName = Path.GetFileName(Path.TrimEndingDirectorySeparator(cursor));
+            rootName = Path.GetFileName(Path.TrimEndingDirectorySeparator(cursor!));
             return !string.IsNullOrWhiteSpace(rootName) && rootName.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
