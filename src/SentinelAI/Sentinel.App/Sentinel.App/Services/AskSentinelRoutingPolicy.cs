@@ -113,10 +113,8 @@ namespace Sentinel.App.Services
                 "meaning of", "what does it mean", "walk me through"))
                 return true;
 
-            bool definitionQuestion = value.StartsWith("what is ", StringComparison.Ordinal) ||
-                                      value.StartsWith("what are ", StringComparison.Ordinal) ||
-                                      value.StartsWith("who is ", StringComparison.Ordinal) ||
-                                      value.StartsWith("who are ", StringComparison.Ordinal);
+            bool definitionQuestion = StartsWithAny(value,
+                "what is ", "what are ", "who is ", "who are ");
             if (!definitionQuestion) return false;
 
             // Preserve fast deterministic answers for direct questions about this PC's
@@ -147,8 +145,13 @@ namespace Sentinel.App.Services
                 "running processes", "running services", "startup apps", "scheduled tasks"))
                 return true;
 
+            // One- or two-word topic prompts such as "firewall" or "CPU" are useful
+            // shorthand for local status in Sentinel. Do not apply that shortcut to an
+            // explicit definition such as "What is TPM?" or "What are drivers?".
+            bool explicitDefinition = StartsWithAny(value,
+                "what is ", "what are ", "what does ", "how does ", "who is ", "who are ");
             string[] words = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (words.Length <= 3 && ContainsAny(value,
+            if (!explicitDefinition && words.Length <= 3 && ContainsAny(value,
                 "cpu", "memory", "ram", "disk", "storage", "defender", "firewall", "bitlocker", "secure boot",
                 "tpm", "windows update", "drivers", "driver", "startup apps", "services", "processes", "network"))
                 return true;
