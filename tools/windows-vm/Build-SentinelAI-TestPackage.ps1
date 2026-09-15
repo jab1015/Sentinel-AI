@@ -40,22 +40,46 @@ function Invoke-BoundedProcess {
     $psi.RedirectStandardError = $true
     foreach ($argument in $Arguments) { [void]$psi.ArgumentList.Add($argument) }
 
+    $stdout = [Collections.Concurrent.ConcurrentQueue[string]]::new()
+    $stderr = [Collections.Concurrent.ConcurrentQueue[string]]::new()
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $psi
-    if (-not $process.Start()) { throw "Failed to start $Description." }
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
 
-    if (-not $process.WaitForExit($TimeoutMilliseconds)) {
-        try { $process.Kill($true) } catch {}
-        throw "$Description exceeded the $([int]($TimeoutMilliseconds / 1000))-second safety bound."
+    $stdoutHandler = [Diagnostics.DataReceivedEventHandler]{
+        param($sender, $eventArgs)
+        if ($null -ne $eventArgs.Data) { $stdout.Enqueue($eventArgs.Data) }
     }
+    $stderrHandler = [Diagnostics.DataReceivedEventHandler]{
+        param($sender, $eventArgs)
+        if ($null -ne $eventArgs.Data) { $stderr.Enqueue($eventArgs.Data) }
+    }
+    $process.add_OutputDataReceived($stdoutHandler)
+    $process.add_ErrorDataReceived($stderrHandler)
 
-    $stdoutText = $stdoutTask.GetAwaiter().GetResult()
-    $stderrText = $stderrTask.GetAwaiter().GetResult()
-    if ($stdoutText) { $stdoutText | Tee-Object -FilePath $LogPath -Append | Write-Host }
-    if ($stderrText) { $stderrText | Tee-Object -FilePath $LogPath -Append | Write-Host }
-    if ($process.ExitCode -ne 0) { throw "$Description failed with exit code $($process.ExitCode)." }
+    try {
+        if (-not $process.Start()) { throw "Failed to start $Description." }
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+
+        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+            try { $process.Kill($true) } catch {}
+            [void]$process.WaitForExit(10000)
+            throw "$Description exceeded the $([int]($TimeoutMilliseconds / 1000))-second safety bound."
+        }
+
+        # Give asynchronous line handlers a short bounded window to observe EOF.
+        [void]$process.WaitForExit(5000)
+        foreach ($line in $stdout.ToArray()) { $line | Tee-Object -FilePath $LogPath -Append | Write-Host }
+        foreach ($line in $stderr.ToArray()) { $line | Tee-Object -FilePath $LogPath -Append | Write-Host }
+        if ($process.ExitCode -ne 0) { throw "$Description failed with exit code $($process.ExitCode)." }
+    }
+    finally {
+        try { $process.CancelOutputRead() } catch {}
+        try { $process.CancelErrorRead() } catch {}
+        try { $process.remove_OutputDataReceived($stdoutHandler) } catch {}
+        try { $process.remove_ErrorDataReceived($stderrHandler) } catch {}
+        $process.Dispose()
+    }
 }
 
 function Get-PeMachine {
