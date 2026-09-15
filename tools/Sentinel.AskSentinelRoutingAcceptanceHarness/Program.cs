@@ -21,6 +21,10 @@ AskSentinelRoute definition = routing.Decide("What is TPM?", localAnswerInsuffic
 Require(definition.UseBasicAi && definition.ExplanationRequested,
     "Definition question with a terse local handler did not receive Basic AI explanation.");
 
+AskSentinelRoute terseTopic = routing.Decide("TPM", localAnswerInsufficient: false);
+Require(!terseTopic.UseBasicAi && !terseTopic.UseExternalResearch,
+    "A terse local TPM topic did not remain on verified local evidence.");
+
 AskSentinelRoute explanation = routing.Decide("How does BitLocker protect me?", localAnswerInsufficient: false);
 Require(explanation.UseBasicAi && explanation.ExplanationRequested,
     "Explanatory Windows question did not receive Basic AI help.");
@@ -32,6 +36,14 @@ Require(!directStatus.UseBasicAi && !directStatus.UseExternalResearch,
 AskSentinelRoute defenderStatus = routing.Decide("Is Defender on?", localAnswerInsufficient: false);
 Require(!defenderStatus.UseBasicAi && !defenderStatus.UseExternalResearch,
     "Clear Defender state question unnecessarily escalated beyond local evidence.");
+
+AskSentinelRoute localFreshness = routing.Decide("What is my CPU usage right now?", localAnswerInsufficient: false);
+Require(!localFreshness.UseBasicAi && !localFreshness.UseExternalResearch,
+    "A current local CPU question was incorrectly treated as a web-freshness request.");
+
+AskSentinelRoute latestLocal = routing.Decide("What is the latest status on my computer?", localAnswerInsufficient: false);
+Require(!latestLocal.UseBasicAi && !latestLocal.UseExternalResearch,
+    "A latest local-PC status question was incorrectly routed to external research.");
 
 AskSentinelRoute ambiguousApp = routing.Decide("Which app is best for editing photos?", localAnswerInsufficient: false);
 Require(ambiguousApp.UseBasicAi && !ambiguousApp.UseExternalResearch,
@@ -75,10 +87,11 @@ Require(researched.MaximumTotalTokens == AiEscalationPolicy.AdvancedMaximumTotal
 
 Console.WriteLine("Unknown phrasing -> Basic AI: PASS");
 Console.WriteLine("Verified broad local overview -> local answer: PASS");
-Console.WriteLine("Definition/explanation -> Basic AI: PASS");
-Console.WriteLine("Direct device status -> local answer: PASS");
+Console.WriteLine("Definition -> Basic AI; terse topic -> local status: PASS");
+Console.WriteLine("Explanation -> Basic AI: PASS");
+Console.WriteLine("Direct/local freshness questions -> local answer: PASS");
 Console.WriteLine("Ambiguous app/security keywords -> Basic AI: PASS");
-Console.WriteLine("Fresh/current/research/according-to wording -> external research: PASS");
+Console.WriteLine("Fresh external/research/according-to wording -> external research: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
 Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
 Console.WriteLine("RESULT: PASS");
