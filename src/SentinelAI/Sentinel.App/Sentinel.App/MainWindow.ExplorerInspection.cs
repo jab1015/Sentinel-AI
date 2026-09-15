@@ -29,8 +29,13 @@ public sealed partial class MainWindow
         {
             MinWidth = 520,
             MinHeight = 300,
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 248, 250, 252))
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255))
         };
+        // ContentDialog normally dims its entire XamlRoot. In a dedicated Explorer host that
+        // creates the large gray "web page" surround seen in VM testing. Keep the smoke layer
+        // transparent so the visible experience is the white Sentinel dialog and its buttons.
+        rootElement.Resources["ContentDialogSmokeLayerBackground"] =
+            new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
         dialogHost.Content = rootElement;
         dialogHost.AppWindow.Title = "Sentinel AI";
         dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(620, 440));
@@ -218,20 +223,26 @@ public sealed partial class MainWindow
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
             {
-                sha256 = "Unavailable (Windows could not complete the integrity hash).";
+                summary.AppendLine($"File: {file.Name}");
+                summary.AppendLine($"Path: {file.FullName}");
+                summary.AppendLine("Result: Sentinel could not complete the read-only content check. Treat this item as needing attention until it can be inspected successfully.");
+                summary.AppendLine();
+                shown++;
+                continue;
             }
 
             summary.AppendLine($"File: {file.Name}");
             summary.AppendLine($"Path: {file.FullName}");
-            summary.AppendLine($"Size: {FormatBytes(file.Length)}");
+            summary.AppendLine($"Size: {file.Length:N0} bytes");
             summary.AppendLine($"Last modified: {file.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
             summary.AppendLine($"SHA-256: {sha256}");
-            summary.AppendLine("Result: File identity and local integrity evidence were collected; no immediate filesystem issue was found.");
-            summary.AppendLine("Security note: this integrity check alone is not a malware-clean verdict. Sentinel will not label a file safe without sufficient security evidence.");
+            summary.AppendLine("Result: File was reopened, read successfully, and hashed. No immediate filesystem issue was found.");
+            summary.AppendLine("Security note: this read-only integrity check does not by itself prove that a file is malware-free.");
             summary.AppendLine();
             shown++;
         }
 
-        return summary.ToString().TrimEnd();
+        summary.Append("Sentinel did not modify the selection.");
+        return summary.ToString();
     }
 }
