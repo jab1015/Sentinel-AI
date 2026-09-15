@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Sentinel.App.Services;
 using System;
 using System.Collections.Generic;
@@ -21,17 +22,18 @@ public sealed partial class MainWindow
 
     private async Task ShowExplorerInspectionRequestAsync(ExplorerInspectionRequest request)
     {
-        // Explorer commands intentionally use their own compact XAML host. The full Sentinel
-        // dashboard must not appear just because the user invoked a File Explorer command.
+        // Explorer commands intentionally use a compact, bright host instead of surfacing the
+        // full Sentinel dashboard. The host exists only to provide a XamlRoot for the dialog.
         Window dialogHost = new();
         Grid rootElement = new()
         {
-            MinWidth = 560,
-            MinHeight = 320
+            MinWidth = 520,
+            MinHeight = 300,
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 248, 250, 252))
         };
         dialogHost.Content = rootElement;
         dialogHost.AppWindow.Title = "Sentinel AI";
-        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(680, 520));
+        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(620, 440));
         dialogHost.Activate();
         await WaitForXamlRootAsync(rootElement).ConfigureAwait(true);
 
@@ -82,12 +84,30 @@ public sealed partial class MainWindow
 
         if (request.Action != ExplorerRequestedAction.Inspect)
         {
-            if (reopenedPaths.Count != 1 || Directory.Exists(reopenedPaths[0]))
+            if (reopenedPaths.Count != 1)
             {
                 await new ContentDialog
                 {
-                    Title = "One file required",
-                    Content = "Premium Privacy Explorer actions currently accept exactly one normal file at a time. No file was changed.",
+                    Title = "One selection required",
+                    Content = "Sentinel Explorer privacy actions accept one selected file or folder at a time. No file was changed.",
+                    CloseButtonText = "Close",
+                    XamlRoot = rootElement.XamlRoot
+                }.ShowAsync();
+                return;
+            }
+
+            if (request.Action == ExplorerRequestedAction.AddToVault)
+            {
+                await AddExplorerSelectionToVaultAsync(reopenedPaths[0], rootElement).ConfigureAwait(true);
+                return;
+            }
+
+            if (Directory.Exists(reopenedPaths[0]))
+            {
+                await new ContentDialog
+                {
+                    Title = "A file is required",
+                    Content = "This Sentinel privacy action currently accepts a normal file. Use Add to Vault when you want to protect an entire folder.",
                     CloseButtonText = "Close",
                     XamlRoot = rootElement.XamlRoot
                 }.ShowAsync();
@@ -106,7 +126,7 @@ public sealed partial class MainWindow
             ContentDialog encryptedDialog = new()
             {
                 Title = "Sentinel encrypted file",
-                Content = $"Sentinel recognized this as an encrypted Sentinel container:\n\n{encryptedPath}\n\nYou can restore it to a plaintext file or inspect the encrypted container without changing it.",
+                Content = $"Sentinel recognized this encrypted container:\n\n{encryptedPath}\n\nYou can restore it to plaintext or inspect the encrypted container without changing it.",
                 PrimaryButtonText = "Decrypt / Restore",
                 SecondaryButtonText = "Inspect",
                 CloseButtonText = "Cancel",
@@ -136,8 +156,8 @@ public sealed partial class MainWindow
         ContentDialog dialog = new()
         {
             Title = "Inspect with Sentinel AI",
-            Content = $"Sentinel received {request.Paths.Count} selected item(s) from File Explorer, reopened each object through Windows, and resolved the handle-backed filesystem path before inspection. No file will be changed.\n\n{selection}",
-            PrimaryButtonText = "Continue",
+            Content = $"Sentinel will inspect {request.Paths.Count} selected item(s) without changing them.\n\n{selection}",
+            PrimaryButtonText = "Inspect",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = rootElement.XamlRoot
@@ -159,6 +179,7 @@ public sealed partial class MainWindow
     private static async Task<string> BuildExplorerInspectionSummaryAsync(IReadOnlyList<string> paths)
     {
         StringBuilder summary = new();
+        summary.AppendLine("✓ No immediate filesystem issue found");
         summary.AppendLine($"Items inspected: {paths.Count}");
         summary.AppendLine("No file was changed.");
         summary.AppendLine();
@@ -178,7 +199,8 @@ public sealed partial class MainWindow
                 summary.AppendLine($"Folder: {directory.Name}");
                 summary.AppendLine($"Path: {directory.FullName}");
                 summary.AppendLine($"Last modified: {directory.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
-                summary.AppendLine("Result: Filesystem object reopened and verified as an accessible directory.");
+                summary.AppendLine("Result: Folder is accessible and its filesystem identity was verified. No immediate filesystem issue was found.");
+                summary.AppendLine("Security note: this folder-level check is not a malware scan of every file inside the folder.");
                 summary.AppendLine();
                 shown++;
                 continue;
@@ -204,7 +226,8 @@ public sealed partial class MainWindow
             summary.AppendLine($"Size: {FormatBytes(file.Length)}");
             summary.AppendLine($"Last modified: {file.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
             summary.AppendLine($"SHA-256: {sha256}");
-            summary.AppendLine("Result: File identity and local integrity evidence collected. This result is not, by itself, a malware-clean verdict.");
+            summary.AppendLine("Result: File identity and local integrity evidence were collected; no immediate filesystem issue was found.");
+            summary.AppendLine("Security note: this integrity check alone is not a malware-clean verdict. Sentinel will not label a file safe without sufficient security evidence.");
             summary.AppendLine();
             shown++;
         }
