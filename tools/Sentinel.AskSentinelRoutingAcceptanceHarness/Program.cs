@@ -53,6 +53,18 @@ AskSentinelRoute ambiguousVirus = routing.Decide("What virus is the worst?", loc
 Require(ambiguousVirus.UseBasicAi && !ambiguousVirus.UseExternalResearch,
     "General virus question was incorrectly trusted as a local security-status answer.");
 
+AskSentinelRoute comparisonFragment = routing.Decide("Windows Defender vs Bitdefender", localAnswerInsufficient: false);
+Require(comparisonFragment.UseBasicAi && !comparisonFragment.UseExternalResearch,
+    "A natural comparison fragment without question punctuation did not default to Basic AI.");
+
+AskSentinelRoute choiceFragment = routing.Decide("NTFS or exFAT for a backup drive", localAnswerInsufficient: false);
+Require(choiceFragment.UseBasicAi && !choiceFragment.UseExternalResearch,
+    "A natural choice fragment without question punctuation did not default to Basic AI.");
+
+AskSentinelRoute helpFragment = routing.Decide("Need help understanding Windows Sandbox", localAnswerInsufficient: false);
+Require(helpFragment.UseBasicAi && !helpFragment.UseExternalResearch,
+    "A natural help fragment did not default to Basic AI.");
+
 AskSentinelRoute latest = routing.Decide("Search the web for the latest Windows 11 known issue", localAnswerInsufficient: true);
 Require(!latest.UseBasicAi && latest.UseExternalResearch,
     "Explicit current web-research request did not route directly to external research.");
@@ -90,7 +102,7 @@ Console.WriteLine("Verified broad local overview -> local answer: PASS");
 Console.WriteLine("Definition -> Basic AI; terse topic -> local status: PASS");
 Console.WriteLine("Explanation -> Basic AI: PASS");
 Console.WriteLine("Direct/local freshness questions -> local answer: PASS");
-Console.WriteLine("Ambiguous app/security keywords -> Basic AI: PASS");
+Console.WriteLine("Ambiguous keyword and natural fragment input -> Basic AI: PASS");
 Console.WriteLine("Fresh external/research/according-to wording -> external research: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
 Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
