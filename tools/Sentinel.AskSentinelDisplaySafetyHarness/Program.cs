@@ -23,6 +23,18 @@ Console.WriteLine("=== Sentinel AI Ask Sentinel Final Display Safety Acceptance 
 var validator = new AskSentinelResponseSafetyValidator();
 var snapshot = new SystemSnapshot();
 
+var responder = new AskSentinelLocalResponder();
+string broadOverview = responder.Answer("Tell me what's going on with my computer", snapshot);
+Require(!broadOverview.Contains("not yet have enough verified information", StringComparison.OrdinalIgnoreCase),
+    "Broad PC overview prompt fell back to insufficient evidence.");
+Require(broadOverview.Contains("what’s going on with your computer", StringComparison.OrdinalIgnoreCase),
+    "Broad PC overview prompt did not return the computer overview response.");
+Require(broadOverview.Contains("I can go deeper", StringComparison.OrdinalIgnoreCase),
+    "Broad PC overview response did not provide useful follow-up options.");
+Require(broadOverview.Contains("external sources", StringComparison.OrdinalIgnoreCase) &&
+        broadOverview.Contains("AI", StringComparison.OrdinalIgnoreCase),
+    "Broad PC overview response did not expose the external research / AI follow-up path.");
+
 var safeObserved = validator.ValidateForDisplay(
     Response("Sentinel observed a driver warning and recommends reviewing it."),
     snapshot,
@@ -84,6 +96,7 @@ var futureTimestamp = Response("Sentinel observed an issue.") with { EvidenceTim
 Require(!validator.ValidateForDisplay(futureTimestamp, snapshot, AskSentinelProvenanceLabel.Observed).IsSafe,
     "Response with invalid future evidence timestamp was accepted.");
 
+Console.WriteLine("Broad PC overview response and follow-up choices: PASS");
 Console.WriteLine("Observed deterministic response: PASS");
 Console.WriteLine("Advisory/inferred false action claims rejected: PASS");
 Console.WriteLine("Verified action provenance accepted: PASS");
