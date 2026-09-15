@@ -27,6 +27,7 @@ namespace Sentinel.App.Services
         private readonly SmartSentinelAiCoordinator _aiCoordinator = new();
         private readonly DriverDiagnosticEvidenceCollector _driverEvidenceCollector = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
+        private readonly MicrosoftLearnResearchClient _microsoftLearn = new();
 
         public async Task<ExternalInvestigationResult> InvestigateAsync(string question, SystemSnapshot snapshot, CancellationToken cancellationToken = default)
         {
@@ -36,7 +37,7 @@ namespace Sentinel.App.Services
             string topic = Classify(question, snapshot);
             SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
             if (!subscription.IsActive)
-                return ExternalInvestigationResult.SubscriptionRequired(topic, "Sentinel answered from free local evidence. An active subscription is required to investigate approved external sources or use cloud AI.");
+                return ExternalInvestigationResult.SubscriptionRequired(topic, "Sentinel answered from free local evidence and Basic AI when useful. An active subscription is required to investigate current approved external sources or use Advanced AI.");
 
             string evidenceFingerprint = BuildEvidenceFingerprint(question, snapshot, topic);
             string cacheKey = $"external:{topic}:{evidenceFingerprint}";
@@ -52,77 +53,112 @@ namespace Sentinel.App.Services
             }
 
             IReadOnlyList<string> evidenceTerms = BuildEvidenceTerms(question, snapshot);
-            IReadOnlyList<TrustedSource> sources = SourcesFor(topic);
             List<ExternalSourceEvidence> reached = new();
             List<ExternalSourceEvidence> relevant = new();
 
-            using HttpClientHandler handler = new()
+            MicrosoftLearnResearchResult learn = await _microsoftLearn.SearchAsync(question, cancellationToken).ConfigureAwait(false);
+            foreach (MicrosoftLearnDocument document in learn.Documents)
             {
-                AllowAutoRedirect = false,
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
-            };
-            using HttpClient client = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
+                string[] matches = evidenceTerms
+                    .Where(term => document.Content.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(10)
+                    .ToArray();
 
-            foreach (TrustedSource source in sources)
+                string matchedTerm = matches.FirstOrDefault() ?? "semantic-search";
+                ExternalSourceEvidence evidence = new(
+                    $"Microsoft Learn — {document.Title}",
+                    document.ContentUrl,
+                    98,
+                    true,
+                    matches.Length > 0,
+                    matches,
+                    new[] { new ExternalResearchPassage(matchedTerm, document.Content) });
+                reached.Add(evidence);
+                relevant.Add(evidence);
+            }
+
+            // Microsoft Learn MCP is the preferred source because it performs semantic search
+            // over current official documentation. The older pinned-page reader remains only as
+            // a bounded fallback if MCP search is unavailable or yields no usable documents.
+            if (relevant.Count == 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
+                IReadOnlyList<TrustedSource> sources = SourcesFor(topic);
+                using HttpClientHandler handler = new()
                 {
-                    if (!TryCreatePinnedHttpsUri(source.Uri, out Uri? expectedUri) || expectedUri is null)
-                        continue;
+                    AllowAutoRedirect = false,
+                    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+                };
+                using HttpClient client = new(handler) { Timeout = Timeout.InfiniteTimeSpan };
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("SentinelAI/1.0");
 
-                    using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    deadline.CancelAfter(NetworkTimeout);
-                    using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
-                    using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
-                    if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri))
-                        continue;
+                foreach (TrustedSource source in sources)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        if (!TryCreatePinnedHttpsUri(source.Uri, out Uri? expectedUri) || expectedUri is null)
+                            continue;
 
-                    string? body = await ReadBoundedBodyAsync(response, deadline.Token).ConfigureAwait(false);
-                    if (body is null) continue;
+                        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        deadline.CancelAfter(NetworkTimeout);
+                        using HttpRequestMessage request = new(HttpMethod.Get, expectedUri);
+                        using HttpResponseMessage response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
+                        if (!response.IsSuccessStatusCode || !ResponseMatchesExpectedAuthority(response, expectedUri))
+                            continue;
 
-                    string searchable = NormalizeWebText(body);
-                    IReadOnlyList<ExternalResearchPassage> passages =
-                        ExternalResearchProvenancePolicy.ExtractPassages(searchable, evidenceTerms);
-                    IReadOnlyList<string> matches = passages
-                        .Select(p => p.MatchedTerm)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToArray();
+                        string? body = await ReadBoundedBodyAsync(response, deadline.Token).ConfigureAwait(false);
+                        if (body is null) continue;
 
-                    ExternalSourceEvidence evidence = new(
-                        source.Name,
-                        source.Uri,
-                        source.Authority,
-                        true,
-                        passages.Count > 0,
-                        matches,
-                        passages);
-                    reached.Add(evidence);
-                    if (passages.Count > 0) relevant.Add(evidence);
+                        string searchable = NormalizeWebText(body);
+                        IReadOnlyList<ExternalResearchPassage> passages =
+                            ExternalResearchProvenancePolicy.ExtractPassages(searchable, evidenceTerms);
+                        IReadOnlyList<string> matches = passages
+                            .Select(p => p.MatchedTerm)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+
+                        ExternalSourceEvidence evidence = new(
+                            source.Name,
+                            source.Uri,
+                            source.Authority,
+                            true,
+                            passages.Count > 0,
+                            matches,
+                            passages);
+                        reached.Add(evidence);
+                        if (passages.Count > 0) relevant.Add(evidence);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
+                    catch { }
                 }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
-                catch { }
             }
 
             ExternalInvestigationResult result;
             if (reached.Count == 0)
             {
+                string reason = learn.Available
+                    ? "Sentinel searched Microsoft Learn and the approved fallback sources but found no usable authoritative material for this question."
+                    : $"{learn.Reason} Sentinel also could not reach a usable approved fallback source.";
                 result = new ExternalInvestigationResult(topic, false, 0,
-                    "Sentinel could not reach an approved authoritative source. No external conclusion was accepted and no change was made.",
+                    reason + " No external conclusion was accepted and no change was made.",
                     Array.Empty<ExternalSourceEvidence>(), true, false, Array.Empty<string>());
             }
             else if (relevant.Count == 0)
             {
                 result = new ExternalInvestigationResult(topic, false, 0,
-                    $"Sentinel reached {reached.Count} approved authoritative source(s), but did not find attributable source passages relevant to the current evidence. No external conclusion was accepted.",
+                    $"Sentinel reached {reached.Count} approved authoritative source(s), but did not find attributable material relevant enough to the current question and evidence. No external conclusion was accepted.",
                     reached, true, false, Array.Empty<string>());
             }
             else
             {
                 string[] matchedTerms = relevant.SelectMany(x => x.MatchedTerms).Distinct(StringComparer.OrdinalIgnoreCase).Take(10).ToArray();
+                bool usedLearn = relevant.Any(source => source.SourceName.StartsWith("Microsoft Learn", StringComparison.OrdinalIgnoreCase));
+                string method = usedLearn
+                    ? "searched current Microsoft Learn documentation"
+                    : "checked pinned approved authoritative pages";
                 result = new ExternalInvestigationResult(topic, false, 0,
-                    $"Sentinel found bounded attributable passages on {relevant.Count} approved authoritative source(s) that contain terms from the current evidence. These passages remain advisory context and are not proof of local machine state or proof that Sentinel performed a security action.",
+                    $"Sentinel {method} and retrieved {relevant.Count} attributable result(s) relevant to the question. These passages are authoritative external guidance, but they are not proof of this computer's local state or proof that Sentinel performed a security action.",
                     reached, true, false, matchedTerms);
             }
 
@@ -149,7 +185,7 @@ namespace Sentinel.App.Services
                     string cacheNote = ai.FromCache ? " A recent analysis for identical redacted evidence was reused without another provider request." : string.Empty;
                     string advisoryOutcome = ai.RequiresMoreEvidence
                         ? "The AI advisory also indicated that more verified evidence is needed before Sentinel can make a stronger conclusion."
-                        : "The AI advisory found the supplied evidence useful for interpretation, but it is not permitted to assert that Sentinel performed or verified a security action.";
+                        : "The AI advisory interpreted the supplied local and authoritative evidence, but it is not permitted to assert that Sentinel performed or verified a security action.";
                     result = result with
                     {
                         Summary = result.Summary + $" Sentinel's AI advisory analysis completed ({ai.ConfidencePercent}% heuristic confidence). {advisoryOutcome}" + cacheNote,
