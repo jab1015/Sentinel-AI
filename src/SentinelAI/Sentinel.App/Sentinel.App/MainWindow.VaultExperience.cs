@@ -27,13 +27,13 @@ public sealed partial class MainWindow
         {
             try
             {
-                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                if ((File.GetAttributes(path) & System.IO.FileAttributes.ReparsePoint) != 0)
                 {
                     await ShowPrivacyMessageAsync(rootElement, "Folder cannot be added", "Sentinel will not import a reparse-point folder into the Vault because its contents can resolve outside the selected folder.");
                     return;
                 }
                 files = Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).ToArray();
-                if (files.Any(file => (File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0))
+                if (files.Any(file => (File.GetAttributes(file) & System.IO.FileAttributes.ReparsePoint) != 0))
                 {
                     await ShowPrivacyMessageAsync(rootElement, "Folder cannot be added", "The folder contains a reparse-point file. Sentinel left the folder unchanged rather than importing an ambiguous filesystem object.");
                     return;
