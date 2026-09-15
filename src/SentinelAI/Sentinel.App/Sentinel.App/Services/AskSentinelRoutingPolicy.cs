@@ -95,9 +95,12 @@ namespace Sentinel.App.Services
             string value = Normalize(question);
             return ContainsAny(value,
                 "search online", "search the internet", "look online", "look it up", "external source", "external sources",
-                "authoritative source", "official source", "official documentation", "microsoft says", "vendor says", "manufacturer says",
-                "latest", "today", "right now", "current version", "current release", "release notes", "known issue", "known issues",
-                "cve", "security advisory", "research this", "check online", "check the internet", "web search", "search the web");
+                "authoritative source", "authoritative sources", "official source", "official sources", "official documentation",
+                "according to", "microsoft says", "vendor says", "manufacturer says",
+                "latest", "latest information", "today", "right now", "current version", "current release", "release notes",
+                "known issue", "known issues", "known cause", "known causes", "cve", "security advisory",
+                "research this", "research the", "research my", "research whether", "research why", "research how",
+                "check online", "check the internet", "web search", "search the web");
         }
 
         internal static bool NeedsNaturalLanguageExplanation(string question)
