@@ -18,6 +18,7 @@ namespace Sentinel.App.Services
         public AskSentinelRoute Decide(string question, bool localAnswerInsufficient)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(question);
+            AskSentinelConversationContextStore.BeginQuestion(question);
             string value = Normalize(question);
 
             bool freshResearch = RequiresFreshExternalResearch(value);

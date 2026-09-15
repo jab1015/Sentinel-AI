@@ -45,6 +45,14 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(context);
 
+            if (purpose.Equals("ask-sentinel-basic", StringComparison.OrdinalIgnoreCase) ||
+                purpose.Equals("external-investigation", StringComparison.OrdinalIgnoreCase))
+            {
+                supplementalEvidence = MergeSupplementalContext(
+                    supplementalEvidence,
+                    AskSentinelConversationContextStore.GetSupplementalContext(userQuestion ?? string.Empty));
+            }
+
             AiEscalationDecision decision = _policy.Evaluate(context);
             if (!decision.UseCloudAi) return SmartAiResult.NotUsed(decision.Reason, decision.ResearchFirst);
 
@@ -142,6 +150,13 @@ namespace Sentinel.App.Services
             return string.Join("\n", Array.FindAll(lines, line =>
                 !line.StartsWith("- snapshot-time:", StringComparison.OrdinalIgnoreCase) &&
                 !line.StartsWith("- external-summary:", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static string? MergeSupplementalContext(string? supplementalEvidence, string? conversationContext)
+        {
+            if (string.IsNullOrWhiteSpace(conversationContext)) return supplementalEvidence;
+            if (string.IsNullOrWhiteSpace(supplementalEvidence)) return conversationContext.Trim();
+            return supplementalEvidence.Trim() + "\n" + conversationContext.Trim();
         }
 
         private static void TrimCacheIfNeeded()

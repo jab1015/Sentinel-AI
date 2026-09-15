@@ -41,6 +41,11 @@ namespace Sentinel.App.Services
             Add(facts, "summary", snapshot.InvestigationSummary);
             Add(facts, "guidance", snapshot.GuidanceEvidence);
 
+            // Supplemental context is redacted and budgeted like every other fact. It is
+            // deliberately placed before lower-priority detail so a short conversational
+            // follow-up can resolve "that/it/why" without treating the prior answer as proof.
+            Add(facts, "supplemental-context", supplementalEvidence);
+
             if (snapshot.FlaggedProcessCount > 0) Add(facts, "process", $"{snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason}");
             if (snapshot.FlaggedConnectionCount > 0) Add(facts, "network", $"{snapshot.PrimaryFlaggedConnectionProcessName} -> {RedactEndpoint(snapshot.PrimaryFlaggedConnectionRemoteEndpoint)}: {snapshot.PrimaryFlaggedConnectionReason}");
             if (snapshot.FlaggedServiceCount > 0) Add(facts, "service", snapshot.PrimaryFlaggedServiceName);
@@ -69,8 +74,6 @@ namespace Sentinel.App.Services
                     if (passageCount >= 6) break;
                 }
             }
-
-            Add(facts, "machine-specific supplemental evidence", supplementalEvidence);
 
             bool redactionApplied = false;
             string sanitizedQuestion = Sanitize(userQuestion, ref redactionApplied);

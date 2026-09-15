@@ -77,6 +77,72 @@ AskSentinelRoute accordingTo = routing.Decide("According to Microsoft, what does
 Require(!accordingTo.UseBasicAi && accordingTo.UseExternalResearch,
     "'According to Microsoft' wording did not route directly to authoritative research.");
 
+var conversation = new AskSentinelConversationContextPolicy();
+DateTimeOffset now = DateTimeOffset.UtcNow;
+AskSentinelConversationContextDecision whyFollowUp = conversation.Decide(
+    "Why?",
+    "What is TPM?",
+    "TPM is a hardware-backed security component used by Windows features such as BitLocker.",
+    now);
+Require(whyFollowUp.UsePriorExchange,
+    "A short 'Why?' follow-up did not attach the prior validated exchange.");
+Require(whyFollowUp.SupplementalContext.Contains("What is TPM?", StringComparison.Ordinal) &&
+        whyFollowUp.SupplementalContext.Contains("hardware-backed security", StringComparison.Ordinal),
+    "Conversation context did not preserve bounded prior question/answer material.");
+Require(whyFollowUp.SupplementalContext.Contains("not independent evidence", StringComparison.OrdinalIgnoreCase) &&
+        whyFollowUp.SupplementalContext.Contains("current verified evidence", StringComparison.OrdinalIgnoreCase),
+    "Conversation context did not retain the non-authoritative/staleness safety rules.");
+
+AskSentinelConversationContextDecision recommendationFollowUp = conversation.Decide(
+    "Would you recommend that?",
+    "NTFS or exFAT for a backup drive",
+    "For a Windows-only backup drive, NTFS is usually the better default.",
+    now);
+Require(recommendationFollowUp.UsePriorExchange,
+    "A deictic recommendation follow-up did not attach the prior exchange.");
+
+AskSentinelConversationContextDecision whatAboutFollowUp = conversation.Decide(
+    "What about Windows 11?",
+    "How does BitLocker protect me?",
+    "BitLocker encrypts supported Windows volumes and protects data at rest.",
+    now);
+Require(whatAboutFollowUp.UsePriorExchange,
+    "A natural 'What about ...?' continuation did not attach the prior exchange.");
+
+AskSentinelConversationContextDecision unrelated = conversation.Decide(
+    "How do I open Task Manager?",
+    "What is TPM?",
+    "TPM is a hardware-backed security component.",
+    now);
+Require(!unrelated.UsePriorExchange,
+    "A self-contained unrelated request incorrectly inherited the previous conversation.");
+
+AskSentinelConversationContextDecision freshLocal = conversation.Decide(
+    "What is my firewall status?",
+    "Would you recommend a third-party firewall?",
+    "General guidance about firewall products.",
+    now);
+Require(!freshLocal.UsePriorExchange,
+    "A fresh local-state question incorrectly inherited conversational context.");
+
+AskSentinelConversationContextDecision stale = conversation.Decide(
+    "Why?",
+    "What is TPM?",
+    "TPM is a hardware-backed security component.",
+    now.AddHours(-1));
+Require(!stale.UsePriorExchange,
+    "Conversation context older than the bounded lifetime was still reused.");
+
+AskSentinelConversationContextDecision buttonPrompt = conversation.Decide(
+    "Explain this in more detail.\nOriginal question: What is TPM?",
+    "What is TPM?",
+    "TPM is a hardware-backed security component.",
+    now);
+Require(!buttonPrompt.UsePriorExchange,
+    "A self-contained follow-up-button prompt redundantly inherited implicit conversation memory.");
+Require(whyFollowUp.SupplementalContext.Length < 1_800,
+    "Conversation context exceeded the intended bounded evidence size.");
+
 var escalation = new AiEscalationPolicy();
 AiEscalationDecision firstPass = escalation.Evaluate(routing.CreateBasicAiContext(
     "Could ransomware cause a complicated security problem?"));
@@ -104,6 +170,8 @@ Console.WriteLine("Explanation -> Basic AI: PASS");
 Console.WriteLine("Direct/local freshness questions -> local answer: PASS");
 Console.WriteLine("Ambiguous keyword and natural fragment input -> Basic AI: PASS");
 Console.WriteLine("Fresh external/research/according-to wording -> external research: PASS");
+Console.WriteLine("Typed conversational follow-ups -> bounded prior context: PASS");
+Console.WriteLine("Unrelated/local/stale prompts -> no inherited conversation: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
 Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
 Console.WriteLine("RESULT: PASS");
