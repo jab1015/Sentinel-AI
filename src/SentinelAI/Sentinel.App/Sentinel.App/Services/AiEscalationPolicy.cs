@@ -13,6 +13,9 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class AiEscalationPolicy
     {
+        public const int BasicMaximumTotalTokens = 900;
+        public const int AdvancedMaximumTotalTokens = 2_300;
+
         public AiEscalationDecision Evaluate(AiEscalationContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -47,10 +50,11 @@ namespace Sentinel.App.Services
                     ? AiModelTier.Advanced
                     : AiModelTier.Economy;
 
-            int inputBudget = tier == AiModelTier.Advanced ? 1800 : 900;
-            int outputBudget = context.NeedsUserExplanation ? 500 : 300;
+            int maximumTotalTokens = tier == AiModelTier.Advanced
+                ? AdvancedMaximumTotalTokens
+                : BasicMaximumTotalTokens;
 
-            return new AiEscalationDecision(true, false, tier, inputBudget + outputBudget,
+            return new AiEscalationDecision(true, false, tier, maximumTotalTokens,
                 tier == AiModelTier.Advanced
                     ? "AI escalation is justified for a complex or high-risk unresolved investigation after authoritative research."
                     : basicFirstPass
