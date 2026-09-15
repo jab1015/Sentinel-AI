@@ -31,9 +31,6 @@ public sealed partial class MainWindow
             MinHeight = 300,
             Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255))
         };
-        // ContentDialog normally dims its entire XamlRoot. In a dedicated Explorer host that
-        // creates the large gray "web page" surround seen in VM testing. Keep the smoke layer
-        // transparent so the visible experience is the white Sentinel dialog and its buttons.
         rootElement.Resources["ContentDialogSmokeLayerBackground"] =
             new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
         dialogHost.Content = rootElement;
@@ -161,7 +158,7 @@ public sealed partial class MainWindow
         ContentDialog dialog = new()
         {
             Title = "Inspect with Sentinel AI",
-            Content = $"Sentinel will inspect {request.Paths.Count} selected item(s) without changing them.\n\n{selection}",
+            Content = $"Sentinel will perform a read-only filesystem inspection of {request.Paths.Count} selected item(s). This does not replace a malware scan.\n\n{selection}",
             PrimaryButtonText = "Inspect",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -183,30 +180,39 @@ public sealed partial class MainWindow
 
     private static async Task<string> BuildExplorerInspectionSummaryAsync(IReadOnlyList<string> paths)
     {
-        StringBuilder summary = new();
-        summary.AppendLine("✓ No immediate filesystem issue found");
-        summary.AppendLine($"Items inspected: {paths.Count}");
-        summary.AppendLine("No file was changed.");
-        summary.AppendLine();
-
+        StringBuilder details = new();
+        bool incomplete = false;
         int shown = 0;
+
         foreach (string path in paths)
         {
             if (shown >= 5)
             {
-                summary.AppendLine($"…and {paths.Count - shown} more item(s).");
+                details.AppendLine($"…and {paths.Count - shown} more item(s).");
                 break;
             }
 
             if (Directory.Exists(path))
             {
                 DirectoryInfo directory = new(path);
-                summary.AppendLine($"Folder: {directory.Name}");
-                summary.AppendLine($"Path: {directory.FullName}");
-                summary.AppendLine($"Last modified: {directory.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
-                summary.AppendLine("Result: Folder is accessible and its filesystem identity was verified. No immediate filesystem issue was found.");
-                summary.AppendLine("Security note: this folder-level check is not a malware scan of every file inside the folder.");
-                summary.AppendLine();
+                details.AppendLine($"Folder: {directory.Name}");
+                details.AppendLine($"Location: {directory.FullName}");
+                details.AppendLine("Type: Folder");
+                details.AppendLine($"Last modified: {directory.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
+                try
+                {
+                    int objectCount = Directory.EnumerateFileSystemEntries(path, "*", SearchOption.TopDirectoryOnly).Take(1001).Count();
+                    details.AppendLine(objectCount > 1000 ? "Objects: More than 1,000 immediate objects" : $"Objects: {objectCount:N0} immediate object(s)");
+                    details.AppendLine("Assessment: The folder was reopened and its immediate contents could be enumerated.");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    incomplete = true;
+                    details.AppendLine("Assessment: Sentinel could not enumerate this folder completely.");
+                    details.AppendLine("Recommended action: Check access to the folder and inspect it again.");
+                }
+                details.AppendLine("Scope: This is a filesystem accessibility check, not a malware scan of files inside the folder.");
+                details.AppendLine();
                 shown++;
                 continue;
             }
@@ -223,25 +229,45 @@ public sealed partial class MainWindow
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
             {
-                summary.AppendLine($"File: {file.Name}");
-                summary.AppendLine($"Path: {file.FullName}");
-                summary.AppendLine("Result: Sentinel could not complete the read-only content check. Treat this item as needing attention until it can be inspected successfully.");
-                summary.AppendLine();
+                incomplete = true;
+                details.AppendLine($"File: {file.Name}");
+                details.AppendLine($"Location: {file.FullName}");
+                details.AppendLine("Type: File");
+                details.AppendLine("Assessment: Sentinel could not complete the read-only content check.");
+                details.AppendLine("Recommended action: Treat this item as unverified and inspect it again after checking access.");
+                details.AppendLine();
                 shown++;
                 continue;
             }
 
-            summary.AppendLine($"File: {file.Name}");
-            summary.AppendLine($"Path: {file.FullName}");
-            summary.AppendLine($"Size: {file.Length:N0} bytes");
-            summary.AppendLine($"Last modified: {file.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
-            summary.AppendLine($"SHA-256: {sha256}");
-            summary.AppendLine("Result: File was reopened, read successfully, and hashed. No immediate filesystem issue was found.");
-            summary.AppendLine("Security note: this read-only integrity check does not by itself prove that a file is malware-free.");
-            summary.AppendLine();
+            details.AppendLine($"File: {file.Name}");
+            details.AppendLine($"Location: {file.FullName}");
+            details.AppendLine("Type: File");
+            details.AppendLine($"Size: {file.Length:N0} bytes");
+            details.AppendLine($"Last modified: {file.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
+            details.AppendLine($"SHA-256: {sha256}");
+            details.AppendLine("Assessment: The file was reopened, read successfully, and hashed without modifying it.");
+            details.AppendLine("Scope: This integrity check does not establish that the file is malware-free.");
+            details.AppendLine();
             shown++;
         }
 
+        StringBuilder summary = new();
+        if (incomplete)
+        {
+            summary.AppendLine("UNKNOWN / COULD NOT FULLY VERIFY");
+            summary.AppendLine("One or more read-only filesystem checks could not be completed. Sentinel is not making a safety determination for this selection.");
+        }
+        else
+        {
+            summary.AppendLine("NO FILESYSTEM ISSUES FOUND");
+            summary.AppendLine("The requested read-only filesystem checks completed successfully. This result is not a malware verdict.");
+        }
+
+        summary.AppendLine($"Items inspected: {paths.Count}");
+        summary.AppendLine("No file was changed.");
+        summary.AppendLine();
+        summary.Append(details);
         summary.Append("Sentinel did not modify the selection.");
         return summary.ToString();
     }
