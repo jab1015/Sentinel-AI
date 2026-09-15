@@ -184,7 +184,7 @@ public sealed partial class MainWindow
                 });
                 panel.Children.Add(new TextBlock
                 {
-                    Text = "Protected items stay encrypted in Sentinel's private app storage. Select an item and choose Restore copy to recover a verified plaintext copy without removing the protected Vault item.",
+                    Text = "Protected items stay encrypted in Sentinel's private app storage. Files imported from the same folder remain linked as one authenticated Vault collection, so restoring any member restores the whole folder structure.",
                     TextWrapping = TextWrapping.Wrap
                 });
 
@@ -199,10 +199,11 @@ public sealed partial class MainWindow
                     string name = string.IsNullOrWhiteSpace(item.DisplayName) ? $"Protected item {item.ItemId.ToString("N")[..8]}" : item.DisplayName;
                     string hierarchy = !string.IsNullOrWhiteSpace(item.RelativePath) ? item.RelativePath : item.OriginalPath ?? "Original location unavailable (legacy item)";
                     string added = item.AddedUnixMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(item.AddedUnixMs).LocalDateTime.ToString("MMM d, yyyy h:mm tt") : "Legacy item";
+                    string collectionLabel = item.CollectionId.HasValue ? " • Folder collection" : string.Empty;
                     StackPanel row = new() { Spacing = 2, Padding = new Thickness(4, 6, 4, 6) };
                     row.Children.Add(new TextBlock { Text = name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
                     row.Children.Add(new TextBlock { Text = hierarchy, Opacity = 0.78, TextWrapping = TextWrapping.Wrap });
-                    row.Children.Add(new TextBlock { Text = $"{FormatBytes(item.PlaintextBytes)} • Added {added}", Opacity = 0.68, TextWrapping = TextWrapping.Wrap });
+                    row.Children.Add(new TextBlock { Text = $"{FormatBytes(item.PlaintextBytes)} • Added {added}{collectionLabel}", Opacity = 0.68, TextWrapping = TextWrapping.Wrap });
                     itemList.Items.Add(new ListViewItem { Content = row, Tag = item, HorizontalContentAlignment = HorizontalAlignment.Stretch });
                 }
                 panel.Children.Add(itemList);
@@ -217,7 +218,7 @@ public sealed partial class MainWindow
                 panel.Children.Add(actions);
                 panel.Children.Add(new TextBlock
                 {
-                    Text = "Add file/folder is a verified move into the Vault: Sentinel commits and verifies encrypted Vault data before retiring the exact readable source. Restore copy never overwrites an existing file and does not require a current subscription.",
+                    Text = "Add file/folder is a verified move into the Vault: Sentinel commits and verifies encrypted Vault data before retiring the exact readable source. Restore never overwrites an existing file or folder and does not require a current subscription.",
                     TextWrapping = TextWrapping.Wrap,
                     Opacity = 0.78
                 });
@@ -230,7 +231,19 @@ public sealed partial class MainWindow
                     XamlRoot = rootElement.XamlRoot
                 };
 
-                itemList.SelectionChanged += (_, _) => exportButton.IsEnabled = itemList.SelectedItem is ListViewItem;
+                itemList.SelectionChanged += (_, _) =>
+                {
+                    if (itemList.SelectedItem is ListViewItem selected && selected.Tag is VaultMetadataItem item)
+                    {
+                        exportButton.IsEnabled = true;
+                        exportButton.Content = item.CollectionId.HasValue ? "Restore folder" : "Restore copy";
+                    }
+                    else
+                    {
+                        exportButton.IsEnabled = false;
+                        exportButton.Content = "Restore copy";
+                    }
+                };
                 addFileButton.Click += (_, _) => { requestedAction = "add-file"; manager.Hide(); };
                 addFolderButton.Click += (_, _) => { requestedAction = "add-folder"; manager.Hide(); };
                 exportButton.Click += (_, _) =>
@@ -262,6 +275,12 @@ public sealed partial class MainWindow
             {
                 string? destinationFolder = await PickVaultExportFolderAsync().ConfigureAwait(true);
                 if (string.IsNullOrWhiteSpace(destinationFolder)) continue;
+
+                if (selectedForExport.CollectionId.HasValue)
+                {
+                    await RestoreVaultCollectionAsync(vaultRoot, selectedForExport, destinationFolder, rootElement).ConfigureAwait(true);
+                    continue;
+                }
 
                 string fileName = GetVaultExportFileName(selectedForExport);
                 string destination = Path.Combine(destinationFolder, fileName);
@@ -295,6 +314,165 @@ public sealed partial class MainWindow
                 }
                 continue;
             }
+        }
+    }
+
+    private async Task RestoreVaultCollectionAsync(string vaultRoot, VaultMetadataItem selected, string destinationParent, FrameworkElement rootElement)
+    {
+        PersistedVaultSessionResult open = await new PersistedSentinelVaultService(vaultRoot).OpenCurrentUserAsync().ConfigureAwait(true);
+        if (!open.Succeeded || open.Session is null)
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Vault could not be opened for folder restore", open.Message + "\n\nStatus: " + open.Code).ConfigureAwait(true);
+            return;
+        }
+
+        using PersistedVaultSession session = open.Session;
+        VaultCommittedItemsResult listed = await session.Items.ListCommittedItemsAsync().ConfigureAwait(true);
+        if (!listed.Succeeded || !selected.CollectionId.HasValue)
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Vault folder metadata unavailable", "Sentinel could not authenticate the complete folder collection, so it did not restore a partial folder.").ConfigureAwait(true);
+            return;
+        }
+
+        VaultMetadataItem[] collection = listed.Items
+            .Where(item => item.CollectionId == selected.CollectionId)
+            .OrderBy(item => item.RelativePath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (collection.Length == 0 || !TryBuildVaultCollectionRestorePlan(collection, destinationParent, out string destinationRoot, out Dictionary<Guid, string> destinations, out string planError))
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Vault folder cannot be restored", string.IsNullOrWhiteSpace(planError) ? "Sentinel could not build a safe restore plan for this folder collection." : planError).ConfigureAwait(true);
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(destinationRoot);
+            if ((File.GetAttributes(destinationRoot) & System.IO.FileAttributes.ReparsePoint) != 0)
+                throw new IOException("The newly created restore root resolved as a reparse point.");
+
+            foreach (string directory in destinations.Values
+                         .Select(Path.GetDirectoryName)
+                         .Where(value => !string.IsNullOrWhiteSpace(value))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(value => value!.Length))
+            {
+                Directory.CreateDirectory(directory!);
+                if ((File.GetAttributes(directory!) & System.IO.FileAttributes.ReparsePoint) != 0)
+                    throw new IOException("A restore directory resolved as a reparse point.");
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Vault folder restore could not start", "Sentinel could not create and verify the new destination folder safely. No Vault item was removed or changed.").ConfigureAwait(true);
+            return;
+        }
+
+        VaultItemExportService exporter = new(vaultRoot, session.Vault, session.Items);
+        int restored = 0;
+        long restoredBytes = 0;
+        foreach (VaultMetadataItem item in collection)
+        {
+            VaultExportResult result = await exporter.ExportAsync(item.ItemId, destinations[item.ItemId]).ConfigureAwait(true);
+            if (!result.Succeeded)
+            {
+                await ShowPrivacyMessageAsync(rootElement, "Vault folder restore needs attention", $"Sentinel restored {restored:N0} of {collection.Length:N0} file(s) before a verified export failed. Existing output was left in the new destination folder rather than risk deleting the wrong filesystem objects.\n\nDestination:\n{destinationRoot}\n\nStatus: {result.Code}\n\nThe encrypted Vault collection remains unchanged and protected.").ConfigureAwait(true);
+                return;
+            }
+            restored++;
+            restoredBytes += result.PlaintextBytes;
+        }
+
+        await ShowPrivacyMessageAsync(rootElement, "Vault folder restored", $"Sentinel authenticated the complete Vault collection and recreated its folder hierarchy as a verified plaintext copy.\n\nRestored folder:\n{destinationRoot}\n\nFiles: {restored:N0}\nRestored: {FormatBytes(restoredBytes)}\n\nThe encrypted Vault collection remains protected in the Vault.").ConfigureAwait(true);
+    }
+
+    private static bool TryBuildVaultCollectionRestorePlan(
+        IReadOnlyCollection<VaultMetadataItem> collection,
+        string destinationParent,
+        out string destinationRoot,
+        out Dictionary<Guid, string> destinations,
+        out string error)
+    {
+        destinationRoot = string.Empty;
+        destinations = new Dictionary<Guid, string>();
+        error = string.Empty;
+        try
+        {
+            string parent = Path.GetFullPath(destinationParent);
+            if (!Directory.Exists(parent) || (File.GetAttributes(parent) & System.IO.FileAttributes.ReparsePoint) != 0)
+            {
+                error = "Sentinel will only restore a folder into an existing normal directory that is not a reparse point.";
+                return false;
+            }
+
+            VaultMetadataItem? sample = collection.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.OriginalPath) && !string.IsNullOrWhiteSpace(item.RelativePath));
+            if (sample is null || !TryDeriveVaultCollectionRootName(sample, out string rootName))
+            {
+                error = "This Vault collection does not contain enough authenticated source metadata to reconstruct the original folder safely.";
+                return false;
+            }
+
+            destinationRoot = Path.GetFullPath(Path.Combine(parent, rootName));
+            if (File.Exists(destinationRoot) || Directory.Exists(destinationRoot))
+            {
+                error = $"Sentinel will not merge into or overwrite an existing folder.\n\nDestination:\n{destinationRoot}\n\nRename the existing folder or choose a different restore location.";
+                return false;
+            }
+
+            string rootPrefix = Path.TrimEndingDirectorySeparator(destinationRoot) + Path.DirectorySeparatorChar;
+            HashSet<string> unique = new(StringComparer.OrdinalIgnoreCase);
+            foreach (VaultMetadataItem item in collection)
+            {
+                string relative = item.RelativePath?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative) ||
+                    relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries)
+                        .Any(segment => segment is "." or ".."))
+                {
+                    error = "The authenticated Vault collection contains an invalid relative path. Sentinel refused to create a partial or escaped restore.";
+                    return false;
+                }
+
+                string destination = Path.GetFullPath(Path.Combine(destinationRoot, relative));
+                if (!destination.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase) || !unique.Add(destination) ||
+                    File.Exists(destination) || Directory.Exists(destination))
+                {
+                    error = "The Vault collection contains a path collision or a path outside the new restore folder. Sentinel did not restore any files.";
+                    return false;
+                }
+                destinations[item.ItemId] = destination;
+            }
+
+            return destinations.Count == collection.Count;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            error = "Sentinel could not validate a safe destination for the complete Vault folder collection.";
+            return false;
+        }
+    }
+
+    private static bool TryDeriveVaultCollectionRootName(VaultMetadataItem item, out string rootName)
+    {
+        rootName = string.Empty;
+        try
+        {
+            string original = Path.GetFullPath(item.OriginalPath!);
+            string relative = item.RelativePath!;
+            string[] segments = relative.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0) return false;
+
+            string? cursor = original;
+            for (int i = 0; i < segments.Length; i++)
+            {
+                cursor = Path.GetDirectoryName(cursor);
+                if (string.IsNullOrWhiteSpace(cursor)) return false;
+            }
+
+            rootName = Path.GetFileName(Path.TrimEndingDirectorySeparator(cursor));
+            return !string.IsNullOrWhiteSpace(rootName) && rootName.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
         }
     }
 
