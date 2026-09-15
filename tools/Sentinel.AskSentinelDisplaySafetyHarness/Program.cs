@@ -35,6 +35,72 @@ Require(broadOverview.Contains("external sources", StringComparison.OrdinalIgnor
         broadOverview.Contains("AI", StringComparison.OrdinalIgnoreCase),
     "Broad PC overview response did not expose the external research / AI follow-up path.");
 
+var policy = new AiEscalationPolicy();
+AiEscalationDecision basicFirst = policy.Evaluate(new AiEscalationContext(
+    LocalEvidenceAvailable: true,
+    LocalEvidenceInsufficient: true,
+    LocalConclusionVerified: false,
+    CachedVerifiedFindingAvailable: false,
+    ExternalResearchApplicable: false,
+    AuthoritativeResearchAttempted: false,
+    AuthoritativeExternalConclusionVerified: false,
+    NeedsInterpretation: true,
+    NeedsUserExplanation: true,
+    HighComplexity: true,
+    HighRisk: true));
+Require(basicFirst.UseCloudAi && basicFirst.ModelTier == AiModelTier.Economy,
+    "First unresolved Ask Sentinel AI pass did not stay on the Basic/economy tier.");
+
+AiEscalationDecision advancedAfterResearch = policy.Evaluate(new AiEscalationContext(
+    LocalEvidenceAvailable: true,
+    LocalEvidenceInsufficient: true,
+    LocalConclusionVerified: false,
+    CachedVerifiedFindingAvailable: false,
+    ExternalResearchApplicable: true,
+    AuthoritativeResearchAttempted: true,
+    AuthoritativeExternalConclusionVerified: false,
+    NeedsInterpretation: true,
+    NeedsUserExplanation: true,
+    HighComplexity: true,
+    HighRisk: true));
+Require(advancedAfterResearch.UseCloudAi && advancedAfterResearch.ModelTier == AiModelTier.Advanced,
+    "Complex/high-risk question did not become eligible for Advanced AI after authoritative research.");
+
+var external = new ExternalInvestigationResult(
+    "windows-general",
+    Verified: false,
+    ConfidencePercent: 0,
+    Summary: "Approved-source material was collected.",
+    Sources: new[]
+    {
+        new ExternalSourceEvidence(
+            "Microsoft Learn",
+            "https://learn.microsoft.com/windows/",
+            95,
+            Reached: true,
+            MatchedCurrentEvidence: true,
+            MatchedTerms: new[] { "secure boot" },
+            Passages: new[]
+            {
+                new ExternalResearchPassage("secure boot", "Secure Boot helps ensure that a device boots using trusted software.")
+            })
+    },
+    RequiresAiEscalation: true,
+    FromCache: false,
+    MatchedTerms: new[] { "secure boot" });
+
+AiEvidencePackage package = new AiEvidencePackageBuilder().Build(
+    "external-investigation",
+    "What does Secure Boot do?",
+    snapshot,
+    external);
+Require(package.Payload.Contains("authoritative-source-passage", StringComparison.OrdinalIgnoreCase),
+    "AI evidence package omitted authoritative source passages.");
+Require(package.Payload.Contains("Microsoft Learn", StringComparison.OrdinalIgnoreCase),
+    "AI evidence package omitted authoritative source provenance.");
+Require(package.Payload.Contains("stable general Windows/computer explanations", StringComparison.OrdinalIgnoreCase),
+    "AI evidence package did not authorize bounded stable general Windows guidance.");
+
 var safeObserved = validator.ValidateForDisplay(
     Response("Sentinel observed a driver warning and recommends reviewing it."),
     snapshot,
@@ -97,6 +163,8 @@ Require(!validator.ValidateForDisplay(futureTimestamp, snapshot, AskSentinelProv
     "Response with invalid future evidence timestamp was accepted.");
 
 Console.WriteLine("Broad PC overview response and follow-up choices: PASS");
+Console.WriteLine("Basic-first / Advanced-after-research routing: PASS");
+Console.WriteLine("Authoritative source passages included in AI evidence: PASS");
 Console.WriteLine("Observed deterministic response: PASS");
 Console.WriteLine("Advisory/inferred false action claims rejected: PASS");
 Console.WriteLine("Verified action provenance accepted: PASS");
