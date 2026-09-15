@@ -187,7 +187,7 @@ internal sealed class ExplorerHandoffService
 
         if (action != ExplorerRequestedAction.Inspect && record.Items.Count != 1)
         {
-            reason = "Premium Privacy Explorer actions currently require exactly one selected file.";
+            reason = "Premium Privacy Explorer actions currently require exactly one selected filesystem item.";
             return false;
         }
 
@@ -201,9 +201,11 @@ internal sealed class ExplorerHandoffService
                 return false;
             }
 
-            if (action != ExplorerRequestedAction.Inspect && Directory.Exists(fullPath))
+            if (action != ExplorerRequestedAction.Inspect &&
+                action != ExplorerRequestedAction.AddToVault &&
+                Directory.Exists(fullPath))
             {
-                reason = "Premium Privacy Explorer actions currently accept files only, not directories.";
+                reason = "This Premium Privacy Explorer action accepts files only, not directories.";
                 return false;
             }
 
