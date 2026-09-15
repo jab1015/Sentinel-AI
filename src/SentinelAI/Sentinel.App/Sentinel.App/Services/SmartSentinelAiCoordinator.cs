@@ -18,7 +18,9 @@ namespace Sentinel.App.Services
     {
         private const int MaximumCacheEntries = 200;
         private const int BasicEvidenceCharacterBudget = 2_200;
-        private const int AdvancedEvidenceCharacterBudget = 7_000;
+        private const int AdvancedEvidenceCharacterBudget = 6_000;
+        private const int BasicMaximumEstimatedInputTokens = 600;
+        private const int AdvancedMaximumEstimatedInputTokens = 1_600;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(6);
         private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new(StringComparer.Ordinal);
         private static long _requestsSent;
@@ -49,6 +51,10 @@ namespace Sentinel.App.Services
             int characterBudget = decision.ModelTier == AiModelTier.Advanced
                 ? AdvancedEvidenceCharacterBudget
                 : BasicEvidenceCharacterBudget;
+            int maximumEstimatedInputTokens = decision.ModelTier == AiModelTier.Advanced
+                ? AdvancedMaximumEstimatedInputTokens
+                : BasicMaximumEstimatedInputTokens;
+
             AiEvidencePackage package = _packageBuilder.Build(
                 purpose,
                 userQuestion ?? string.Empty,
@@ -57,19 +63,36 @@ namespace Sentinel.App.Services
                 characterBudget,
                 supplementalEvidence);
 
-            // Keep enough room for a useful Basic response. The gateway allows 900 total
-            // tokens for Basic and reserves roughly one third for output. Estimated input
-            // must therefore remain comfortably below the total request budget.
-            if (decision.ModelTier == AiModelTier.Economy &&
-                package.EstimatedInputTokens > 600)
+            // Reserve enough of the total request budget for a useful model response. This
+            // prevents the gateway from accepting the request and then rejecting the provider
+            // result because input + output exceeded MaximumTotalTokens.
+            if (package.EstimatedInputTokens > maximumEstimatedInputTokens)
             {
+                int tighterCharacterBudget = Math.Max(1_500, maximumEstimatedInputTokens * 4 - 200);
                 package = _packageBuilder.Build(
                     purpose,
                     userQuestion ?? string.Empty,
                     snapshot,
                     external,
-                    1_900,
+                    tighterCharacterBudget,
                     supplementalEvidence);
+            }
+
+            if (package.EstimatedInputTokens > maximumEstimatedInputTokens)
+            {
+                return new SmartAiResult(
+                    UsedCloudAi: false,
+                    Available: false,
+                    Answer: string.Empty,
+                    ConfidencePercent: 0,
+                    RequiresMoreEvidence: true,
+                    FromCache: false,
+                    ResearchFirst: false,
+                    Provider: string.Empty,
+                    Model: string.Empty,
+                    InputTokens: 0,
+                    OutputTokens: 0,
+                    Reason: "The verified evidence package could not be reduced enough to leave a safe response budget for AI.");
             }
 
             RemoveExpiredCacheEntries();
