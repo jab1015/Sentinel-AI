@@ -60,7 +60,7 @@ static bool IsAuditedInteractiveLaunch(string relative, string text)
             !text.Contains("Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })", StringComparison.Ordinal))
             return false;
 
-        MatchCollection calls = Regex.Matches(text, @"OpenShellTarget\(\"([^\"]+)\"\)", RegexOptions.CultureInvariant);
+        MatchCollection calls = Regex.Matches(text, @"OpenShellTarget\(""([^""]+)""\)", RegexOptions.CultureInvariant);
         if (calls.Count != approvedTargets.Length)
             return false;
 
