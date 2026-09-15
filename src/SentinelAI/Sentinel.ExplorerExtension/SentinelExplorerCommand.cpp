@@ -28,21 +28,28 @@ namespace
     const CLSID CLSID_SentinelExplorerCommand =
         { 0x6c5e88b7, 0x2a44, 0x4b6d, { 0x9a, 0x6c, 0x4f, 0x1a, 0x5c, 0x9f, 0x6e, 0x21 } };
 
+    enum class SelectionRequirement
+    {
+        AnyFilesystemSelection,
+        SingleFile,
+        SingleFileOrDirectory
+    };
+
     struct CommandDefinition
     {
         const wchar_t* title;
         const char* command;
-        bool requiresSingleFile;
+        SelectionRequirement selectionRequirement;
     };
 
     constexpr CommandDefinition kCommands[] =
     {
-        { L"Inspect with Sentinel AI", "inspect", false },
-        { L"Encrypt for This PC", "encrypt", true },
-        { L"Encrypt for Sharing...", "encrypt-share", true },
-        { L"Decrypt Sentinel File", "decrypt", true },
-        { L"Add to Sentinel Vault", "vault", true },
-        { L"Secure Delete", "secure-delete", true }
+        { L"Inspect with Sentinel AI", "inspect", SelectionRequirement::AnyFilesystemSelection },
+        { L"Encrypt for This PC", "encrypt", SelectionRequirement::SingleFile },
+        { L"Encrypt for Sharing...", "encrypt-share", SelectionRequirement::SingleFile },
+        { L"Decrypt Sentinel File", "decrypt", SelectionRequirement::SingleFile },
+        { L"Add to Sentinel Vault", "vault", SelectionRequirement::SingleFileOrDirectory },
+        { L"Secure Delete", "secure-delete", SelectionRequirement::SingleFile }
     };
 
     std::atomic<long> g_objectCount{ 0 };
@@ -90,14 +97,29 @@ namespace
         return S_OK;
     }
 
-    bool IsSingleNormalFileSelection(IShellItemArray* items)
+    bool IsNormalFilesystemObject(const std::wstring& path, bool allowDirectory)
+    {
+        DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES ||
+            (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+            return false;
+
+        bool isDirectory = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        return allowDirectory || !isDirectory;
+    }
+
+    bool IsSelectionAllowed(IShellItemArray* items, SelectionRequirement requirement)
     {
         std::vector<std::wstring> paths;
-        if (FAILED(CollectFilesystemPaths(items, paths)) || paths.size() != 1) return false;
-        DWORD attributes = GetFileAttributesW(paths[0].c_str());
-        return attributes != INVALID_FILE_ATTRIBUTES &&
-            (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
-            (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+        if (FAILED(CollectFilesystemPaths(items, paths))) return false;
+
+        if (requirement == SelectionRequirement::AnyFilesystemSelection)
+            return true;
+
+        if (paths.size() != 1) return false;
+        return IsNormalFilesystemObject(
+            paths[0],
+            requirement == SelectionRequirement::SingleFileOrDirectory);
     }
 
     HRESULT GetPackageFamily(std::wstring& family)
@@ -241,7 +263,7 @@ namespace
         std::vector<std::wstring> paths;
         HRESULT hr = CollectFilesystemPaths(items, paths);
         if (FAILED(hr)) return hr;
-        if (definition.requiresSingleFile && !IsSingleNormalFileSelection(items)) return E_INVALIDARG;
+        if (!IsSelectionAllowed(items, definition.selectionRequirement)) return E_INVALIDARG;
         std::wstring family;
         hr = GetPackageFamily(family);
         if (FAILED(hr)) return hr;
@@ -299,13 +321,9 @@ namespace
         IFACEMETHODIMP GetState(IShellItemArray* items, BOOL, EXPCMDSTATE* state) override
         {
             if (!state) return E_POINTER;
-            if (kCommands[_index].requiresSingleFile)
-                *state = IsSingleNormalFileSelection(items) ? ECS_ENABLED : ECS_DISABLED;
-            else
-            {
-                std::vector<std::wstring> paths;
-                *state = SUCCEEDED(CollectFilesystemPaths(items, paths)) ? ECS_ENABLED : ECS_DISABLED;
-            }
+            *state = IsSelectionAllowed(items, kCommands[_index].selectionRequirement)
+                ? ECS_ENABLED
+                : ECS_DISABLED;
             return S_OK;
         }
         IFACEMETHODIMP Invoke(IShellItemArray* items, IBindCtx*) override { return SendRequest(items, kCommands[_index]); }
