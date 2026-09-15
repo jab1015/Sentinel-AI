@@ -42,6 +42,8 @@ namespace Sentinel.App.Services
                 string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
                 return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
             }
+            // Performance intent must also win over an unrelated active investigation.
+            // This includes slow boot/sign-in reports such as "it took 10 minutes to log in".
             if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
@@ -150,10 +152,10 @@ namespace Sentinel.App.Services
             if (contributors.Count > 0)
             {
                 string joined = string.Join("; ", contributors);
-                return $"I found current performance evidence that can contribute to slowness: {joined}. {current}{topProcess}{baselineText} These measurements identify likely current contributors, not a guaranteed single root cause. If the slowdown continues after these readings return to normal, Sentinel should keep collecting evidence rather than blame an unrelated security finding.";
+                return $"The evidence shows current performance conditions that can contribute to slowness: {joined}. {current}{topProcess}{baselineText} These measurements identify likely current contributors, not a guaranteed single root cause. A slow boot or sign-in can finish before this snapshot is taken, so Sentinel will not claim that an unrelated driver or security finding caused it without direct evidence.";
             }
 
-            return $"I do not currently see a verified resource bottleneck that explains the slowdown. {current}{topProcess}{baselineText} A short slowdown can finish before a monitoring snapshot is taken, so this does not prove that nothing happened. Sentinel does not have enough verified evidence to name a cause right now, and it will not substitute an unrelated security-monitoring warning as the explanation. Keep Sentinel running so later samples can be compared with this computer's normal baseline.";
+            return $"The evidence shows no current verified resource bottleneck that explains the slowdown. {current}{topProcess}{baselineText} A slow boot or sign-in can finish before a monitoring snapshot is taken, so this does not prove that nothing happened. Sentinel does not have enough verified evidence to name the earlier cause right now, and it will not substitute an unrelated driver or security-monitoring warning as the explanation. Keep Sentinel running so later samples can be compared with this computer's normal baseline.";
         }
 
         private string? BuildPersistentDriverAnswer(SystemSnapshot snapshot)
@@ -238,8 +240,20 @@ namespace Sentinel.App.Services
             return restartTopic && pendingIntent;
         }
 
-        private static bool IsPerformanceQuestion(string value) =>
-            Has(value, "computer slow", "pc slow", "running slow", "running slowly", "feels slow", "sluggish", "lagging", "laggy", "performance problem", "performance issue", "why is my computer slow", "why is my pc slow");
+        private static bool IsPerformanceQuestion(string value)
+        {
+            if (Has(value, "computer slow", "pc slow", "running slow", "running slowly", "feels slow", "sluggish", "lagging", "laggy", "performance problem", "performance issue", "why is my computer slow", "why is my pc slow"))
+                return true;
+
+            bool bootOrSignInTopic = Has(value,
+                "log in", "login", "logging in", "logged in",
+                "sign in", "signin", "signing in", "signed in",
+                "boot", "booting", "start up", "starting up", "startup");
+            bool delayIntent = Has(value,
+                "slow", "slowly", "long", "minute", "minutes", "forever",
+                "took", "taking", "takes", "delay", "delayed", "hang", "hung", "stuck");
+            return bootOrSignInTopic && delayIntent;
+        }
 
         private static bool IsTpmQuestion(string value) =>
             Has(value, "tpm", "trusted platform module", "security processor", "hardware security module");
