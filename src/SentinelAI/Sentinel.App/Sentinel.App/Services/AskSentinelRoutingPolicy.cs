@@ -10,8 +10,8 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Chooses the next Ask Sentinel reasoning layer from the user's intent rather
-    /// than requiring an exact phrase match. Local deterministic evidence stays first;
-    /// Basic AI is the normal language fallback; fresh/current claims go to research.
+    /// than requiring an exact phrase match. Clearly local state questions stay local;
+    /// explicit current-source requests go to research; everything else uses Basic AI.
     /// </summary>
     public sealed class AskSentinelRoutingPolicy
     {
@@ -23,23 +23,27 @@ namespace Sentinel.App.Services
             bool freshResearch = RequiresFreshExternalResearch(value);
             bool explanation = NeedsNaturalLanguageExplanation(value);
             bool clearlyLocal = IsClearlyLocalStateQuestion(value);
-            bool generalQuestion = LooksLikeGeneralQuestion(value);
-            bool ambiguousLocalKeywordMatch = !clearlyLocal && generalQuestion && !localAnswerInsufficient;
-            bool useBasicAi = !freshResearch && (localAnswerInsufficient || explanation || ambiguousLocalKeywordMatch);
+
+            // This is intentionally default-to-AI rather than default-to-keywords.
+            // Deterministic handlers are authoritative for clearly local state. They may
+            // still provide useful evidence for every other question, but they must not
+            // prevent natural-language reasoning merely because one broad keyword matched.
+            bool useBasicAi = !freshResearch &&
+                              (localAnswerInsufficient || explanation || !clearlyLocal);
 
             return new AskSentinelRoute(
                 UseBasicAi: useBasicAi,
                 UseExternalResearch: freshResearch,
-                ExplanationRequested: explanation || ambiguousLocalKeywordMatch,
+                ExplanationRequested: explanation || (!clearlyLocal && !freshResearch),
                 Reason: freshResearch
-                    ? "The question depends on current or explicitly requested external information."
-                    : localAnswerInsufficient
-                        ? "Deterministic local handlers did not fully answer the question; use Basic AI."
-                        : explanation
-                            ? "The user asked for explanation or interpretation beyond a terse local status value."
-                            : ambiguousLocalKeywordMatch
-                                ? "A broad local keyword matched, but the wording looks like a general question rather than a request for this PC's current state."
-                                : "Verified local evidence directly answers the question.");
+                    ? "The request depends on current or explicitly requested external information."
+                    : clearlyLocal && !localAnswerInsufficient && !explanation
+                        ? "Verified local evidence directly answers this computer-state question."
+                        : localAnswerInsufficient
+                            ? "Deterministic local evidence did not fully answer the request; use Basic AI."
+                            : explanation
+                                ? "The request asks for explanation or interpretation beyond a terse local status value."
+                                : "The request is not clearly a local state query, so Basic AI is the default natural-language reasoning layer.");
         }
 
         public AiEscalationContext CreateBasicAiContext(string question)
@@ -94,7 +98,7 @@ namespace Sentinel.App.Services
         {
             string value = Normalize(question);
 
-            // Strong research intent always wins, even when the question also mentions
+            // Strong research intent always wins, even when the request also mentions
             // this PC (for example, "search current Microsoft guidance for my firewall").
             bool explicitExternalIntent = ContainsAny(value,
                 "search online", "search the internet", "look online", "look it up", "external source", "external sources",
@@ -123,12 +127,10 @@ namespace Sentinel.App.Services
                 "meaning of", "what does it mean", "walk me through"))
                 return true;
 
-            bool definitionQuestion = StartsWithAny(value,
+            bool definitionRequest = StartsWithAny(value,
                 "what is ", "what are ", "who is ", "who are ");
-            if (!definitionQuestion) return false;
+            if (!definitionRequest) return false;
 
-            // Preserve fast deterministic answers for direct questions about this PC's
-            // current state while still letting definitions such as "What is TPM?" use AI.
             return !IsClearlyLocalStateQuestion(value);
         }
 
@@ -155,9 +157,8 @@ namespace Sentinel.App.Services
                 "running processes", "running services", "startup apps", "scheduled tasks"))
                 return true;
 
-            // One- or two-word topic prompts such as "firewall" or "CPU" are useful
-            // shorthand for local status in Sentinel. Do not apply that shortcut to an
-            // explicit definition such as "What is TPM?" or "What are drivers?".
+            // Very short topic prompts are useful Sentinel shorthand for local status.
+            // Explicit definitions are never treated as that shorthand.
             bool explicitDefinition = StartsWithAny(value,
                 "what is ", "what are ", "what does ", "how does ", "who is ", "who are ");
             string[] words = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -167,18 +168,6 @@ namespace Sentinel.App.Services
                 return true;
 
             return false;
-        }
-
-        internal static bool LooksLikeGeneralQuestion(string question)
-        {
-            string value = Normalize(question);
-            return value.EndsWith("?", StringComparison.Ordinal) ||
-                   StartsWithAny(value,
-                       "what ", "which ", "why ", "how ", "who ", "when ", "where ",
-                       "can ", "could ", "would ", "should ", "is ", "are ", "does ", "do ",
-                       "tell me ", "explain ", "recommend ", "compare ") ||
-                   ContainsAny(value,
-                       "best ", "better ", "recommend", "safe to", "pros and cons", "advantages", "disadvantages");
         }
 
         private static bool StartsWithAny(string value, params string[] prefixes) =>
