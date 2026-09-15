@@ -43,6 +43,7 @@ namespace Sentinel.App.Services
                 return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
             }
             if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
+            if (IsBroadComputerOverviewQuestion(q)) return BuildComputerOverviewAnswer(snapshot);
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
@@ -122,6 +123,36 @@ namespace Sentinel.App.Services
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.GuidanceRecommendedAction, snapshot.Recommendation) : "No action is required based on current verified evidence. Sentinel will continue monitoring.";
 
             return InsufficientEvidence;
+        }
+
+        private static string BuildComputerOverviewAnswer(SystemSnapshot snapshot)
+        {
+            string finding = snapshot.InvestigationRequiresAttention
+                ? $"I found a verified condition that needs attention: {Safe(snapshot.InvestigationSummary, snapshot.GuidanceWhatHappened)}"
+                : "I do not currently see a verified condition that requires your attention.";
+
+            string disk = snapshot.DiskTotalGB > 0
+                ? $"disk {snapshot.DiskUsagePercent:0.0}% used with {snapshot.DiskFreeGB:0.0} GB free"
+                : "disk capacity unavailable";
+
+            string network = snapshot.NetworkConnectionMonitoringAvailable
+                ? $"network monitoring active with {snapshot.FlaggedConnectionCount} flagged connection condition{(snapshot.FlaggedConnectionCount == 1 ? string.Empty : "s")}"
+                : $"network monitoring {snapshot.NetworkConnectionMonitoringStatus}";
+
+            string security = $"Defender {snapshot.DefenderStatus}; Firewall {snapshot.FirewallStatus}";
+
+            return
+                "Here’s what’s going on with your computer right now.\n\n" +
+                $"{finding}\n\n" +
+                $"Current snapshot: CPU {snapshot.CpuUsagePercent:0.0}%, memory {snapshot.MemoryUsagePercent:0.0}%, {disk}, {security}, and {network}. " +
+                $"Sentinel is monitoring {snapshot.ProcessCount} running processes and {snapshot.EstablishedConnectionCount} established TCP connections.\n\n" +
+                "I can go deeper from here. Ask me to:\n" +
+                "• explain the current issue and what it means\n" +
+                "• check security, suspicious activity, Defender, or Firewall\n" +
+                "• check performance, memory, CPU, storage, startup apps, or processes\n" +
+                "• review crashes, drivers, Windows Update, or recent investigation history\n" +
+                "• search approved external sources or use AI to help explain an unresolved issue (subscription features when required)\n\n" +
+                "This is a current evidence snapshot, not proof that no hidden threat exists.";
         }
 
         private string BuildPerformanceAnswer(SystemSnapshot snapshot)
@@ -222,6 +253,35 @@ namespace Sentinel.App.Services
                    $"Startup apps: {snapshot.StartupEntryCount} entries, {snapshot.FlaggedStartupEntryCount} flagged. " +
                    $"Running services: {snapshot.RunningServiceCount} of {snapshot.InstalledServiceCount}. " +
                    $"Top processes: {snapshot.ProcessCount} running; highest memory is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB.";
+        }
+
+        private static bool IsBroadComputerOverviewQuestion(string value)
+        {
+            return Has(value,
+                "tell me what's going on with my computer",
+                "tell me whats going on with my computer",
+                "tell me what is going on with my computer",
+                "what's going on with my computer",
+                "whats going on with my computer",
+                "what is going on with my computer",
+                "tell me what's going on with my pc",
+                "tell me whats going on with my pc",
+                "tell me what is going on with my pc",
+                "what's going on with my pc",
+                "whats going on with my pc",
+                "what is going on with my pc",
+                "how is my computer",
+                "how's my computer",
+                "hows my computer",
+                "how is my pc",
+                "how's my pc",
+                "hows my pc",
+                "computer status",
+                "pc status",
+                "status of my computer",
+                "status of my pc",
+                "check my computer",
+                "check my pc");
         }
 
         private static bool IsWindowsUpdateQuestion(string value) =>
