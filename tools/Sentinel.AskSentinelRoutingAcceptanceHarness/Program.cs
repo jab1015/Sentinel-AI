@@ -29,6 +29,18 @@ AskSentinelRoute directStatus = routing.Decide("What is my firewall status?", lo
 Require(!directStatus.UseBasicAi && !directStatus.UseExternalResearch,
     "Direct local status question unnecessarily escalated beyond verified local evidence.");
 
+AskSentinelRoute defenderStatus = routing.Decide("Is Defender on?", localAnswerInsufficient: false);
+Require(!defenderStatus.UseBasicAi && !defenderStatus.UseExternalResearch,
+    "Clear Defender state question unnecessarily escalated beyond local evidence.");
+
+AskSentinelRoute ambiguousApp = routing.Decide("Which app is best for editing photos?", localAnswerInsufficient: false);
+Require(ambiguousApp.UseBasicAi && !ambiguousApp.UseExternalResearch,
+    "General app question was incorrectly trusted as a local running-process answer.");
+
+AskSentinelRoute ambiguousVirus = routing.Decide("What virus is the worst?", localAnswerInsufficient: false);
+Require(ambiguousVirus.UseBasicAi && !ambiguousVirus.UseExternalResearch,
+    "General virus question was incorrectly trusted as a local security-status answer.");
+
 AskSentinelRoute latest = routing.Decide("Search the web for the latest Windows 11 known issue", localAnswerInsufficient: true);
 Require(!latest.UseBasicAi && latest.UseExternalResearch,
     "Explicit current web-research request did not route directly to external research.");
@@ -57,6 +69,7 @@ Console.WriteLine("Unknown phrasing -> Basic AI: PASS");
 Console.WriteLine("Verified broad local overview -> local answer: PASS");
 Console.WriteLine("Definition/explanation -> Basic AI: PASS");
 Console.WriteLine("Direct device status -> local answer: PASS");
+Console.WriteLine("Ambiguous app/security keywords -> Basic AI: PASS");
 Console.WriteLine("Fresh/current request -> external research: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
 Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
