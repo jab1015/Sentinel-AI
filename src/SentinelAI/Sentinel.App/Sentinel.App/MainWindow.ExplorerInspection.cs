@@ -22,21 +22,22 @@ public sealed partial class MainWindow
 
     private async Task ShowExplorerInspectionRequestAsync(ExplorerInspectionRequest request)
     {
-        // Explorer commands use a deliberately tiny, transparent XAML host only to obtain a
-        // XamlRoot for ContentDialog. The visible experience is the dialog, never a dashboard-
-        // sized placeholder window behind it.
+        // File Explorer actions run in a dedicated, normally sized native WinUI host. A previous
+        // 1x1 host could leave only a tiny title bar visible on real Windows systems and constrain
+        // ContentDialog layout until the user manually maximized it. Keep the dashboard hidden,
+        // but give the action UI a real XamlRoot with enough space to lay itself out correctly.
         Window dialogHost = new();
         Grid rootElement = new()
         {
-            Width = 1,
-            Height = 1,
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0))
+            MinWidth = 700,
+            MinHeight = 560,
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 7, 20, 42))
         };
         rootElement.Resources["ContentDialogSmokeLayerBackground"] =
-            new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            new SolidColorBrush(Windows.UI.Color.FromArgb(170, 7, 20, 42));
         dialogHost.Content = rootElement;
         dialogHost.AppWindow.Title = "Sentinel AI";
-        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(1, 1));
+        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(740, 640));
         dialogHost.Activate();
         await WaitForXamlRootAsync(rootElement).ConfigureAwait(true);
 
@@ -159,7 +160,7 @@ public sealed partial class MainWindow
         ContentDialog dialog = new()
         {
             Title = "Inspect with Sentinel AI",
-            Content = $"Sentinel will perform a read-only filesystem inspection of {request.Paths.Count} selected item(s). This does not replace a malware scan.\n\n{selection}",
+            Content = $"Selected:\n{selection}\n\nWhat Sentinel will check:\n• Reopen each selected path and make sure it still resolves to a normal filesystem object.\n• For a file, read the complete file and calculate a SHA-256 fingerprint without changing it.\n• For a folder, read its metadata and enumerate the immediate items that Windows allows Sentinel to see.\n\nWhy this check exists:\nIt can reveal path, access, read, or filesystem-object problems before Sentinel relies on the item for another action.\n\nWhat this check does NOT do:\nThis is not a malware or antivirus scan and it does not declare a file safe from malicious code.",
             PrimaryButtonText = "Inspect",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -173,7 +174,16 @@ public sealed partial class MainWindow
         await new ContentDialog
         {
             Title = "Sentinel inspection result",
-            Content = result,
+            Content = new ScrollViewer
+            {
+                Content = new TextBlock
+                {
+                    Text = result,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true
+                },
+                MaxHeight = 500
+            },
             CloseButtonText = "OK",
             XamlRoot = rootElement.XamlRoot
         }.ShowAsync();
@@ -203,16 +213,18 @@ public sealed partial class MainWindow
                 try
                 {
                     int objectCount = Directory.EnumerateFileSystemEntries(path, "*", SearchOption.TopDirectoryOnly).Take(1001).Count();
-                    details.AppendLine(objectCount > 1000 ? "Objects: More than 1,000 immediate objects" : $"Objects: {objectCount:N0} immediate object(s)");
-                    details.AppendLine("Assessment: The folder was reopened and its immediate contents could be enumerated.");
+                    details.AppendLine(objectCount > 1000 ? "Immediate contents: More than 1,000 objects" : $"Immediate contents: {objectCount:N0} object(s)");
+                    details.AppendLine("What Sentinel checked: Sentinel reopened the folder, read its basic filesystem metadata, and enumerated the immediate contents that Windows allowed it to see.");
+                    details.AppendLine("Finding: No path, access, or immediate-enumeration problem was encountered during this read-only check.");
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     incomplete = true;
-                    details.AppendLine("Assessment: Sentinel could not enumerate this folder completely.");
-                    details.AppendLine("Recommended action: Check access to the folder and inspect it again.");
+                    details.AppendLine("What Sentinel checked: Sentinel tried to reopen the folder and enumerate its immediate contents.");
+                    details.AppendLine("Finding: Windows would not let Sentinel complete the folder check.");
+                    details.AppendLine("Recommended action: Check the folder's availability and permissions, then inspect it again. Treat the result as unverified until the check completes.");
                 }
-                details.AppendLine("Scope: This is a filesystem accessibility check, not a malware scan of files inside the folder.");
+                details.AppendLine("Not checked: Files inside this folder were not recursively scanned for malware by this inspection command.");
                 details.AppendLine();
                 shown++;
                 continue;
@@ -234,8 +246,10 @@ public sealed partial class MainWindow
                 details.AppendLine($"File: {file.Name}");
                 details.AppendLine($"Location: {file.FullName}");
                 details.AppendLine("Type: File");
-                details.AppendLine("Assessment: Sentinel could not complete the read-only content check.");
-                details.AppendLine("Recommended action: Treat this item as unverified and inspect it again after checking access.");
+                details.AppendLine("What Sentinel checked: Sentinel tried to reopen the selected file and read it from beginning to end without changing it.");
+                details.AppendLine("Finding: The read-only file check could not be completed.");
+                details.AppendLine("Recommended action: Treat this item as unverified. Check that the file is still available and readable, then inspect it again.");
+                details.AppendLine("Not checked: Sentinel did not make a malware or antivirus determination for this file.");
                 details.AppendLine();
                 shown++;
                 continue;
@@ -246,28 +260,41 @@ public sealed partial class MainWindow
             details.AppendLine("Type: File");
             details.AppendLine($"Size: {file.Length:N0} bytes");
             details.AppendLine($"Last modified: {file.LastWriteTime:MMM d, yyyy h:mm:ss tt}");
-            details.AppendLine($"SHA-256: {sha256}");
-            details.AppendLine("Assessment: The file was reopened, read successfully, and hashed without modifying it.");
-            details.AppendLine("Scope: This integrity check does not establish that the file is malware-free.");
+            details.AppendLine("What Sentinel checked: Sentinel reopened the selected file, read every byte successfully, and calculated a SHA-256 fingerprint without modifying the file.");
+            details.AppendLine("Finding: No path, access, or read error was encountered during this filesystem check.");
+            details.AppendLine($"Technical fingerprint (SHA-256): {sha256}");
+            details.AppendLine("Not checked: This inspection did not scan the file for malware and does not mean the file is malware-free.");
             details.AppendLine();
             shown++;
         }
 
         StringBuilder summary = new();
+        summary.AppendLine("WHAT SENTINEL CHECKED");
+        summary.AppendLine(paths.Count == 1
+            ? "Sentinel performed a read-only filesystem check on the selected item."
+            : $"Sentinel performed read-only filesystem checks on {paths.Count:N0} selected items.");
+        summary.AppendLine();
+        summary.AppendLine("WHAT SENTINEL FOUND");
         if (incomplete)
         {
-            summary.AppendLine("UNKNOWN / COULD NOT FULLY VERIFY");
-            summary.AppendLine("One or more read-only filesystem checks could not be completed. Sentinel is not making a safety determination for this selection.");
+            summary.AppendLine("CHECK INCOMPLETE — COULD NOT FULLY VERIFY");
+            summary.AppendLine("At least one selected item could not be completely reopened, read, or enumerated. Sentinel is not making a safety determination for that item.");
+            summary.AppendLine("Recommended action: Review the item details below and repeat the inspection after correcting any access or availability problem.");
         }
         else
         {
-            summary.AppendLine("NO FILESYSTEM ISSUES FOUND");
-            summary.AppendLine("The requested read-only filesystem checks completed successfully. This result is not a malware verdict.");
+            summary.AppendLine("READ-ONLY FILESYSTEM CHECK COMPLETED");
+            summary.AppendLine("Sentinel did not encounter a path, access, read, or immediate folder-enumeration error in the checks it actually performed.");
+            summary.AppendLine("No action is required for those filesystem checks.");
         }
 
-        summary.AppendLine($"Items inspected: {paths.Count}");
-        summary.AppendLine("No file was changed.");
         summary.AppendLine();
+        summary.AppendLine("IMPORTANT LIMIT");
+        summary.AppendLine("This inspection is not a malware or antivirus scan. A successful result does not declare the selected file or folder safe from malicious code.");
+        summary.AppendLine($"Items inspected: {paths.Count:N0}");
+        summary.AppendLine("Changes made: None");
+        summary.AppendLine();
+        summary.AppendLine("ITEM DETAILS");
         summary.Append(details);
         summary.Append("Sentinel did not modify the selection.");
         return summary.ToString();
