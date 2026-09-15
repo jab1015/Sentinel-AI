@@ -21,10 +21,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: x86
-            expectedMachine: 0x014c
-          - platform: ARM64
-            expectedMachine: 0xaa64
+          # Sentinel AI 1.0.28 is intentionally published as an x64-only Store package.
+          # Explorer integration includes an x64 in-process COM server, so producing x86
+          # or ARM64 packages from this manifest would create architecturally invalid MSIXes.
+          - platform: x64
+            expectedMachine: 0x8664
     steps:
       - uses: actions/checkout@v4
 
