@@ -15,6 +15,64 @@ static string FindRepoRoot()
     throw new InvalidOperationException("Repository root could not be located.");
 }
 
+static bool IsAuditedInteractiveLaunch(string relative, string text)
+{
+    if (relative.EndsWith("App.Installation.cs", StringComparison.OrdinalIgnoreCase))
+    {
+        string[] required =
+        {
+            "result == IdYes",
+            "FileName = \"shutdown.exe\"",
+            "Arguments = \"/r /t 5 /c \\\"Sentinel AI setup is complete. Restarting Windows to finish File Explorer integration.\\\"\"",
+            "UseShellExecute = false",
+            "CreateNoWindow = true"
+        };
+        return required.All(marker => text.Contains(marker, StringComparison.Ordinal));
+    }
+
+    if (relative.EndsWith("MainWindow.AskSentinel.cs", StringComparison.OrdinalIgnoreCase))
+    {
+        string[] required =
+        {
+            "Title = \"Repair installed — restart required\"",
+            "PrimaryButtonText = \"Restart Now\"",
+            "if (await restartDialog.ShowAsync() == ContentDialogResult.Primary)",
+            "FileName = \"shutdown.exe\"",
+            "Arguments = \"/r /t 0\"",
+            "UseShellExecute = true"
+        };
+        return required.All(marker => text.Contains(marker, StringComparison.Ordinal));
+    }
+
+    if (relative.EndsWith("MainWindow.xaml.cs", StringComparison.OrdinalIgnoreCase))
+    {
+        string[] approvedTargets =
+        {
+            "taskmgr.exe",
+            "ms-settings:windowsupdate",
+            "windowsdefender:",
+            "windowsdefender://network",
+            "services.msc",
+            "ms-settings:storagesense"
+        };
+
+        if (!text.Contains("private static void OpenShellTarget(string target)", StringComparison.Ordinal) ||
+            !text.Contains("Process.Start(new ProcessStartInfo(target) { UseShellExecute = true })", StringComparison.Ordinal))
+            return false;
+
+        MatchCollection calls = Regex.Matches(text, @"OpenShellTarget\(\"([^\"]+)\"\)", RegexOptions.CultureInvariant);
+        if (calls.Count != approvedTargets.Length)
+            return false;
+
+        HashSet<string> actualTargets = calls
+            .Select(match => match.Groups[1].Value)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return actualTargets.SetEquals(approvedTargets);
+    }
+
+    return false;
+}
+
 string root = FindRepoRoot();
 string productionRoot = Path.Combine(root, "src", "SentinelAI");
 if (!Directory.Exists(productionRoot)) throw new InvalidOperationException("Production source directory was not found.");
@@ -47,6 +105,9 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
         continue;
 
     string relative = Path.GetRelativePath(root, file);
+    if (IsAuditedInteractiveLaunch(relative, text))
+        continue;
+
     if (relative.EndsWith(Path.Combine("Services", "PrivilegedBrokerClient.cs"), StringComparison.OrdinalIgnoreCase))
     {
         string[] requiredSafetyMarkers =
@@ -89,7 +150,7 @@ foreach (string file in Directory.EnumerateFiles(productionRoot, "*.cs", SearchO
 if (violations.Count > 0)
 {
     StringBuilder message = new();
-    message.AppendLine("Direct subprocess ownership remains outside an audited bounded runner:");
+    message.AppendLine("Direct subprocess ownership remains outside an audited bounded runner or approved interactive Windows launch:");
     foreach (string violation in violations.OrderBy(v => v, StringComparer.OrdinalIgnoreCase))
         message.AppendLine(" - " + violation);
     throw new InvalidOperationException(message.ToString());
