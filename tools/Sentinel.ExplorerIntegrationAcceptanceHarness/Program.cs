@@ -98,6 +98,16 @@ try
             $"Privacy intent '{command}' did not map to the expected action.");
     }
 
+    Guid vaultDirectoryId = Guid.NewGuid();
+    WriteRecord(handoffRoot, vaultDirectoryId, RecordJson(ExplorerHandoffService.VaultCommand, now, selectedRoot));
+    Require(service.TryConsume(vaultDirectoryId, out ExplorerInspectionRequest? vaultDirectoryRequest, out reason),
+        "Vault Explorer intent rejected a normal directory: " + reason);
+    Require(vaultDirectoryRequest is not null &&
+            vaultDirectoryRequest.Action == ExplorerRequestedAction.AddToVault &&
+            vaultDirectoryRequest.Paths.Count == 1 &&
+            Path.GetFullPath(selectedRoot).Equals(vaultDirectoryRequest.Paths[0], StringComparison.OrdinalIgnoreCase),
+        "Vault Explorer directory intent did not preserve the expected directory selection.");
+
     Guid multiPrivacyId = Guid.NewGuid();
     string secondFile = Path.Combine(selectedRoot, "second.txt");
     File.WriteAllText(secondFile, "second");
@@ -147,6 +157,7 @@ try
     Console.WriteLine("One-time bounded handoff: PASS");
     Console.WriteLine("Exact file/directory handle reopen: PASS");
     Console.WriteLine("Privacy intent mapping without authority fields: PASS");
+    Console.WriteLine("Vault single-directory Explorer handoff: PASS");
     Console.WriteLine("Destructive multi-file/directory/generic-command rejection: PASS");
     Console.WriteLine("Strict JSON / stale / oversized / item-count rejection: PASS");
     Console.WriteLine("RESULT: PASS");
