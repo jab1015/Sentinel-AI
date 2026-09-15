@@ -77,6 +77,15 @@ jobs:
       - name: Run gateway entitlement acceptance harness
         run: dotnet run --project "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-build
 
+      - name: Restore Ask Sentinel adaptive routing acceptance harness
+        run: dotnet restore "tools/Sentinel.AskSentinelRoutingAcceptanceHarness/Sentinel.AskSentinelRoutingAcceptanceHarness.csproj"
+
+      - name: Build Ask Sentinel adaptive routing acceptance harness
+        run: dotnet build "tools/Sentinel.AskSentinelRoutingAcceptanceHarness/Sentinel.AskSentinelRoutingAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run Ask Sentinel adaptive routing acceptance harness
+        run: dotnet run --project "tools/Sentinel.AskSentinelRoutingAcceptanceHarness/Sentinel.AskSentinelRoutingAcceptanceHarness.csproj" -c Release --no-build
+
       - name: Build native Explorer command - x64
         shell: pwsh
         run: |
