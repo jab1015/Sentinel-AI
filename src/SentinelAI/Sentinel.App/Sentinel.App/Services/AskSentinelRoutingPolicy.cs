@@ -22,19 +22,24 @@ namespace Sentinel.App.Services
 
             bool freshResearch = RequiresFreshExternalResearch(value);
             bool explanation = NeedsNaturalLanguageExplanation(value);
-            bool useBasicAi = !freshResearch && (localAnswerInsufficient || explanation);
+            bool clearlyLocal = IsClearlyLocalStateQuestion(value);
+            bool generalQuestion = LooksLikeGeneralQuestion(value);
+            bool ambiguousLocalKeywordMatch = !clearlyLocal && generalQuestion && !localAnswerInsufficient;
+            bool useBasicAi = !freshResearch && (localAnswerInsufficient || explanation || ambiguousLocalKeywordMatch);
 
             return new AskSentinelRoute(
                 UseBasicAi: useBasicAi,
                 UseExternalResearch: freshResearch,
-                ExplanationRequested: explanation,
+                ExplanationRequested: explanation || ambiguousLocalKeywordMatch,
                 Reason: freshResearch
                     ? "The question depends on current or explicitly requested external information."
                     : localAnswerInsufficient
                         ? "Deterministic local handlers did not fully answer the question; use Basic AI."
                         : explanation
                             ? "The user asked for explanation or interpretation beyond a terse local status value."
-                            : "Verified local evidence directly answers the question.");
+                            : ambiguousLocalKeywordMatch
+                                ? "A broad local keyword matched, but the wording looks like a general question rather than a request for this PC's current state."
+                                : "Verified local evidence directly answers the question.");
         }
 
         public AiEscalationContext CreateBasicAiContext(string question)
@@ -113,10 +118,55 @@ namespace Sentinel.App.Services
 
             // Preserve fast deterministic answers for direct questions about this PC's
             // current state while still letting definitions such as "What is TPM?" use AI.
-            return !ContainsAny(value,
-                "what is my ", "what are my ", "on my computer", "on my pc", "for my computer", "for my pc",
-                "current status", "status of my", "using right now", "usage right now", "going on with my");
+            return !IsClearlyLocalStateQuestion(value);
         }
+
+        internal static bool IsClearlyLocalStateQuestion(string question)
+        {
+            string value = Normalize(question);
+
+            if (ContainsAny(value,
+                "my computer", "my pc", "this computer", "this pc", "on this computer", "on this pc",
+                "on my computer", "on my pc", "current status", "status of my", "status on this",
+                "right now", "currently", "what is my ", "what are my ", "what's my ", "whats my ",
+                "using now", "using right now", "usage now", "usage right now", "installed on", "running on",
+                "enabled on", "disabled on", "flagged on", "detected on", "found on"))
+                return true;
+
+            if (ContainsAny(value,
+                "is defender on", "is defender enabled", "defender status",
+                "is firewall on", "is firewall enabled", "firewall status",
+                "is bitlocker on", "is bitlocker enabled", "bitlocker status",
+                "is secure boot on", "is secure boot enabled", "secure boot status",
+                "is tpm on", "is tpm enabled", "tpm status",
+                "windows update status", "check for updates", "pending restart", "restart pending",
+                "cpu usage", "memory usage", "ram usage", "disk usage", "storage usage",
+                "running processes", "running services", "startup apps", "scheduled tasks"))
+                return true;
+
+            string[] words = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length <= 3 && ContainsAny(value,
+                "cpu", "memory", "ram", "disk", "storage", "defender", "firewall", "bitlocker", "secure boot",
+                "tpm", "windows update", "drivers", "driver", "startup apps", "services", "processes", "network"))
+                return true;
+
+            return false;
+        }
+
+        internal static bool LooksLikeGeneralQuestion(string question)
+        {
+            string value = Normalize(question);
+            return value.EndsWith("?", StringComparison.Ordinal) ||
+                   StartsWithAny(value,
+                       "what ", "which ", "why ", "how ", "who ", "when ", "where ",
+                       "can ", "could ", "would ", "should ", "is ", "are ", "does ", "do ",
+                       "tell me ", "explain ", "recommend ", "compare ") ||
+                   ContainsAny(value,
+                       "best ", "better ", "recommend", "safe to", "pros and cons", "advantages", "disadvantages");
+        }
+
+        private static bool StartsWithAny(string value, params string[] prefixes) =>
+            prefixes.Any(prefix => value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
         private static string Normalize(string value) =>
             string.Join(' ', value.Trim().ToLowerInvariant().Split(
