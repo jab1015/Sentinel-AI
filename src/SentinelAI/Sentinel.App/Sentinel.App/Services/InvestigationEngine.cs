@@ -36,10 +36,14 @@ namespace Sentinel.App.Services
             bool securityProtectionDisabled = defenderVerifiedInactive || firewallVerifiedInactive;
             bool basicTierHealthy =
                 Contains(snapshot.ProtectionHealthReasonCode, "basic-protection-healthy-subscription-required");
+            bool protectionGathering =
+                Contains(snapshot.ProtectionHealthReasonCode, "protection-gathering") ||
+                Contains(snapshot.ProtectionHealthState, "Gathering") ||
+                Contains(snapshot.ProtectionHealthState, "Starting");
             bool protectionHealthDegraded =
                 !snapshot.ProtectionHealthFullyProtected &&
                 !basicTierHealthy &&
-                !Contains(snapshot.ProtectionHealthState, "Starting");
+                !protectionGathering;
 
             bool highMemoryPressure = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
             bool criticallyLowDisk = snapshot.DiskTotalGB > 0 &&
@@ -187,6 +191,12 @@ namespace Sentinel.App.Services
                     true,
                     "critical-disk-space");
             }
+
+            if (protectionGathering)
+                return Investigating(
+                    "Sentinel is gathering security information.",
+                    "Initial security-monitoring evidence is still being collected.",
+                    "protection-gathering");
 
             // Single uncorroborated indicators remain in Discovery without alarming
             // the user. Sentinel continues collecting evidence and escalates when
