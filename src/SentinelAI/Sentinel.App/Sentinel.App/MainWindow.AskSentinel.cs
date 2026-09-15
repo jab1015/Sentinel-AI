@@ -124,6 +124,19 @@ namespace Sentinel.App
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
                         driverIssue = !optimizationQuestion && !crashQuestion && IsDriverIssue(question, snapshot, response.Answer);
                     }
+                    else
+                    {
+                        response = response with
+                        {
+                            Answer = BuildBasicAiUnavailableAnswer(question, response, basicAi),
+                            IsInsufficientEvidence = true,
+                            UsedInvestigationHistory = false,
+                            PassedFinalSafetyValidation = false,
+                            GroundingSummary = "The question required natural-language AI interpretation, but Basic AI was unavailable. Sentinel did not substitute an unrelated deterministic status as the answer."
+                        };
+                        responseProvenance = AskSentinelProvenanceLabel.Advisory;
+                        driverIssue = false;
+                    }
                 }
 
                 if (response.IsInsufficientEvidence || route.UseExternalResearch)
@@ -134,15 +147,22 @@ namespace Sentinel.App
                     if (external.RequiresSubscription)
                     {
                         driverIssue = false;
+                        bool basicUnavailable = route.UseBasicAi && basicAi is not null && !basicAi.UsedCloudAi;
                         string answer = basicAi?.UsedCloudAi == true && !string.IsNullOrWhiteSpace(basicAi.Answer)
                             ? basicAi.Answer + "\n\nI can also check current approved external sources and use Advanced AI for deeper investigation when the subscription is active."
-                            : BuildFreeExternalResearchFallback(external, snapshot);
+                            : basicUnavailable
+                                ? response.Answer + "\n\nCurrent approved-source research and Advanced AI require an active subscription. You can retry Basic AI without a subscription."
+                                : BuildFreeExternalResearchFallback(question, external, snapshot);
+
                         response = response with
                         {
                             Answer = answer,
-                            IsInsufficientEvidence = false,
+                            IsInsufficientEvidence = basicUnavailable,
+                            UsedInvestigationHistory = false,
                             PassedFinalSafetyValidation = false,
-                            GroundingSummary = "Sentinel returned available free local/Basic AI help; current approved external research and Advanced AI require the paid entitlement."
+                            GroundingSummary = basicUnavailable
+                                ? "Basic AI was temporarily unavailable; paid external research was not available without entitlement."
+                                : "Sentinel returned available free local/Basic AI help; current approved external research and Advanced AI require the paid entitlement."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
@@ -174,30 +194,38 @@ namespace Sentinel.App
 
                         string externalAnswer = externalAi.UsedCloudAi && !string.IsNullOrWhiteSpace(externalAi.Answer)
                             ? externalAi.Answer
-                            : BuildConsumerExternalAnswer(external);
+                            : BuildConsumerExternalAnswer(question, external);
                         response = response with
                         {
                             Answer = externalAnswer,
-                            IsInsufficientEvidence = externalAi.UsedCloudAi ? externalAi.RequiresMoreEvidence : !external.Verified,
+                            IsInsufficientEvidence = externalAi.UsedCloudAi
+                                ? externalAi.RequiresMoreEvidence
+                                : external.Sources.Count == 0,
+                            UsedInvestigationHistory = false,
                             PassedFinalSafetyValidation = false,
                             GroundingSummary = externalAi.UsedCloudAi
-                                ? "Sentinel combined verified local evidence, bounded approved-source passages, and AI interpretation."
-                                : external.Verified
-                                    ? "Sentinel combined verified local evidence with approved authoritative research."
+                                ? "Sentinel combined verified local evidence, bounded approved-source passages, and one AI interpretation pass."
+                                : external.Sources.Count > 0
+                                    ? "Sentinel returned bounded authoritative source material because AI interpretation was unavailable."
                                     : "Sentinel checked approved sources but did not find enough verified information to make a stronger claim."
                         };
-                        responseProvenance = external.Verified
-                            ? AskSentinelProvenanceLabel.Inferred
-                            : AskSentinelProvenanceLabel.Advisory;
+                        responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
 
                     string sourceNames = external.Sources.Count == 0
                         ? "approved authoritative sources"
                         : string.Join(", ", external.Sources.Select(x => x.SourceName).Distinct());
                     string fingerprint = $"external:{external.Topic}:{question.Trim().ToLowerInvariant()}";
-                    await _investigationHistoryService.RecordAsync(fingerprint, "External investigation", external.Summary,
-                        external.Verified ? "Information" : "Attention", external.RequiresAiEscalation, false);
-                    _askSentinelOutcomeRecorder.RecordInvestigation("External investigation", external.Summary,
+                    await _investigationHistoryService.RecordAsync(
+                        fingerprint,
+                        "External investigation",
+                        external.Summary,
+                        external.Sources.Count > 0 ? "Information" : "Attention",
+                        external.RequiresAiEscalation,
+                        false);
+                    _askSentinelOutcomeRecorder.RecordInvestigation(
+                        "External investigation",
+                        external.Summary,
                         external.RequiresAiEscalation,
                         $"Topic: {external.Topic}; Confidence: {external.ConfidencePercent}%; Sources: {sourceNames}");
                     UpdateMaintenanceReport();
@@ -237,22 +265,26 @@ namespace Sentinel.App
 
                 if (driverIssue)
                 {
-                    if (string.IsNullOrWhiteSpace(_driverRepairDeviceName)) _driverRepairDeviceName = GetDriverDeviceName(snapshot);
+                    if (string.IsNullOrWhiteSpace(_driverRepairDeviceName))
+                        _driverRepairDeviceName = GetDriverDeviceName(snapshot);
                     UpdateAskSentinelRepairActions(true, _preparedDriverRepairPlan);
                 }
-                else HideAskSentinelRepairActions();
+                else
+                {
+                    HideAskSentinelRepairActions();
+                }
 
                 AskSentinelStatusText.Text = response.IsInsufficientEvidence
-                    ? "Sentinel checked local evidence, available AI help, and approved sources where entitled."
+                    ? "Sentinel could not complete every reasoning layer safely. You can retry or choose a follow-up option."
                     : response.UsedInvestigationHistory
                         ? "Answered from current evidence and Sentinel's verified investigation history."
                         : responseProvenance == AskSentinelProvenanceLabel.Advisory
-                            ? "Answered with Sentinel AI using bounded local evidence and available approved research."
+                            ? "Answered with available Sentinel AI and approved evidence sources."
                             : "Answered from current verified evidence on this computer.";
             }
             catch (Exception)
             {
-                AskSentinelAnswerText.Text = "I couldn't finish checking the evidence, so I won't guess. I can still answer another question or try the investigation again.";
+                AskSentinelAnswerText.Text = "I couldn't finish checking the evidence, so I won't guess. You can retry the question or use one of the follow-up options.";
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 HideAskSentinelRepairActions();
                 AskSentinelStatusText.Text = "Verified evidence or AI assistance is temporarily unavailable.";
@@ -272,82 +304,52 @@ namespace Sentinel.App
             _optimizationStatusSummary.Contains("No verified performance optimization is needed", StringComparison.OrdinalIgnoreCase) ||
             _optimizationStatusSummary.Contains("performance is within this computer's established baseline", StringComparison.OrdinalIgnoreCase);
 
-        private static AiEscalationContext CreateBasicAskSentinelAiContext(string question)
+        private static string BuildBasicAiUnavailableAnswer(
+            string question,
+            AskSentinelResponseOrchestrator.AskSentinelResponse localResponse,
+            SmartAiResult? basicAi)
         {
-            string value = question.Trim().ToLowerInvariant();
-            bool highRisk = ContainsAny(value, "security", "malware", "virus", "ransomware", "spyware", "hack", "breach", "firewall", "credential", "password");
-            bool highComplexity = question.Length > 180 || ContainsAny(value, "compare", "analyze", "root cause", "why", "explain", "multiple", "several");
-            return new AiEscalationContext(
-                LocalEvidenceAvailable: true,
-                LocalEvidenceInsufficient: true,
-                LocalConclusionVerified: false,
-                CachedVerifiedFindingAvailable: false,
-                ExternalResearchApplicable: false,
-                AuthoritativeResearchAttempted: false,
-                AuthoritativeExternalConclusionVerified: false,
-                NeedsInterpretation: true,
-                NeedsUserExplanation: true,
-                HighComplexity: highComplexity,
-                HighRisk: highRisk);
+            bool localQuestion = AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(question);
+            string verifiedLocal = localQuestion && !localResponse.IsInsufficientEvidence
+                ? $"I can still verify this computer's local state:\n\n{localResponse.Answer}\n\n"
+                : string.Empty;
+
+            string reason = basicAi is not null && !basicAi.Available
+                ? "The Basic AI explanation service is temporarily unavailable."
+                : "I couldn't complete the Basic AI explanation safely.";
+
+            return verifiedLocal + reason +
+                   " I won't substitute unrelated PC information or guess at the answer. Please retry this question; Sentinel will keep local monitoring active while AI is unavailable.";
         }
 
-        private static AiEscalationContext CreateExternalAskSentinelAiContext(string question, ExternalInvestigationResult external)
+        private static string BuildFreeExternalResearchFallback(
+            string question,
+            ExternalInvestigationResult external,
+            dynamic snapshot)
         {
-            string value = question.Trim().ToLowerInvariant();
-            bool highRisk = external.Topic.Equals("security", StringComparison.OrdinalIgnoreCase) ||
-                            external.Topic.Equals("firewall", StringComparison.OrdinalIgnoreCase) ||
-                            ContainsAny(value, "malware", "virus", "ransomware", "breach", "hack");
-            return new AiEscalationContext(
-                LocalEvidenceAvailable: true,
-                LocalEvidenceInsufficient: true,
-                LocalConclusionVerified: false,
-                CachedVerifiedFindingAvailable: false,
-                ExternalResearchApplicable: true,
-                AuthoritativeResearchAttempted: true,
-                AuthoritativeExternalConclusionVerified: external.Verified,
-                NeedsInterpretation: true,
-                NeedsUserExplanation: true,
-                HighComplexity: external.Sources.Count > 1 || question.Length > 180,
-                HighRisk: highRisk);
-        }
+            if (!AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(question))
+            {
+                return external.Summary +
+                       "\n\nThis question depends on current approved external information. External research and Advanced AI require an active Sentinel subscription. Basic AI remains available for stable general questions that do not require current sources.";
+            }
 
-        private static bool RequiresFreshExternalResearch(string question)
-        {
-            string value = question.Trim().ToLowerInvariant();
-            return ContainsAny(value,
-                "search online", "search the internet", "look online", "look it up", "external source", "external sources",
-                "authoritative source", "official source", "official documentation", "microsoft says", "vendor says", "manufacturer says",
-                "latest", "current version", "current release", "release notes", "known issue", "known issues", "cve", "security advisory",
-                "research this", "check online", "check the internet");
-        }
-
-        private static string BuildFreeExternalResearchFallback(ExternalInvestigationResult external, dynamic snapshot)
-        {
             string local = snapshot.InvestigationRequiresAttention
                 ? $"From this computer's verified local evidence, Sentinel is currently reporting: {snapshot.InvestigationSummary}"
                 : $"From this computer's verified local evidence, Sentinel does not currently report a condition requiring attention. Defender is {snapshot.DefenderStatus} and Firewall is {snapshot.FirewallStatus}.";
-            return $"{local}\n\n{external.Summary}\n\nYou can still ask me about the local evidence, what a Windows feature means, how to interpret a setting or error, or what information I need next. Approved external research and Advanced AI require the paid subscription.";
+            return $"{local}\n\n{external.Summary}\n\nCurrent approved external research and Advanced AI require an active Sentinel subscription.";
         }
 
-        private static bool ContainsAny(string value, params string[] terms) =>
-            terms.Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
-
-        private static bool IsOptimizationQuestion(string question)
-        {
-            string value = question.Trim().ToLowerInvariant();
-            return value.Contains("optimization") || value.Contains("optimizations") || value.Contains("optimize") ||
-                   value.Contains("optimized") || value.Contains("performance maintenance") || value.Contains("defrag") || value.Contains("retrim");
-        }
-
-        private static string BuildDriverConsumerAnswer(ExternalInvestigationResult external, DriverAutomaticRepairCoordinator.DriverRepairPlan plan)
+        private static string BuildDriverConsumerAnswer(
+            ExternalInvestigationResult external,
+            DriverAutomaticRepairCoordinator.DriverRepairPlan plan)
         {
             bool identified = !string.IsNullOrWhiteSpace(plan.DeviceName) &&
                               !plan.DeviceName.Equals("Affected Windows device", StringComparison.OrdinalIgnoreCase);
             string first = identified
                 ? $"I found a driver problem\n\n{plan.DeviceName} is reporting a problem."
                 : "I found evidence of a driver-related problem, but I cannot yet identify the exact device reliably.";
-            string finding = external.Verified
-                ? "I checked this computer's driver, system information, recent Windows events, and approved Microsoft driver sources. The evidence points most strongly to a driver or firmware compatibility problem."
+            string finding = external.Sources.Count > 0
+                ? "I checked this computer's driver evidence and approved Microsoft driver sources. The external material is relevant guidance, but Sentinel still requires local verification before treating it as proof of this device's root cause."
                 : "I checked this computer's driver and system information. I do not have enough verified evidence yet to name one exact cause safely.";
             string action = plan.Available && plan.AutomaticInstallationVerified
                 ? "I found a Microsoft-signed driver package that Sentinel can install. Nothing will change until you approve the repair."
@@ -357,13 +359,58 @@ namespace Sentinel.App
             return $"{first}\n\nWhat I found\n{finding}\n\nWhat I can do\n{action}";
         }
 
-        private static string BuildConsumerExternalAnswer(ExternalInvestigationResult external)
+        private static string BuildConsumerExternalAnswer(
+            string question,
+            ExternalInvestigationResult external)
         {
-            if (!external.Verified)
+            var passages = external.Sources
+                .Where(source => source.Passages is not null)
+                .SelectMany(source => source.Passages!.Select(passage => new
+                {
+                    source.SourceName,
+                    Passage = passage.Passage
+                }))
+                .Where(item => !string.IsNullOrWhiteSpace(item.Passage))
+                .Take(3)
+                .ToArray();
+
+            if (passages.Length == 0)
+            {
                 return external.Sources.Count > 0
-                    ? external.Summary + "\n\nI found approved-source material, but I do not have enough support to turn it into a stronger machine-specific conclusion."
-                    : "I checked approved external sources, but I don't have enough verified information to give you a reliable machine-specific answer yet. I won't guess.";
-            return external.Summary;
+                    ? external.Summary + "\n\nI reached approved sources, but AI interpretation is temporarily unavailable and I do not have a bounded passage to show safely."
+                    : "I checked approved external sources, but I don't have enough verified information to give you a reliable answer yet. I won't guess.";
+            }
+
+            string excerpts = string.Join(
+                "\n\n",
+                passages.Select(item =>
+                    $"{item.SourceName}: {LimitExternalPassage(item.Passage, 650)}"));
+            string localCaution = AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(question)
+                ? "\n\nThese are authoritative external passages, not proof of this computer's current state."
+                : string.Empty;
+
+            return "I found current authoritative material, but the AI interpretation step is temporarily unavailable. Here are the bounded source passages I can show without inventing an interpretation:\n\n" +
+                   excerpts + localCaution;
+        }
+
+        private static string LimitExternalPassage(string value, int maximumCharacters)
+        {
+            string text = value.Trim();
+            return text.Length <= maximumCharacters
+                ? text
+                : text[..maximumCharacters] + "…";
+        }
+
+        private static bool IsOptimizationQuestion(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            return value.Contains("optimization") ||
+                   value.Contains("optimizations") ||
+                   value.Contains("optimize") ||
+                   value.Contains("optimized") ||
+                   value.Contains("performance maintenance") ||
+                   value.Contains("defrag") ||
+                   value.Contains("retrim");
         }
 
         private static bool IsCrashQuestion(string question)
@@ -380,46 +427,108 @@ namespace Sentinel.App
 
         private static bool IsDriverIssue(string question, dynamic snapshot, string answer)
         {
-            string value = (question + " " + (snapshot.InvestigationReasonCode ?? string.Empty) + " " + (snapshot.InvestigationConclusion ?? string.Empty) + " " + (snapshot.InvestigationSummary ?? string.Empty) + " " + answer).ToLowerInvariant();
-            return value.Contains("driver") || value.Contains("management engine") || value.Contains("code 10") || value.Contains("device manager");
+            string q = question.Trim().ToLowerInvariant();
+            if (ContainsDriverIntent(q)) return true;
+            if (!RefersToCurrentIssue(q)) return false;
+
+            string currentEvidence = string.Join(' ', new[]
+            {
+                snapshot.InvestigationReasonCode ?? string.Empty,
+                snapshot.InvestigationConclusion ?? string.Empty,
+                snapshot.InvestigationSummary ?? string.Empty,
+                answer ?? string.Empty
+            }).ToLowerInvariant();
+            return ContainsDriverIntent(currentEvidence);
         }
+
+        private static bool ContainsDriverIntent(string value) =>
+            value.Contains("driver", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("management engine", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("code 10", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("device manager", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("firmware", StringComparison.OrdinalIgnoreCase);
+
+        private static bool RefersToCurrentIssue(string value) =>
+            value.Contains("this issue", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("this problem", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("this warning", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("this error", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("current issue", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("current problem", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("what did you find", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("issue you found", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("investigate this", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("look into this", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("why is this happening", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("what caused this", StringComparison.OrdinalIgnoreCase);
 
         private static string GetDriverDeviceName(dynamic snapshot)
         {
-            string combined = ((snapshot.InvestigationConclusion ?? string.Empty) + " " + (snapshot.InvestigationSummary ?? string.Empty) + " " + (snapshot.GuidanceEvidence ?? string.Empty));
-            if (combined.Contains("Intel(R) Management Engine Interface", StringComparison.OrdinalIgnoreCase)) return "Intel(R) Management Engine Interface";
-            if (combined.Contains("Intel Management Engine Interface", StringComparison.OrdinalIgnoreCase)) return "Intel Management Engine Interface";
-            if (combined.Contains("Management Engine Interface", StringComparison.OrdinalIgnoreCase)) return "Management Engine Interface";
+            string combined = ((snapshot.InvestigationConclusion ?? string.Empty) + " " +
+                               (snapshot.InvestigationSummary ?? string.Empty) + " " +
+                               (snapshot.GuidanceEvidence ?? string.Empty));
+            if (combined.Contains("Intel(R) Management Engine Interface", StringComparison.OrdinalIgnoreCase))
+                return "Intel(R) Management Engine Interface";
+            if (combined.Contains("Intel Management Engine Interface", StringComparison.OrdinalIgnoreCase))
+                return "Intel Management Engine Interface";
+            if (combined.Contains("Management Engine Interface", StringComparison.OrdinalIgnoreCase))
+                return "Management Engine Interface";
             return "Affected Windows device";
         }
 
-        private void UpdateAskSentinelRepairActions(bool relevant, DriverAutomaticRepairCoordinator.DriverRepairPlan? plan)
+        private void UpdateAskSentinelRepairActions(
+            bool relevant,
+            DriverAutomaticRepairCoordinator.DriverRepairPlan? plan)
         {
-            if (!relevant) { HideAskSentinelRepairActions(); return; }
+            if (!relevant)
+            {
+                HideAskSentinelRepairActions();
+                return;
+            }
+
             EnsureAskSentinelRepairPanel();
-            if (_askSentinelRepairPanel is null || _automaticRepairButton is null || _reviewRepairButton is null) return;
+            if (_askSentinelRepairPanel is null ||
+                _automaticRepairButton is null ||
+                _reviewRepairButton is null)
+                return;
+
             _reviewRepairButton.Content = "Details";
             _reviewRepairButton.MinWidth = 110;
-            _automaticRepairButton.Content = plan?.Available == true && plan.AutomaticInstallationVerified ? "Repair Automatically" : "Continue Repair";
+            _automaticRepairButton.Content = plan?.Available == true && plan.AutomaticInstallationVerified
+                ? "Repair Automatically"
+                : "Continue Repair";
             _automaticRepairButton.MinWidth = 170;
             _automaticRepairButton.IsEnabled = true;
             _automaticRepairButton.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
             _automaticRepairButton.Padding = new Thickness(18, 9, 18, 9);
-            ToolTipService.SetToolTip(_automaticRepairButton, plan?.Available == true ? "Review and approve the verified Microsoft-signed repair." : "Continue Sentinel's verified repair investigation. No unverified software will be installed.");
+            ToolTipService.SetToolTip(
+                _automaticRepairButton,
+                plan?.Available == true
+                    ? "Review and approve the verified Microsoft-signed repair."
+                    : "Continue Sentinel's verified repair investigation. No unverified software will be installed.");
             _askSentinelRepairPanel.Margin = new Thickness(0, 16, 0, 0);
             _askSentinelRepairPanel.Visibility = Visibility.Visible;
         }
 
         private void EnsureAskSentinelRepairPanel()
         {
-            if (_askSentinelRepairPanel is not null || AskSentinelAnswerBorder.Child is not StackPanel answerStack) return;
+            if (_askSentinelRepairPanel is not null ||
+                AskSentinelAnswerBorder.Child is not StackPanel answerStack)
+                return;
+
             _reviewRepairButton = new Button { Content = "Details", MinWidth = 110 };
             _reviewRepairButton.Click += ReviewAskSentinelRepair_Click;
             _automaticRepairButton = new Button { Content = "Continue Repair", MinWidth = 170 };
             _automaticRepairButton.Click += AutomaticAskSentinelRepair_Click;
             _notNowButton = new Button { Content = "Not Now", MinWidth = 100 };
             _notNowButton.Click += NotNowAskSentinelRepair_Click;
-            _askSentinelRepairPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 16, 0, 0), Visibility = Visibility.Collapsed };
+            _askSentinelRepairPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Margin = new Thickness(0, 16, 0, 0),
+                Visibility = Visibility.Collapsed
+            };
             _askSentinelRepairPanel.Children.Add(_automaticRepairButton);
             _askSentinelRepairPanel.Children.Add(_reviewRepairButton);
             _askSentinelRepairPanel.Children.Add(_notNowButton);
@@ -430,8 +539,17 @@ namespace Sentinel.App
         {
             string details = _preparedDriverRepairPlan is null
                 ? "Sentinel detected a driver-related problem and is using verified local evidence plus approved Microsoft and manufacturer sources to determine a safe repair."
-                : $"Device: {_preparedDriverRepairPlan.DeviceName}\n\nSource: {(_preparedDriverRepairPlan.Source.Length == 0 ? "Still investigating" : _preparedDriverRepairPlan.Source)}\n\n{_preparedDriverRepairPlan.Summary}" + (string.IsNullOrWhiteSpace(_preparedDriverRepairPlan.DiagnosticEvidence) ? string.Empty : $"\n\nTechnical evidence\n{_preparedDriverRepairPlan.DiagnosticEvidence}");
-            ContentDialog dialog = new() { Title = "Repair details", Content = details, CloseButtonText = "Close", XamlRoot = ((FrameworkElement)Content).XamlRoot };
+                : $"Device: {_preparedDriverRepairPlan.DeviceName}\n\nSource: {(_preparedDriverRepairPlan.Source.Length == 0 ? "Still investigating" : _preparedDriverRepairPlan.Source)}\n\n{_preparedDriverRepairPlan.Summary}" +
+                  (string.IsNullOrWhiteSpace(_preparedDriverRepairPlan.DiagnosticEvidence)
+                      ? string.Empty
+                      : $"\n\nTechnical evidence\n{_preparedDriverRepairPlan.DiagnosticEvidence}");
+            ContentDialog dialog = new()
+            {
+                Title = "Repair details",
+                Content = details,
+                CloseButtonText = "Close",
+                XamlRoot = ((FrameworkElement)Content).XamlRoot
+            };
             await dialog.ShowAsync();
         }
 
@@ -460,54 +578,149 @@ namespace Sentinel.App
             AskSentinelProgressRing.IsActive = true;
             try
             {
-                DriverAutomaticRepairCoordinator.DriverRepairPlan plan = _preparedDriverRepairPlan ?? await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
+                DriverAutomaticRepairCoordinator.DriverRepairPlan plan =
+                    _preparedDriverRepairPlan ??
+                    await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
                 _preparedDriverRepairPlan = plan;
                 string fingerprint = $"driver:{_driverRepairDeviceName.Trim().ToLowerInvariant()}";
+
                 if (!plan.Available)
                 {
-                    await _investigationHistoryService.RecordAsync(fingerprint, "Driver repair investigation", plan.Summary, "Attention", true, false);
-                    _askSentinelOutcomeRecorder.RecordInvestigation("Driver repair investigation", $"Sentinel investigated {_driverRepairDeviceName} but did not verify an automatically installable repair.", true, plan.Summary);
+                    await _investigationHistoryService.RecordAsync(
+                        fingerprint,
+                        "Driver repair investigation",
+                        plan.Summary,
+                        "Attention",
+                        true,
+                        false);
+                    _askSentinelOutcomeRecorder.RecordInvestigation(
+                        "Driver repair investigation",
+                        $"Sentinel investigated {_driverRepairDeviceName} but did not verify an automatically installable repair.",
+                        true,
+                        plan.Summary);
                     UpdateMaintenanceReport();
-                    string message = !string.IsNullOrWhiteSpace(plan.Source) ? $"I couldn't verify a safe automatic package yet. The official next source is {plan.Source}." : "I couldn't verify a safe automatic repair yet, so I did not install anything.";
-                    ContentDialog researched = new() { Title = "No automatic repair verified yet", Content = message, PrimaryButtonText = string.IsNullOrWhiteSpace(plan.SourceUri) ? string.Empty : "Open Official Source", CloseButtonText = "Close", DefaultButton = ContentDialogButton.Close, XamlRoot = ((FrameworkElement)Content).XamlRoot };
+
+                    string message = !string.IsNullOrWhiteSpace(plan.Source)
+                        ? $"I couldn't verify a safe automatic package yet. The official next source is {plan.Source}."
+                        : "I couldn't verify a safe automatic repair yet, so I did not install anything.";
+                    ContentDialog researched = new()
+                    {
+                        Title = "No automatic repair verified yet",
+                        Content = message,
+                        PrimaryButtonText = string.IsNullOrWhiteSpace(plan.SourceUri) ? string.Empty : "Open Official Source",
+                        CloseButtonText = "Close",
+                        DefaultButton = ContentDialogButton.Close,
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
                     ContentDialogResult researchChoice = await researched.ShowAsync();
-                    if (researchChoice == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(plan.SourceUri)) OpenOfficialSource(plan.SourceUri);
+                    if (researchChoice == ContentDialogResult.Primary &&
+                        !string.IsNullOrWhiteSpace(plan.SourceUri))
+                        OpenOfficialSource(plan.SourceUri);
                     AskSentinelStatusText.Text = "Sentinel did not install anything because a safe automatic repair was not verified.";
                     return;
                 }
-                ContentDialog approval = new() { Title = "Repair this driver?", Content = $"Sentinel found a verified Microsoft-signed driver package for {_driverRepairDeviceName}.\n\nSource: {plan.Source}\nPackage: {plan.PackageTitle}\n\nSentinel will install only this verified package. A restart, if needed, requires separate approval.", PrimaryButtonText = "Repair Automatically", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary, XamlRoot = ((FrameworkElement)Content).XamlRoot };
-                if (await approval.ShowAsync() != ContentDialogResult.Primary) { AskSentinelStatusText.Text = "Repair canceled. No change was made."; return; }
+
+                ContentDialog approval = new()
+                {
+                    Title = "Repair this driver?",
+                    Content = $"Sentinel found a verified Microsoft-signed driver package for {_driverRepairDeviceName}.\n\nSource: {plan.Source}\nPackage: {plan.PackageTitle}\n\nSentinel will install only this verified package. A restart, if needed, requires separate approval.",
+                    PrimaryButtonText = "Repair Automatically",
+                    CloseButtonText = "Cancel",
+                    DefaultButton = ContentDialogButton.Primary,
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                };
+                if (await approval.ShowAsync() != ContentDialogResult.Primary)
+                {
+                    AskSentinelStatusText.Text = "Repair canceled. No change was made.";
+                    return;
+                }
+
                 AskSentinelProgressText.Text = "Installing the verified repair…";
-                DriverAutomaticRepairCoordinator.DriverRepairResult result = await _driverRepairCoordinator.ExecuteAsync(plan);
-                await _investigationHistoryService.RecordAsync(fingerprint, "Driver repair", result.Summary, result.Success ? "Resolved" : "Attention", !result.Success, result.Success);
-                _askSentinelOutcomeRecorder.RecordVerificationResult("Driver repair", result.Summary, result.Success, $"Device: {plan.DeviceName}; Package: {plan.PackageTitle}; Source: {plan.Source}; Restart required: {result.RestartRequired}");
+                DriverAutomaticRepairCoordinator.DriverRepairResult result =
+                    await _driverRepairCoordinator.ExecuteAsync(plan);
+                await _investigationHistoryService.RecordAsync(
+                    fingerprint,
+                    "Driver repair",
+                    result.Summary,
+                    result.Success ? "Resolved" : "Attention",
+                    !result.Success,
+                    result.Success);
+                _askSentinelOutcomeRecorder.RecordVerificationResult(
+                    "Driver repair",
+                    result.Summary,
+                    result.Success,
+                    $"Device: {plan.DeviceName}; Package: {plan.PackageTitle}; Source: {plan.Source}; Restart required: {result.RestartRequired}");
                 UpdateMaintenanceReport();
-                if (!result.Success) { ContentDialog failed = new() { Title = "Repair did not complete", Content = result.Summary, CloseButtonText = "Close", XamlRoot = ((FrameworkElement)Content).XamlRoot }; await failed.ShowAsync(); AskSentinelStatusText.Text = "The repair did not complete. No restart was requested."; return; }
+
+                if (!result.Success)
+                {
+                    ContentDialog failed = new()
+                    {
+                        Title = "Repair did not complete",
+                        Content = result.Summary,
+                        CloseButtonText = "Close",
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
+                    await failed.ShowAsync();
+                    AskSentinelStatusText.Text = "The repair did not complete. No restart was requested.";
+                    return;
+                }
+
                 if (result.RestartRequired)
                 {
-                    ContentDialog restartDialog = new() { Title = "Repair installed — restart required", Content = "The verified driver repair was installed successfully. Windows needs to restart to finish applying it. Restart now?", PrimaryButtonText = "Restart Now", CloseButtonText = "Later", DefaultButton = ContentDialogButton.Close, XamlRoot = ((FrameworkElement)Content).XamlRoot };
+                    ContentDialog restartDialog = new()
+                    {
+                        Title = "Repair installed — restart required",
+                        Content = "The verified driver repair was installed successfully. Windows needs to restart to finish applying it. Restart now?",
+                        PrimaryButtonText = "Restart Now",
+                        CloseButtonText = "Later",
+                        DefaultButton = ContentDialogButton.Close,
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
                     if (await restartDialog.ShowAsync() == ContentDialogResult.Primary)
                     {
-                        _askSentinelOutcomeRecorder.RecordVerificationResult("Restart approved", "You approved the restart required to finish the verified driver repair.", true, "The restart was requested only after the repair completed and you approved it.");
+                        _askSentinelOutcomeRecorder.RecordVerificationResult(
+                            "Restart approved",
+                            "You approved the restart required to finish the verified driver repair.",
+                            true,
+                            "The restart was requested only after the repair completed and you approved it.");
                         UpdateMaintenanceReport();
-                        Process.Start(new ProcessStartInfo { FileName = "shutdown.exe", Arguments = "/r /t 0", UseShellExecute = true });
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = "shutdown.exe",
+                            Arguments = "/r /t 0",
+                            UseShellExecute = true
+                        });
                     }
-                    else AskSentinelStatusText.Text = "Repair installed successfully. Restart later to finish applying it.";
+                    else
+                    {
+                        AskSentinelStatusText.Text = "Repair installed successfully. Restart later to finish applying it.";
+                    }
                 }
                 else
                 {
-                    ContentDialog completed = new() { Title = "Repair complete", Content = "The verified driver repair completed successfully. No restart is required.", CloseButtonText = "Done", XamlRoot = ((FrameworkElement)Content).XamlRoot };
+                    ContentDialog completed = new()
+                    {
+                        Title = "Repair complete",
+                        Content = "The verified driver repair completed successfully. No restart is required.",
+                        CloseButtonText = "Done",
+                        XamlRoot = ((FrameworkElement)Content).XamlRoot
+                    };
                     await completed.ShowAsync();
                     AskSentinelStatusText.Text = "Repair completed and verified.";
                 }
             }
-            catch { AskSentinelStatusText.Text = "Sentinel could not complete the repair safely, so it stopped without making an unverified change."; }
+            catch
+            {
+                AskSentinelStatusText.Text = "Sentinel could not complete the repair safely, so it stopped without making an unverified change.";
+            }
             finally
             {
                 AskSentinelProgressRing.IsActive = false;
                 AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
                 _askSentinelBusy = false;
-                if (_automaticRepairButton is not null) _automaticRepairButton.IsEnabled = true;
+                if (_automaticRepairButton is not null)
+                    _automaticRepairButton.IsEnabled = true;
             }
         }
 
@@ -519,12 +732,14 @@ namespace Sentinel.App
 
         private void HideAskSentinelRepairActions()
         {
-            if (_askSentinelRepairPanel is not null) _askSentinelRepairPanel.Visibility = Visibility.Collapsed;
+            if (_askSentinelRepairPanel is not null)
+                _askSentinelRepairPanel.Visibility = Visibility.Collapsed;
         }
 
         private static void OpenOfficialSource(string sourceUri)
         {
-            if (Uri.TryCreate(sourceUri, UriKind.Absolute, out Uri? uri)) _ = Launcher.LaunchUriAsync(uri);
+            if (Uri.TryCreate(sourceUri, UriKind.Absolute, out Uri? uri))
+                _ = Launcher.LaunchUriAsync(uri);
         }
     }
 }
