@@ -38,6 +38,9 @@ AiEscalationDecision firstPass = escalation.Evaluate(routing.CreateBasicAiContex
     "Could ransomware cause a complicated security problem?"));
 Require(firstPass.UseCloudAi && firstPass.ModelTier == AiModelTier.Economy,
     "First unresolved question did not stay on the Basic/economy AI tier.");
+Require(firstPass.MaximumTotalTokens == AiEscalationPolicy.BasicMaximumTotalTokens &&
+        firstPass.MaximumTotalTokens <= 900,
+    "Basic AI request budget exceeds the production gateway Basic tier limit.");
 
 AiEscalationDecision researched = escalation.Evaluate(routing.CreateExternalAiContext(
     "Analyze this high-risk ransomware issue using the current sources",
@@ -46,6 +49,9 @@ AiEscalationDecision researched = escalation.Evaluate(routing.CreateExternalAiCo
     authoritativeConclusionVerified: false));
 Require(researched.UseCloudAi && researched.ModelTier == AiModelTier.Advanced,
     "Complex high-risk question did not become eligible for Advanced AI after external research.");
+Require(researched.MaximumTotalTokens == AiEscalationPolicy.AdvancedMaximumTotalTokens &&
+        researched.MaximumTotalTokens <= 2500,
+    "Advanced AI request budget exceeds the production gateway Advanced tier limit.");
 
 Console.WriteLine("Unknown phrasing -> Basic AI: PASS");
 Console.WriteLine("Verified broad local overview -> local answer: PASS");
@@ -53,4 +59,5 @@ Console.WriteLine("Definition/explanation -> Basic AI: PASS");
 Console.WriteLine("Direct device status -> local answer: PASS");
 Console.WriteLine("Fresh/current request -> external research: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
+Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
 Console.WriteLine("RESULT: PASS");
