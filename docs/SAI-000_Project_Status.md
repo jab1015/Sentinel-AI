@@ -1,7 +1,7 @@
 # SAI-000 — Project Status
 
-Version: 4.1  
-Status: Active — Premium Privacy exact-head CI qualified; fresh signed LocalDev VM-package qualification in progress  
+Version: 4.2  
+Status: Active — VM UX/Vault findings under correction and exact-head requalification in progress  
 Last Updated: 2026-09-14
 
 Copyright (c) 2026 Modern Methods.
@@ -17,99 +17,95 @@ Sentinel AI remains in the production-security hardening program established fro
 - Fully qualified hardening checkpoint: `cff46692d1260349eae531632170fb687deed36f`
 - Hardening automated state: **12/12 required source/automated workflows PASS**
 - Premium Privacy branch: `feature/premium-privacy-foundation`
-- Latest source/test checkpoint before this documentation synchronization: `8899a9d8afa04056b2131a989f4cd6f1c832f801`
-- Premium Privacy workflow run `34909736208` (#271): **PASS**
+- Current implementation head before this documentation update: `3cd7a0da195145d03cee3aa947d3f0b9c1d8f69f`
+- Current Premium Privacy workflow: `34913034860` (#279), **IN PROGRESS**
+- Current Windows VM package workflow: `34913034850` (#73), **IN PROGRESS/PENDING at last check**
 - Current package version: `1.0.27.0`
 - Premium Privacy remains isolated from hardening.
 - Release posture: **NOT production ready; DO NOT MERGE TO MAIN**
 
-Documentation commits may advance the branch beyond the source-qualified checkpoint. Record the exact source SHA used for every package separately from the live documentation head.
+Documentation commits advance the branch beyond implementation checkpoints. Exact source SHA and workflow run must be recorded for every qualification/package.
 
 ## Current Phase
 
-The current focus is completing the signed LocalDev x64 VM package and then re-running installed Windows 11 VM validation against the corrected Explorer/privacy/optimization behavior.
+The immediate focus is correcting the latest installed-VM UX/Vault findings, requalifying exact-head source, producing a fresh signed LocalDev x64 package, and repeating installed Windows validation.
 
 Current state:
 
 - hardening source/automated qualification: **PASS**;
-- Premium Privacy exact-head source/automated qualification: **PASS** at `8899a9d8...` via run `34909736208`;
-- encryption replacement source + acceptance coverage: **IMPLEMENTED / CI PASS**;
-- Explorer compact-dialog source corrections: **IMPLEMENTED / CI PASS; installed runtime revalidation pending**;
-- decryption encrypted-source retirement after authenticated recovery: **IMPLEMENTED / CI PASS; installed runtime revalidation pending**;
-- portable-password retry UX: **IMPLEMENTED / CI PASS; installed runtime revalidation pending**;
-- Vault recovery-key copyability correction: **IMPLEMENTED / CI PASS; installed runtime revalidation pending**;
-- persistent optimization baseline: **IMPLEMENTED / CI PASS**;
-- fresh automated signed VM package qualification: **IN PROGRESS**;
-- Windows installed/runtime revalidation: **NOT COMPLETE**;
+- previous Premium Privacy source/automated qualification: **PASS**, but superseded by new UI/Vault implementation and therefore exact-head requalification is required;
+- encryption replacement source + acceptance coverage: **IMPLEMENTED / previous CI PASS**;
+- Explorer compact-action hosting: **IMPLEMENTED; visual refinement now in progress**;
+- decryption encrypted-source retirement after authenticated recovery: **IMPLEMENTED / previous CI PASS**;
+- portable-password retry UX: **IMPLEMENTED / previous CI PASS**;
+- persistent optimization baseline: **IMPLEMENTED / previous CI PASS**;
+- Vault cryptographic/storage foundation: **IMPLEMENTED / tested foundation**;
+- Vault user-facing management: **NEW UI/workflow implementation in progress; runtime validation pending**;
+- current exact-head Premium Privacy CI: **IN PROGRESS**;
+- fresh automated signed VM package: **NOT YET QUALIFIED for current head**;
+- Windows installed/runtime qualification: **NOT COMPLETE**;
 - GCP/Store external qualification: **OPEN**;
 - production readiness: **NO**.
 
-## Exact-Head Premium Privacy Qualification
+## Latest Installed-VM Findings
 
-Run `34909736208` (#271) completed successfully against `8899a9d8afa04056b2131a989f4cd6f1c832f801`.
+The current installed VM package confirmed that earlier functional corrections substantially improved Explorer encryption/decryption behavior, but exposed additional product/UX gaps that must be corrected before runtime qualification:
 
-That run passed Explorer integration acceptance, file-encryption and Secure Delete acceptance, persistent performance-baseline acceptance, privacy discovery, gateway entitlement acceptance, native Explorer x64/x86/ARM64 builds, desktop app build, gateway build, unsigned x64 package creation, and packaged Explorer-extension x64 verification.
+1. **Inspect wording is not security-oriented enough.** A successful folder inspection currently reports that the filesystem object is accessible. The user-facing result should clearly distinguish `No issue found` / `No suspicious condition found` from warnings/errors, without claiming malware safety that Sentinel did not actually verify.
+2. **Explorer action chrome is visually excessive.** The white action card is hosted inside a large gray Sentinel window. Explorer actions should feel like compact native Sentinel dialogs, with only the useful branded dialog surface and controls visible.
+3. **Vault folder import is missing.** The current workflow only selects files. Folder selection/import must be implemented safely rather than implied by the UI.
+4. **Vault add currently leaves the readable original in place.** The product requirement is replacement semantics: encrypt and verify the Vault item first, then retire the exact original source; failure must preserve the source and must not report full success.
+5. **Vault has no practical item browser/launcher.** Users need an obvious in-app Vault destination where committed items can be viewed and managed.
+6. **Overall application visual design needs modernization.** The dashboard should scale cleanly across window sizes, reduce fixed/legacy-looking layout behavior, and use the Modern Methods/Sentinel navy, electric-blue, cyan and white visual language more consistently.
 
-The gateway tamper fixture was made deterministic before this pass by mutating decoded authenticated signature bytes rather than a potentially non-significant Base64URL padding-bit representation. This was a test-fixture correction, not a relaxation of capability validation.
+These are tracked as product defects/improvements, not release-ready behavior.
 
-## Encryption Replacement — Implemented
+## Implementation Applied After VM Feedback
 
-Both `Encrypt for This PC` and `Encrypt for Sharing...` now follow the approved replacement model:
+The active branch now includes initial corrections for the above findings:
 
-1. create the `.sentinel.senc` container;
-2. complete authenticated encryption/finalization;
-3. verify the encrypted result;
-4. only after verified success retire the plaintext source;
-5. do not offer a `Keep original` choice;
-6. preserve plaintext on encryption, finalization, verification, cancellation, or source-retirement failure;
-7. do not report full success if replacement is incomplete;
-8. preserve collision protection and older-container compatibility.
+- `VaultSourceRetirementService` added as a fail-closed exact-object source-retirement boundary for Vault replacement semantics;
+- a dedicated acceptance harness was added for Vault source-retirement success, missing source, directory rejection, reparse rejection, protected-location rejection, hard-link rejection, identity-change rejection, and normal exact-object retirement;
+- the main dashboard XAML was refreshed with responsive `VisualStateManager` breakpoints, Modern Methods/Sentinel blue/navy accents, improved card treatment, stronger title hierarchy, and a visible Vault navigation entry;
+- existing Sentinel security functionality and entitlement boundaries remain unchanged by the visual refresh.
 
-Acceptance coverage includes portable round-trip, failure, unverified-result rejection, cancellation, collision, source-retirement failure, and legacy v1 decryption.
+The current exact-head workflow must pass before these changes are called source-qualified.
 
-## Explorer / Recovery Runtime Corrections
+## Explorer / Inspection UX Requirement
 
-Source changes made from the prior VM findings include:
+Explorer Inspect must report what Sentinel actually established. Acceptable successful language includes `No issue found` or `No suspicious condition found in this inspection`, followed by useful details. It must not convert a simple accessibility check into an unsupported `safe from malware` claim.
 
-- initial and redirected Explorer activations no longer intentionally surface the full Sentinel dashboard;
-- Explorer actions use a compact dedicated dialog host;
-- `Encrypt for Sharing...` re-prompts after too-short, empty, or mismatched passwords;
-- decryption retries portable passwords after key-unavailable failure;
-- authenticated decryption restores plaintext first and only then attempts exact-object logical retirement of the encrypted source;
-- failure to safely prove encrypted-source retirement leaves the restored plaintext and encrypted source in place and reports the partial result;
-- recovery cleanup is not blocked by Premium entitlement expiry;
-- Vault recovery key is displayed in a selectable read-only text box for copy/paste.
+Explorer Inspect, Encrypt for This PC, Encrypt for Sharing, Decrypt, Vault entry actions, and Secure Delete confirmations should use compact branded surfaces rather than displaying a large empty application host around a small white dialog.
 
-These changes are source/CI qualified but still require fresh installed VM confirmation.
+## Vault Product Requirement
 
-## Optimization Baseline Correction
+Vault is not complete until all of the following are true:
 
-The performance baseline now persists at `%LOCALAPPDATA%\Modern Methods\Sentinel AI\performance-baseline.json` instead of resetting whenever Sentinel restarts.
+- Vault is directly launchable from the application navigation;
+- committed Vault items are visible in a user-facing browser;
+- Add Files supports one or more files;
+- Add Folder safely enumerates/imports supported files with clear partial-failure reporting;
+- successful import follows **verified encrypted commit first, exact plaintext source retirement second**;
+- if encryption/verification/commit/source-retirement fails, Sentinel preserves the readable source and reports that replacement is incomplete;
+- restore/export is explicit and recovery remains possible after subscription expiry where required by product policy;
+- collision, reparse, hard-link, protected-location, race, cancellation, crash and recovery behavior is tested;
+- installed Windows runtime behavior is validated.
 
-Safety/quality rules remain:
+Until those gates pass, Vault must continue to be described as **unfinished**.
 
-- 12 accepted samples establish a baseline;
-- at most one accepted sample per minute;
-- maximum 720 retained samples;
-- stale persisted samples beyond 24 hours are discarded;
-- future samples beyond five minutes of clock skew are rejected;
-- corrupt/invalid persisted state fails closed to relearning;
-- non-finite live metrics are sanitized;
-- a rejected future persisted sample cannot suppress new legitimate observations.
+## Optimization Baseline
 
-Manual optimization remains an evaluation/scan operation and does not silently apply optimization changes. Automatic execution remains subject to subscription, safety, state, lease, and cooldown rules.
+The performance baseline persists at `%LOCALAPPDATA%\Modern Methods\Sentinel AI\performance-baseline.json` instead of resetting whenever Sentinel restarts. Existing safety rules remain: 12 accepted samples, at most one accepted sample per minute, 720-sample cap, stale/future/corrupt-state defenses, and sanitization of non-finite live metrics.
+
+Manual optimization remains an evaluation/scan operation; it does not silently apply remediation.
 
 ## Windows VM Test Package
 
 Authoritative package handoff: `docs/testing/SAI-WIN-001_VM_Test_Package.md`.
 
-Dedicated workflow: `.github/workflows/windows-vm-test-package.yml`.
+The previous signed LocalDev package was sufficient to expose the latest UI/Vault runtime findings, but it is now superseded for qualification purposes by source changes. A new exact-head signed package is required after current source CI passes.
 
-Package run `34908583736` (#69) against source `a12af475b7212edf1d78e37fbcf07c9fb0bc34dd` is currently the active signed LocalDev x64 package qualification run. It has passed checkout/tool discovery, the compile-time LocalDev entitlement boundary, and authoritative Release x64 entitlement-path compilation; its build/sign/qualify package step is still in progress as of this synchronization.
-
-An earlier run `34901580179` (#68) was superseded/cancelled after its build/sign/qualify package step itself had already completed successfully, but artifact upload did not complete. That evidence is useful for diagnosis but is not a qualified downloadable package result.
-
-Do not weaken package, signer, identity, architecture, or cryptographic verification to obtain a green workflow.
+Package requirements remain unchanged: version `1.0.27.0`, x64, LocalDev compile-time entitlement only, production identity/Publisher retained, signature/signer/package/manifest/PE checks preserved.
 
 ## LocalDev Entitlement Rule
 
@@ -117,21 +113,20 @@ The VM build uses compile-time-only `SENTINEL_LOCAL_DEV` authorization. Release/
 
 ## Windows Physical Revalidation Required
 
-Once the fresh signed package is available, validate at minimum:
+The next fresh package must validate at minimum:
 
-- install/upgrade/uninstall;
-- Explorer Inspect opens compact dialog only, not the full dashboard;
-- `Encrypt for This PC` opens compact UI and removes plaintext only after verified replacement;
-- `Encrypt for Sharing...` opens compact UI, retries invalid/mismatched passwords, and performs verified replacement;
-- decryption retries wrong portable passwords, restores exact plaintext, and retires the encrypted source only after authenticated success;
-- tampered containers fail safely without accepted plaintext or premature encrypted-source removal;
-- Vault recovery key can be selected/copied;
-- optimization baseline survives restart and progresses at the intended one-sample-per-minute cadence;
+- compact Explorer action surfaces without the oversized gray host;
+- Inspect wording that clearly communicates no issue/suspicious condition found without unsupported malware claims;
+- Encrypt for This PC and Encrypt for Sharing verified replacement behavior;
+- decrypt password retry, exact plaintext restoration, and encrypted-source retirement;
+- tampered-container failure safety;
+- Vault launch/navigation and committed-item browser;
+- Vault Add Files replacement semantics;
+- Vault Add Folder behavior and partial-failure reporting;
+- Vault recovery-key copyability;
+- responsive/scaling dashboard behavior at small, medium, large and maximized window sizes;
+- optimization baseline restart persistence;
 - standard/admin/UAC, Defender/firewall, quarantine/recovery, startup/lifecycle, failure behavior, and stability/resource behavior.
-
-## Vault Status
-
-Sentinel Vault has substantial cryptographic/storage/backend foundation and acceptance coverage. The complete user-facing Vault workflow is **not finished** and must not be described as complete.
 
 ## External Validation — Parallel Workstream
 
@@ -145,12 +140,13 @@ Still required before production release:
 ## Current Decision
 
 - HARDENING SOURCE/AUTOMATED QUALIFICATION: **PASS**
-- PREMIUM PRIVACY SOURCE/CI: **PASS at `8899a9d8...` / run `34909736208`**
-- ENCRYPTION REPLACEMENT SOURCE/CI: **PASS**
-- PERSISTENT OPTIMIZATION BASELINE SOURCE/CI: **PASS**
-- FRESH AUTOMATED SIGNED VM PACKAGE: **IN PROGRESS**
-- WINDOWS INSTALLED RUNTIME REVALIDATION: **NOT COMPLETE**
+- CURRENT PREMIUM PRIVACY EXACT-HEAD CI: **IN PROGRESS — run `34913034860`**
+- ENCRYPTION REPLACEMENT: **IMPLEMENTED; fresh exact-head requalification required**
+- PERSISTENT OPTIMIZATION BASELINE: **IMPLEMENTED; fresh exact-head requalification required**
+- VAULT SOURCE RETIREMENT BOUNDARY: **IMPLEMENTED; CI/runtime qualification pending**
 - VAULT USER-FACING COMPLETION: **NO**
+- CURRENT-HEAD AUTOMATED SIGNED VM PACKAGE: **NOT YET QUALIFIED**
+- WINDOWS INSTALLED RUNTIME QUALIFICATION: **NOT COMPLETE**
 - PRODUCTION STORE READY: **NO**
 - MERGE TO MAIN: **NO**
 - PRODUCTION READY: **NO**
