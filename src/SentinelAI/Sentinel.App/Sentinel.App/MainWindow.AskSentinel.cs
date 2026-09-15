@@ -14,6 +14,7 @@ namespace Sentinel.App
     {
         private readonly AskSentinelResponseOrchestrator _askSentinelResponseOrchestrator = new();
         private readonly AskSentinelResponseSafetyValidator _askSentinelResponseSafetyValidator = new();
+        private readonly AskSentinelRoutingPolicy _askSentinelRoutingPolicy = new();
         private readonly ExternalInvestigationGateway _externalInvestigationGateway = new();
         private readonly SmartSentinelAiCoordinator _askSentinelAiCoordinator = new();
         private readonly DriverAutomaticRepairCoordinator _driverRepairCoordinator = new();
@@ -93,14 +94,15 @@ namespace Sentinel.App
                     responseProvenance = AskSentinelProvenanceLabel.VerifiedFact;
                 }
 
+                AskSentinelRoute route = _askSentinelRoutingPolicy.Decide(question, response.IsInsufficientEvidence);
                 bool crashQuestion = IsCrashQuestion(question);
                 bool driverIssue = !optimizationQuestion && !crashQuestion && IsDriverIssue(question, snapshot, response.Answer);
                 SmartAiResult? basicAi = null;
 
-                if (response.IsInsufficientEvidence && !RequiresFreshExternalResearch(question))
+                if (route.UseBasicAi)
                 {
                     AskSentinelProgressText.Text = "Using Sentinel AI to understand your question…";
-                    AiEscalationContext basicContext = CreateBasicAskSentinelAiContext(question);
+                    AiEscalationContext basicContext = _askSentinelRoutingPolicy.CreateBasicAiContext(question);
                     basicAi = await _askSentinelAiCoordinator.AnalyzeAsync(
                         "ask-sentinel-basic",
                         question,
@@ -124,7 +126,7 @@ namespace Sentinel.App
                     }
                 }
 
-                if (response.IsInsufficientEvidence)
+                if (response.IsInsufficientEvidence || route.UseExternalResearch)
                 {
                     AskSentinelProgressText.Text = "Checking approved sources…";
                     ExternalInvestigationResult external = await _externalInvestigationGateway.InvestigateAsync(question, snapshot);
@@ -133,14 +135,14 @@ namespace Sentinel.App
                     {
                         driverIssue = false;
                         string answer = basicAi?.UsedCloudAi == true && !string.IsNullOrWhiteSpace(basicAi.Answer)
-                            ? basicAi.Answer + "\n\nI can also check approved external sources and use Advanced AI for deeper investigation when the subscription is active."
+                            ? basicAi.Answer + "\n\nI can also check current approved external sources and use Advanced AI for deeper investigation when the subscription is active."
                             : BuildFreeExternalResearchFallback(external, snapshot);
                         response = response with
                         {
                             Answer = answer,
                             IsInsufficientEvidence = false,
                             PassedFinalSafetyValidation = false,
-                            GroundingSummary = "Sentinel returned available free local/Basic AI help; approved external research and Advanced AI require the paid entitlement."
+                            GroundingSummary = "Sentinel returned available free local/Basic AI help; current approved external research and Advanced AI require the paid entitlement."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
@@ -164,7 +166,11 @@ namespace Sentinel.App
                             question,
                             snapshot,
                             external,
-                            CreateExternalAskSentinelAiContext(question, external));
+                            _askSentinelRoutingPolicy.CreateExternalAiContext(
+                                question,
+                                external.Topic,
+                                external.Sources.Count,
+                                external.Verified));
 
                         string externalAnswer = externalAi.UsedCloudAi && !string.IsNullOrWhiteSpace(externalAi.Answer)
                             ? externalAi.Answer
