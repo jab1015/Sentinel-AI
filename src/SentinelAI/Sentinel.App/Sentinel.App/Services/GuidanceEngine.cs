@@ -38,6 +38,18 @@ namespace Sentinel.App.Services
                     "Subscription required for advanced protection",
                     "Sentinel will continue showing basic Windows protection and system-health status.");
 
+            if (string.Equals(snapshot.ProtectionHealthReasonCode, "protection-gathering", StringComparison.OrdinalIgnoreCase))
+                return Result(
+                    "Gathering security information",
+                    "Informational",
+                    100,
+                    snapshot.ProtectionHealthSummary,
+                    "Sentinel is still collecting its initial security and system evidence.",
+                    "Nothing is broken. Some monitoring sources simply need another collection pass before Sentinel can verify full coverage.",
+                    "No action is needed. Keep Sentinel running while the initial checks finish.",
+                    "Initial checks in progress",
+                    "Sentinel will retry the remaining evidence sources automatically and update this status when collection is complete.");
+
             if (!snapshot.ProtectionHealthFullyProtected)
                 return Result(
                     snapshot.ProtectionHealthTitle,
