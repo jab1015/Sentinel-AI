@@ -67,6 +67,7 @@ namespace Sentinel.App
 
                 MainWindow mainWindow = new();
                 mainWindow.EnsureMonitoringSchedulerRunning();
+                mainWindow.Activated += (_, _) => mainWindow.CheckForMandatoryStoreUpdate();
                 _window = mainWindow;
                 _window.AppWindow.Closing += MainAppWindow_Closing;
                 _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);

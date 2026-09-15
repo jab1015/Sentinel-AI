@@ -112,6 +112,17 @@ internal static class QuarantineRecoveryGuard
             return;
         }
 
+        // Older Sentinel builds used DestinationReady before the restore path gained
+        // exact-object ACL proof. It is recognizable state, but it is not safe to
+        // auto-finalize. Surface it explicitly as recovery-required and preserve all
+        // protected evidence rather than collapsing it into a generic mismatch.
+        if (txn.Stage.Equals("DestinationReady", StringComparison.Ordinal))
+        {
+            issues.Add(new("IncompleteRestore", transactionPath,
+                "A legacy restore destination is present without exact-object ACL proof. Automatic recovery was blocked and all protected state was preserved."));
+            return;
+        }
+
         if (txn.Stage is not ("Prepared" or "TempReady" or "DestinationAclReady"))
         {
             issues.Add(Mismatch(transactionPath, "The restore transaction stage is not recognized."));

@@ -2,7 +2,6 @@
 
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
@@ -16,8 +15,6 @@
     Publisher="CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A"
     Version="1.0.28.0" />
 
-  <mp:PhoneIdentity PhoneProductId="07414ecb-83de-4656-bf2d-b299d64ce5c5" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
-
   <Properties>
     <DisplayName>Sentinel AI</DisplayName>
     <PublisherDisplayName>Modern Methods</PublisherDisplayName>
@@ -25,7 +22,6 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
   </Dependencies>
 
