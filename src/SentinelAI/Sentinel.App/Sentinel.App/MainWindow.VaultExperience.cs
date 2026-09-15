@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Storage;
+using Windows.Storage.Pickers;
 
 namespace Sentinel.App;
 
@@ -65,7 +66,7 @@ public sealed partial class MainWindow
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failure = "All readable source files were verified as retired, but Sentinel could not remove one or more empty source folders. The protected Vault data remains committed."; }
         }
-        if (failure is null) await ShowPrivacyMessageAsync(rootElement, "Moved to Sentinel Vault", $"Sentinel encrypted, authenticated, and committed {staged.Count:N0} file(s), then verified retirement of each readable source file.\n\nProtected: {FormatBytes(protectedBytes)}\n\nOpen Vault from the Sentinel dashboard to view protected items.").ConfigureAwait(true);
+        if (failure is null) await ShowPrivacyMessageAsync(rootElement, "Moved to Sentinel Vault", $"Sentinel encrypted, authenticated, and committed {staged.Count:N0} file(s), then verified retirement of each readable source file.\n\nProtected: {FormatBytes(protectedBytes)}\n\nOpen Vault from the Sentinel dashboard to view or restore protected items.").ConfigureAwait(true);
         else await ShowPrivacyMessageAsync(rootElement, "Vault move needs attention", $"Vault items committed: {staged.Count:N0} of {files.Length:N0}\nReadable sources verified retired: {protectedCount:N0} of {files.Length:N0}\nProtected: {FormatBytes(protectedBytes)}\n\n{failure}").ConfigureAwait(true);
     }
 
@@ -108,26 +109,247 @@ public sealed partial class MainWindow
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return PersistedVaultSessionResult.Fail("Canceled", "Vault creation was canceled."); return await persistence.CreateAsync(recovery).ConfigureAwait(true);
     }
 
-    private async void OpenVaultButton_Click(object sender, RoutedEventArgs e) { FrameworkElement rootElement = (FrameworkElement)Content; await WaitForXamlRootAsync(rootElement).ConfigureAwait(true); await ShowVaultManagerAsync(rootElement).ConfigureAwait(true); }
+    private async void OpenVaultButton_Click(object sender, RoutedEventArgs e)
+    {
+        FrameworkElement rootElement = (FrameworkElement)Content;
+        await WaitForXamlRootAsync(rootElement).ConfigureAwait(true);
+        await ShowVaultManagerAsync(rootElement).ConfigureAwait(true);
+    }
 
     private async Task ShowVaultManagerAsync(FrameworkElement rootElement)
     {
-        string vaultRoot = Path.Combine(ApplicationData.Current.LocalFolder.Path, "SentinelVault"); PersistedSentinelVaultService persistence = new(vaultRoot);
-        if (!persistence.Exists) { await ShowPrivacyMessageAsync(rootElement, "Sentinel Vault", "Your Vault has not been created yet. Right-click a file or folder in File Explorer and choose Sentinel AI → Vault to create it and move protected content inside."); return; }
-        PersistedVaultSessionResult open = await persistence.OpenCurrentUserAsync().ConfigureAwait(true); if (!open.Succeeded || open.Session is null) { await ShowPrivacyMessageAsync(rootElement, "Vault could not be opened", open.Message + "\n\nStatus: " + open.Code).ConfigureAwait(true); return; }
-        using PersistedVaultSession session = open.Session; VaultRecoveryResult recovered = await session.Items.RecoverPendingAsync().ConfigureAwait(true); if (!recovered.Succeeded) { await ShowPrivacyMessageAsync(rootElement, "Vault needs recovery review", "Sentinel found an incomplete Vault transaction that could not be resolved automatically.\n\nStatus: " + recovered.Code).ConfigureAwait(true); return; }
-        VaultCommittedItemsResult items = await session.Items.ListCommittedItemsAsync().ConfigureAwait(true); if (!items.Succeeded) { await ShowPrivacyMessageAsync(rootElement, "Vault items unavailable", "Sentinel could not authenticate the Vault item index.\n\nStatus: " + items.Code).ConfigureAwait(true); return; }
-        long total = items.Items.Sum(item => item.PlaintextBytes); StackPanel panel = new() { Spacing = 10, MinWidth = 460 };
-        panel.Children.Add(new TextBlock { Text = items.Items.Count == 0 ? "Your Vault is empty." : $"{items.Items.Count:N0} protected item(s) • {FormatBytes(total)}", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = "Vault contents are encrypted inside Sentinel's private app storage. Names and source locations shown below are stored only in the encrypted, authenticated Vault index.", TextWrapping = TextWrapping.Wrap });
-        foreach (VaultMetadataItem item in items.Items.OrderByDescending(i => i.AddedUnixMs).Take(50))
+        string vaultRoot = Path.Combine(ApplicationData.Current.LocalFolder.Path, "SentinelVault");
+
+        while (true)
         {
-            string name = string.IsNullOrWhiteSpace(item.DisplayName) ? $"Protected item {item.ItemId.ToString("N")[..8]}" : item.DisplayName;
-            string hierarchy = !string.IsNullOrWhiteSpace(item.RelativePath) ? item.RelativePath : item.OriginalPath ?? "Original location unavailable (legacy item)";
-            string added = item.AddedUnixMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(item.AddedUnixMs).LocalDateTime.ToString("MMM d, yyyy h:mm tt") : "Legacy item";
-            panel.Children.Add(new TextBlock { Text = $"🔒 {name}\n{hierarchy}\n{FormatBytes(item.PlaintextBytes)} • Added {added}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) });
+            PersistedSentinelVaultService persistence = new(vaultRoot);
+            if (!persistence.Exists)
+            {
+                ContentDialog firstUse = new()
+                {
+                    Title = "Sentinel Vault",
+                    Content = "Your Vault has not been created yet. Choose a file or folder below. Sentinel will show your independent recovery key before creating the Vault, then encrypt and verify the selected content before retiring the readable source.",
+                    PrimaryButtonText = "Add file",
+                    SecondaryButtonText = "Add folder",
+                    CloseButtonText = "Close",
+                    DefaultButton = ContentDialogButton.Close,
+                    XamlRoot = rootElement.XamlRoot
+                };
+                ContentDialogResult firstChoice = await firstUse.ShowAsync();
+                string? firstPath = firstChoice switch
+                {
+                    ContentDialogResult.Primary => await PickVaultFileAsync().ConfigureAwait(true),
+                    ContentDialogResult.Secondary => await PickVaultFolderAsync().ConfigureAwait(true),
+                    _ => null
+                };
+                if (string.IsNullOrWhiteSpace(firstPath)) return;
+                await AddExplorerSelectionToVaultAsync(firstPath, rootElement).ConfigureAwait(true);
+                if (!new PersistedSentinelVaultService(vaultRoot).Exists) return;
+                continue;
+            }
+
+            PersistedVaultSessionResult open = await persistence.OpenCurrentUserAsync().ConfigureAwait(true);
+            if (!open.Succeeded || open.Session is null)
+            {
+                await ShowPrivacyMessageAsync(rootElement, "Vault could not be opened", open.Message + "\n\nStatus: " + open.Code).ConfigureAwait(true);
+                return;
+            }
+
+            string requestedAction = string.Empty;
+            VaultMetadataItem? selectedForExport = null;
+            using (PersistedVaultSession session = open.Session)
+            {
+                VaultRecoveryResult recovered = await session.Items.RecoverPendingAsync().ConfigureAwait(true);
+                if (!recovered.Succeeded)
+                {
+                    await ShowPrivacyMessageAsync(rootElement, "Vault needs recovery review", "Sentinel found an incomplete Vault transaction that could not be resolved automatically.\n\nStatus: " + recovered.Code).ConfigureAwait(true);
+                    return;
+                }
+
+                VaultCommittedItemsResult items = await session.Items.ListCommittedItemsAsync().ConfigureAwait(true);
+                if (!items.Succeeded)
+                {
+                    await ShowPrivacyMessageAsync(rootElement, "Vault items unavailable", "Sentinel could not authenticate the Vault item index.\n\nStatus: " + items.Code).ConfigureAwait(true);
+                    return;
+                }
+
+                long total = items.Items.Sum(item => item.PlaintextBytes);
+                StackPanel panel = new() { Spacing = 12, MinWidth = 620 };
+                panel.Children.Add(new TextBlock
+                {
+                    Text = items.Items.Count == 0 ? "Your Vault is empty." : $"{items.Items.Count:N0} protected item(s) • {FormatBytes(total)}",
+                    FontSize = 20,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    TextWrapping = TextWrapping.Wrap
+                });
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "Protected items stay encrypted in Sentinel's private app storage. Select an item and choose Restore copy to recover a verified plaintext copy without removing the protected Vault item.",
+                    TextWrapping = TextWrapping.Wrap
+                });
+
+                ListView itemList = new()
+                {
+                    SelectionMode = ListViewSelectionMode.Single,
+                    MaxHeight = 330,
+                    MinHeight = items.Items.Count == 0 ? 80 : 160
+                };
+                foreach (VaultMetadataItem item in items.Items.OrderByDescending(i => i.AddedUnixMs))
+                {
+                    string name = string.IsNullOrWhiteSpace(item.DisplayName) ? $"Protected item {item.ItemId.ToString("N")[..8]}" : item.DisplayName;
+                    string hierarchy = !string.IsNullOrWhiteSpace(item.RelativePath) ? item.RelativePath : item.OriginalPath ?? "Original location unavailable (legacy item)";
+                    string added = item.AddedUnixMs > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(item.AddedUnixMs).LocalDateTime.ToString("MMM d, yyyy h:mm tt") : "Legacy item";
+                    StackPanel row = new() { Spacing = 2, Padding = new Thickness(4, 6, 4, 6) };
+                    row.Children.Add(new TextBlock { Text = name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+                    row.Children.Add(new TextBlock { Text = hierarchy, Opacity = 0.78, TextWrapping = TextWrapping.Wrap });
+                    row.Children.Add(new TextBlock { Text = $"{FormatBytes(item.PlaintextBytes)} • Added {added}", Opacity = 0.68, TextWrapping = TextWrapping.Wrap });
+                    itemList.Items.Add(new ListViewItem { Content = row, Tag = item, HorizontalContentAlignment = HorizontalAlignment.Stretch });
+                }
+                panel.Children.Add(itemList);
+
+                StackPanel actions = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
+                Button addFileButton = new() { Content = "Add file" };
+                Button addFolderButton = new() { Content = "Add folder" };
+                Button exportButton = new() { Content = "Restore copy", IsEnabled = false };
+                actions.Children.Add(addFileButton);
+                actions.Children.Add(addFolderButton);
+                actions.Children.Add(exportButton);
+                panel.Children.Add(actions);
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "Add file/folder is a verified move into the Vault: Sentinel commits and verifies encrypted Vault data before retiring the exact readable source. Restore copy never overwrites an existing file and does not require a current subscription.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Opacity = 0.78
+                });
+
+                ContentDialog manager = new()
+                {
+                    Title = "Sentinel Vault",
+                    Content = new ScrollViewer { Content = panel, MaxHeight = 560 },
+                    CloseButtonText = "Close",
+                    XamlRoot = rootElement.XamlRoot
+                };
+
+                itemList.SelectionChanged += (_, _) => exportButton.IsEnabled = itemList.SelectedItem is ListViewItem;
+                addFileButton.Click += (_, _) => { requestedAction = "add-file"; manager.Hide(); };
+                addFolderButton.Click += (_, _) => { requestedAction = "add-folder"; manager.Hide(); };
+                exportButton.Click += (_, _) =>
+                {
+                    if (itemList.SelectedItem is ListViewItem listItem && listItem.Tag is VaultMetadataItem item)
+                    {
+                        selectedForExport = item;
+                        requestedAction = "export";
+                        manager.Hide();
+                    }
+                };
+
+                await manager.ShowAsync();
+            }
+
+            if (string.IsNullOrEmpty(requestedAction)) return;
+
+            if (requestedAction is "add-file" or "add-folder")
+            {
+                string? path = requestedAction == "add-file"
+                    ? await PickVaultFileAsync().ConfigureAwait(true)
+                    : await PickVaultFolderAsync().ConfigureAwait(true);
+                if (!string.IsNullOrWhiteSpace(path))
+                    await AddExplorerSelectionToVaultAsync(path, rootElement).ConfigureAwait(true);
+                continue;
+            }
+
+            if (requestedAction == "export" && selectedForExport is not null)
+            {
+                string? destinationFolder = await PickVaultExportFolderAsync().ConfigureAwait(true);
+                if (string.IsNullOrWhiteSpace(destinationFolder)) continue;
+
+                string fileName = GetVaultExportFileName(selectedForExport);
+                string destination = Path.Combine(destinationFolder, fileName);
+                if (File.Exists(destination) || Directory.Exists(destination))
+                {
+                    await ShowPrivacyMessageAsync(rootElement, "Restore destination already exists", $"Sentinel will not overwrite an existing file or folder.\n\nDestination:\n{destination}\n\nRename or move the existing item, or choose a different folder, then try Restore copy again.").ConfigureAwait(true);
+                    continue;
+                }
+
+                PersistedVaultSessionResult exportOpen = await new PersistedSentinelVaultService(vaultRoot).OpenCurrentUserAsync().ConfigureAwait(true);
+                if (!exportOpen.Succeeded || exportOpen.Session is null)
+                {
+                    await ShowPrivacyMessageAsync(rootElement, "Vault could not be opened for restore", exportOpen.Message + "\n\nStatus: " + exportOpen.Code).ConfigureAwait(true);
+                    continue;
+                }
+
+                VaultExportResult exportResult;
+                using (PersistedVaultSession exportSession = exportOpen.Session)
+                {
+                    VaultItemExportService exporter = new(vaultRoot, exportSession.Vault, exportSession.Items);
+                    exportResult = await exporter.ExportAsync(selectedForExport.ItemId, destination).ConfigureAwait(true);
+                }
+
+                if (exportResult.Succeeded)
+                {
+                    await ShowPrivacyMessageAsync(rootElement, "Vault file restored", $"Sentinel authenticated the protected Vault item and restored a verified plaintext copy.\n\nRestored file:\n{exportResult.DestinationPath}\n\nRestored: {FormatBytes(exportResult.PlaintextBytes)}\n\nThe encrypted Vault item remains protected in the Vault.").ConfigureAwait(true);
+                }
+                else
+                {
+                    await ShowPrivacyMessageAsync(rootElement, "Vault restore did not complete", $"Sentinel did not report a successful restore.\n\nStatus: {exportResult.Code}\nDestination:\n{exportResult.DestinationPath}\n\nPlaintext output remains: {(exportResult.OutputRemains ? "YES — review the destination" : "NO")}").ConfigureAwait(true);
+                }
+                continue;
+            }
         }
-        if (items.Items.Count > 50) panel.Children.Add(new TextBlock { Text = $"…and {items.Items.Count - 50:N0} more protected item(s)." });
-        await new ContentDialog { Title = "Sentinel Vault", Content = new ScrollViewer { Content = panel, MaxHeight = 520 }, CloseButtonText = "Close", XamlRoot = rootElement.XamlRoot }.ShowAsync();
+    }
+
+    private async Task<string?> PickVaultFileAsync()
+    {
+        FileOpenPicker picker = new()
+        {
+            ViewMode = PickerViewMode.List,
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add("*");
+        InitializePicker(picker);
+        StorageFile? file = await picker.PickSingleFileAsync();
+        return file is null || string.IsNullOrWhiteSpace(file.Path) ? null : file.Path;
+    }
+
+    private async Task<string?> PickVaultFolderAsync()
+    {
+        FolderPicker picker = new()
+        {
+            ViewMode = PickerViewMode.List,
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add("*");
+        InitializePicker(picker);
+        StorageFolder? folder = await picker.PickSingleFolderAsync();
+        return folder is null || string.IsNullOrWhiteSpace(folder.Path) ? null : folder.Path;
+    }
+
+    private async Task<string?> PickVaultExportFolderAsync()
+    {
+        FolderPicker picker = new()
+        {
+            ViewMode = PickerViewMode.List,
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add("*");
+        InitializePicker(picker);
+        StorageFolder? folder = await picker.PickSingleFolderAsync();
+        return folder is null || string.IsNullOrWhiteSpace(folder.Path) ? null : folder.Path;
+    }
+
+    private void InitializePicker(object picker)
+    {
+        nint hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+    }
+
+    private static string GetVaultExportFileName(VaultMetadataItem item)
+    {
+        string candidate = string.IsNullOrWhiteSpace(item.DisplayName)
+            ? $"Sentinel-Vault-{item.ItemId:N}.bin"
+            : Path.GetFileName(item.DisplayName.Trim());
+        if (string.IsNullOrWhiteSpace(candidate) || candidate.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            return $"Sentinel-Vault-{item.ItemId:N}.bin";
+        return candidate;
     }
 }
