@@ -4,6 +4,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Sentinel.App.Models;
 
@@ -15,6 +16,7 @@ namespace Sentinel.App.Services
         private readonly WindowsHealthEvidenceProvider _windowsHealth = new();
         private readonly DriverHealthEvidenceProvider _driverHealth = new();
         private readonly PersistentInvestigationMemoryService _persistentMemory = new();
+        private readonly PerformanceBaselineService _performanceBaseline = new();
 
         public string Answer(string question, SystemSnapshot snapshot)
         {
@@ -40,6 +42,7 @@ namespace Sentinel.App.Services
                 string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
                 return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
             }
+            if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
 
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
@@ -121,6 +124,38 @@ namespace Sentinel.App.Services
             return InsufficientEvidence;
         }
 
+        private string BuildPerformanceAnswer(SystemSnapshot snapshot)
+        {
+            PerformanceBaselineService.PerformanceBaselineResult baseline = _performanceBaseline.GetCurrent();
+            List<string> contributors = new();
+
+            if (snapshot.CpuUsagePercent >= 85)
+                contributors.Add($"CPU use is currently very high at {snapshot.CpuUsagePercent:0.0}%");
+            if (snapshot.MemoryUsagePercent >= 90)
+                contributors.Add($"memory use is very high at {snapshot.MemoryUsagePercent:0.0}%");
+            if (snapshot.DiskTotalGB > 0 && (snapshot.DiskUsagePercent >= 95 || snapshot.DiskFreeGB <= 5))
+                contributors.Add($"the Windows drive is critically low on free space ({snapshot.DiskFreeGB:0.0} GB free)");
+            if (baseline.IsEstablished && baseline.ProcessCountDeviation)
+                contributors.Add($"the running-process count ({snapshot.ProcessCount}) is materially above this computer's established baseline");
+
+            string current = $"Current verified readings are CPU {snapshot.CpuUsagePercent:0.0}%, memory {snapshot.MemoryUsagePercent:0.0}% ({snapshot.MemoryUsedGB:0.00} GB of {snapshot.MemoryTotalGB:0.00} GB), and {snapshot.ProcessCount} running processes.";
+            string topProcess = snapshot.HighestMemoryProcessGB > 0
+                ? $" The highest-memory process is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB."
+                : string.Empty;
+
+            string baselineText = baseline.IsEstablished
+                ? $" Sentinel has an established local performance baseline. {baseline.Summary}"
+                : $" Sentinel is still learning this computer's normal performance ({baseline.SampleCount}/12 one-minute baseline samples), so it does not yet have enough history to compare today's readings with this PC's normal behavior.";
+
+            if (contributors.Count > 0)
+            {
+                string joined = string.Join("; ", contributors);
+                return $"I found current performance evidence that can contribute to slowness: {joined}. {current}{topProcess}{baselineText} These measurements identify likely current contributors, not a guaranteed single root cause. If the slowdown continues after these readings return to normal, Sentinel should keep collecting evidence rather than blame an unrelated security finding.";
+            }
+
+            return $"I do not currently see a verified resource bottleneck that explains the slowdown. {current}{topProcess}{baselineText} A short slowdown can finish before a monitoring snapshot is taken, so this does not prove that nothing happened. Sentinel does not have enough verified evidence to name a cause right now, and it will not substitute an unrelated security-monitoring warning as the explanation. Keep Sentinel running so later samples can be compared with this computer's normal baseline.";
+        }
+
         private string? BuildPersistentDriverAnswer(SystemSnapshot snapshot)
         {
             try
@@ -192,8 +227,19 @@ namespace Sentinel.App.Services
         private static bool IsWindowsUpdateQuestion(string value) =>
             Has(value, "windows update", "windows updates", "update status", "check for updates", "latest update", "latest updates", "up to date", "fully updated", "updates installed", "missing updates", "available updates", "need updates", "need an update", "current on updates");
 
-        private static bool IsPendingRestartQuestion(string value) =>
-            Has(value, "pending restart", "restart pending", "restart required", "reboot required", "need to restart", "need a restart", "need to reboot", "should i restart", "should i reboot");
+        private static bool IsPendingRestartQuestion(string value)
+        {
+            if (Has(value, "pending restart", "restart pending", "restart required", "reboot required", "need to restart", "need a restart", "need restart", "needs to restart", "needs a restart", "needs restart", "need to reboot", "waiting for restart", "waiting on restart", "restart it's waiting", "restart it is waiting", "should i restart", "should i reboot"))
+                return true;
+
+            bool restartTopic = value.Contains("restart", StringComparison.OrdinalIgnoreCase) ||
+                                value.Contains("reboot", StringComparison.OrdinalIgnoreCase);
+            bool pendingIntent = Has(value, "pending", "waiting", "required", "requires", "needed", "needs", "what caused", "why");
+            return restartTopic && pendingIntent;
+        }
+
+        private static bool IsPerformanceQuestion(string value) =>
+            Has(value, "computer slow", "pc slow", "running slow", "running slowly", "feels slow", "sluggish", "lagging", "laggy", "performance problem", "performance issue", "why is my computer slow", "why is my pc slow");
 
         private static bool IsTpmQuestion(string value) =>
             Has(value, "tpm", "trusted platform module", "security processor", "hardware security module");
@@ -285,4 +331,3 @@ namespace Sentinel.App.Services
         }
     }
 }
-
