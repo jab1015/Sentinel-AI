@@ -22,20 +22,21 @@ public sealed partial class MainWindow
 
     private async Task ShowExplorerInspectionRequestAsync(ExplorerInspectionRequest request)
     {
-        // Explorer commands intentionally use a compact, bright host instead of surfacing the
-        // full Sentinel dashboard. The host exists only to provide a XamlRoot for the dialog.
+        // Explorer commands use a deliberately tiny, transparent XAML host only to obtain a
+        // XamlRoot for ContentDialog. The visible experience is the dialog, never a dashboard-
+        // sized placeholder window behind it.
         Window dialogHost = new();
         Grid rootElement = new()
         {
-            MinWidth = 520,
-            MinHeight = 300,
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255))
+            Width = 1,
+            Height = 1,
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0))
         };
         rootElement.Resources["ContentDialogSmokeLayerBackground"] =
             new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
         dialogHost.Content = rootElement;
         dialogHost.AppWindow.Title = "Sentinel AI";
-        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(620, 440));
+        dialogHost.AppWindow.Resize(new Windows.Graphics.SizeInt32(1, 1));
         dialogHost.Activate();
         await WaitForXamlRootAsync(rootElement).ConfigureAwait(true);
 
