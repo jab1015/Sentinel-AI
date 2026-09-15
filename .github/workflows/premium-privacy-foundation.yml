@@ -1,0 +1,153 @@
+name: Sentinel Premium Privacy Foundation
+
+on:
+  push:
+    branches:
+      - feature/premium-privacy-foundation
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  explorer-foundation:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Locate MSBuild
+        id: msbuild
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "vswhere.exe was not found." }
+          $path = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe" | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($path)) { throw "MSBuild.exe was not found." }
+          "path=$path" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore Explorer integration acceptance harness
+        run: dotnet restore "tools/Sentinel.ExplorerIntegrationAcceptanceHarness/Sentinel.ExplorerIntegrationAcceptanceHarness.csproj"
+
+      - name: Build Explorer integration acceptance harness
+        run: dotnet build "tools/Sentinel.ExplorerIntegrationAcceptanceHarness/Sentinel.ExplorerIntegrationAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run Explorer integration acceptance harness
+        run: dotnet run --project "tools/Sentinel.ExplorerIntegrationAcceptanceHarness/Sentinel.ExplorerIntegrationAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore file encryption and Secure Delete acceptance harness
+        run: dotnet restore "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj"
+
+      - name: Build file encryption and Secure Delete acceptance harness
+        run: dotnet build "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run file encryption and Secure Delete acceptance harness
+        run: dotnet run --project "tools/Sentinel.FileEncryptionAcceptanceHarness/Sentinel.FileEncryptionAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore performance baseline persistence acceptance harness
+        run: dotnet restore "tools/Sentinel.PerformanceBaselineCadenceAcceptanceHarness/Sentinel.PerformanceBaselineCadenceAcceptanceHarness.csproj"
+
+      - name: Build performance baseline persistence acceptance harness
+        run: dotnet build "tools/Sentinel.PerformanceBaselineCadenceAcceptanceHarness/Sentinel.PerformanceBaselineCadenceAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run performance baseline persistence acceptance harness
+        run: dotnet run --project "tools/Sentinel.PerformanceBaselineCadenceAcceptanceHarness/Sentinel.PerformanceBaselineCadenceAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore privacy discovery acceptance harness
+        run: dotnet restore "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj"
+
+      - name: Build privacy discovery acceptance harness
+        run: dotnet build "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run privacy discovery acceptance harness
+        run: dotnet run --project "tools/Sentinel.PrivacyDiscoveryAcceptanceHarness/Sentinel.PrivacyDiscoveryAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Restore gateway entitlement acceptance harness
+        run: dotnet restore "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj"
+
+      - name: Build gateway entitlement acceptance harness
+        run: dotnet build "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-restore
+
+      - name: Run gateway entitlement acceptance harness
+        run: dotnet run --project "tools/Sentinel.AiGatewaySecurityAcceptanceHarness/Sentinel.AiGatewaySecurityAcceptanceHarness.csproj" -c Release --no-build
+
+      - name: Build native Explorer command - x64
+        shell: pwsh
+        run: |
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.ExplorerExtension\Sentinel.ExplorerExtension.vcxproj" /m /p:Configuration=Release /p:Platform=x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build native Explorer command - x86
+        shell: pwsh
+        run: |
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.ExplorerExtension\Sentinel.ExplorerExtension.vcxproj" /m /p:Configuration=Release /p:Platform=Win32
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build native Explorer command - ARM64
+        shell: pwsh
+        run: |
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.ExplorerExtension\Sentinel.ExplorerExtension.vcxproj" /m /p:Configuration=Release /p:Platform=ARM64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore Sentinel desktop app
+        run: dotnet restore "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -r win-x64
+
+      - name: Build Sentinel desktop app
+        run: dotnet build "src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj" -c Release -p:Platform=x64 -r win-x64 --no-restore
+
+      - name: Restore Sentinel gateway
+        run: dotnet restore "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj"
+
+      - name: Build Sentinel gateway
+        run: dotnet build "src/SentinelAI/Sentinel.AiGateway/Sentinel.AiGateway.csproj" -c Release --no-restore
+
+      - name: Build unsigned x64 package with Explorer extension
+        shell: pwsh
+        run: |
+          & '${{ steps.msbuild.outputs.path }}' "src\SentinelAI\Sentinel.App\Sentinel.App (Package)\Sentinel.App (Package).wapproj" /restore /m /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=premium-privacy-package.log;verbosity=diagnostic"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Explorer DLL is packaged and x64
+        shell: pwsh
+        run: |
+          $packageRoot = "src\SentinelAI\Sentinel.App\Sentinel.App (Package)"
+          $msixes = @(Get-ChildItem "$packageRoot\AppPackages" -Recurse -File -Filter "*.msix" -ErrorAction Stop | Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' })
+          if ($msixes.Count -ne 1) { throw "Expected exactly one generated MSIX, found $($msixes.Count)." }
+
+          $makeAppx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" -File -ErrorAction Stop | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $makeAppx) { throw "MakeAppx.exe was not found." }
+          $unpackRoot = Join-Path $env:RUNNER_TEMP "sentinel-premium-privacy-msix"
+          if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
+          New-Item -ItemType Directory -Path $unpackRoot | Out-Null
+          & $makeAppx.FullName unpack /p $msixes[0].FullName /d $unpackRoot /o
+          if ($LASTEXITCODE -ne 0) { throw "MakeAppx failed to unpack the generated MSIX." }
+
+          $extensions = @(Get-ChildItem $unpackRoot -Recurse -File -Filter "Sentinel.ExplorerExtension.dll")
+          if ($extensions.Count -ne 1) { throw "Generated MSIX did not contain exactly one Sentinel.ExplorerExtension.dll; found $($extensions.Count)." }
+
+          function Get-PeMachine([string]$Path) {
+            $bytes = [System.IO.File]::ReadAllBytes($Path)
+            if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a) { throw "$Path is not a valid PE file." }
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+            if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) { throw "$Path has an invalid PE header offset." }
+            return [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          }
+
+          $machine = Get-PeMachine $extensions[0].FullName
+          if ($machine -ne [uint16]0x8664) { throw "Explorer extension machine 0x$($machine.ToString('x4')) did not match x64 0x8664." }
+          Write-Host "Sentinel.ExplorerExtension.dll packaged with x64 PE machine 0x8664."
+
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: premium-privacy-package-diagnostics
+          path: premium-privacy-package.log
+          if-no-files-found: warn
+          retention-days: 7

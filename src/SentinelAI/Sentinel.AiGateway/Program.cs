@@ -1,15 +1,26 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 64 * 1024;
+});
 
 builder.Services.AddHttpClient("openai", client =>
 {
     client.BaseAddress = new Uri("https://api.openai.com/v1/");
     client.Timeout = TimeSpan.FromSeconds(45);
 });
+builder.Services.AddHttpClient("entra", client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddHttpClient("store", client => client.Timeout = TimeSpan.FromSeconds(20));
+builder.Services.AddSingleton<GatewaySecurity>();
+builder.Services.AddSingleton<PrivacyCapabilitySecurity>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -29,13 +40,63 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 app.UseRateLimiter();
+app.MapPrivacyCapabilityEndpoints();
 
 app.MapGet("/health", () => Results.Ok(new
 {
     service = "Sentinel AI Gateway",
     status = "healthy",
-    providerConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY"))
+    providerConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")),
+    storeConfigured = StoreConfigurationPresent(),
+    sessionSigningConfigured = SessionSigningConfigured(),
+    privacyCapabilityReplayState = "process-local"
 }));
+
+app.MapGet("/v1/store/collections-ticket", async (
+    GatewaySecurity security,
+    CancellationToken cancellationToken) =>
+{
+    string? ticket = await security.GetCollectionsCreationTicketAsync(cancellationToken).ConfigureAwait(false);
+    if (string.IsNullOrWhiteSpace(ticket))
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+
+    return Results.Ok(new StoreCollectionsTicketResponse(
+        ServiceTicket: ticket,
+        PublisherUserId: Guid.NewGuid().ToString("N")));
+});
+
+app.MapPost("/v1/session/free", (HttpContext context, GatewaySecurity security) =>
+{
+    string subject = "free:" + HashForLog(context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+    string? token = security.IssueSession("Basic", subject);
+    return string.IsNullOrWhiteSpace(token)
+        ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable)
+        : Results.Ok(new GatewaySessionResponse(token, "Basic", 600));
+});
+
+app.MapPost("/v1/session/store", async (
+    StoreSessionRequest request,
+    GatewaySecurity security,
+    CancellationToken cancellationToken) =>
+{
+    if (request.SchemaVersion != 1 || string.IsNullOrWhiteSpace(request.CollectionsId))
+        return Results.BadRequest(new { error = "A Microsoft Store collections identifier is required." });
+
+    StoreEntitlementResult entitlement = await security.VerifyPaidEntitlementAsync(
+        request.CollectionsId,
+        cancellationToken).ConfigureAwait(false);
+
+    if (!entitlement.Available)
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    if (!entitlement.IsActive)
+        return Results.Json(new { error = "No active paid Sentinel entitlement was verified." }, statusCode: StatusCodes.Status403Forbidden);
+
+    string subject = "store:" + HashForLog(request.CollectionsId);
+    string? token = security.IssueSession("Advanced", subject);
+    return string.IsNullOrWhiteSpace(token)
+        ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable)
+        : Results.Ok(new GatewaySessionResponse(token, "Advanced", 600));
+});
 
 app.MapPost("/v1/report-ai-content", (AiContentReportRequest request) =>
 {
@@ -52,12 +113,12 @@ app.MapPost("/v1/report-ai-content", (AiContentReportRequest request) =>
 
     var auditRecord = new
     {
-        eventType = "AI_CONTENT_REPORT",
+        eventType = "AI_CONTENT_REPORT_RECEIVED",
         schemaVersion = 1,
         responseId,
         category,
-        comments,
-        responseText,
+        commentsLength = comments.Length,
+        responseTextLength = responseText.Length,
         reportedAtUtc = request.ReportedAtUtc == default ? DateTimeOffset.UtcNow : request.ReportedAtUtc,
         receivedAtUtc = DateTimeOffset.UtcNow
     };
@@ -67,24 +128,53 @@ app.MapPost("/v1/report-ai-content", (AiContentReportRequest request) =>
 });
 
 app.MapPost("/v1/analyze", async (
+    HttpContext context,
     SentinelAiRequest request,
+    GatewaySecurity security,
     IHttpClientFactory httpClientFactory,
     CancellationToken cancellationToken) =>
 {
     if (request.SchemaVersion != 1)
         return Results.BadRequest(new { error = "Unsupported schema version." });
 
-    if (string.IsNullOrWhiteSpace(request.Evidence) || request.Evidence.Length > 8_000)
-        return Results.BadRequest(new { error = "Evidence payload is empty or exceeds the gateway limit." });
+    if (string.IsNullOrWhiteSpace(request.RequestId) ||
+        string.IsNullOrWhiteSpace(request.Evidence) || request.Evidence.Length > 8_000)
+        return Results.BadRequest(new { error = "Request ID/evidence is missing or evidence exceeds the gateway limit." });
 
-    int requestedBudget = Math.Clamp(request.MaximumTotalTokens, 1, 2_500);
-    int maxOutputTokens = Math.Clamp(requestedBudget / 3, 192, 700);
+    SessionValidationResult authorization = security.ValidateSession(
+        context.Request.Headers.Authorization.ToString(),
+        request.RequestId,
+        request.ModelTier);
+
+    if (!authorization.Available)
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    if (!authorization.Authorized)
+    {
+        Console.Error.WriteLine($"AI_AUTHORIZATION_DENIED reason={Limit(authorization.Reason, 120)}");
+        return Results.Json(new { error = authorization.Reason }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    bool advanced = authorization.Tier.Equals("Advanced", StringComparison.OrdinalIgnoreCase);
+    int tierMaximum = advanced
+        ? ReadInt("SENTINEL_AI_ADVANCED_MAX_TOTAL_TOKENS", 2_500, 256, 4_000)
+        : ReadInt("SENTINEL_AI_BASIC_MAX_TOTAL_TOKENS", 900, 192, 1_500);
+
+    const int MinimumTotalTokenBudget = 192;
+    if (request.MaximumTotalTokens < MinimumTotalTokenBudget || request.MaximumTotalTokens > tierMaximum)
+    {
+        return Results.BadRequest(new
+        {
+            error = $"The requested total token budget must be between {MinimumTotalTokenBudget} and {tierMaximum} for this tier."
+        });
+    }
+
+    int requestedBudget = request.MaximumTotalTokens;
+    int maxOutputTokens = Math.Min(advanced ? 700 : 400, Math.Max(64, requestedBudget / 3));
 
     string? apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")?.Trim();
     if (string.IsNullOrWhiteSpace(apiKey))
         return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 
-    bool advanced = request.ModelTier.Equals("Advanced", StringComparison.OrdinalIgnoreCase);
     string economyModel = Environment.GetEnvironmentVariable("SENTINEL_AI_ECONOMY_MODEL") ?? "gpt-5.6-luna";
     string advancedModel = Environment.GetEnvironmentVariable("SENTINEL_AI_ADVANCED_MODEL") ?? "gpt-5.6-terra";
     string model = advanced ? advancedModel : economyModel;
@@ -120,6 +210,10 @@ app.MapPost("/v1/analyze", async (
         }
     };
 
+    using IDisposable? providerLease = await security.TryEnterProviderAsync(cancellationToken).ConfigureAwait(false);
+    if (providerLease is null)
+        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+
     using HttpClient client = httpClientFactory.CreateClient("openai");
     using HttpRequestMessage message = new(HttpMethod.Post, "responses")
     {
@@ -127,40 +221,91 @@ app.MapPost("/v1/analyze", async (
     };
     message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
-    using HttpResponseMessage response = await client.SendAsync(message, cancellationToken);
-    string raw = await response.Content.ReadAsStringAsync(cancellationToken);
-
-    if (!response.IsSuccessStatusCode)
+    HttpResponseMessage response;
+    try
     {
-        Console.Error.WriteLine($"OpenAI gateway failure {(int)response.StatusCode}: {SafeProviderError(raw)}");
+        response = await client.SendAsync(
+            message,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+    {
+        Console.Error.WriteLine("OPENAI_GATEWAY_TIMEOUT");
+        return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+    catch (HttpRequestException)
+    {
+        Console.Error.WriteLine("OPENAI_GATEWAY_NETWORK_FAILURE");
         return Results.StatusCode(StatusCodes.Status502BadGateway);
     }
 
-    using JsonDocument document = JsonDocument.Parse(raw);
-    JsonElement root = document.RootElement;
-    string answer = ExtractOutputText(root);
-    if (string.IsNullOrWhiteSpace(answer))
+    using (response)
     {
-        Console.Error.WriteLine($"OpenAI returned HTTP 200 but no output text: {SafeProviderError(raw)}");
-        return Results.StatusCode(StatusCodes.Status502BadGateway);
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.Error.WriteLine($"OPENAI_GATEWAY_FAILURE status={(int)response.StatusCode}");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        using JsonDocument? document = await BoundedHttpJson.TryReadAsync(
+            response.Content,
+            BoundedHttpJson.MaximumProviderResponseBytes,
+            maximumDepth: 64,
+            BoundedHttpJson.ProviderBodyTimeout,
+            cancellationToken).ConfigureAwait(false);
+        if (document is null)
+        {
+            Console.Error.WriteLine("OPENAI_GATEWAY_INVALID_OVERSIZED_OR_STALLED_RESPONSE");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        JsonElement root = document.RootElement;
+        string answer = ExtractOutputText(root);
+        if (string.IsNullOrWhiteSpace(answer))
+        {
+            Console.Error.WriteLine("OPENAI_GATEWAY_EMPTY_RESPONSE");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        int inputTokens = ReadUsage(root, "input_tokens");
+        int outputTokens = ReadUsage(root, "output_tokens");
+        long totalTokens = (long)inputTokens + outputTokens;
+        if (inputTokens <= 0 || outputTokens < 0 || totalTokens > requestedBudget)
+        {
+            Console.Error.WriteLine($"OPENAI_GATEWAY_TOKEN_BUDGET_VIOLATION input={inputTokens} output={outputTokens} budget={requestedBudget}");
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        bool moreEvidence = IndicatesMoreEvidence(answer);
+        int confidence = moreEvidence ? 55 : 75;
+
+        return Results.Ok(new SentinelAiResponse(
+            Answer: Limit(answer.Trim(), 8_000),
+            Provider: "OpenAI",
+            Model: model,
+            InputTokens: inputTokens,
+            OutputTokens: outputTokens,
+            ConfidencePercent: confidence,
+            RequiresMoreEvidence: moreEvidence));
     }
-
-    int inputTokens = ReadUsage(root, "input_tokens");
-    int outputTokens = ReadUsage(root, "output_tokens");
-    bool moreEvidence = IndicatesMoreEvidence(answer);
-    int confidence = moreEvidence ? 55 : 75;
-
-    return Results.Ok(new SentinelAiResponse(
-        Answer: answer.Trim(),
-        Provider: "OpenAI",
-        Model: model,
-        InputTokens: inputTokens,
-        OutputTokens: outputTokens,
-        ConfidencePercent: confidence,
-        RequiresMoreEvidence: moreEvidence));
 });
 
 app.Run();
+
+static bool StoreConfigurationPresent() =>
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SENTINEL_STORE_TENANT_ID")) &&
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SENTINEL_STORE_CLIENT_ID")) &&
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SENTINEL_STORE_CLIENT_SECRET"));
+
+static bool SessionSigningConfigured() =>
+    Encoding.UTF8.GetByteCount(Environment.GetEnvironmentVariable("SENTINEL_GATEWAY_SESSION_SIGNING_KEY")?.Trim() ?? string.Empty) >= 32;
+
+static string HashForLog(string value)
+{
+    byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+    return Convert.ToHexString(digest.AsSpan(0, 12));
+}
 
 static int ReadInt(string name, int fallback, int min, int max)
 {
@@ -219,17 +364,15 @@ static bool IndicatesMoreEvidence(string answer)
            value.Contains("can't determine");
 }
 
-static string SafeProviderError(string raw)
-{
-    if (string.IsNullOrWhiteSpace(raw)) return "empty provider response";
-    string oneLine = raw.Replace('\r', ' ').Replace('\n', ' ').Trim();
-    return oneLine.Length <= 1000 ? oneLine : oneLine[..1000];
-}
-
 static string Limit(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
+public sealed record StoreCollectionsTicketResponse(string ServiceTicket, string PublisherUserId);
+public sealed record StoreSessionRequest(int SchemaVersion, string CollectionsId);
+public sealed record GatewaySessionResponse(string AccessToken, string Tier, int ExpiresInSeconds);
 
 public sealed record SentinelAiRequest(
     int SchemaVersion,
+    string RequestId,
     string Purpose,
     string ModelTier,
     int MaximumTotalTokens,

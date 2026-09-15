@@ -66,19 +66,21 @@ namespace Sentinel.App
 
         private void ShowInitialDiscoveryState()
         {
-            OverallStatusText.Text = "Sentinel is checking your computer.";
-            AttentionStatusText.Text = "Gathering current Windows, security, driver, process, service, network, and system-health information…";
-            MonitoringStatusText.Text = "I’ll show you the results as soon as this initial check is complete.";
+            OverallStatusText.Text = "Gathering information";
+            AttentionStatusText.Text = "Sentinel is collecting current Windows, security, driver, process, service, network, and system-health information…";
+            MonitoringStatusText.Text = "Nothing is being reported as broken while these initial checks are still gathering evidence.";
             GuidanceActionButton.Visibility = Visibility.Collapsed;
             IssueSummaryBorder.Visibility = Visibility.Collapsed;
-            AppWindow.Title = "Sentinel AI — Checking your computer…";
+            AppWindow.Title = "Sentinel AI — Gathering information…";
         }
 
         private async Task RunInitialRefreshAsync()
         {
             await Task.Delay(250);
-            await UpdateDashboardAsync();
-            _timer.Start();
+            await InitialMonitoringStartupCoordinator.RunAsync(
+                UpdateDashboardAsync,
+                _timer.Start,
+                _ => MonitoringStatusText.Text = "The first check could not finish, but Sentinel is still monitoring and will retry automatically.");
         }
 
         private async Task EnsurePreferredNameAsync()
@@ -165,10 +167,22 @@ namespace Sentinel.App
                 bool memoryRequiresAttention = snapshot.MemoryPressureLevel.Equals("High", StringComparison.OrdinalIgnoreCase);
                 bool investigationRequiresAttention = snapshot.InvestigationRequiresAttention && !persistentException.SuppressNotification;
                 bool hasApprovalAction = snapshot.AutonomousProtectionRequiresUserApproval && !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) && !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) && !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
+                bool isGatheringInformation = string.Equals(snapshot.ProtectionHealthReasonCode, "protection-gathering", StringComparison.OrdinalIgnoreCase) && !investigationRequiresAttention && !hasApprovalAction && !memoryRequiresAttention && !persistentException.ShowKnownCondition;
                 bool requiresAttention = investigationRequiresAttention || hasApprovalAction || memoryRequiresAttention;
                 await UpdateInvestigationHistoryAsync(snapshot, investigationRequiresAttention); UpdateBackgroundAttentionState(snapshot, requiresAttention);
 
-                if (persistentException.SuppressNotification) { GuidanceActionButton.Visibility = Visibility.Collapsed; IssueSummaryBorder.Visibility = Visibility.Collapsed; OverallStatusText.Text = "Your computer is healthy."; AttentionStatusText.Text = "Nothing requires your attention right now."; MonitoringStatusText.Text = "Sentinel is also monitoring a known noncritical condition silently."; RiskSummaryText.Text = "A previously investigated noncritical condition is unchanged and remains under background monitoring."; RecommendationText.Text = "No action is required. Sentinel will notify you if the condition or available repair evidence changes."; }
+                if (isGatheringInformation)
+                {
+                    GuidanceActionButton.Visibility = Visibility.Collapsed;
+                    IssueSummaryBorder.Visibility = Visibility.Collapsed;
+                    OverallStatusText.Text = "Gathering information";
+                    AttentionStatusText.Text = "Sentinel is still collecting the initial security and system evidence needed to verify full monitoring coverage.";
+                    MonitoringStatusText.Text = "Nothing is being reported as broken. The remaining checks will retry automatically, and this status will update when collection is complete.";
+                    RiskSummaryText.Text = "Initial evidence collection is still in progress.";
+                    RecommendationText.Text = "No action is needed while Sentinel finishes gathering information.";
+                    AppWindow.Title = "Sentinel AI — Gathering information…";
+                }
+                else if (persistentException.SuppressNotification) { GuidanceActionButton.Visibility = Visibility.Collapsed; IssueSummaryBorder.Visibility = Visibility.Collapsed; OverallStatusText.Text = "Your computer is healthy."; AttentionStatusText.Text = "Nothing requires your attention right now."; MonitoringStatusText.Text = "Sentinel is also monitoring a known noncritical condition silently."; RiskSummaryText.Text = "A previously investigated noncritical condition is unchanged and remains under background monitoring."; RecommendationText.Text = "No action is required. Sentinel will notify you if the condition or available repair evidence changes."; }
                 else if (memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction) { _guidanceActionId = "open-task-manager"; GuidanceActionButton.Content = "Review memory use"; GuidanceActionButton.Visibility = Visibility.Visible; IssueSummaryBorder.Visibility = Visibility.Visible; OverallStatusText.Text = "I found sustained high memory use that requires attention."; AttentionStatusText.Text = snapshot.MemoryConclusion; MonitoringStatusText.Text = snapshot.MemoryRecommendation; RiskSummaryText.Text = $"Memory is at {snapshot.MemoryUsagePercent:0.0}%. Largest application contributors: {snapshot.MemoryTopContributors}. Windows Memory Compression is using {snapshot.MemoryCompressionGB:0.00} GB and should not be stopped."; RecommendationText.Text = snapshot.MemoryRecommendation; }
                 else
                 {
@@ -181,7 +195,8 @@ namespace Sentinel.App
                     else { OverallStatusText.Text = "Your computer is healthy."; AttentionStatusText.Text = "Nothing requires your attention right now."; MonitoringStatusText.Text = "I’ll continue monitoring your computer."; RiskSummaryText.Text = "Your computer is healthy."; RecommendationText.Text = "No action is required. Sentinel will continue monitoring your computer."; }
                 }
                 VerifyGuidanceButton.Visibility = investigationRequiresAttention && hasServiceFailure && !isStorageSpacesSmpFinding ? Visibility.Visible : Visibility.Collapsed;
-                RiskScoreText.Text = requiresAttention ? snapshot.RiskScore.ToString() : "0"; RiskLevelText.Text = memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
+                RiskScoreText.Text = isGatheringInformation ? "—" : requiresAttention ? snapshot.RiskScore.ToString() : "0";
+                RiskLevelText.Text = isGatheringInformation ? "Gathering information" : memoryRequiresAttention && !investigationRequiresAttention && !hasApprovalAction ? "Memory Pressure" : requiresAttention ? $"{snapshot.RiskLevel} Risk" : "Healthy";
                 LastUpdatedText.Text = $"Evidence Collected: {snapshot.Timestamp:MMM d, yyyy h:mm:ss tt}";
                 AutomaticOptimizationResult optimization = await _automaticOptimizationCoordinator.EvaluateAndRunAsync(snapshot);
                 UpdateOptimizationStatus(optimization);

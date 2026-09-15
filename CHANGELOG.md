@@ -8,13 +8,39 @@ All notable changes to Sentinel AI are documented in this file.
 
 ## In Progress
 
-- Windows Event Log monitoring
-- Security-event classification
-- Suspicious-process indicators
-- Startup application monitoring
-- Service-health monitoring
-- Monitoring integration and failure-path tests
-- Alerting and notification foundation
+- Continued security hardening and post-release qualification
+
+---
+
+# [1.0.28.0] - 2026-09-15
+
+## Added
+
+- Premium Privacy and Sentinel Vault experience
+- File and folder protection from Sentinel and Windows File Explorer
+- Vault folder collections with expandable folder/file browsing
+- Ctrl/Shift multi-selection for restoring multiple Vault files and folders
+- Progress feedback for longer Vault folder add and restore operations
+- Independent Vault recovery-key path
+- Portable password-protected encryption for sharing
+- Verified secure-delete and encrypted-file replacement flows
+- Native Windows File Explorer Sentinel actions
+
+## Changed
+
+- Redesigned the Sentinel dashboard as a native Windows security control center
+- Improved Ask Sentinel routing so locally answerable performance and restart questions stay grounded in local evidence
+- Improved startup monitoring semantics so incomplete initial evidence remains a neutral gathering state instead of appearing as a Sentinel failure
+- Restoring a complete Vault folder now reconstructs its authenticated hierarchy
+- Successfully restored Vault items are retired from the active Vault only after plaintext restore verification
+- Strengthened LocalDev packaging and VM qualification boundaries without weakening production Store entitlement enforcement
+
+## Security and reliability
+
+- Preserved compile-time-only LocalDev entitlement behavior; production Release builds continue to require authoritative Store/gateway entitlement
+- Hardened Vault metadata, ciphertext boundaries, restore destinations, source retirement, collision handling, reparse-point handling, and crash/failure behavior
+- Kept recovery of protected user data independent of subscription state
+- Preserved verified Defender, Firewall, Secure Boot, quarantine, monitoring, repair, and system-health findings as actionable conditions while suppressing false startup degradation
 
 ---
 

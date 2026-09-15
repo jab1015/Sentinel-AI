@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FileEncryptionContracts.cs" Link="FileEncryptionContracts.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SentinelEncryptedContainerV1.cs" Link="SentinelEncryptedContainerV1.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FileEncryptionService.cs" Link="FileEncryptionService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\FileEncryptionReplacementService.cs" Link="FileEncryptionReplacementService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\ExactOwnedOutputCleanup.cs" Link="ExactOwnedOutputCleanup.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\WindowsCurrentUserFileKeyProtector.cs" Link="WindowsCurrentUserFileKeyProtector.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\PasswordFileKeyProtector.cs" Link="PasswordFileKeyProtector.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RecoveryKeyMaterial.cs" Link="RecoveryKeyMaterial.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RecoveryKeyFileKeyProtector.cs" Link="RecoveryKeyFileKeyProtector.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SentinelVaultService.cs" Link="SentinelVaultService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultMetadataStore.cs" Link="VaultMetadataStore.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultFileKeyProtector.cs" Link="VaultFileKeyProtector.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultItemStoreService.cs" Link="VaultItemStoreService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\VaultItemExportService.cs" Link="VaultItemExportService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteContracts.cs" Link="SecureDeleteContracts.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteTargetValidator.cs" Link="SecureDeleteTargetValidator.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\StorageCapabilityDetector.cs" Link="StorageCapabilityDetector.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteCoordinator.cs" Link="SecureDeleteCoordinator.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteMutationLease.cs" Link="SecureDeleteMutationLease.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteOperationJournal.cs" Link="SecureDeleteOperationJournal.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteRecoveryClassifier.cs" Link="SecureDeleteRecoveryClassifier.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\SecureDeleteExactObjectExecutor.cs" Link="SecureDeleteExactObjectExecutor.cs" />
+  </ItemGroup>
+</Project>

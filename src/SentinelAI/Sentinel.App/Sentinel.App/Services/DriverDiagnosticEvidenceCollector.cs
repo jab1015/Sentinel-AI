@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -52,27 +53,28 @@ namespace Sentinel.App.Services
             try
             {
                 string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
-                    FileName = "powershell.exe",
+                    FileName = ResolvePowerShellPath(),
                     Arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {encoded}",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                if (!process.Start()) return new(false, string.Empty);
-                string output = process.StandardOutput.ReadToEnd();
-                _ = process.StandardError.ReadToEnd();
-                if (!process.WaitForExit((int)timeout.TotalMilliseconds))
-                {
-                    process.Kill(true);
-                    return new(false, output);
-                }
-                return new(process.ExitCode == 0, output.Trim());
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, timeout, maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
+                return new(execution.Succeeded, execution.StandardOutput.Trim());
             }
             catch { return new(false, string.Empty); }
+        }
+
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system)
+                ? "powershell.exe"
+                : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
         }
 
         private static string GetValue(string output, string name)

@@ -11,21 +11,37 @@ namespace Sentinel.App.Services
 {
     public sealed class WindowsStartupRegistrationService
     {
-        private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        private const string LegacyRunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string SettingsKeyPath = @"Software\Modern Methods\Sentinel AI";
-        private const string ValueName = "Sentinel AI";
+        private const string LegacyValueName = "Sentinel AI";
         private const string StartupPreferenceValueName = "StartWithWindows";
-        private const string ApplicationId = "App";
+        private const string StartupTaskId = "SentinelStartupTask";
 
         public StartupRegistrationResult EnsureRegisteredAndVerify()
         {
-            if (!GetUserStartupPreference())
+            RemoveLegacyRunRegistration();
+            try
             {
-                RemoveRunRegistration();
-                return new(false, false, "Startup is disabled by the user.");
-            }
+                StartupTask task = StartupTask.GetAsync(StartupTaskId).AsTask().GetAwaiter().GetResult();
+                if (!GetUserStartupPreference())
+                {
+                    if (task.State == StartupTaskState.Enabled) task.Disable();
+                    return new(false, false, "Startup is disabled by the user.");
+                }
 
-            return RegisterAndVerify();
+                return task.State switch
+                {
+                    StartupTaskState.Enabled => new(true, false, "Sentinel AI packaged startup task is enabled and verified."),
+                    StartupTaskState.DisabledByUser => new(false, false, "Windows reports that startup was disabled by the user. Sentinel will not override that choice."),
+                    StartupTaskState.DisabledByPolicy => new(false, false, "Windows policy currently prevents Sentinel AI from starting automatically."),
+                    StartupTaskState.Disabled => EnablePackagedTask(task),
+                    _ => new(false, false, $"Sentinel AI startup state is {task.State}; automatic startup was not assumed to be enabled.")
+                };
+            }
+            catch (Exception ex)
+            {
+                return new(false, false, $"Packaged startup registration could not be verified ({ex.GetType().Name}).");
+            }
         }
 
         public StartupRegistrationResult SetStartupEnabled(bool enabled)
@@ -37,24 +53,30 @@ namespace Sentinel.App.Services
                     return new(false, false, "Sentinel could not save the startup preference.");
 
                 settingsKey.SetValue(StartupPreferenceValueName, enabled ? 1 : 0, RegistryValueKind.DWord);
+                RemoveLegacyRunRegistration();
 
+                StartupTask task = StartupTask.GetAsync(StartupTaskId).AsTask().GetAwaiter().GetResult();
                 if (!enabled)
                 {
-                    bool removed = RemoveRunRegistration();
-                    return new(false, removed, removed
-                        ? "Sentinel will no longer start when you sign in."
+                    bool changed = task.State == StartupTaskState.Enabled;
+                    if (changed) task.Disable();
+                    return new(false, changed, changed
+                        ? "Sentinel AI packaged startup was disabled."
                         : "Startup was already disabled.");
                 }
 
-                return RegisterAndVerify();
+                if (task.State == StartupTaskState.DisabledByUser)
+                    return new(false, false, "Windows reports that you disabled Sentinel AI startup in system settings. Re-enable it there before Sentinel can start automatically.");
+                if (task.State == StartupTaskState.DisabledByPolicy)
+                    return new(false, false, "Windows policy prevents Sentinel AI from starting automatically.");
+                if (task.State == StartupTaskState.Enabled)
+                    return new(true, false, "Sentinel AI packaged startup task is already enabled.");
+
+                return EnablePackagedTask(task);
             }
-            catch (UnauthorizedAccessException)
+            catch (Exception ex)
             {
-                return new(IsStartupRegistered(), false, "Windows denied access to the current user's startup settings.");
-            }
-            catch (System.Security.SecurityException)
-            {
-                return new(IsStartupRegistered(), false, "Windows security policy prevented the startup setting from being changed.");
+                return new(false, false, $"Sentinel could not update the packaged startup task ({ex.GetType().Name}).");
             }
         }
 
@@ -74,12 +96,11 @@ namespace Sentinel.App.Services
 
         public bool IsStartupRegistered()
         {
+            RemoveLegacyRunRegistration();
             try
             {
-                string expectedCommand = GetExpectedCommand();
-                using RegistryKey? runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
-                string? existing = runKey?.GetValue(ValueName) as string;
-                return string.Equals(existing, expectedCommand, StringComparison.OrdinalIgnoreCase);
+                StartupTask task = StartupTask.GetAsync(StartupTaskId).AsTask().GetAwaiter().GetResult();
+                return task.State == StartupTaskState.Enabled;
             }
             catch
             {
@@ -89,65 +110,27 @@ namespace Sentinel.App.Services
 
         public bool EnsureRegistered() => EnsureRegisteredAndVerify().Registered;
 
-        private StartupRegistrationResult RegisterAndVerify()
+        private static StartupRegistrationResult EnablePackagedTask(StartupTask task)
+        {
+            StartupTaskState state = task.RequestEnableAsync().AsTask().GetAwaiter().GetResult();
+            return state == StartupTaskState.Enabled
+                ? new(true, true, "Sentinel AI packaged startup task was enabled and verified.")
+                : new(false, false, state == StartupTaskState.DisabledByUser
+                    ? "Windows did not enable startup because the user disabled it in system settings."
+                    : $"Windows did not enable Sentinel AI startup. Current state: {state}.");
+        }
+
+        private static void RemoveLegacyRunRegistration()
         {
             try
             {
-                string expectedCommand = GetExpectedCommand();
-                using RegistryKey? runKey = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
-                if (runKey is null)
-                    return new(false, false, "Windows startup registration could not be opened.");
-
-                string? existing = runKey.GetValue(ValueName) as string;
-                bool changed = !string.Equals(existing, expectedCommand, StringComparison.OrdinalIgnoreCase);
-                if (changed)
-                    runKey.SetValue(ValueName, expectedCommand, RegistryValueKind.String);
-
-                string? verified = runKey.GetValue(ValueName) as string;
-                bool registered = string.Equals(verified, expectedCommand, StringComparison.OrdinalIgnoreCase);
-                return registered
-                    ? new(true, changed, changed
-                        ? "Sentinel AI startup registration was repaired and verified."
-                        : "Sentinel AI startup registration is present and verified.")
-                    : new(false, changed, "Windows did not retain Sentinel AI startup registration.");
-            }
-            catch (InvalidOperationException)
-            {
-                return new(false, false, "Startup registration is unavailable while Sentinel is running without installed package identity.");
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return new(false, false, "Windows denied access to the current user's startup registration.");
-            }
-            catch (System.Security.SecurityException)
-            {
-                return new(false, false, "Windows security policy prevented startup registration.");
-            }
-        }
-
-        private static string GetExpectedCommand()
-        {
-            string familyName = Package.Current.Id.FamilyName;
-            if (string.IsNullOrWhiteSpace(familyName))
-                throw new InvalidOperationException("The installed package identity is unavailable.");
-
-            return $"explorer.exe shell:AppsFolder\\{familyName}!{ApplicationId}";
-        }
-
-        private static bool RemoveRunRegistration()
-        {
-            try
-            {
-                using RegistryKey? runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
-                if (runKey?.GetValue(ValueName) is null)
-                    return false;
-
-                runKey.DeleteValue(ValueName, throwOnMissingValue: false);
-                return true;
+                using RegistryKey? runKey = Registry.CurrentUser.OpenSubKey(LegacyRunKeyPath, writable: true);
+                if (runKey?.GetValue(LegacyValueName) is not null)
+                    runKey.DeleteValue(LegacyValueName, throwOnMissingValue: false);
             }
             catch
             {
-                return false;
+                // The legacy value is never treated as a successful startup mechanism.
             }
         }
 

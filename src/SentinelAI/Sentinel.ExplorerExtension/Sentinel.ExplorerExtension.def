@@ -1,0 +1,4 @@
+LIBRARY "Sentinel.ExplorerExtension"
+EXPORTS
+    DllCanUnloadNow PRIVATE
+    DllGetClassObject PRIVATE

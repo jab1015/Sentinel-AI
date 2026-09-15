@@ -129,47 +129,32 @@ namespace Sentinel.App.Services
             string arguments,
             CancellationToken cancellationToken)
         {
-            using Process process = new()
+            ProcessStartInfo startInfo = new()
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
-                }
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
-            process.Start();
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            using CancellationTokenSource timeoutSource = new(CommandTimeout);
-            using CancellationTokenSource linkedSource =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            ProcessExecutionResult result = await BoundedProcessRunner.RunAsync(
+                startInfo,
+                CommandTimeout,
+                cancellationToken).ConfigureAwait(false);
 
-            try
-            {
-                await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                try { process.Kill(entireProcessTree: true); }
-                catch { }
+            if (result.Outcome == ProcessExecutionOutcome.Canceled && cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
 
-                return new CommandResult(
-                    -1,
-                    string.Empty,
-                    $"Windows network repair command exceeded the {CommandTimeout.TotalSeconds:0}-second safety timeout.");
-            }
+            int exitCode = result.ExitCode ?? -1;
+            string error = result.StandardError;
+            if (result.Outcome == ProcessExecutionOutcome.TimedOut)
+                error = $"Windows network repair command exceeded the {CommandTimeout.TotalSeconds:0}-second safety timeout. {result.Detail}".Trim();
+            else if (result.Outcome is ProcessExecutionOutcome.LaunchFailure or ProcessExecutionOutcome.OutputReadFailure)
+                error = string.IsNullOrWhiteSpace(error) ? result.Detail : error + Environment.NewLine + result.Detail;
 
-            return new CommandResult(
-                process.ExitCode,
-                await outputTask.ConfigureAwait(false),
-                await errorTask.ConfigureAwait(false));
+            return new CommandResult(exitCode, result.StandardOutput, error);
         }
 
         private sealed record CommandResult(int ExitCode, string Output, string Error);

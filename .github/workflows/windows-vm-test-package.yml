@@ -1,0 +1,119 @@
+name: Sentinel Windows VM Test Package
+
+# Dedicated signed LocalDev package for isolated Windows VM qualification; workflow-only changes intentionally re-qualify the exact branch head.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/premium-privacy-foundation
+    paths:
+      - '.github/workflows/windows-vm-test-package.yml'
+      - 'tools/windows-vm/**'
+      - 'src/SentinelAI/Sentinel.App/**'
+      - 'src/SentinelAI/Sentinel.PrivilegedBroker/**'
+      - 'src/SentinelAI/Sentinel.ExplorerExtension/**'
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: windows-vm-test-package-v4-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-sign-validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      OUTPUT_DIR: artifacts/windows-vm-test
+
+    steps:
+      - name: Checkout Premium Privacy source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Locate Windows build tools
+        id: tools
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe was not found.' }
+          $msbuild = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($msbuild)) { throw 'MSBuild.exe was not found.' }
+          $sdkRoots = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Directory -ErrorAction Stop | Sort-Object Name -Descending
+          $signtool = $null
+          $makeappx = $null
+          foreach ($root in $sdkRoots) {
+            $candidateSign = Join-Path $root.FullName 'x64\signtool.exe'
+            $candidateMake = Join-Path $root.FullName 'x64\makeappx.exe'
+            if ((Test-Path $candidateSign) -and (Test-Path $candidateMake)) {
+              $signtool = $candidateSign
+              $makeappx = $candidateMake
+              break
+            }
+          }
+          if ($null -eq $signtool -or $null -eq $makeappx) { throw 'SignTool.exe/MakeAppx.exe were not found.' }
+          "msbuild=$msbuild" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "signtool=$signtool" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "makeappx=$makeappx" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Verify LocalDev entitlement boundary
+        shell: pwsh
+        run: |
+          $project = Get-Content 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -Raw
+          $client = Get-Content 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/PremiumPrivacyEntitlementClient.cs' -Raw
+          if ($project -notmatch 'SENTINEL_LOCAL_DEV') { throw 'LocalDev compile symbol is missing.' }
+          if ($client -notmatch '#if SENTINEL_LOCAL_DEV') { throw 'Compile-time LocalDev entitlement boundary is missing.' }
+          if ($client -notmatch 'LocalVmTestAllowed') { throw 'LocalDev VM authorization result is missing.' }
+          if ($client -notmatch '#else') { throw 'Release entitlement branch is missing.' }
+          if ($client -notmatch 'v1/store/collections-ticket' -or $client -notmatch 'v1/privacy/capability/validate') { throw 'Authoritative Release Store/gateway path was removed.' }
+          Write-Host 'LocalDev-only test authorization and authoritative Release path are both present.'
+
+      - name: Compile Release x64 entitlement path
+        shell: pwsh
+        run: |
+          dotnet restore 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -r win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -c Release -p:Platform=x64 -r win-x64 --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build, sign, and qualify LocalDev x64 VM package
+        shell: pwsh
+        run: |
+          ./tools/windows-vm/Build-SentinelAI-TestPackage.ps1 `
+            -MsBuild '${{ steps.tools.outputs.msbuild }}' `
+            -SignTool '${{ steps.tools.outputs.signtool }}' `
+            -MakeAppx '${{ steps.tools.outputs.makeappx }}' `
+            -SourceSha '${{ github.sha }}'
+
+      - name: Upload signed Windows VM test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-vm-test-package
+          path: artifacts/windows-vm-test/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish package verification status
+        if: success()
+        shell: pwsh
+        run: |
+          Get-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PACKAGE-METADATA.txt')
+          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, test signature, package contents, manifest registration, PE architecture, helpers, and public certificate validated.'
+          Write-Host 'Release x64 app was separately compiled to prove the authoritative Store/gateway entitlement path remains buildable.'
+
+      - name: Upload package build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-vm-test-package-diagnostics
+          path: |
+            windows-vm-test-package.log
+            windows-vm-test-signing.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -20,6 +20,8 @@ namespace Sentinel.App.Services
             bool firewallUnavailable =
                 snapshot.FirewallStatus.Equals("Unavailable", StringComparison.OrdinalIgnoreCase) ||
                 snapshot.FirewallStatus.Equals("Loading...", StringComparison.OrdinalIgnoreCase);
+            bool protectionGathering =
+                string.Equals(snapshot.ProtectionHealthReasonCode, "protection-gathering", StringComparison.OrdinalIgnoreCase);
             bool advancedSecurityEntitled =
                 !string.Equals(snapshot.NetworkConnectionMonitoringStatus, "Subscription required", StringComparison.OrdinalIgnoreCase);
             bool monitoringCoverageIncomplete =
@@ -131,12 +133,30 @@ namespace Sentinel.App.Services
                 _ => "Low"
             };
 
+            bool actionableEvidence =
+                snapshot.AuthenticationAnomalyDetected ||
+                snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase) ||
+                snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase) ||
+                hasCriticalEvent ||
+                repeatedServiceFailure ||
+                !snapshot.DefenderEnabled ||
+                !snapshot.FirewallEnabled ||
+                snapshot.MemoryUsagePercent >= 90 ||
+                snapshot.DiskUsagePercent >= 95;
+
+            if (protectionGathering && !actionableEvidence)
+            {
+                recommendation = "No action is needed while Sentinel finishes gathering the initial security-monitoring evidence. Remaining collectors will retry automatically.";
+            }
+
             string summary = snapshot.AuthenticationAnomalyDetected
                 ? snapshot.AuthenticationAnomalySummary
                 : snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase)
                 ? "Multiple independent behaviors correlate into a high-confidence spyware-like concern that requires investigation."
                 : snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase)
                     ? "Multiple independent unusual behaviors overlap and should be investigated."
+                    : protectionGathering && !actionableEvidence
+                        ? "Sentinel is still gathering initial security-monitoring evidence. This temporary collection state is not itself a security failure."
                     : monitoringCoverageIncomplete
                         ? "Sentinel cannot verify a healthy security state because one or more monitoring evidence sources are unavailable."
                     : hasCriticalEvent

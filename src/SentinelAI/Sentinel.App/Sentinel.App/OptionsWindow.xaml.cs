@@ -14,13 +14,17 @@ namespace Sentinel.App
         private readonly WindowsStartupRegistrationService _startupService = new();
         private readonly OptimizationSettingsService _optimizationSettingsService = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
+        private readonly MonitoringEngine _manualOptimizationEngine = new();
+        private readonly AutomaticOptimizationCoordinator _manualOptimizationCoordinator = new();
         private bool _loading;
         private bool _premiumEntitled;
         private bool _initialLayoutApplied;
+        private bool _optimizationScanRunning;
 
         public OptionsWindow()
         {
             InitializeComponent();
+            LoadAboutInformation();
             Activated += OptionsWindow_Activated;
         }
 
@@ -50,11 +54,13 @@ namespace Sentinel.App
             AnnualSubscriptionButton.IsEnabled = false;
             SubscriptionPlanText.Text = "Checking Microsoft Store subscription…";
             SubscriptionStatusText.Text = "Sentinel is verifying your subscription.";
+            AboutLicenseText.Text = "Checking subscription…";
 
             SubscriptionState state = await _subscriptionService.GetStateAsync();
             SubscriptionPlanText.Text = state.DisplayName;
             SubscriptionStatusText.Text = state.Summary;
             _premiumEntitled = state.IsActive;
+            UpdateAboutLicenseState(state);
             ApplyPremiumControlState();
 
             if (state.Plan == SubscriptionPlan.Development)
@@ -167,6 +173,8 @@ namespace Sentinel.App
                 ? $"Automatic optimization is enabled in {settings.Mode} mode. Sentinel will act only when current evidence supports a safe optimization."
                 : "Automatic optimization is off. Sentinel will continue monitoring performance without making optimization changes.";
 
+            ManualOptimizationScanStatusText.Text = "Run a scan whenever you want a fresh performance check. Manual scans never make optimization changes.";
+
             _loading = false;
             ApplyPremiumControlState();
         }
@@ -181,6 +189,34 @@ namespace Sentinel.App
                 OptimizationStatusText.Text = AutomaticOptimizationToggle.IsOn
                     ? "Automatic optimization is paused because no active subscription was verified. Free performance monitoring continues."
                     : "Free performance monitoring is active. An active subscription is required to enable automatic optimization.";
+            }
+        }
+
+        private async void RunOptimizationScanButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_optimizationScanRunning)
+                return;
+
+            _optimizationScanRunning = true;
+            RunOptimizationScanButton.IsEnabled = false;
+            RunOptimizationScanButton.Content = "Scanning…";
+            ManualOptimizationScanStatusText.Text = "Sentinel is collecting fresh performance evidence and comparing it with this computer's baseline. No changes will be made.";
+
+            try
+            {
+                await _manualOptimizationEngine.RefreshAsync();
+                AutomaticOptimizationResult result = await _manualOptimizationCoordinator.EvaluateOnlyAsync(_manualOptimizationEngine.CurrentSnapshot);
+                ManualOptimizationScanStatusText.Text = $"{result.Summary}\nLast manual scan: {DateTime.Now:MMM d, yyyy h:mm tt}";
+            }
+            catch (Exception ex)
+            {
+                ManualOptimizationScanStatusText.Text = $"Sentinel could not complete the manual optimization scan ({ex.GetType().Name}). No changes were made. You can try again.";
+            }
+            finally
+            {
+                _optimizationScanRunning = false;
+                RunOptimizationScanButton.IsEnabled = true;
+                RunOptimizationScanButton.Content = "Run optimization scan now";
             }
         }
 
@@ -240,6 +276,46 @@ namespace Sentinel.App
                 : settings.AutomaticOptimizationEnabled
                     ? $"Automatic optimization is enabled in {settings.Mode} mode. Sentinel will verify evidence before making changes."
                     : "Automatic optimization is off. Sentinel will continue monitoring performance without making optimization changes.";
+        }
+
+        private void LoadAboutInformation()
+        {
+            string version = typeof(OptionsWindow).Assembly.GetName().Version?.ToString() ?? "Unknown";
+            string packageName = "Unpackaged development build";
+
+            try
+            {
+                var packageId = Package.Current.Id;
+                var packageVersion = packageId.Version;
+                version = $"{packageVersion.Major}.{packageVersion.Minor}.{packageVersion.Build}.{packageVersion.Revision}";
+                packageName = packageId.Name;
+            }
+            catch (InvalidOperationException)
+            {
+                // Visual Studio unpackaged runs use the assembly-version fallback above.
+            }
+
+            AboutVersionText.Text = version;
+            AboutPackageText.Text = packageName;
+        }
+
+        private void UpdateAboutLicenseState(SubscriptionState state)
+        {
+            if (state.Plan == SubscriptionPlan.Development)
+            {
+                AboutLicenseText.Text = "Local development entitlement";
+                return;
+            }
+
+            if (state.IsActive)
+            {
+                AboutLicenseText.Text = state.DisplayName;
+                return;
+            }
+
+            AboutLicenseText.Text = string.Equals(state.DisplayName, "Subscription unavailable", StringComparison.OrdinalIgnoreCase)
+                ? "Subscription verification unavailable"
+                : "Free / no active subscription";
         }
 
         private static bool HasInstalledPackageIdentity()

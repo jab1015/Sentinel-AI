@@ -53,6 +53,10 @@ namespace Sentinel.App.Services
                     if (parts.Length > 2 && !string.IsNullOrWhiteSpace(parts[2])) healthStatus = parts[2];
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch
             {
                 // Unknown media type is safer than guessing SSD/HDD behavior.
@@ -72,9 +76,12 @@ namespace Sentinel.App.Services
                     bool refsKnown = output.Contains("ReFS DisableDeleteNotify", StringComparison.OrdinalIgnoreCase);
                     trimKnown = ntfsKnown || refsKnown;
 
-                    // Windows reports 0 when delete notifications (TRIM/unmap) are enabled.
                     trimEnabled = output.Contains("DisableDeleteNotify = 0", StringComparison.OrdinalIgnoreCase);
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {
@@ -130,47 +137,30 @@ namespace Sentinel.App.Services
             string arguments,
             CancellationToken cancellationToken)
         {
-            using Process process = new()
+            ProcessStartInfo startInfo = new()
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = fileName,
-                    Arguments = arguments,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
-                }
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
-            process.Start();
-            Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
-            Task<string> errorTask = process.StandardError.ReadToEndAsync();
-            using CancellationTokenSource timeoutSource = new(CommandTimeout);
-            using CancellationTokenSource linkedSource =
-                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+            ProcessExecutionResult execution = await BoundedProcessRunner.RunAsync(
+                startInfo,
+                CommandTimeout,
+                cancellationToken,
+                maxOutputChars: 128_000).ConfigureAwait(false);
 
-            try
-            {
-                await process.WaitForExitAsync(linkedSource.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                try { process.Kill(entireProcessTree: true); }
-                catch { }
+            if (execution.Outcome == ProcessExecutionOutcome.Canceled && cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
 
-                return new CommandResult(
-                    -1,
-                    string.Empty,
-                    $"Windows storage assessment exceeded its {CommandTimeout.TotalSeconds:0}-second safety timeout.");
-            }
+            string error = execution.Outcome == ProcessExecutionOutcome.TimedOut
+                ? $"Windows storage assessment exceeded its {CommandTimeout.TotalSeconds:0}-second safety timeout."
+                : execution.StandardError;
 
-            return new CommandResult(
-                process.ExitCode,
-                await outputTask.ConfigureAwait(false),
-                await errorTask.ConfigureAwait(false));
+            return new CommandResult(execution.ExitCode ?? -1, execution.StandardOutput, error);
         }
 
         private static string EscapePowerShell(string value) => value.Replace("'", "''");

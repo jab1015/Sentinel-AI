@@ -1,0 +1,31 @@
+name: Sentinel Network Throughput Hardening
+
+on:
+  push:
+    branches:
+      - security/production-hardening-1218f5d
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  network-throughput:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore throughput harness
+        run: dotnet restore "tools/Sentinel.NetworkThroughputAcceptanceHarness/Sentinel.NetworkThroughputAcceptanceHarness.csproj"
+      - name: Build throughput harness
+        run: dotnet build "tools/Sentinel.NetworkThroughputAcceptanceHarness/Sentinel.NetworkThroughputAcceptanceHarness.csproj" -c Release --no-restore
+      - name: Run throughput harness
+        run: dotnet run --project "tools/Sentinel.NetworkThroughputAcceptanceHarness/Sentinel.NetworkThroughputAcceptanceHarness.csproj" -c Release --no-build

@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$perSuiteTimeout = [TimeSpan]::FromMinutes(20)
 
 $acceptanceSuites = @(
     "Run-DiscoveryAcceptance.ps1",
@@ -20,9 +21,74 @@ $acceptanceSuites = @(
     "Run-FriendlyValueActivityAcceptance.ps1"
 )
 
+function Resolve-PowerShellHost {
+    try {
+        $current = (Get-Process -Id $PID -ErrorAction Stop).Path
+        if (-not [string]::IsNullOrWhiteSpace($current) -and (Test-Path $current)) {
+            return $current
+        }
+    }
+    catch { }
+
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if ($null -ne $pwsh) { return $pwsh.Source }
+
+    $windowsPowerShell = Get-Command powershell.exe -ErrorAction SilentlyContinue
+    if ($null -ne $windowsPowerShell) { return $windowsPowerShell.Source }
+
+    throw "No PowerShell host executable could be resolved."
+}
+
+function Quote-ProcessArgument([string]$Value) {
+    if ($null -eq $Value) { return '""' }
+    if ($Value.Contains('"')) { throw "Regression script path contains an unsupported quote character." }
+    return '"' + $Value + '"'
+}
+
+function Invoke-IsolatedSuite([string]$Path, [TimeSpan]$Timeout) {
+    $hostPath = Resolve-PowerShellHost
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $hostPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $false
+
+    $arguments = "-NoLogo -NoProfile -NonInteractive "
+    if ([System.IO.Path]::GetFileName($hostPath).Equals("powershell.exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $arguments += "-ExecutionPolicy Bypass "
+    }
+    $arguments += "-File " + (Quote-ProcessArgument $Path)
+    $startInfo.Arguments = $arguments
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            return [pscustomobject]@{ ExitCode = $null; TimedOut = $false; LaunchFailed = $true }
+        }
+
+        if (-not $process.WaitForExit([int]$Timeout.TotalMilliseconds)) {
+            try { $process.Kill($true) }
+            catch {
+                try { $process.Kill() } catch { }
+            }
+            try { [void]$process.WaitForExit(5000) } catch { }
+            return [pscustomobject]@{ ExitCode = $null; TimedOut = $true; LaunchFailed = $false }
+        }
+
+        return [pscustomobject]@{ ExitCode = $process.ExitCode; TimedOut = $false; LaunchFailed = $false }
+    }
+    catch {
+        return [pscustomobject]@{ ExitCode = $null; TimedOut = $false; LaunchFailed = $true }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
 Write-Host "=== Sentinel AI Final Production Regression ==="
 Write-Host "Repository: $repoRoot"
 Write-Host "Suites: $($acceptanceSuites.Count)"
+Write-Host "Per-suite timeout: $($perSuiteTimeout.TotalMinutes) minutes"
 Write-Host ""
 
 $passed = 0
@@ -42,16 +108,26 @@ foreach ($suite in $acceptanceSuites) {
         continue
     }
 
-    & $path
-    if ($LASTEXITCODE -eq 0) {
+    $execution = Invoke-IsolatedSuite -Path $path -Timeout $perSuiteTimeout
+    if ($execution.LaunchFailed) {
+        Write-Host "SUITE RESULT: FAIL - child PowerShell could not be launched" -ForegroundColor Red
+        $failed++
+        $results += [pscustomobject]@{ Suite = $suite; Result = "FAIL - LAUNCH" }
+    }
+    elseif ($execution.TimedOut) {
+        Write-Host "SUITE RESULT: FAIL - exceeded $($perSuiteTimeout.TotalMinutes)-minute timeout" -ForegroundColor Red
+        $failed++
+        $results += [pscustomobject]@{ Suite = $suite; Result = "FAIL - TIMEOUT" }
+    }
+    elseif ($execution.ExitCode -eq 0) {
         Write-Host "SUITE RESULT: PASS" -ForegroundColor Green
         $passed++
         $results += [pscustomobject]@{ Suite = $suite; Result = "PASS" }
     }
     else {
-        Write-Host "SUITE RESULT: FAIL (exit code $LASTEXITCODE)" -ForegroundColor Red
+        Write-Host "SUITE RESULT: FAIL (exit code $($execution.ExitCode))" -ForegroundColor Red
         $failed++
-        $results += [pscustomobject]@{ Suite = $suite; Result = "FAIL" }
+        $results += [pscustomobject]@{ Suite = $suite; Result = "FAIL ($($execution.ExitCode))" }
     }
 
     Write-Host ""
@@ -62,11 +138,16 @@ $results | Format-Table -AutoSize
 Write-Host "Passed: $passed"
 Write-Host "Failed: $failed"
 
+if ($passed + $failed -ne $acceptanceSuites.Count) {
+    Write-Host "OVERALL RESULT: FAIL - suite accounting mismatch" -ForegroundColor Red
+    exit 1
+}
+
 if ($failed -gt 0) {
     Write-Host "OVERALL RESULT: FAIL" -ForegroundColor Red
     exit 1
 }
 
 Write-Host "OVERALL RESULT: PASS" -ForegroundColor Green
-Write-Host "All available production regression suites completed successfully."
+Write-Host "All configured production regression suites completed successfully in isolated child PowerShell processes."
 exit 0

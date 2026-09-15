@@ -82,7 +82,6 @@ namespace Sentinel.App.Services
         {
             string value = question.Trim().ToLowerInvariant();
 
-            
             // External reasoning cannot inspect the local dump and must not connect an
             // unrelated active finding to a crash. Return the bounded local crash
             // evidence until Sentinel has crash-specific causal evidence.
@@ -97,6 +96,14 @@ namespace Sentinel.App.Services
             };
 
             if (explicitExternalIntent.Any(value.Contains)) return true;
+
+            // These questions are explicitly backed by deterministic local providers.
+            // Do not discard a useful local answer merely because the user phrased it
+            // as "why" or "what caused". The local responder already states when the
+            // evidence can identify only a contributing condition rather than one
+            // guaranteed root cause.
+            if (IsLocalPerformanceQuestion(value) || IsPendingRestartQuestion(value))
+                return false;
 
             bool asksForInterpretation =
                 value.Contains("what does") || value.Contains("what does this mean") ||
@@ -116,6 +123,26 @@ namespace Sentinel.App.Services
                 answer.Contains("evidence shows", StringComparison.OrdinalIgnoreCase);
 
             return !containsCausalExplanation;
+        }
+
+        private static bool IsLocalPerformanceQuestion(string value) =>
+            value.Contains("computer slow") || value.Contains("pc slow") ||
+            value.Contains("running slow") || value.Contains("running slowly") ||
+            value.Contains("feels slow") || value.Contains("sluggish") ||
+            value.Contains("lagging") || value.Contains("laggy") ||
+            value.Contains("performance problem") || value.Contains("performance issue") ||
+            value.Contains("why is my computer slow") || value.Contains("why is my pc slow");
+
+        private static bool IsPendingRestartQuestion(string value)
+        {
+            bool restartTopic = value.Contains("restart") || value.Contains("reboot");
+            if (!restartTopic) return false;
+
+            return value.Contains("pending") || value.Contains("waiting") ||
+                   value.Contains("required") || value.Contains("requires") ||
+                   value.Contains("needed") || value.Contains("needs") ||
+                   value.Contains("what caused") || value.Contains("why") ||
+                   value.Contains("should i restart") || value.Contains("should i reboot");
         }
 
         private static string CreateMaintenanceHistoryAnswer(string question, SystemSnapshot snapshot, MaintenanceHistorySummary summary)
@@ -305,7 +332,6 @@ namespace Sentinel.App.Services
             value.Contains("bug check") || value.Contains("system crash") ||
             value.Contains("computer crash") || value.Contains("unexpected restart") ||
             value.Contains("recovered from a bsd");
-
 
         private static bool IsMaintenanceHistoryQuestion(string question)
         {

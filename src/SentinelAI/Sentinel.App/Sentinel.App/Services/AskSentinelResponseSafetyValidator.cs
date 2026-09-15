@@ -8,15 +8,84 @@ using Sentinel.App.Models;
 
 namespace Sentinel.App.Services
 {
+    public enum AskSentinelProvenanceLabel
+    {
+        VerifiedFact,
+        Observed,
+        Inferred,
+        ActionVerified,
+        Advisory
+    }
+
     /// <summary>
-    /// Final fail-safe validation for Ask Sentinel responses. This guard runs after
-    /// response construction and blocks internally inconsistent claims before they
-    /// reach the user.
+    /// Structural fail-safe for deterministic Ask Sentinel responses.
+    ///
+    /// The orchestrator validates its initial response, but UI composition can replace that
+    /// response later. ValidateForDisplay is therefore the final trust boundary immediately
+    /// before user-visible output. It does not treat English wording as evidence. Instead,
+    /// provenance is supplied by the deterministic call path and wording checks are used only
+    /// as a fail-closed defense that prevents advisory/inferred text from asserting completed
+    /// Sentinel/Defender/firewall actions.
     /// </summary>
     public sealed class AskSentinelResponseSafetyValidator
     {
         private const string InsufficientEvidence =
             "Sentinel does not yet have enough verified information to answer that question.";
+
+        private static readonly string[] VerifiedActionOutcomePhrases =
+        {
+            "sentinel blocked",
+            "sentinel has blocked",
+            "sentinel stopped",
+            "sentinel has stopped",
+            "sentinel contained",
+            "sentinel has contained",
+            "sentinel quarantined",
+            "sentinel has quarantined",
+            "sentinel removed",
+            "sentinel has removed",
+            "sentinel deleted",
+            "sentinel has deleted",
+            "sentinel repaired",
+            "sentinel has repaired",
+            "sentinel fixed",
+            "sentinel has fixed",
+            "repair completed",
+            "repair was completed",
+            "repair completed successfully",
+            "defender blocked",
+            "defender has blocked",
+            "microsoft defender blocked",
+            "microsoft defender has blocked",
+            "defender removed",
+            "defender has removed",
+            "microsoft defender removed",
+            "microsoft defender has removed",
+            "firewall rule was applied",
+            "firewall rule has been applied",
+            "firewall applied",
+            "firewall has blocked",
+            "windows firewall blocked",
+            "windows firewall has blocked",
+            "threat was blocked",
+            "threat has been blocked",
+            "threat was contained",
+            "threat has been contained",
+            "threat was quarantined",
+            "threat has been quarantined",
+            "threat was removed",
+            "threat has been removed",
+            "threat was eliminated",
+            "threat has been eliminated",
+            "malware was blocked",
+            "malware has been blocked",
+            "malware was removed",
+            "malware has been removed",
+            "file was quarantined",
+            "file has been quarantined",
+            "file was removed",
+            "file has been removed"
+        };
 
         public ValidationResult Validate(
             AskSentinelResponseOrchestrator.AskSentinelResponse response,
@@ -26,101 +95,77 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
 
             if (string.IsNullOrWhiteSpace(response.Answer))
-            {
-                return Block("Ask Sentinel produced an empty response.");
-            }
+                return Block("Ask Sentinel produced an empty response.", AskSentinelProvenanceLabel.Advisory);
 
             if (response.EvidenceCount <= 0)
-            {
-                return Block("No verified evidence was available to support the response.");
-            }
+                return Block("No verified evidence was available to support the response.", AskSentinelProvenanceLabel.Advisory);
+
+            if (response.EvidenceTimestamp == default)
+                return Block("The response did not identify the verified evidence snapshot it was based on.", AskSentinelProvenanceLabel.Advisory);
+
+            if (response.EvidenceTimestamp > DateTimeOffset.UtcNow.AddMinutes(5))
+                return Block("The response evidence timestamp is invalid.", AskSentinelProvenanceLabel.Advisory);
 
             if (response.UsedInvestigationHistory && response.IsInsufficientEvidence)
-            {
-                return Block("History was marked as used even though the response reports insufficient evidence.");
-            }
+                return Block("History was marked as used even though the response reports insufficient evidence.", AskSentinelProvenanceLabel.Advisory);
 
-            if (ClaimsSuccessfulAction(response.Answer) &&
-                !snapshot.RemediationSucceeded &&
-                !snapshot.AutonomousProtectionSucceeded)
-            {
-                return Block("The response would claim a successful action without a verified success outcome.");
-            }
+            if (string.IsNullOrWhiteSpace(response.GroundingSummary))
+                return Block("The response did not retain grounding/provenance information.", AskSentinelProvenanceLabel.Advisory);
 
-            if (ClaimsActionWasPerformed(response.Answer) &&
-                !snapshot.RemediationAttempted &&
-                !snapshot.AutonomousProtectionAttempted)
-            {
-                return Block("The response would claim that Sentinel performed an action without a verified action attempt.");
-            }
+            return new ValidationResult(
+                IsSafe: true,
+                Answer: response.Answer,
+                Reason: "Response passed structural safety validation.",
+                Provenance: AskSentinelProvenanceLabel.Observed);
+        }
 
-            if (ClaimsThreatFound(response.Answer) &&
-                snapshot.FlaggedProcessCount <= 0 &&
-                snapshot.FlaggedConnectionCount <= 0 &&
-                snapshot.FlaggedServiceCount <= 0 &&
-                snapshot.DefenderEnabled &&
-                snapshot.FirewallEnabled)
+        public ValidationResult ValidateForDisplay(
+            AskSentinelResponseOrchestrator.AskSentinelResponse response,
+            SystemSnapshot snapshot,
+            AskSentinelProvenanceLabel provenance)
+        {
+            ValidationResult structural = Validate(response, snapshot);
+            if (!structural.IsSafe)
+                return structural with { Provenance = provenance };
+
+            if (provenance is AskSentinelProvenanceLabel.Advisory or AskSentinelProvenanceLabel.Inferred)
             {
-                return Block("The response would make an unsupported threat claim.");
+                if (ContainsVerifiedActionOutcomeClaim(response.Answer))
+                {
+                    return Block(
+                        "Advisory or inferred text attempted to assert a completed security/remediation action without deterministic action verification.",
+                        provenance);
+                }
             }
 
             return new ValidationResult(
                 IsSafe: true,
                 Answer: response.Answer,
-                Reason: "Response passed Ask Sentinel final safety validation.");
+                Reason: $"Response passed final display validation as {provenance}.",
+                Provenance: provenance);
         }
 
-        private static ValidationResult Block(string reason) =>
+        internal static bool ContainsVerifiedActionOutcomeClaim(string answer)
+        {
+            if (string.IsNullOrWhiteSpace(answer)) return false;
+            foreach (string phrase in VerifiedActionOutcomePhrases)
+            {
+                if (answer.Contains(phrase, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        private static ValidationResult Block(string reason, AskSentinelProvenanceLabel provenance) =>
             new(
                 IsSafe: false,
                 Answer: InsufficientEvidence,
-                Reason: reason);
-
-        private static bool ClaimsSuccessfulAction(string value) =>
-            ContainsAny(value,
-                "successfully fixed",
-                "successfully removed",
-                "successfully blocked",
-                "successfully stopped",
-                "successfully restarted",
-                "has been fixed",
-                "has been removed",
-                "has been blocked",
-                "has been resolved");
-
-        private static bool ClaimsActionWasPerformed(string value) =>
-            ContainsAny(value,
-                "sentinel fixed",
-                "sentinel removed",
-                "sentinel blocked",
-                "sentinel stopped",
-                "sentinel restarted",
-                "sentinel quarantined");
-
-        private static bool ClaimsThreatFound(string value) =>
-            ContainsAny(value,
-                "sentinel found malware",
-                "sentinel found a virus",
-                "sentinel found a threat",
-                "your computer is infected",
-                "malware is present");
-
-        private static bool ContainsAny(string value, params string[] terms)
-        {
-            foreach (string term in terms)
-            {
-                if (value.Contains(term, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
+                Reason: reason,
+                Provenance: provenance);
 
         public sealed record ValidationResult(
             bool IsSafe,
             string Answer,
-            string Reason);
+            string Reason,
+            AskSentinelProvenanceLabel Provenance);
     }
 }

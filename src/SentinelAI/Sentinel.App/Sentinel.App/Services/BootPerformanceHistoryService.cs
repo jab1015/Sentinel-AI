@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 
 namespace Sentinel.App.Services
@@ -55,8 +56,7 @@ namespace Sentinel.App.Services
             }
 
             double average = samples.Average(sample => sample.BootDurationMs);
-            double recentAverage = samples.Take(Math.Min(3, samples.Count))
-                .Average(sample => sample.BootDurationMs);
+            double recentAverage = samples.Take(Math.Min(3, samples.Count)).Average(sample => sample.BootDurationMs);
             double olderAverage = samples.Skip(Math.Min(3, samples.Count)).Any()
                 ? samples.Skip(3).Average(sample => sample.BootDurationMs)
                 : average;
@@ -65,22 +65,13 @@ namespace Sentinel.App.Services
                 ? ((recentAverage - olderAverage) / olderAverage) * 100d
                 : 0d;
 
-            bool sustainedRegression =
-                recentAverage >= 45000d &&
-                regressionPercent >= 20d;
+            bool sustainedRegression = recentAverage >= 45000d && regressionPercent >= 20d;
 
             string summary = sustainedRegression
                 ? $"Sentinel measured a sustained startup slowdown. Recent boots average {recentAverage / 1000d:0.0}s versus {olderAverage / 1000d:0.0}s previously ({regressionPercent:0}% slower)."
                 : $"Measured boot history does not show a sustained startup slowdown requiring optimization. Recent boots average {recentAverage / 1000d:0.0}s.";
 
-            return new BootPerformanceHistory(
-                samples,
-                sustainedRegression,
-                average,
-                recentAverage,
-                regressionPercent,
-                summary,
-                string.Empty);
+            return new BootPerformanceHistory(samples, sustainedRegression, average, recentAverage, regressionPercent, summary, string.Empty);
         }
 
         private static IReadOnlyList<BootPerformanceSample> ParseSamples(string xml)
@@ -96,14 +87,9 @@ namespace Sentinel.App.Services
                 long postBootDuration = ReadDataValue(eventXml, "BootPostBootTime");
                 DateTimeOffset? timestamp = ReadTimestamp(eventXml);
 
-                if (bootDuration <= 0)
-                    continue;
+                if (bootDuration <= 0) continue;
 
-                samples.Add(new BootPerformanceSample(
-                    timestamp,
-                    bootDuration,
-                    mainPathDuration,
-                    postBootDuration));
+                samples.Add(new BootPerformanceSample(timestamp, bootDuration, mainPathDuration, postBootDuration));
             }
 
             return samples;
@@ -119,42 +105,38 @@ namespace Sentinel.App.Services
                 start = xml.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
             }
 
-            if (start < 0)
-                return 0;
+            if (start < 0) return 0;
 
             start += marker.Length;
             int end = xml.IndexOf('<', start);
-            if (end <= start)
-                return 0;
+            if (end <= start) return 0;
 
             string value = xml.Substring(start, end - start).Trim();
-            return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed)
-                ? parsed
-                : 0;
+            return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed) ? parsed : 0;
         }
 
         private static DateTimeOffset? ReadTimestamp(string xml)
         {
             const string marker = "SystemTime='";
             int start = xml.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            int quoteLength = 1;
+            char quote;
 
             if (start < 0)
             {
                 const string alternate = "SystemTime=\"";
                 start = xml.IndexOf(alternate, StringComparison.OrdinalIgnoreCase);
-                if (start < 0)
-                    return null;
+                if (start < 0) return null;
                 start += alternate.Length;
+                quote = '\"';
             }
             else
             {
                 start += marker.Length;
+                quote = '\'';
             }
 
-            int end = xml.IndexOf(quoteLength == 1 ? '\'' : '\"', start);
-            if (end <= start)
-                return null;
+            int end = xml.IndexOf(quote, start);
+            if (end <= start) return null;
 
             string value = xml.Substring(start, end - start);
             return DateTimeOffset.TryParse(
@@ -170,34 +152,28 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? fileName : Path.Combine(system, fileName),
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
 
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(5), maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(5000))
-                {
-                    try { process.Kill(); } catch { }
-                    return new CommandResult(-1, output, "Boot-performance diagnostic timed out.");
-                }
-
-                return new CommandResult(process.ExitCode, output, error);
+                return new CommandResult(
+                    execution.Succeeded ? 0 : execution.ExitCode ?? -1,
+                    execution.StandardOutput,
+                    execution.StandardError.Length > 0 ? execution.StandardError : execution.Detail);
             }
             catch (Exception ex)
             {
-                return new CommandResult(-1, string.Empty, ex.Message);
+                return new CommandResult(-1, string.Empty, ex.GetType().Name);
             }
         }
 

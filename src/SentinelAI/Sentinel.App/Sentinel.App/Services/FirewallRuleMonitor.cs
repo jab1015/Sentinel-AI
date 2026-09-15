@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 
 namespace Sentinel.App.Services
@@ -31,30 +32,23 @@ namespace Sentinel.App.Services
                     "Protocol=$port.Protocol;LocalPort=$port.LocalPort;RemotePort=$port.RemotePort;" +
                     "RemoteAddress=$address.RemoteAddress} } | ConvertTo-Json -Compress";
 
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
-                    FileName = "powershell.exe",
+                    FileName = ResolvePowerShellPath(),
                     Arguments = $"-NoLogo -NoProfile -NonInteractive -Command \"{script}\"",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
 
-                if (!process.Start())
-                {
-                    return Empty("Firewall-rule data was unavailable.");
-                }
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(12), maxOutputChars: 750_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                string output = process.StandardOutput.ReadToEnd();
-                if (!process.WaitForExit(12000) || process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    TryKill(process);
+                if (!execution.Succeeded || string.IsNullOrWhiteSpace(execution.StandardOutput))
                     return Empty("Firewall-rule data was unavailable.");
-                }
 
-                using JsonDocument document = JsonDocument.Parse(output);
+                using JsonDocument document = JsonDocument.Parse(execution.StandardOutput);
                 IEnumerable<JsonElement> items = document.RootElement.ValueKind == JsonValueKind.Array
                     ? document.RootElement.EnumerateArray()
                     : new[] { document.RootElement };
@@ -81,9 +75,7 @@ namespace Sentinel.App.Services
                         action.Equals("Allow", StringComparison.OrdinalIgnoreCase);
 
                     if (!inboundAllow)
-                    {
                         continue;
-                    }
 
                     inboundAllowRuleCount++;
 
@@ -122,6 +114,14 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system)
+                ? "powershell.exe"
+                : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
+
         private static bool IsHighRiskPort(string value)
         {
             string normalized = value.Trim();
@@ -139,45 +139,22 @@ namespace Sentinel.App.Services
 
         private static string GetString(JsonElement item, string propertyName)
         {
-            return item.TryGetProperty(propertyName, out JsonElement value) &&
-                   value.ValueKind == JsonValueKind.String
+            return item.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? string.Empty
                 : string.Empty;
         }
 
         private static string GetValue(JsonElement item, string propertyName)
         {
-            if (!item.TryGetProperty(propertyName, out JsonElement value) ||
-                value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-            {
+            if (!item.TryGetProperty(propertyName, out JsonElement value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
                 return string.Empty;
-            }
 
-            return value.ValueKind == JsonValueKind.String
-                ? value.GetString() ?? string.Empty
-                : value.ToString();
+            return value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
         }
 
-        private static string Fallback(string value, string fallback) =>
-            string.IsNullOrWhiteSpace(value) ? fallback : value;
+        private static string Fallback(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value;
 
-        private static void TryKill(Process process)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup only.
-            }
-        }
-
-        private static FirewallRuleSnapshot Empty(string reason) =>
-            new(0, 0, 0, "None", reason);
+        private static FirewallRuleSnapshot Empty(string reason) => new(0, 0, 0, "None", reason);
 
         private sealed record FirewallRuleFinding(string RuleName, string Reason);
 

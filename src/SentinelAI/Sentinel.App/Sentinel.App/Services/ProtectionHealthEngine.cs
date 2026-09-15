@@ -38,6 +38,7 @@ namespace Sentinel.App.Services
                     "No basic Windows protection action is required.",
                     "basic-protection-healthy-subscription-required");
             }
+
             bool monitoringCoverageHealthy =
                 snapshot.AuthenticationMonitoringAvailable &&
                 snapshot.EventLogMonitoringAvailable &&
@@ -65,41 +66,10 @@ namespace Sentinel.App.Services
                     "protection-healthy");
             }
 
-            if (!networkHealthy)
-            {
-                return new ProtectionHealthResult(
-                    ProtectionHealthState.Degraded,
-                    false,
-                    "Sentinel network protection is degraded",
-                    "Sentinel cannot currently verify continuous network connection monitoring.",
-                    "Keep Sentinel running. If this condition persists, restart Sentinel; if monitoring does not recover, restart Windows.",
-                    "protection-network-monitor-unavailable");
-            }
-
-            if (!monitoringCoverageHealthy)
-            {
-                string[] unavailable =
-                {
-                    snapshot.AuthenticationMonitoringAvailable ? string.Empty : "authentication",
-                    snapshot.EventLogMonitoringAvailable ? string.Empty : "Windows Event Log",
-                    snapshot.ProcessMonitoringAvailable ? string.Empty : "process",
-                    snapshot.CommandLineMonitoringAvailable ? string.Empty : "command-line",
-                    snapshot.ProcessLineageMonitoringAvailable ? string.Empty : "process-lineage",
-                    snapshot.ServiceMonitoringAvailable ? string.Empty : "service",
-                    snapshot.StartupPersistenceMonitoringAvailable ? string.Empty : "startup persistence",
-                    snapshot.ScheduledTaskMonitoringAvailable ? string.Empty : "scheduled task"
-                };
-
-                string missing = string.Join(", ", Array.FindAll(unavailable, value => !string.IsNullOrWhiteSpace(value)));
-                return new ProtectionHealthResult(
-                    ProtectionHealthState.Degraded,
-                    false,
-                    "Sentinel security monitoring coverage is degraded",
-                    $"Sentinel cannot currently verify {missing} monitoring.",
-                    "Keep Sentinel running while it retries. If coverage does not recover, review Activity Center and restart Sentinel before relying on a healthy security status.",
-                    "protection-security-coverage-unavailable");
-            }
-
+            // Core Windows protections are verified conditions rather than collector
+            // readiness signals. If Windows actually reports Defender or Firewall as
+            // disabled/inactive, surface that immediately even while other evidence is
+            // still being gathered.
             if (!defenderHealthy && !firewallHealthy)
             {
                 return new ProtectionHealthResult(
@@ -122,18 +92,56 @@ namespace Sentinel.App.Services
                     "protection-defender-degraded");
             }
 
+            if (!firewallHealthy)
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Degraded,
+                    false,
+                    "Firewall protection needs attention",
+                    $"Windows Firewall is {snapshot.FirewallStatus}.",
+                    "Turn on Windows Firewall for all network profiles unless another managed firewall is intentionally providing equivalent protection.",
+                    "protection-firewall-degraded");
+            }
+
+            // Collector availability booleans tell us whether an evidence source has
+            // produced an authoritative result on this pass; they do not distinguish a
+            // collector that is still initializing/retrying from a collector that is
+            // actually broken. Treating a false readiness bit as a verified Sentinel
+            // failure caused a temporary red "coverage degraded" investigation during
+            // normal startup. Do not manufacture a failure from missing evidence.
+            //
+            // Keep the product in a neutral Gathering state for as long as one of these
+            // sources is still coming online. Real Windows protection failures above,
+            // and corroborated threat/investigation evidence elsewhere, still surface
+            // immediately. Once the collectors report authoritative evidence this state
+            // naturally resolves without an arbitrary startup timeout.
+            if (!networkHealthy || !monitoringCoverageHealthy)
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Gathering,
+                    false,
+                    "Gathering security information",
+                    "Sentinel is collecting and refreshing the remaining security-monitoring information.",
+                    "No action is needed while Sentinel finishes these checks. Monitoring will retry automatically and the status will update as evidence becomes available.",
+                    "protection-gathering");
+            }
+
+            // All cases above are exhaustive, but keep a fail-closed fallback if a new
+            // component is added without a corresponding explanation. This wording does
+            // not claim that an unavailable collector is itself a Sentinel failure.
             return new ProtectionHealthResult(
-                ProtectionHealthState.Degraded,
+                ProtectionHealthState.Gathering,
                 false,
-                "Firewall protection needs attention",
-                $"Windows Firewall is {snapshot.FirewallStatus}.",
-                "Turn on Windows Firewall for all network profiles unless another managed firewall is intentionally providing equivalent protection.",
-                "protection-firewall-degraded");
+                "Gathering security information",
+                "Sentinel is refreshing the information needed to complete the current protection check.",
+                "No action is needed while Sentinel retries the remaining checks.",
+                "protection-gathering");
         }
 
         public enum ProtectionHealthState
         {
             Healthy,
+            Gathering,
             Degraded
         }
 

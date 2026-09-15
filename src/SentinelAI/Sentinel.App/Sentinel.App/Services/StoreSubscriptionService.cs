@@ -9,8 +9,8 @@ namespace Sentinel.App.Services
 {
     /// <summary>
     /// Microsoft Store subscription boundary for Sentinel AI cloud services.
-    /// The Partner Center Product IDs (offer tokens) are stable identifiers chosen by us;
-    /// Store IDs are discovered at runtime and never hard-coded.
+    /// Local license state is useful for UI/early gating, but the cloud gateway is
+    /// authoritative for paid cloud entitlements.
     /// </summary>
     public sealed class StoreSubscriptionService
     {
@@ -28,7 +28,7 @@ namespace Sentinel.App.Services
         {
 #if DEBUG || SENTINEL_LOCAL_DEV
             return new SubscriptionState(true, SubscriptionPlan.Development, "Local development build", null, null,
-                "Cloud AI is enabled for this local development build. Microsoft Store subscription licensing remains enforced in Release packages.");
+                "Cloud AI is enabled for this local development build. Microsoft Store subscription licensing remains enforced by the production gateway.");
 #else
             if (!HasPackageIdentity())
                 return SubscriptionState.Unavailable("Microsoft Store licensing is available only in an installed Sentinel package.");
@@ -61,7 +61,7 @@ namespace Sentinel.App.Services
                 string summary = active
                     ? $"Sentinel AI {activePlan.ToString().ToLowerInvariant()} subscription is active" +
                       (expiration.HasValue ? $" through {expiration.Value.LocalDateTime:d}." : ".")
-                    : "Free local monitoring is active. A Sentinel AI subscription is required for cloud investigations, automatic optimization, verified repairs, containment, and quarantine.";
+                    : "Free local monitoring is active. A Sentinel AI subscription is required for premium cloud investigations and paid security/repair features.";
 
                 return new SubscriptionState(
                     active,
@@ -74,9 +74,42 @@ namespace Sentinel.App.Services
             }
             catch (Exception ex)
             {
-                return SubscriptionState.Unavailable("Sentinel could not verify the Microsoft Store subscription right now. Premium investigations and actions will remain off until licensing can be verified; free local monitoring will continue.", ex.Message);
+                return SubscriptionState.Unavailable("Sentinel could not verify the Microsoft Store subscription right now. Premium features will remain off until licensing can be verified; free local monitoring will continue.", ex.Message);
             }
 #endif
+        }
+
+        /// <summary>
+        /// Converts a gateway-provided, narrowly scoped Microsoft Entra collections ticket
+        /// into a Microsoft Store Collections ID for the Store account currently associated
+        /// with this installed package. The returned ID is sent only to the Sentinel gateway,
+        /// where entitlement is verified server-side.
+        /// </summary>
+        public async Task<StoreCollectionsIdentityResult> CreateCollectionsIdentityAsync(
+            string serviceTicket,
+            string publisherUserId)
+        {
+            if (!HasPackageIdentity())
+                return StoreCollectionsIdentityResult.Unavailable("Microsoft Store entitlement verification requires the installed Store package.");
+            if (string.IsNullOrWhiteSpace(serviceTicket) || serviceTicket.Length > 16_384)
+                return StoreCollectionsIdentityResult.Unavailable("The gateway did not provide a valid Microsoft Store collections ticket.");
+            if (string.IsNullOrWhiteSpace(publisherUserId) || publisherUserId.Length > 128)
+                return StoreCollectionsIdentityResult.Unavailable("The gateway did not provide a valid publisher session identifier.");
+
+            try
+            {
+                string collectionsId = await _storeContext.GetCustomerCollectionsIdAsync(serviceTicket, publisherUserId);
+                if (string.IsNullOrWhiteSpace(collectionsId))
+                    return StoreCollectionsIdentityResult.Unavailable("Microsoft Store did not return a collections identifier.");
+
+                return new StoreCollectionsIdentityResult(true, collectionsId, string.Empty);
+            }
+            catch (Exception ex)
+            {
+                return StoreCollectionsIdentityResult.Unavailable(
+                    "Microsoft Store could not establish the server-side entitlement identity.",
+                    ex.Message);
+            }
         }
 
         public async Task<SubscriptionPurchaseResult> PurchaseAsync(SubscriptionPlan plan)
@@ -101,7 +134,7 @@ namespace Sentinel.App.Services
                 bool success = result.Status == StorePurchaseStatus.Succeeded || result.Status == StorePurchaseStatus.AlreadyPurchased;
                 string message = result.Status switch
                 {
-                    StorePurchaseStatus.Succeeded => "Subscription activated. Sentinel can now use cloud AI when local evidence is not enough.",
+                    StorePurchaseStatus.Succeeded => "Subscription activated. Sentinel can now verify premium entitlement with the secure cloud gateway.",
                     StorePurchaseStatus.AlreadyPurchased => "This subscription is already active on your Microsoft account.",
                     StorePurchaseStatus.NotPurchased => "The subscription purchase was not completed.",
                     StorePurchaseStatus.NetworkError => "Microsoft Store could not complete the purchase because of a network error.",
@@ -160,6 +193,12 @@ namespace Sentinel.App.Services
     {
         public static SubscriptionState Unavailable(string summary, string diagnostic = "") =>
             new(false, SubscriptionPlan.None, "Subscription unavailable", null, null, summary, null, diagnostic);
+    }
+
+    public sealed record StoreCollectionsIdentityResult(bool Succeeded, string CollectionsId, string Message, string Diagnostic = "")
+    {
+        public static StoreCollectionsIdentityResult Unavailable(string message, string diagnostic = "") =>
+            new(false, string.Empty, message, diagnostic);
     }
 
     public sealed record SubscriptionPurchaseResult(bool Succeeded, string Message, StorePurchaseStatus Status);

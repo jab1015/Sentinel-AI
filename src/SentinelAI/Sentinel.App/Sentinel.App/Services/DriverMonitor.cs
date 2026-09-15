@@ -24,30 +24,23 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using Process process = new();
-                process.StartInfo = new ProcessStartInfo
+                ProcessStartInfo startInfo = new()
                 {
-                    FileName = "powershell.exe",
+                    FileName = ResolvePowerShellPath(),
                     Arguments = "-NoLogo -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_SystemDriver | Select-Object Name,DisplayName,State,StartMode,PathName | ConvertTo-Json -Compress\"",
                     UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
 
-                if (!process.Start())
-                {
-                    return Empty("Driver data was unavailable.");
-                }
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(10), maxOutputChars: 750_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                string output = process.StandardOutput.ReadToEnd();
-                if (!process.WaitForExit(10000) || process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-                {
-                    TryKill(process);
+                if (!execution.Succeeded || string.IsNullOrWhiteSpace(execution.StandardOutput))
                     return Empty("Driver data was unavailable.");
-                }
 
-                using JsonDocument document = JsonDocument.Parse(output);
+                using JsonDocument document = JsonDocument.Parse(execution.StandardOutput);
                 IEnumerable<JsonElement> items = document.RootElement.ValueKind == JsonValueKind.Array
                     ? document.RootElement.EnumerateArray()
                     : new[] { document.RootElement };
@@ -68,14 +61,10 @@ namespace Sentinel.App.Services
                     string path = NormalizeDriverPath(GetString(item, "PathName"));
 
                     if (state.Equals("Running", StringComparison.OrdinalIgnoreCase))
-                    {
                         runningDriverCount++;
-                    }
 
                     if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                    {
                         continue;
-                    }
 
                     reviewedFileCount++;
                     SignatureAssessment signature = InspectSignature(path);
@@ -138,6 +127,14 @@ namespace Sentinel.App.Services
             }
         }
 
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system)
+                ? "powershell.exe"
+                : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
+
         private static SignatureAssessment InspectSignature(string path)
         {
             try
@@ -170,16 +167,12 @@ namespace Sentinel.App.Services
         private static string NormalizeDriverPath(string rawPath)
         {
             if (string.IsNullOrWhiteSpace(rawPath))
-            {
                 return string.Empty;
-            }
 
             string value = rawPath.Trim().Trim('"');
             int argumentIndex = value.IndexOf(".sys ", StringComparison.OrdinalIgnoreCase);
             if (argumentIndex >= 0)
-            {
                 value = value[..(argumentIndex + 4)];
-            }
 
             value = Environment.ExpandEnvironmentVariables(value);
 
@@ -196,14 +189,8 @@ namespace Sentinel.App.Services
                     value);
             }
 
-            try
-            {
-                return Path.GetFullPath(value);
-            }
-            catch
-            {
-                return string.Empty;
-            }
+            try { return Path.GetFullPath(value); }
+            catch { return string.Empty; }
         }
 
         private static bool IsSystemDriverLocation(string path)
@@ -216,14 +203,9 @@ namespace Sentinel.App.Services
                     "drivers"));
 
                 string fullPath = Path.GetFullPath(path);
-                return fullPath.StartsWith(
-                    driverDirectory + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase);
+                return fullPath.StartsWith(driverDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
         private static bool IsUserWritableLocation(string path)
@@ -241,50 +223,25 @@ namespace Sentinel.App.Services
                        fullPath.StartsWith(appData, StringComparison.OrdinalIgnoreCase) ||
                        fullPath.StartsWith(localAppData, StringComparison.OrdinalIgnoreCase);
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
 
         private static string GetString(JsonElement item, string propertyName)
         {
-            return item.TryGetProperty(propertyName, out JsonElement value) &&
-                   value.ValueKind == JsonValueKind.String
+            return item.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.String
                 ? value.GetString() ?? string.Empty
                 : string.Empty;
         }
 
-        private static string Fallback(string value, string fallback) =>
-            string.IsNullOrWhiteSpace(value) ? fallback : value;
-
-        private static string Shorten(string value) =>
-            value.Length <= 160 ? value : value[..157] + "...";
-
-        private static void TryKill(Process process)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Best-effort cleanup only.
-            }
-        }
-
-        private static DriverSnapshot Empty(string reason) =>
-            new(0, 0, 0, 0, "None", "None", reason);
+        private static string Fallback(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value;
+        private static string Shorten(string value) => value.Length <= 160 ? value : value[..157] + "...";
+        private static DriverSnapshot Empty(string reason) => new(0, 0, 0, 0, "None", "None", reason);
 
         private sealed record DriverFinding(string DriverName, string Path, string Reason);
 
         private sealed record SignatureAssessment(bool IsSigned, bool IsTrusted, string Publisher)
         {
-            public static SignatureAssessment Unsigned { get; } =
-                new(false, false, "Unsigned");
+            public static SignatureAssessment Unsigned { get; } = new(false, false, "Unsigned");
         }
 
         public sealed record DriverSnapshot(

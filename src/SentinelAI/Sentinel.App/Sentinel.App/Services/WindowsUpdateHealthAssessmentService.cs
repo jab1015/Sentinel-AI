@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 
 namespace Sentinel.App.Services
@@ -39,12 +40,7 @@ namespace Sentinel.App.Services
 
             IReadOnlyList<string> failureEvidence = ExtractFailureEvidence(events.Output);
             bool recentFailures = failureEvidence.Count > 0;
-
-            // A stopped Windows Update service is not automatically a fault because
-            // Windows may start it on demand. Persistent update failures are the
-            // stronger signal used to justify repair investigation.
-            bool repairInvestigationWarranted =
-                serviceExists && recentFailures;
+            bool repairInvestigationWarranted = serviceExists && recentFailures;
 
             string summary;
             if (!serviceExists)
@@ -91,34 +87,28 @@ namespace Sentinel.App.Services
         {
             try
             {
-                using Process process = new()
+                string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                ProcessStartInfo startInfo = new()
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = fileName,
-                        Arguments = arguments,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    }
+                    FileName = string.IsNullOrWhiteSpace(system) ? fileName : Path.Combine(system, fileName),
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
                 };
 
-                process.Start();
-                string output = process.StandardOutput.ReadToEnd();
-                string error = process.StandardError.ReadToEnd();
+                ProcessExecutionResult execution = BoundedProcessRunner
+                    .RunAsync(startInfo, TimeSpan.FromSeconds(5), maxOutputChars: 500_000)
+                    .GetAwaiter()
+                    .GetResult();
 
-                if (!process.WaitForExit(5000))
-                {
-                    try { process.Kill(); } catch { }
-                    return new CommandResult(-1, output, "Diagnostic command timed out.");
-                }
-
-                return new CommandResult(process.ExitCode, output, error);
+                return new CommandResult(
+                    execution.Succeeded ? 0 : execution.ExitCode ?? -1,
+                    execution.StandardOutput,
+                    execution.StandardError.Length > 0 ? execution.StandardError : execution.Detail);
             }
             catch (Exception ex)
             {
-                return new CommandResult(-1, string.Empty, ex.Message);
+                return new CommandResult(-1, string.Empty, ex.GetType().Name);
             }
         }
 

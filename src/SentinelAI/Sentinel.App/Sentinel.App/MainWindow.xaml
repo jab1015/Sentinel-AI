@@ -8,72 +8,203 @@
     mc:Ignorable="d"
     Title="Sentinel AI">
 
-    <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
 
-    <Grid Background="#111827">
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Sentinel AI dashboard">
-            <StackPanel Margin="36" Spacing="20" MaxWidth="1100" HorizontalAlignment="Center">
-                <StackPanel Spacing="8">
-                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <Image Source="Assets/Shield.png" Width="34" Height="34" Stretch="Uniform" AutomationProperties.Name="Sentinel AI shield"/>
-                        <TextBlock Text="Sentinel AI" FontSize="30" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" AutomationProperties.HeadingLevel="Level1"/>
+    <Grid Background="#070B14">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="224"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="#0B1220" BorderBrush="#1C2B43" BorderThickness="0,0,1,0">
+            <Grid Margin="16,20,16,18">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+                    <Border Width="42" Height="42" CornerRadius="10" Background="#122544" BorderBrush="#2F7EF8" BorderThickness="1">
+                        <Image Source="Assets/Shield.png" Width="31" Height="31" Stretch="Uniform" AutomationProperties.Name="Sentinel AI shield"/>
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="SENTINEL AI" FontSize="18" CharacterSpacing="35" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level1"/>
+                        <TextBlock Text="Security control center" FontSize="11" Foreground="#7DD3FC"/>
                     </StackPanel>
-                    <TextBlock Text="Your Windows Investigation Assistant" FontSize="16" Foreground="#9CA3AF"/>
-                    <StackPanel Orientation="Horizontal" Spacing="10"><Button x:Name="OpenQuarantineButton" Content="Quarantine" Click="OpenQuarantineButton_Click" AutomationProperties.Name="Open Quarantine Manager"/></StackPanel>
                 </StackPanel>
 
-                <Border Background="#1F2937" CornerRadius="14" Padding="30"><StackPanel Spacing="14"><TextBlock x:Name="GreetingText" Text="Hello." FontSize="30" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level2"/><TextBlock x:Name="OverallStatusText" Text="I’m analyzing your computer." FontSize="23" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/><TextBlock x:Name="AttentionStatusText" Text="I’ll tell you only if something requires your attention." FontSize="17" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="MonitoringStatusText" Text="I’ll continue monitoring your computer." FontSize="15" Foreground="#9CA3AF" TextWrapping="Wrap"/><Button x:Name="GuidanceActionButton" Visibility="Collapsed" HorizontalAlignment="Left" Click="GuidanceActionButton_Click" AutomationProperties.Name="Perform recommended action"/></StackPanel></Border>
-
-                <Border Background="#1F2937" CornerRadius="16" Padding="30">
-                    <StackPanel Spacing="18">
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="Ask Sentinel" FontSize="26" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level2"/>
-                            <TextBlock Text="Ask about this computer. Sentinel checks what it knows locally first, then investigates further only when needed." FontSize="15" Foreground="#B8C1CF" TextWrapping="Wrap"/>
+                <StackPanel Grid.Row="1" Margin="0,28,0,0" Spacing="8">
+                    <Border Background="#13233D" BorderBrush="#2F7EF8" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE80F;" FontSize="15" Foreground="#7DD3FC"/>
+                            <TextBlock Text="Overview" FontSize="14" FontWeight="SemiBold" Foreground="White" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBox x:Name="AskSentinelQuestionBox" MinHeight="44" Padding="12,8" FontSize="15" PlaceholderText="For example: Why is my computer using so much memory?" AcceptsReturn="False" KeyDown="AskSentinelQuestionBox_KeyDown" AutomationProperties.Name="Ask Sentinel question"/>
-                            <Button Grid.Column="1" x:Name="AskSentinelButton" Content="Ask" MinWidth="96" MinHeight="44" Click="AskSentinelButton_Click" AutomationProperties.Name="Ask Sentinel"/>
+                    </Border>
+
+                    <TextBlock Text="PROTECTION" Margin="4,10,0,2" FontSize="10" CharacterSpacing="90" Foreground="#6F88A8"/>
+                    <Button x:Name="OpenQuarantineButton" Click="OpenQuarantineButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" Background="Transparent" BorderBrush="Transparent" AutomationProperties.Name="Open Quarantine Manager">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xEA18;" FontSize="15" Foreground="#A9C7EA"/>
+                            <TextBlock Text="Quarantine" FontSize="14" Foreground="#E7F0FB" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <TextBlock Text="PRIVACY" Margin="4,10,0,2" FontSize="10" CharacterSpacing="90" Foreground="#6F88A8"/>
+                    <Button x:Name="OpenVaultButton" Click="OpenVaultButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" Background="Transparent" BorderBrush="Transparent" AutomationProperties.Name="Open Sentinel Vault">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <FontIcon Glyph="&#xE72E;" FontSize="15" Foreground="#7DD3FC"/>
+                            <TextBlock Text="Sentinel Vault" FontSize="14" Foreground="#E7F0FB" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <Border Grid.Row="3" Background="#0E1A2B" BorderBrush="#1C3555" BorderThickness="1" CornerRadius="8" Padding="11">
+                    <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Ellipse Width="8" Height="8" Fill="#38BDF8" VerticalAlignment="Center"/>
+                            <TextBlock Text="Monitoring active" FontSize="12" FontWeight="SemiBold" Foreground="#DCEBFA"/>
+                        </StackPanel>
+                        <TextBlock Text="Sentinel continues in the background when this window is closed." FontSize="11" Foreground="#8298B5" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Background="#09111E" BorderBrush="#1C2B43" BorderThickness="0,0,0,1" Padding="24,15">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Overview" FontSize="20" FontWeight="SemiBold" Foreground="White"/>
+                        <TextBlock x:Name="GreetingText" Text="Hello." FontSize="12" Foreground="#89A3C1"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Border Background="#10233E" CornerRadius="14" Padding="10,5">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Ellipse Width="7" Height="7" Fill="#38BDF8" VerticalAlignment="Center"/>
+                                <TextBlock Text="Live monitoring" FontSize="11" Foreground="#CBE7FF"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Sentinel AI dashboard">
+                <StackPanel Margin="24,18,24,28" Spacing="14">
+                    <Border Background="#0E1828" BorderBrush="#244A76" BorderThickness="1" CornerRadius="12" Padding="20">
+                        <Grid ColumnSpacing="18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="52" Height="52" CornerRadius="26" Background="#112743" BorderBrush="#38BDF8" BorderThickness="1">
+                                <Image Source="Assets/Shield.png" Width="38" Height="38" Stretch="Uniform"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                <TextBlock x:Name="OverallStatusText" Text="I’m analyzing your computer." FontSize="22" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                <TextBlock x:Name="AttentionStatusText" Text="I’ll tell you only if something requires your attention." FontSize="14" Foreground="#D5E2F0" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="MonitoringStatusText" Text="I’ll continue monitoring your computer." FontSize="12" Foreground="#8399B5" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Button Grid.Column="2" x:Name="GuidanceActionButton" Visibility="Collapsed" VerticalAlignment="Center" Margin="12,0,0,0" Padding="14,8" Background="#2563EB" Foreground="White" Click="GuidanceActionButton_Click" AutomationProperties.Name="Perform recommended action"/>
                         </Grid>
-                        <TextBlock x:Name="AskSentinelStatusText" Text="Sentinel answers from verified evidence and tells you when it needs to investigate further." FontSize="13" Foreground="#8F9AAA" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                        <Border x:Name="AskSentinelProgressPanel" Background="#172033" CornerRadius="10" Padding="14,12" Visibility="Collapsed">
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <ProgressRing x:Name="AskSentinelProgressRing" Width="20" Height="20" IsActive="False"/>
-                                <TextBlock x:Name="AskSentinelProgressText" Text="Collecting verified local evidence…" FontSize="14" Foreground="#D1D5DB" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </Border>
-                        <Border x:Name="AskSentinelAnswerBorder" Background="#0F172A" BorderBrush="#334155" BorderThickness="1" CornerRadius="12" Padding="24" Visibility="Collapsed">
+                    </Border>
+
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*"/>
+                            <ColumnDefinition Width="2*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Background="#0C1524" BorderBrush="#1D3554" BorderThickness="1" CornerRadius="12" Padding="18">
                             <StackPanel Spacing="12">
-                                <StackPanel Orientation="Horizontal" Spacing="9">
-                                    <Image Source="Assets/Shield.png" Width="22" Height="22" Stretch="Uniform"/>
-                                    <TextBlock Text="Sentinel" FontSize="15" FontWeight="SemiBold" Foreground="#CBD5E1" VerticalAlignment="Center"/>
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Ask Sentinel" FontSize="18" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level2"/>
+                                    <TextBlock Text="Ask about this PC. Sentinel grounds answers in verified local evidence first." FontSize="12" Foreground="#8EA5C1" TextWrapping="Wrap"/>
                                 </StackPanel>
-                                <TextBlock x:Name="AskSentinelAnswerText" FontSize="17" LineHeight="27" Foreground="#F8FAFC" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
-                                <Button x:Name="ReportAiResponseButton"
-                                        Content="Report AI response"
-                                        HorizontalAlignment="Left"
-                                        Padding="12,6"
-                                        FontSize="13"
-                                        Click="ReportAiResponseButton_Click"
-                                        AutomationProperties.Name="Report AI response"/>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="AskSentinelQuestionBox" MinHeight="42" Padding="11,8" FontSize="14" PlaceholderText="Why is my computer using so much memory?" AcceptsReturn="False" KeyDown="AskSentinelQuestionBox_KeyDown" AutomationProperties.Name="Ask Sentinel question"/>
+                                    <Button Grid.Column="1" x:Name="AskSentinelButton" Content="Ask" MinWidth="78" MinHeight="42" Background="#2563EB" Foreground="White" Click="AskSentinelButton_Click" AutomationProperties.Name="Ask Sentinel"/>
+                                </Grid>
+                                <TextBlock x:Name="AskSentinelStatusText" Text="Sentinel checks local evidence first and tells you when deeper investigation is needed." FontSize="11" Foreground="#758AA6" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                <Border x:Name="AskSentinelProgressPanel" Background="#09111D" CornerRadius="8" Padding="12,10" Visibility="Collapsed">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <ProgressRing x:Name="AskSentinelProgressRing" Width="18" Height="18" IsActive="False"/>
+                                        <TextBlock x:Name="AskSentinelProgressText" Text="Collecting verified local evidence…" FontSize="13" Foreground="#D1E4F7" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border x:Name="AskSentinelAnswerBorder" Background="#09111D" BorderBrush="#24466D" BorderThickness="1" CornerRadius="9" Padding="15" Visibility="Collapsed">
+                                    <StackPanel Spacing="9">
+                                        <StackPanel Orientation="Horizontal" Spacing="8"><Image Source="Assets/Shield.png" Width="20" Height="20" Stretch="Uniform"/><TextBlock Text="Sentinel" FontSize="14" FontWeight="SemiBold" Foreground="#7DD3FC" VerticalAlignment="Center"/></StackPanel>
+                                        <TextBlock x:Name="AskSentinelAnswerText" FontSize="14" LineHeight="22" Foreground="#F2F8FF" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                                        <Button x:Name="ReportAiResponseButton" Content="Report response" HorizontalAlignment="Left" Padding="9,4" FontSize="11" Click="ReportAiResponseButton_Click" AutomationProperties.Name="Report AI response"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
-                    </StackPanel>
-                </Border>
 
-                <Border x:Name="IssueSummaryBorder" Background="#1F2937" CornerRadius="14" Padding="26" Visibility="Collapsed"><StackPanel Spacing="16"><TextBlock Text="Investigation Summary" FontSize="24" FontWeight="SemiBold" Foreground="White"/><StackPanel Spacing="5"><TextBlock Text="What I found" FontSize="14" Foreground="#9CA3AF"/><TextBlock x:Name="GuidanceTitleText" FontSize="20" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="GuidanceWhatHappenedText" FontSize="16" Foreground="#D1D5DB" TextWrapping="Wrap"/></StackPanel><StackPanel Spacing="5"><TextBlock Text="Why it matters" FontSize="14" Foreground="#9CA3AF"/><TextBlock x:Name="GuidanceWhyItMattersText" FontSize="16" Foreground="#D1D5DB" TextWrapping="Wrap"/></StackPanel><StackPanel Spacing="5"><TextBlock Text="What I investigated" FontSize="14" Foreground="#9CA3AF"/><TextBlock x:Name="GuidanceEvidenceText" FontSize="15" Foreground="#D1D5DB" TextWrapping="Wrap"/></StackPanel><StackPanel Spacing="5"><TextBlock Text="What happens next" FontSize="14" Foreground="#9CA3AF"/><TextBlock x:Name="GuidanceActionText" FontSize="16" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="GuidanceFixDetailsText" FontSize="14" Foreground="#9CA3AF" TextWrapping="Wrap"/></StackPanel><TextBlock x:Name="GuidanceFixAvailabilityText" FontSize="14" Foreground="#D1D5DB" TextWrapping="Wrap"/><Button x:Name="VerifyGuidanceButton" Content="Check Again" HorizontalAlignment="Left" Visibility="Collapsed" Click="VerifyGuidanceButton_Click"/><Border x:Name="VerificationResultBorder" Background="#111827" CornerRadius="8" Padding="14" Visibility="Collapsed"><StackPanel><TextBlock x:Name="VerificationResultTitleText" FontSize="16" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="VerificationResultMessageText" Margin="0,6,0,0" FontSize="14" Foreground="#D1D5DB" TextWrapping="Wrap"/></StackPanel></Border></StackPanel></Border>
+                        <Border Grid.Column="1" Background="#0C1524" BorderBrush="#1D3554" BorderThickness="1" CornerRadius="12" Padding="18">
+                            <StackPanel Spacing="11">
+                                <TextBlock Text="Live system state" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                                <TextBlock x:Name="SecurityText" Text="Windows security evidence is loading." FontSize="12" Foreground="#D4E2F0" TextWrapping="Wrap"/>
+                                <Border Height="1" Background="#1D3554"/>
+                                <TextBlock x:Name="CpuText" Text="CPU Usage: —" FontSize="12" Foreground="#BFD0E4"/>
+                                <TextBlock x:Name="MemoryText" Text="Physical Memory: —" FontSize="12" Foreground="#BFD0E4" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="DiskText" Text="Windows System Drive: —" FontSize="12" Foreground="#BFD0E4" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="NetworkText" Text="Current Network Activity: —" FontSize="12" Foreground="#BFD0E4" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="ProcessText" Text="Running Processes: —" FontSize="12" Foreground="#BFD0E4" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="LastUpdatedText" Text="Evidence Collected: —" FontSize="11" Foreground="#6F88A8" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
 
-                <Border x:Name="InvestigationHistoryBorder" Background="#1F2937" CornerRadius="14" Padding="26" Visibility="Collapsed" Loaded="ActivityCenter_Loaded">
-                    <StackPanel Spacing="18">
-                        <TextBlock Text="Recent Activity" FontSize="24" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level2"/>
-                        <Grid ColumnSpacing="14"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock x:Name="HistoryOutcomeIconText" Text="✓" FontSize="20" VerticalAlignment="Top"/><StackPanel Grid.Column="1" Spacing="4"><TextBlock x:Name="HistoryTitleText" FontSize="17" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="HistorySummaryText" FontSize="15" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="HistoryOutcomeText" FontSize="14" Foreground="#9CA3AF" TextWrapping="Wrap"/></StackPanel></Grid>
-                        <Border Height="1" Background="#374151"/>
-                        <Grid ColumnSpacing="14"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="✓" FontSize="20" VerticalAlignment="Top"/><StackPanel Grid.Column="1" Spacing="4"><TextBlock Text="Optimization status" FontSize="17" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="OptimizationStatusText" Text="Sentinel is checking whether this computer needs safe optimization." FontSize="15" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="OptimizationStatusTimeText" Text="Optimization check in progress" FontSize="14" Foreground="#9CA3AF" TextWrapping="Wrap"/></StackPanel></Grid>
-                    </StackPanel>
-                </Border>
+                    <Border x:Name="IssueSummaryBorder" Background="#171522" BorderBrush="#8B2B33" BorderThickness="1" CornerRadius="12" Padding="18" Visibility="Collapsed">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Investigation" FontSize="18" FontWeight="SemiBold" Foreground="White"/>
+                            <StackPanel Spacing="3"><TextBlock Text="WHAT I FOUND" FontSize="10" CharacterSpacing="80" Foreground="#FCA5A5"/><TextBlock x:Name="GuidanceTitleText" FontSize="17" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="GuidanceWhatHappenedText" FontSize="13" Foreground="#D7E0EC" TextWrapping="Wrap"/></StackPanel>
+                            <StackPanel Spacing="3"><TextBlock Text="WHY IT MATTERS" FontSize="10" CharacterSpacing="80" Foreground="#8FA8C7"/><TextBlock x:Name="GuidanceWhyItMattersText" FontSize="13" Foreground="#D7E0EC" TextWrapping="Wrap"/></StackPanel>
+                            <StackPanel Spacing="3"><TextBlock Text="VERIFIED EVIDENCE" FontSize="10" CharacterSpacing="80" Foreground="#8FA8C7"/><TextBlock x:Name="GuidanceEvidenceText" FontSize="12" Foreground="#D7E0EC" TextWrapping="Wrap"/></StackPanel>
+                            <StackPanel Spacing="3"><TextBlock Text="NEXT STEP" FontSize="10" CharacterSpacing="80" Foreground="#8FA8C7"/><TextBlock x:Name="GuidanceActionText" FontSize="13" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="GuidanceFixDetailsText" FontSize="12" Foreground="#8FA8C7" TextWrapping="Wrap"/></StackPanel>
+                            <TextBlock x:Name="GuidanceFixAvailabilityText" FontSize="12" Foreground="#D1D5DB" TextWrapping="Wrap"/>
+                            <Button x:Name="VerifyGuidanceButton" Content="Check again" HorizontalAlignment="Left" Visibility="Collapsed" Click="VerifyGuidanceButton_Click"/>
+                            <Border x:Name="VerificationResultBorder" Background="#09111D" CornerRadius="8" Padding="12" Visibility="Collapsed"><StackPanel><TextBlock x:Name="VerificationResultTitleText" FontSize="14" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="VerificationResultMessageText" Margin="0,5,0,0" FontSize="12" Foreground="#D1D5DB" TextWrapping="Wrap"/></StackPanel></Border>
+                        </StackPanel>
+                    </Border>
 
-                <Expander Header="Technical details" HorizontalAlignment="Stretch"><StackPanel Spacing="12" Padding="0,14,0,0"><Border Background="#1F2937" CornerRadius="10" Padding="20"><StackPanel Spacing="8"><TextBlock Text="Executive Summary" FontSize="20" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="RiskSummaryText" FontSize="17" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="RecommendationText" FontSize="15" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="RiskScoreText" Visibility="Collapsed"/><TextBlock x:Name="RiskLevelText" Visibility="Collapsed"/><TextBlock x:Name="GuidanceSeverityText" Visibility="Collapsed"/><TextBlock x:Name="GuidanceConfidenceText" Visibility="Collapsed"/><TextBlock x:Name="GuidanceConfidenceLabelText" Visibility="Collapsed"/></StackPanel></Border><Border Background="#1F2937" CornerRadius="10" Padding="20"><StackPanel Spacing="7"><TextBlock Text="System evidence" FontSize="20" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="CpuText" Foreground="#D1D5DB"/><TextBlock x:Name="MemoryText" Foreground="#D1D5DB"/><TextBlock x:Name="DiskText" Foreground="#D1D5DB"/><TextBlock x:Name="NetworkText" Foreground="#D1D5DB"/><TextBlock x:Name="ProcessText" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="SecurityText" Foreground="#D1D5DB"/><TextBlock x:Name="LastUpdatedText" Foreground="#9CA3AF"/></StackPanel></Border><Grid Visibility="Collapsed"><TextBlock x:Name="CriticalEventsText"/><TextBlock x:Name="ErrorEventsText"/><TextBlock x:Name="LatestEventSummaryText"/><TextBlock x:Name="LatestEventMessageText"/><TextBlock x:Name="RunningProcessesText"/><TextBlock x:Name="FlaggedProcessesText"/><TextBlock x:Name="PrimaryProcessText"/><TextBlock x:Name="PrimaryProcessReasonText"/><TextBlock x:Name="InstalledServicesText"/><TextBlock x:Name="RunningServicesText"/><TextBlock x:Name="FlaggedServicesText"/><TextBlock x:Name="PrimaryServiceText"/><TextBlock x:Name="PrimaryServiceReasonText"/></Grid></StackPanel></Expander>
-            </StackPanel>
-        </ScrollViewer>
+                    <Border x:Name="InvestigationHistoryBorder" Background="#0C1524" BorderBrush="#1D3554" BorderThickness="1" CornerRadius="12" Padding="18" Visibility="Collapsed" Loaded="ActivityCenter_Loaded">
+                        <Grid ColumnSpacing="20">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <StackPanel Spacing="9">
+                                <TextBlock Text="Recent activity" FontSize="18" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level2"/>
+                                <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock x:Name="HistoryOutcomeIconText" Text="✓" FontSize="18" Foreground="#4ADE80" VerticalAlignment="Top"/><StackPanel Grid.Column="1" Spacing="3"><TextBlock x:Name="HistoryTitleText" FontSize="14" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="HistorySummaryText" FontSize="12" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="HistoryOutcomeText" FontSize="11" Foreground="#8FA8C7" TextWrapping="Wrap"/></StackPanel></Grid>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="5"><TextBlock Text="Optimization" FontSize="14" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="OptimizationStatusText" Text="Sentinel is checking whether this computer needs safe optimization." FontSize="12" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="OptimizationStatusTimeText" Text="Optimization check in progress" FontSize="11" Foreground="#8FA8C7" TextWrapping="Wrap"/></StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Expander Header="More system details" HorizontalAlignment="Stretch" Foreground="#BBD0E8">
+                        <StackPanel Spacing="10" Padding="0,10,0,0">
+                            <Border Background="#0C1524" BorderBrush="#1D3554" BorderThickness="1" CornerRadius="10" Padding="16">
+                                <StackPanel Spacing="6"><TextBlock Text="Summary" FontSize="16" FontWeight="SemiBold" Foreground="White"/><TextBlock x:Name="RiskSummaryText" FontSize="13" FontWeight="SemiBold" Foreground="White" TextWrapping="Wrap"/><TextBlock x:Name="RecommendationText" FontSize="12" Foreground="#D1D5DB" TextWrapping="Wrap"/><TextBlock x:Name="RiskScoreText" Visibility="Collapsed"/><TextBlock x:Name="RiskLevelText" Visibility="Collapsed"/><TextBlock x:Name="GuidanceSeverityText" Visibility="Collapsed"/><TextBlock x:Name="GuidanceConfidenceText" Visibility="Collapsed"/><TextBlock x:Name="GuidanceConfidenceLabelText" Visibility="Collapsed"/></StackPanel>
+                            </Border>
+                            <Grid Visibility="Collapsed"><TextBlock x:Name="CriticalEventsText"/><TextBlock x:Name="ErrorEventsText"/><TextBlock x:Name="LatestEventSummaryText"/><TextBlock x:Name="LatestEventMessageText"/><TextBlock x:Name="RunningProcessesText"/><TextBlock x:Name="FlaggedProcessesText"/><TextBlock x:Name="PrimaryProcessText"/><TextBlock x:Name="PrimaryProcessReasonText"/><TextBlock x:Name="InstalledServicesText"/><TextBlock x:Name="RunningServicesText"/><TextBlock x:Name="FlaggedServicesText"/><TextBlock x:Name="PrimaryServiceText"/><TextBlock x:Name="PrimaryServiceReasonText"/></Grid>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Window>

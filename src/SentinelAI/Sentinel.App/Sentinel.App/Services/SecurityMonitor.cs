@@ -1,39 +1,30 @@
-﻿/*
+/*
  * Sentinel AI
  * Copyright (c) 2026 Modern Methods.
  */
 
-using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using System.IO;
+using System.Text;
 
 namespace Sentinel.App.Services
 {
     public sealed class SecurityMonitor
     {
-        private const string DefenderRoot = @"SOFTWARE\Microsoft\Windows Defender";
-        private const string DefenderRealTimeProtection = DefenderRoot + @"\Real-Time Protection";
-        private const string DefenderAdvancedThreatProtection = @"SOFTWARE\Policies\Microsoft\Windows Advanced Threat Protection";
-        private const string FirewallProfiles = @"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy";
+        private static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(12);
 
-        public SecurityStatusSnapshot GetStatus()
-        {
-            return new SecurityStatusSnapshot(
-                GetDefenderStatus(),
-                GetFirewallStatus());
-        }
+        public SecurityStatusSnapshot GetStatus() => new(GetDefenderStatus(), GetFirewallStatus());
 
         public bool IsWindowsDefenderInstalled()
         {
             string status = GetDefenderStatus();
-            return status != "Not detected" && status != "Unavailable";
+            return !status.Equals("Not detected", StringComparison.OrdinalIgnoreCase) &&
+                   !status.Equals("Unavailable", StringComparison.OrdinalIgnoreCase);
         }
 
-        public bool IsFirewallInstalled()
-        {
-            return GetFirewallStatus() != "Unavailable";
-        }
+        public bool IsFirewallInstalled() => !GetFirewallStatus().Equals("Unavailable", StringComparison.OrdinalIgnoreCase);
 
         public string GetSecuritySummary()
         {
@@ -43,157 +34,114 @@ namespace Sentinel.App.Services
 
         private static string GetDefenderStatus()
         {
-            try
-            {
-                using RegistryKey? defenderKey = Registry.LocalMachine.OpenSubKey(DefenderRoot);
-                if (defenderKey is null)
-                {
-                    return "Not detected";
-                }
+            const string command =
+                "$s=Get-MpComputerStatus -ErrorAction Stop; " +
+                "\"AMServiceEnabled=$($s.AMServiceEnabled)`nAntivirusEnabled=$($s.AntivirusEnabled)`nRealTimeProtectionEnabled=$($s.RealTimeProtectionEnabled)`nAntispywareEnabled=$($s.AntispywareEnabled)`nBehaviorMonitorEnabled=$($s.BehaviorMonitorEnabled)`nNISEnabled=$($s.NISEnabled)`nSignatureAge=$($s.AntivirusSignatureAge)`nRunningMode=$($s.AMRunningMode)\"";
 
-                bool engineRunning = Process.GetProcessesByName("MsMpEng").Any();
-
-                using RegistryKey? realTimeKey =
-                    Registry.LocalMachine.OpenSubKey(DefenderRealTimeProtection);
-
-                using RegistryKey? advancedThreatProtectionKey =
-                    Registry.LocalMachine.OpenSubKey(DefenderAdvancedThreatProtection);
-
-                if (!TryReadOptionalDword(realTimeKey?.GetValue("DisableRealtimeMonitoring"), out int disableRealTimeMonitoring) ||
-                    !TryReadOptionalDword(defenderKey.GetValue("DisableAntiSpyware"), out int disableAntiSpyware) ||
-                    !TryReadOptionalDword(defenderKey.GetValue("PassiveMode"), out int passiveMode) ||
-                    !TryReadOptionalDword(advancedThreatProtectionKey?.GetValue("ForceDefenderPassiveMode"), out int forcedPassiveMode))
-                {
-                    return "Unavailable";
-                }
-
-                bool disabledByPolicy = disableRealTimeMonitoring != 0 || disableAntiSpyware != 0;
-                bool passiveByPolicy = passiveMode != 0 || forcedPassiveMode != 0;
-
-                if (engineRunning && !disabledByPolicy && !passiveByPolicy)
-                {
-                    return "Enabled";
-                }
-
-                return engineRunning ? "Limited" : "Disabled or inactive";
-            }
-            catch
-            {
+            ProcessExecutionResult result = RunPowerShell(command);
+            if (!result.Succeeded)
                 return "Unavailable";
+
+            Dictionary<string, string> values = ParseKeyValues(result.StandardOutput);
+            bool? serviceEnabled = TryGetNullableBool(values, "AMServiceEnabled");
+            bool? antivirusEnabled = TryGetNullableBool(values, "AntivirusEnabled");
+            bool? realTimeEnabled = TryGetNullableBool(values, "RealTimeProtectionEnabled");
+            values.TryGetValue("RunningMode", out string? runningMode);
+
+            int? signatureAgeDays = null;
+            if (values.TryGetValue("SignatureAge", out string? signatureAgeText) &&
+                int.TryParse(signatureAgeText, out int parsedSignatureAge))
+            {
+                signatureAgeDays = parsedSignatureAge;
             }
+
+            return SecurityHealthClassificationPolicy.ClassifyDefender(
+                serviceEnabled,
+                antivirusEnabled,
+                realTimeEnabled,
+                runningMode,
+                signatureAgeDays);
         }
 
         private static string GetFirewallStatus()
         {
-            try
-            {
-                string[] profileNames =
-                {
-                    "DomainProfile",
-                    "StandardProfile",
-                    "PublicProfile"
-                };
+            const string command =
+                "$svc=Get-Service -Name MpsSvc -ErrorAction Stop; " +
+                "$p=@(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop); " +
+                "\"Service=$($svc.Status)`nCount=$($p.Count)\"; " +
+                "$p | ForEach-Object {\"Profile=$($_.Name)|Enabled=$($_.Enabled)|Inbound=$($_.DefaultInboundAction)|Outbound=$($_.DefaultOutboundAction)\"}";
 
-                int detectedProfiles = 0;
-                int enabledProfiles = 0;
-                int disabledProfiles = 0;
-                int unknownProfiles = 0;
-
-                foreach (string profileName in profileNames)
-                {
-                    using RegistryKey? profileKey = Registry.LocalMachine.OpenSubKey(
-                        $@"{FirewallProfiles}\{profileName}");
-
-                    if (profileKey is null)
-                    {
-                        unknownProfiles++;
-                        continue;
-                    }
-
-                    detectedProfiles++;
-                    object? rawValue = profileKey.GetValue("EnableFirewall");
-                    if (!TryConvertToInt32(rawValue, out int enabled))
-                    {
-                        unknownProfiles++;
-                    }
-                    else if (enabled != 0)
-                    {
-                        enabledProfiles++;
-                    }
-                    else
-                    {
-                        disabledProfiles++;
-                    }
-                }
-
-                if (detectedProfiles == 0 || enabledProfiles + disabledProfiles == 0)
-                {
-                    return "Unavailable";
-                }
-
-                if (unknownProfiles == 0 && enabledProfiles == profileNames.Length)
-                {
-                    return "Enabled";
-                }
-
-                if (unknownProfiles == 0 && disabledProfiles == profileNames.Length)
-                {
-                    return "Disabled";
-                }
-
-                return $"Partial ({enabledProfiles} enabled, {disabledProfiles} disabled, {unknownProfiles} unknown)";
-            }
-            catch
-            {
+            ProcessExecutionResult result = RunPowerShell(command);
+            if (!result.Succeeded)
                 return "Unavailable";
-            }
-        }
 
-        private static bool TryReadOptionalDword(object? value, out int converted)
-        {
-            if (value is null)
+            string[] lines = result.StandardOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            string service = string.Empty;
+            int expectedCount = 0;
+            int profileCount = 0;
+            int enabledCount = 0;
+
+            foreach (string line in lines)
             {
-                converted = 0;
-                return true;
-            }
-
-            return TryConvertToInt32(value, out converted);
-        }
-
-        private static bool TryConvertToInt32(object? value, out int converted)
-        {
-            try
-            {
-                if (value is null)
+                if (line.StartsWith("Service=", StringComparison.OrdinalIgnoreCase))
+                    service = line[8..].Trim();
+                else if (line.StartsWith("Count=", StringComparison.OrdinalIgnoreCase))
+                    int.TryParse(line[6..].Trim(), out expectedCount);
+                else if (line.StartsWith("Profile=", StringComparison.OrdinalIgnoreCase))
                 {
-                    converted = 0;
-                    return false;
+                    profileCount++;
+                    if (line.Contains("|Enabled=True", StringComparison.OrdinalIgnoreCase))
+                        enabledCount++;
                 }
+            }
 
-                converted = Convert.ToInt32(value);
-                return true;
-            }
-            catch
-            {
-                converted = 0;
-                return false;
-            }
+            return SecurityHealthClassificationPolicy.ClassifyFirewall(
+                service,
+                expectedCount,
+                profileCount,
+                enabledCount);
         }
 
-        private static int ConvertToInt32(object? value, int defaultValue)
+        private static ProcessExecutionResult RunPowerShell(string command)
         {
-            try
+            string encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
+            ProcessStartInfo startInfo = new()
             {
-                return value is null ? defaultValue : Convert.ToInt32(value);
-            }
-            catch
-            {
-                return defaultValue;
-            }
+                FileName = ResolvePowerShellPath(),
+                Arguments = $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            return BoundedProcessRunner.RunAsync(startInfo, QueryTimeout).GetAwaiter().GetResult();
         }
 
-        public readonly record struct SecurityStatusSnapshot(
-            string DefenderStatus,
-            string FirewallStatus);
+        private static string ResolvePowerShellPath()
+        {
+            string system = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            return string.IsNullOrWhiteSpace(system)
+                ? "powershell.exe"
+                : Path.Combine(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+        }
+
+        private static Dictionary<string, string> ParseKeyValues(string output)
+        {
+            Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+            foreach (string line in (output ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int separator = line.IndexOf('=');
+                if (separator <= 0) continue;
+                values[line[..separator].Trim()] = line[(separator + 1)..].Trim();
+            }
+            return values;
+        }
+
+        private static bool? TryGetNullableBool(IReadOnlyDictionary<string, string> values, string key)
+        {
+            if (!values.TryGetValue(key, out string? text) || !bool.TryParse(text, out bool value))
+                return null;
+            return value;
+        }
+
+        public readonly record struct SecurityStatusSnapshot(string DefenderStatus, string FirewallStatus);
     }
 }
