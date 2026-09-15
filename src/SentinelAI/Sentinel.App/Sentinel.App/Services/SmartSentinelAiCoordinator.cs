@@ -17,6 +17,8 @@ namespace Sentinel.App.Services
     public sealed class SmartSentinelAiCoordinator
     {
         private const int MaximumCacheEntries = 200;
+        private const int BasicEvidenceCharacterBudget = 2_200;
+        private const int AdvancedEvidenceCharacterBudget = 7_000;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(6);
         private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new(StringComparer.Ordinal);
         private static long _requestsSent;
@@ -44,8 +46,31 @@ namespace Sentinel.App.Services
             AiEscalationDecision decision = _policy.Evaluate(context);
             if (!decision.UseCloudAi) return SmartAiResult.NotUsed(decision.Reason, decision.ResearchFirst);
 
-            int characterBudget = decision.ModelTier == AiModelTier.Advanced ? 7_000 : 3_500;
-            AiEvidencePackage package = _packageBuilder.Build(purpose, userQuestion ?? string.Empty, snapshot, external, characterBudget, supplementalEvidence);
+            int characterBudget = decision.ModelTier == AiModelTier.Advanced
+                ? AdvancedEvidenceCharacterBudget
+                : BasicEvidenceCharacterBudget;
+            AiEvidencePackage package = _packageBuilder.Build(
+                purpose,
+                userQuestion ?? string.Empty,
+                snapshot,
+                external,
+                characterBudget,
+                supplementalEvidence);
+
+            // Keep enough room for a useful Basic response. The gateway allows 900 total
+            // tokens for Basic and reserves roughly one third for output. Estimated input
+            // must therefore remain comfortably below the total request budget.
+            if (decision.ModelTier == AiModelTier.Economy &&
+                package.EstimatedInputTokens > 600)
+            {
+                package = _packageBuilder.Build(
+                    purpose,
+                    userQuestion ?? string.Empty,
+                    snapshot,
+                    external,
+                    1_900,
+                    supplementalEvidence);
+            }
 
             RemoveExpiredCacheEntries();
             TrimCacheIfNeeded();
@@ -72,7 +97,12 @@ namespace Sentinel.App.Services
                 cloud.InputTokens, cloud.OutputTokens, cloud.Reason);
         }
 
-        public AiUsageSnapshot GetUsage() => new(Interlocked.Read(ref _requestsSent), Interlocked.Read(ref _inputTokens), Interlocked.Read(ref _outputTokens), Cache.Count, _gateway.IsConfigured);
+        public AiUsageSnapshot GetUsage() => new(
+            Interlocked.Read(ref _requestsSent),
+            Interlocked.Read(ref _inputTokens),
+            Interlocked.Read(ref _outputTokens),
+            Cache.Count,
+            _gateway.IsConfigured);
 
         public int RemoveExpiredCacheEntries()
         {
@@ -111,12 +141,28 @@ namespace Sentinel.App.Services
         private sealed record CacheEntry(CloudAiResult Result, DateTimeOffset ExpiresUtc);
     }
 
-    public sealed record SmartAiResult(bool UsedCloudAi, bool Available, string Answer, int ConfidencePercent,
-        bool RequiresMoreEvidence, bool FromCache, bool ResearchFirst, string Provider, string Model,
-        int InputTokens, int OutputTokens, string Reason)
+    public sealed record SmartAiResult(
+        bool UsedCloudAi,
+        bool Available,
+        string Answer,
+        int ConfidencePercent,
+        bool RequiresMoreEvidence,
+        bool FromCache,
+        bool ResearchFirst,
+        string Provider,
+        string Model,
+        int InputTokens,
+        int OutputTokens,
+        string Reason)
     {
-        public static SmartAiResult NotUsed(string reason, bool researchFirst) => new(false, true, string.Empty, 0, false, false, researchFirst, string.Empty, string.Empty, 0, 0, reason);
+        public static SmartAiResult NotUsed(string reason, bool researchFirst) =>
+            new(false, true, string.Empty, 0, false, false, researchFirst, string.Empty, string.Empty, 0, 0, reason);
     }
 
-    public sealed record AiUsageSnapshot(long RequestsSent, long InputTokens, long OutputTokens, int CachedAnalyses, bool CloudConfigured);
+    public sealed record AiUsageSnapshot(
+        long RequestsSent,
+        long InputTokens,
+        long OutputTokens,
+        int CachedAnalyses,
+        bool CloudConfigured);
 }
