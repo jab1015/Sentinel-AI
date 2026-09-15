@@ -23,37 +23,18 @@ public sealed partial class MainWindow
         }
 
         string[] files;
+        string[] directories = Array.Empty<string>();
         if (isDirectory)
         {
-            try
+            if (!TryDiscoverVaultFolder(path, out files, out directories, out string discoveryError))
             {
-                if ((File.GetAttributes(path) & System.IO.FileAttributes.ReparsePoint) != 0)
-                {
-                    await ShowPrivacyMessageAsync(rootElement, "Folder cannot be added", "Sentinel will not import a reparse-point folder into the Vault because its contents can resolve outside the selected folder.");
-                    return;
-                }
-                files = Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories).ToArray();
-                if (files.Any(file => (File.GetAttributes(file) & System.IO.FileAttributes.ReparsePoint) != 0))
-                {
-                    await ShowPrivacyMessageAsync(rootElement, "Folder cannot be added", "The folder contains a reparse-point file. Sentinel left the folder unchanged rather than importing an ambiguous filesystem object.");
-                    return;
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                await ShowPrivacyMessageAsync(rootElement, "Folder could not be read", "Sentinel could not enumerate the entire folder safely. Nothing was moved into the Vault.");
+                await ShowPrivacyMessageAsync(rootElement, "Folder cannot be added", discoveryError);
                 return;
             }
         }
         else
         {
             files = new[] { path };
-        }
-
-        if (files.Length == 0)
-        {
-            await ShowPrivacyMessageAsync(rootElement, "Folder is empty", "There are no files to protect in this folder.");
-            return;
         }
 
         long totalBytes = 0;
@@ -64,7 +45,7 @@ public sealed partial class MainWindow
         {
             Title = isDirectory ? "Move folder to Sentinel Vault" : "Move file to Sentinel Vault",
             Content = isDirectory
-                ? $"Folder:\n{path}\n\nFiles: {files.Length:N0}\nSize: {FormatBytes(totalBytes)}\n\nSentinel will encrypt and verify each file inside its private Vault. Only after each Vault item is verified will Sentinel retire that exact readable source file. When every file has moved successfully, the now-empty source folder will be removed. If any item cannot be verified or safely retired, Sentinel stops and reports exactly what remains."
+                ? $"Folder:\n{path}\n\nFiles: {files.Length:N0}\nFolders: {directories.Length:N0}\nSize: {FormatBytes(totalBytes)}\n\nSentinel has checked the selected tree for reparse points and will not follow links outside it. Files are encrypted and verified before any readable source is retired. Empty-folder preservation is not yet committed by this operation, so an entirely empty folder is left unchanged rather than falsely reported as moved."
                 : $"File:\n{path}\n\nSize: {FormatBytes(totalBytes)}\n\nSentinel will encrypt and verify the file inside its private Vault. Only after the Vault item is verified will Sentinel retire the exact readable source file. If either step cannot be proven safe, Sentinel will report the problem instead of silently claiming the move succeeded.",
             PrimaryButtonText = "Move to Vault",
             CloseButtonText = "Cancel",
@@ -72,6 +53,12 @@ public sealed partial class MainWindow
             XamlRoot = rootElement.XamlRoot
         };
         if (await confirmation.ShowAsync() != ContentDialogResult.Primary) return;
+
+        if (isDirectory && files.Length == 0)
+        {
+            await ShowPrivacyMessageAsync(rootElement, "Empty folder kept unchanged", "Sentinel verified that this folder contains no files. The current Vault format does not yet persist empty-folder structure, so Sentinel did not remove or pretend to move the source folder.");
+            return;
+        }
 
         using PremiumPrivacyEntitlementClient entitlement = new();
         PremiumPrivacyAuthorizationResult authorized = await entitlement.AuthorizeOneShotAsync(PremiumPrivacyEntitlementClient.VaultScope).ConfigureAwait(true);
@@ -89,35 +76,52 @@ public sealed partial class MainWindow
             return;
         }
 
-        int moved = 0;
-        long movedBytes = 0;
+        // Bind every source identity before the first Vault write. This prevents a folder move
+        // from silently accepting a path-swap introduced midway through discovery.
+        List<SecureDeleteValidatedTarget> identities = new(files.Length);
+        foreach (string source in files)
+        {
+            SecureDeleteTargetValidationResult identity = SecureDeleteTargetValidator.Validate(source);
+            if (!identity.Succeeded)
+            {
+                await ShowPrivacyMessageAsync(rootElement, "Vault move could not start", $"Sentinel could not bind every source to an exact filesystem identity before writing to the Vault. Nothing has been retired.\n\nSource:\n{source}\n\n{identity.Message}");
+                open.Session.Dispose();
+                return;
+            }
+            identities.Add(identity.Target);
+        }
+
+        int protectedCount = 0;
+        long protectedBytes = 0;
         string? failure = null;
+        List<VaultAddItemResult> staged = new(files.Length);
         using (PersistedVaultSession session = open.Session)
         {
-            foreach (string source in files)
+            // Folder operations stage and verify the complete protected set first. Source
+            // retirement begins only after every file has a durable Vault item.
+            for (int index = 0; index < files.Length; index++)
             {
-                SecureDeleteTargetValidationResult identity = SecureDeleteTargetValidator.Validate(source);
-                if (!identity.Succeeded)
-                {
-                    failure = $"Sentinel could not bind this source to an exact filesystem identity before the move:\n{source}\n\n{identity.Message}";
-                    break;
-                }
-
-                VaultAddItemResult added = await session.Items.AddFileAsync(source).ConfigureAwait(true);
+                VaultAddItemResult added = await session.Items.AddFileAsync(files[index]).ConfigureAwait(true);
                 if (!added.Succeeded)
                 {
-                    failure = $"Sentinel could not commit a verified Vault item for:\n{source}\n\nStatus: {added.Code}";
+                    failure = $"Sentinel stopped before source retirement because it could not commit a verified Vault item for:\n{files[index]}\n\nStatus: {added.Code}\n\nNo source file has been intentionally retired by this operation.";
                     break;
                 }
+                staged.Add(added);
+                protectedBytes += added.PlaintextBytes;
+            }
 
-                if (!TryRetireVaultSource(identity.Target, out string retirementStatus))
+            if (failure is null)
+            {
+                for (int index = 0; index < files.Length; index++)
                 {
-                    failure = $"The file is safely stored and verified in the Vault, but Sentinel could not prove safe retirement of the readable source:\n{source}\n\n{retirementStatus}\n\nThe source was kept for safety.";
-                    break;
+                    if (!TryRetireVaultSource(identities[index], out string retirementStatus))
+                    {
+                        failure = $"All {staged.Count:N0} file(s) are safely stored and verified in the Vault, but Sentinel could not prove safe retirement of this readable source:\n{files[index]}\n\n{retirementStatus}\n\nThat source was kept for safety. Previously verified retirements are not misreported as a complete folder move.";
+                        break;
+                    }
+                    protectedCount++;
                 }
-
-                moved++;
-                movedBytes += added.PlaintextBytes;
             }
         }
 
@@ -125,8 +129,7 @@ public sealed partial class MainWindow
         {
             try
             {
-                foreach (string directory in Directory.EnumerateDirectories(path, "*", SearchOption.AllDirectories)
-                             .OrderByDescending(value => value.Length))
+                foreach (string directory in directories.OrderByDescending(value => value.Length))
                 {
                     if (!Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory, false);
                 }
@@ -134,19 +137,71 @@ public sealed partial class MainWindow
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                failure = "All files were moved into the Vault, but Sentinel could not remove one or more empty source folders. No readable source file was intentionally left behind.";
+                failure = "All readable source files were verified as retired, but Sentinel could not remove one or more empty source folders. The protected Vault data remains committed.";
             }
         }
 
         if (failure is null)
         {
             await ShowPrivacyMessageAsync(rootElement, "Moved to Sentinel Vault",
-                $"Sentinel encrypted, authenticated, and committed {moved:N0} file(s), then verified retirement of each readable source file.\n\nProtected: {FormatBytes(movedBytes)}\n\nOpen Vault from the Sentinel dashboard to view protected items.").ConfigureAwait(true);
+                $"Sentinel encrypted, authenticated, and committed {staged.Count:N0} file(s), then verified retirement of each readable source file.\n\nProtected: {FormatBytes(protectedBytes)}\n\nOpen Vault from the Sentinel dashboard to view protected items.").ConfigureAwait(true);
         }
         else
         {
             await ShowPrivacyMessageAsync(rootElement, "Vault move needs attention",
-                $"Files fully moved before the stop: {moved:N0} of {files.Length:N0}\nProtected and source-retired: {FormatBytes(movedBytes)}\n\n{failure}").ConfigureAwait(true);
+                $"Vault items committed: {staged.Count:N0} of {files.Length:N0}\nReadable sources verified retired: {protectedCount:N0} of {files.Length:N0}\nProtected: {FormatBytes(protectedBytes)}\n\n{failure}").ConfigureAwait(true);
+        }
+    }
+
+    private static bool TryDiscoverVaultFolder(string rootPath, out string[] files, out string[] directories, out string error)
+    {
+        files = Array.Empty<string>();
+        directories = Array.Empty<string>();
+        error = string.Empty;
+        try
+        {
+            string root = Path.GetFullPath(rootPath);
+            if ((File.GetAttributes(root) & System.IO.FileAttributes.ReparsePoint) != 0)
+            {
+                error = "Sentinel will not import a reparse-point folder because its contents can resolve outside the selected folder.";
+                return false;
+            }
+
+            List<string> discoveredFiles = new();
+            List<string> discoveredDirectories = new();
+            Stack<string> pending = new();
+            pending.Push(root);
+            while (pending.Count > 0)
+            {
+                string current = pending.Pop();
+                foreach (string entry in Directory.EnumerateFileSystemEntries(current))
+                {
+                    System.IO.FileAttributes attributes = File.GetAttributes(entry);
+                    if ((attributes & System.IO.FileAttributes.ReparsePoint) != 0)
+                    {
+                        error = $"The selected folder contains a reparse point. Sentinel left the entire source tree unchanged rather than following an ambiguous link:\n{entry}";
+                        return false;
+                    }
+                    if ((attributes & System.IO.FileAttributes.Directory) != 0)
+                    {
+                        discoveredDirectories.Add(entry);
+                        pending.Push(entry);
+                    }
+                    else
+                    {
+                        discoveredFiles.Add(entry);
+                    }
+                }
+            }
+
+            files = discoveredFiles.ToArray();
+            directories = discoveredDirectories.ToArray();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            error = "Sentinel could not enumerate and validate the entire folder tree safely. Nothing was moved into the Vault.";
+            return false;
         }
     }
 
