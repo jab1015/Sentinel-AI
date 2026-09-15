@@ -45,6 +45,14 @@ AskSentinelRoute latest = routing.Decide("Search the web for the latest Windows 
 Require(!latest.UseBasicAi && latest.UseExternalResearch,
     "Explicit current web-research request did not route directly to external research.");
 
+AskSentinelRoute naturalResearch = routing.Decide("Research why this Windows update is failing", localAnswerInsufficient: true);
+Require(!naturalResearch.UseBasicAi && naturalResearch.UseExternalResearch,
+    "Natural 'research why' wording did not route directly to external research.");
+
+AskSentinelRoute accordingTo = routing.Decide("According to Microsoft, what does this security advisory mean?", localAnswerInsufficient: true);
+Require(!accordingTo.UseBasicAi && accordingTo.UseExternalResearch,
+    "'According to Microsoft' wording did not route directly to authoritative research.");
+
 var escalation = new AiEscalationPolicy();
 AiEscalationDecision firstPass = escalation.Evaluate(routing.CreateBasicAiContext(
     "Could ransomware cause a complicated security problem?"));
@@ -70,7 +78,7 @@ Console.WriteLine("Verified broad local overview -> local answer: PASS");
 Console.WriteLine("Definition/explanation -> Basic AI: PASS");
 Console.WriteLine("Direct device status -> local answer: PASS");
 Console.WriteLine("Ambiguous app/security keywords -> Basic AI: PASS");
-Console.WriteLine("Fresh/current request -> external research: PASS");
+Console.WriteLine("Fresh/current/research/according-to wording -> external research: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
 Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
 Console.WriteLine("RESULT: PASS");
