@@ -38,6 +38,7 @@ namespace Sentinel.App.Services
                     "No basic Windows protection action is required.",
                     "basic-protection-healthy-subscription-required");
             }
+
             bool monitoringCoverageHealthy =
                 snapshot.AuthenticationMonitoringAvailable &&
                 snapshot.EventLogMonitoringAvailable &&
@@ -63,6 +64,57 @@ namespace Sentinel.App.Services
                     "Sentinel network, authentication, Windows Event Log, process, command-line, process-lineage, service, startup-persistence, and scheduled-task monitoring are active. Microsoft Defender and Windows Firewall are also active.",
                     "No action is required.",
                     "protection-healthy");
+            }
+
+            // Core Windows protections are never hidden by the startup warm-up state.
+            // If Defender or Firewall is actually disabled, surface that immediately.
+            if (!defenderHealthy && !firewallHealthy)
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Degraded,
+                    false,
+                    "Windows protection is significantly reduced",
+                    $"Microsoft Defender is {snapshot.DefenderStatus} and Windows Firewall is {snapshot.FirewallStatus}.",
+                    "Turn on Microsoft Defender and Windows Firewall unless another trusted managed security product is intentionally providing equivalent protection.",
+                    "protection-defender-firewall-degraded");
+            }
+
+            if (!defenderHealthy)
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Degraded,
+                    false,
+                    "Antivirus protection needs attention",
+                    $"Microsoft Defender is {snapshot.DefenderStatus}.",
+                    "Turn on Microsoft Defender or confirm that another trusted antivirus product is actively protecting this computer.",
+                    "protection-defender-degraded");
+            }
+
+            if (!firewallHealthy)
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Degraded,
+                    false,
+                    "Firewall protection needs attention",
+                    $"Windows Firewall is {snapshot.FirewallStatus}.",
+                    "Turn on Windows Firewall for all network profiles unless another managed firewall is intentionally providing equivalent protection.",
+                    "protection-firewall-degraded");
+            }
+
+            // A newly started app often needs more than one collection pass before
+            // every advanced evidence source is authoritative. Report that truthfully
+            // as gathering information for a bounded period instead of making Sentinel
+            // look broken. Persistent unavailability falls through to Degraded below.
+            if (InitialMonitoringStartupCoordinator.IsGatheringInformation &&
+                (!networkHealthy || !monitoringCoverageHealthy))
+            {
+                return new ProtectionHealthResult(
+                    ProtectionHealthState.Gathering,
+                    false,
+                    "Gathering security information",
+                    "Sentinel is still collecting the initial security-monitoring evidence needed to verify full coverage.",
+                    "No action is needed while the initial checks finish. Sentinel will retry the remaining evidence sources automatically.",
+                    "protection-gathering");
             }
 
             if (!networkHealthy)
@@ -100,40 +152,21 @@ namespace Sentinel.App.Services
                     "protection-security-coverage-unavailable");
             }
 
-            if (!defenderHealthy && !firewallHealthy)
-            {
-                return new ProtectionHealthResult(
-                    ProtectionHealthState.Degraded,
-                    false,
-                    "Windows protection is significantly reduced",
-                    $"Microsoft Defender is {snapshot.DefenderStatus} and Windows Firewall is {snapshot.FirewallStatus}.",
-                    "Turn on Microsoft Defender and Windows Firewall unless another trusted managed security product is intentionally providing equivalent protection.",
-                    "protection-defender-firewall-degraded");
-            }
-
-            if (!defenderHealthy)
-            {
-                return new ProtectionHealthResult(
-                    ProtectionHealthState.Degraded,
-                    false,
-                    "Antivirus protection needs attention",
-                    $"Microsoft Defender is {snapshot.DefenderStatus}.",
-                    "Turn on Microsoft Defender or confirm that another trusted antivirus product is actively protecting this computer.",
-                    "protection-defender-degraded");
-            }
-
+            // All cases above are exhaustive, but keep a fail-closed fallback if a new
+            // component is added without a corresponding explanation.
             return new ProtectionHealthResult(
                 ProtectionHealthState.Degraded,
                 false,
-                "Firewall protection needs attention",
-                $"Windows Firewall is {snapshot.FirewallStatus}.",
-                "Turn on Windows Firewall for all network profiles unless another managed firewall is intentionally providing equivalent protection.",
-                "protection-firewall-degraded");
+                "Protection status needs verification",
+                "Sentinel could not fully verify the current protection state.",
+                "Keep Sentinel running while it retries the protection checks.",
+                "protection-verification-incomplete");
         }
 
         public enum ProtectionHealthState
         {
             Healthy,
+            Gathering,
             Degraded
         }
 
