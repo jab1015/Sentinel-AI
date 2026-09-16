@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - feature/premium-privacy-foundation
     paths:
       - '.github/workflows/windows-vm-test-package.yml'
@@ -18,7 +19,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: windows-vm-test-package-v4-${{ github.ref_name }}
+  group: windows-vm-test-package-v5-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -91,6 +92,89 @@ jobs:
             -MakeAppx '${{ steps.tools.outputs.makeappx }}' `
             -SourceSha '${{ github.sha }}'
 
+      - name: Install and smoke-launch signed VM package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:OUTPUT_DIR 'SentinelAI-WindowsVM-x64.msix'
+          $certificatePath = Join-Path $env:OUTPUT_DIR 'SentinelAI-TestSigning.cer'
+          if (-not (Test-Path -LiteralPath $package)) { throw "Missing VM package: $package" }
+          if (-not (Test-Path -LiteralPath $certificatePath)) { throw "Missing VM certificate: $certificatePath" }
+
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
+          $stores = @('TrustedPeople', 'Root')
+          try {
+            foreach ($storeName in $stores) {
+              $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+              $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+              $store.Add($certificate)
+              $store.Close()
+            }
+
+            $existing = @(Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue)
+            foreach ($entry in $existing) {
+              Remove-AppxPackage -Package $entry.PackageFullName -ErrorAction SilentlyContinue
+            }
+
+            Add-AppxPackage -Path $package -ForceApplicationShutdown -ErrorAction Stop
+            $installed = Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1
+            if ($null -eq $installed) { throw 'Sentinel package installed but was not registered for the runner user.' }
+
+            $appUserModelId = "$($installed.PackageFamilyName)!App"
+            Write-Host "Launching $appUserModelId"
+            Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
+            Start-Sleep -Seconds 10
+
+            $processes = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+            if ($processes.Count -eq 0) {
+              Write-Host 'Sentinel.App did not remain running. Recent Application events:'
+              $since = (Get-Date).AddMinutes(-3)
+              Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$since } -ErrorAction SilentlyContinue |
+                Where-Object { $_.ProviderName -in @('.NET Runtime', 'Application Error', 'Windows Error Reporting') -or $_.Message -match 'Sentinel\.App' } |
+                Sort-Object TimeCreated -Descending |
+                Select-Object -First 20 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+                Format-List | Out-String -Width 240 | Write-Host
+
+              Write-Host 'Recent AppModel-Runtime events:'
+              Get-WinEvent -FilterHashtable @{ LogName='Microsoft-Windows-AppModel-Runtime/Admin'; StartTime=$since } -ErrorAction SilentlyContinue |
+                Where-Object { $_.Message -match 'Sentinel|ModernMethods\.SentinelAI' } |
+                Sort-Object TimeCreated -Descending |
+                Select-Object -First 20 TimeCreated, Id, LevelDisplayName, Message |
+                Format-List | Out-String -Width 240 | Write-Host
+
+              $packageRoot = Join-Path $env:LOCALAPPDATA "Packages\$($installed.PackageFamilyName)"
+              if (Test-Path -LiteralPath $packageRoot) {
+                Get-ChildItem -LiteralPath $packageRoot -Recurse -File -ErrorAction SilentlyContinue |
+                  Where-Object { $_.Name -in @('last-crash.txt', 'sentinel.log', 'sentinel.previous.log') } |
+                  Sort-Object LastWriteTime -Descending |
+                  Select-Object -First 6 |
+                  ForEach-Object {
+                    Write-Host "--- $($_.FullName) ---"
+                    Get-Content -LiteralPath $_.FullName -Tail 100 -ErrorAction SilentlyContinue | Write-Host
+                  }
+              }
+
+              throw 'Signed LocalDev package installed but Sentinel.App did not remain running for the 10-second smoke window.'
+            }
+
+            Write-Host "PASS: Sentinel.App remained running for the 10-second launch smoke window (PID(s): $($processes.Id -join ', '))."
+            $processes | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+          finally {
+            Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue | ForEach-Object {
+              Remove-AppxPackage -Package $_.PackageFullName -ErrorAction SilentlyContinue
+            }
+            foreach ($storeName in $stores) {
+              try {
+                $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+                $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+                $store.Remove($certificate)
+                $store.Close()
+              } catch {}
+            }
+            $certificate.Dispose()
+          }
+
       - name: Upload signed Windows VM test package
         uses: actions/upload-artifact@v4
         with:
@@ -104,7 +188,7 @@ jobs:
         shell: pwsh
         run: |
           Get-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PACKAGE-METADATA.txt')
-          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, test signature, package contents, manifest registration, PE architecture, helpers, and public certificate validated.'
+          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, test signature, package contents, manifest registration, PE architecture, helpers, public certificate, installation, and 10-second process launch smoke test validated.'
           Write-Host 'Release x64 app was separately compiled to prove the authoritative Store/gateway entitlement path remains buildable.'
 
       - name: Upload package build diagnostics on failure
