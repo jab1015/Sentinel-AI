@@ -73,8 +73,32 @@ internal static class AiProviderResponseParser
             answer.Append(direct.GetString());
         }
 
-        string answerText = answer.ToString().Trim();
+        string rawAnswer = answer.ToString();
+        int leadingWhitespace = 0;
+        while (leadingWhitespace < rawAnswer.Length && char.IsWhiteSpace(rawAnswer[leadingWhitespace]))
+            leadingWhitespace++;
+
+        int retainedEnd = rawAnswer.Length;
+        while (retainedEnd > leadingWhitespace && char.IsWhiteSpace(rawAnswer[retainedEnd - 1]))
+            retainedEnd--;
+
+        string answerText = retainedEnd <= leadingWhitespace
+            ? string.Empty
+            : rawAnswer[leadingWhitespace..retainedEnd];
+
+        // URL-citation offsets are calculated against the provider's original output text.
+        // Normalize whitespace exactly once here and shift retained citation offsets with it.
+        // Downstream layers must not trim this answer again or the links can point at the
+        // wrong characters.
         citations = citations
+            .Where(citation => citation.StartIndex >= leadingWhitespace &&
+                               citation.EndIndex > citation.StartIndex &&
+                               citation.EndIndex <= retainedEnd)
+            .Select(citation => citation with
+            {
+                StartIndex = citation.StartIndex - leadingWhitespace,
+                EndIndex = citation.EndIndex - leadingWhitespace
+            })
             .Where(citation => citation.StartIndex >= 0 &&
                                citation.EndIndex > citation.StartIndex &&
                                citation.EndIndex <= answerText.Length)
@@ -157,7 +181,7 @@ internal static class AiProviderResponseParser
             !Uri.TryCreate(candidate, UriKind.Absolute, out Uri? uri) ||
             !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(uri.Host) ||
-            !string.IsNullOrWhiteSpace(uri.UserInfo))
+            !string.IsNullOrEmpty(uri.UserInfo))
             return false;
 
         url = uri.AbsoluteUri;
