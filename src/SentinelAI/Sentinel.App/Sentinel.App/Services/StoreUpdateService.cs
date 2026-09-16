@@ -2,29 +2,26 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.ApplicationModel;
 using Windows.Services.Store;
 
 namespace Sentinel.App.Services;
 
 /// <summary>
 /// Microsoft Store application-update boundary. Production Store builds can discover
-/// Partner Center mandatory updates and request their installation. Development builds
-/// never contact Store update enforcement so local testing cannot accidentally update
-/// itself into a production package.
+/// Partner Center mandatory updates and request their installation. Development and
+/// sideloaded test packages never initialize StoreContext, so a local MSIX can always
+/// launch and exercise Sentinel's free/local functionality without a retail Store license.
 /// </summary>
 public sealed class StoreUpdateService
 {
-    private readonly StoreContext _storeContext;
+    private readonly object _storeContextGate = new();
+    private readonly nint _ownerWindowHandle;
+    private StoreContext? _storeContext;
+    private bool _windowInitialized;
 
     public StoreUpdateService(nint ownerWindowHandle)
     {
-        _storeContext = StoreContext.GetDefault();
-        if (ownerWindowHandle != 0)
-        {
-            try { WinRT.Interop.InitializeWithWindow.Initialize(_storeContext, ownerWindowHandle); }
-            catch { /* Discovery can still report a useful Store-unavailable result below. */ }
-        }
+        _ownerWindowHandle = ownerWindowHandle;
     }
 
     public async Task<StoreMandatoryUpdateState> CheckForMandatoryUpdateAsync()
@@ -32,12 +29,23 @@ public sealed class StoreUpdateService
 #if DEBUG || SENTINEL_LOCAL_DEV
         return StoreMandatoryUpdateState.NotApplicable("Store mandatory-update enforcement is disabled in development builds.");
 #else
-        if (!HasPackageIdentity())
-            return StoreMandatoryUpdateState.NotApplicable("Store update enforcement requires the installed Microsoft Store package.");
+        if (!MicrosoftStoreRuntimePolicy.IsStoreSignedPackage(out string policyDiagnostic))
+        {
+            return StoreMandatoryUpdateState.NotApplicable(
+                "Store mandatory-update enforcement is disabled for this sideloaded/test package.",
+                policyDiagnostic);
+        }
+
+        if (!TryGetStoreContext(out StoreContext? storeContext, out string contextDiagnostic) || storeContext is null)
+        {
+            return StoreMandatoryUpdateState.Unavailable(
+                "Sentinel could not initialize Microsoft Store update services right now.",
+                contextDiagnostic);
+        }
 
         try
         {
-            IReadOnlyList<StorePackageUpdate> updates = await _storeContext.GetAppAndOptionalStorePackageUpdatesAsync();
+            IReadOnlyList<StorePackageUpdate> updates = await storeContext.GetAppAndOptionalStorePackageUpdatesAsync();
             StorePackageUpdate[] mandatory = updates.Where(update => update.Mandatory).ToArray();
             return mandatory.Length == 0
                 ? StoreMandatoryUpdateState.Current()
@@ -60,11 +68,15 @@ public sealed class StoreUpdateService
         ArgumentNullException.ThrowIfNull(state);
         if (!state.IsMandatory || state.Updates.Count == 0)
             return new(false, false, "No mandatory Sentinel AI update is pending.");
+        if (!MicrosoftStoreRuntimePolicy.IsStoreSignedPackage(out _))
+            return new(false, true, "Required Store updates can be installed only by the Microsoft Store-signed Sentinel package.");
+        if (!TryGetStoreContext(out StoreContext? storeContext, out string contextDiagnostic) || storeContext is null)
+            return new(false, true, "Microsoft Store update services are unavailable. " + contextDiagnostic);
 
         try
         {
             StorePackageUpdateResult result =
-                await _storeContext.RequestDownloadAndInstallStorePackageUpdatesAsync(state.Updates);
+                await storeContext.RequestDownloadAndInstallStorePackageUpdatesAsync(state.Updates);
 
             if (result.OverallState == StorePackageUpdateState.Completed)
                 return new(true, false, "The required Sentinel AI update was installed.");
@@ -86,10 +98,37 @@ public sealed class StoreUpdateService
         }
     }
 
-    private static bool HasPackageIdentity()
+    private bool TryGetStoreContext(out StoreContext? storeContext, out string diagnostic)
     {
-        try { return !string.IsNullOrWhiteSpace(Package.Current.Id.FamilyName); }
-        catch (InvalidOperationException) { return false; }
+        lock (_storeContextGate)
+        {
+            try
+            {
+                _storeContext ??= StoreContext.GetDefault();
+                if (_storeContext is null)
+                {
+                    storeContext = null;
+                    diagnostic = "Microsoft Store returned no StoreContext.";
+                    return false;
+                }
+
+                if (!_windowInitialized && _ownerWindowHandle != 0)
+                {
+                    WinRT.Interop.InitializeWithWindow.Initialize(_storeContext, _ownerWindowHandle);
+                    _windowInitialized = true;
+                }
+
+                storeContext = _storeContext;
+                diagnostic = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                storeContext = null;
+                diagnostic = $"Microsoft Store context initialization failed ({ex.GetType().Name}): {ex.Message}";
+                return false;
+            }
+        }
     }
 }
 
@@ -106,8 +145,8 @@ public sealed record StoreMandatoryUpdateState(
     public static StoreMandatoryUpdateState Required(IReadOnlyList<StorePackageUpdate> updates) =>
         new(true, true, updates, "A required Sentinel AI update is available from Microsoft Store.");
 
-    public static StoreMandatoryUpdateState NotApplicable(string message) =>
-        new(false, true, Array.Empty<StorePackageUpdate>(), message);
+    public static StoreMandatoryUpdateState NotApplicable(string message, string diagnostic = "") =>
+        new(false, true, Array.Empty<StorePackageUpdate>(), message, diagnostic);
 
     public static StoreMandatoryUpdateState Unavailable(string message, string diagnostic) =>
         new(false, false, Array.Empty<StorePackageUpdate>(), message, diagnostic);
