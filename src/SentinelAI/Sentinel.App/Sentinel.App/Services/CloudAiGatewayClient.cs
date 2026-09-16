@@ -130,11 +130,24 @@ namespace Sentinel.App.Services
                 if (body is null || string.IsNullOrWhiteSpace(body.Answer))
                     return CloudAiResult.Unavailable("Secure AI gateway returned no usable answer.");
 
-                string answer = Limit(body.Answer.Trim(), 8_000);
-                IReadOnlyList<CloudAiCitation> citations = NormalizeCitations(body.Citations, answer);
-                IReadOnlyList<CloudAiSource> sources = NormalizeSources(body.Sources, citations);
+                bool webResearchAuthorized =
+                    AiWebResearchAuthorizationPolicy.IsAuthorized(wantsAdvanced, evidence.Purpose);
+                if (body.UsedWebSearch && !webResearchAuthorized)
+                {
+                    return CloudAiResult.Unavailable(
+                        "Secure AI gateway returned web-derived material outside Sentinel's authorized Advanced external-research path. Sentinel did not display that answer.");
+                }
 
-                if (body.UsedWebSearch && sources.Count == 0)
+                bool acceptedWebSearch = body.UsedWebSearch && webResearchAuthorized;
+                string answer = Limit(body.Answer.Trim(), 8_000);
+                IReadOnlyList<CloudAiCitation> citations = acceptedWebSearch
+                    ? NormalizeCitations(body.Citations, answer)
+                    : Array.Empty<CloudAiCitation>();
+                IReadOnlyList<CloudAiSource> sources = acceptedWebSearch
+                    ? NormalizeSources(body.Sources, citations)
+                    : Array.Empty<CloudAiSource>();
+
+                if (acceptedWebSearch && sources.Count == 0)
                 {
                     return CloudAiResult.Unavailable(
                         "Secure AI gateway reported web research without a usable HTTPS source. Sentinel did not display the unattributed web answer.");
@@ -150,11 +163,11 @@ namespace Sentinel.App.Services
                     OutputTokens: Math.Max(0, body.OutputTokens),
                     ConfidencePercent: Math.Clamp(body.ConfidencePercent, 0, 100),
                     RequiresMoreEvidence: body.RequiresMoreEvidence,
-                    Reason: body.UsedWebSearch
+                    Reason: acceptedWebSearch
                         ? "Secure AI gateway returned an advisory analysis with bounded attributable web research. Sentinel must still validate any machine-specific or actionable conclusion against local evidence."
                         : "Secure AI gateway returned an advisory analysis. Sentinel must still validate any actionable conclusion against local evidence.",
                     RequiresSubscription: false,
-                    UsedWebSearch: body.UsedWebSearch,
+                    UsedWebSearch: acceptedWebSearch,
                     Citations: citations,
                     Sources: sources);
             }

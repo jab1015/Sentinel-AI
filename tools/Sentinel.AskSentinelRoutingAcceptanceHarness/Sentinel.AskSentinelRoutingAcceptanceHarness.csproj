@@ -9,5 +9,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\AiEscalationPolicy.cs" Link="AiEscalationPolicy.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\AskSentinelRoutingPolicy.cs" Link="AskSentinelRoutingPolicy.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\AskSentinelConversationContextPolicy.cs" Link="AskSentinelConversationContextPolicy.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\AiWebResearchAuthorizationPolicy.cs" Link="AiWebResearchAuthorizationPolicy.cs" />
   </ItemGroup>
 </Project>
