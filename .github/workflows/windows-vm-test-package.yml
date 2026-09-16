@@ -142,15 +142,19 @@ jobs:
                 Select-Object -First 20 TimeCreated, Id, LevelDisplayName, Message |
                 Format-List | Out-String -Width 240 | Write-Host
 
-              $packageRoot = Join-Path $env:LOCALAPPDATA "Packages\$($installed.PackageFamilyName)"
-              if (Test-Path -LiteralPath $packageRoot) {
-                Get-ChildItem -LiteralPath $packageRoot -Recurse -File -ErrorAction SilentlyContinue |
+              $candidateRoots = @(
+                (Join-Path $env:LOCALAPPDATA 'Modern Methods\Sentinel AI\Logs'),
+                (Join-Path $env:LOCALAPPDATA "Packages\$($installed.PackageFamilyName)")
+              )
+              foreach ($diagnosticRoot in $candidateRoots) {
+                if (-not (Test-Path -LiteralPath $diagnosticRoot)) { continue }
+                Get-ChildItem -LiteralPath $diagnosticRoot -Recurse -File -ErrorAction SilentlyContinue |
                   Where-Object { $_.Name -in @('last-crash.txt', 'sentinel.log', 'sentinel.previous.log') } |
                   Sort-Object LastWriteTime -Descending |
-                  Select-Object -First 6 |
+                  Select-Object -First 8 |
                   ForEach-Object {
                     Write-Host "--- $($_.FullName) ---"
-                    Get-Content -LiteralPath $_.FullName -Tail 100 -ErrorAction SilentlyContinue | Write-Host
+                    Get-Content -LiteralPath $_.FullName -Tail 120 -ErrorAction SilentlyContinue | Write-Host
                   }
               }
 
@@ -198,6 +202,8 @@ jobs:
           name: windows-vm-test-package-diagnostics
           path: |
             windows-vm-test-package.log
+            windows-vm-test-msbuild-console.log
             windows-vm-test-signing.log
+            windows-vm-test-makeappx.log
           if-no-files-found: ignore
           retention-days: 7
