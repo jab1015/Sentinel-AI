@@ -113,6 +113,10 @@ namespace Sentinel.App
                 startupTimer.Stop();
                 _systemTrayService?.Dispose();
                 _systemTrayService = null;
+                // The asynchronous diagnostic write may not complete before a fatal startup
+                // exception terminates the process. Persist a bounded synchronous breadcrumb
+                // first so a launch failure from an installed MSIX always leaves evidence.
+                _diagnosticLog.WriteCrashBreadcrumb("ApplicationLaunchFailure", ex);
                 _ = _diagnosticLog.ErrorAsync("ApplicationLaunchFailure",
                     $"Sentinel AI could not complete startup after {startupTimer.ElapsedMilliseconds} ms.", ex);
                 throw;
@@ -142,80 +146,9 @@ namespace Sentinel.App
             }
             catch (Exception ex)
             {
-                _ = _diagnosticLog.ErrorAsync("SingleInstanceFailure",
-                    "Sentinel AI could not establish its single-instance activation boundary.", ex);
-                throw;
+                _ = _diagnosticLog.WarningAsync("SingleInstance", "Single-instance coordination failed; Sentinel will continue in this process. " + ex.Message);
+                return true;
             }
-        }
-
-        private void PrimaryInstance_Activated(object? sender, AppActivationArguments args)
-        {
-            if (args.Kind == ExtendedActivationKind.StartupTask)
-            {
-                _ = _diagnosticLog.InformationAsync("SingleInstance", "A duplicate Windows startup activation was ignored because Sentinel AI is already running.");
-                return;
-            }
-
-            bool explorerInspectionActivation = HandleExplorerInspectionActivation(args, allowProcessArguments: false);
-            Window? window = _window;
-            if (window is null)
-            {
-                _pendingInteractiveActivation = !explorerInspectionActivation;
-                return;
-            }
-
-            if (explorerInspectionActivation && window is MainWindow mainWindow)
-            {
-                // Do not surface the dashboard merely because Explorer invoked a command.
-                // If the user already has the dashboard open, leave its state alone; otherwise
-                // the command is presented only through the dedicated compact dialog host.
-                DeliverPendingExplorerInspection(mainWindow);
-                _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI instance handled an Explorer command without opening the dashboard.");
-                return;
-            }
-
-            ShowMainWindow();
-            _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI window handled a redirected activation.");
-        }
-
-        private bool HandleExplorerInspectionActivation(AppActivationArguments? activation, bool allowProcessArguments)
-        {
-            Guid handoffId = Guid.Empty;
-            bool hasRequest = false;
-
-            if (activation?.Kind == ExtendedActivationKind.Launch && activation.Data is ILaunchActivatedEventArgs launchArgs)
-                hasRequest = ExplorerHandoffService.TryParseHandoffId(launchArgs.Arguments, out handoffId);
-
-            if (!hasRequest && allowProcessArguments)
-            {
-                string[] processArguments = Environment.GetCommandLineArgs().Skip(1).ToArray();
-                hasRequest = ExplorerHandoffService.TryParseHandoffId(processArguments, out handoffId);
-            }
-
-            if (!hasRequest) return false;
-
-            if (_explorerHandoffService.TryConsume(handoffId, out ExplorerInspectionRequest? request, out string reason) && request is not null)
-            {
-                _pendingExplorerInspection = request;
-                _ = _diagnosticLog.InformationAsync("ExplorerInspectionActivation",
-                    $"Sentinel accepted a one-time File Explorer inspection handoff containing {request.Paths.Count} revalidated filesystem item(s). No file was changed by activation.");
-            }
-            else
-            {
-                _pendingExplorerInspection = null;
-                _ = _diagnosticLog.WarningAsync("ExplorerInspectionActivation",
-                    $"Sentinel rejected a File Explorer inspection handoff. {reason}");
-            }
-
-            return true;
-        }
-
-        private void DeliverPendingExplorerInspection(MainWindow mainWindow)
-        {
-            ExplorerInspectionRequest? request = _pendingExplorerInspection;
-            if (request is null) return;
-            _pendingExplorerInspection = null;
-            mainWindow.HandleExplorerInspectionRequest(request);
         }
 
         private static AppActivationArguments? GetCurrentActivationArguments()
@@ -224,84 +157,132 @@ namespace Sentinel.App
             catch { return null; }
         }
 
+        private bool HandleExplorerInspectionActivation(AppActivationArguments? activation, bool allowProcessArguments)
+        {
+            string? handoffToken = ExplorerCommandLineParser.TryGetHandoffToken(activation, allowProcessArguments);
+            if (!string.IsNullOrWhiteSpace(handoffToken))
+            {
+                _ = _diagnosticLog.InformationAsync("ExplorerCommand", "Explorer handoff activation received.");
+                if (_explorerHandoffService.TryConsume(handoffToken, out ExplorerInspectionRequest? request) && request is not null)
+                {
+                    _pendingExplorerInspection = request;
+                    return true;
+                }
+
+                _ = _diagnosticLog.WarningAsync("ExplorerCommand", "Explorer handoff token was invalid, stale, already consumed, or unavailable.");
+            }
+
+            if (allowProcessArguments && ExplorerCommandLineParser.ContainsLegacyDirectPathArguments())
+            {
+                _ = _diagnosticLog.WarningAsync("ExplorerCommand", "Legacy raw-path Explorer command arguments were rejected. Sentinel requires an authenticated handoff token.");
+                return true;
+            }
+
+            return false;
+        }
+
+        private void PrimaryInstance_Activated(object? sender, AppActivationArguments e)
+        {
+            bool explorerInspectionActivation = HandleExplorerInspectionActivation(e, allowProcessArguments: false);
+            if (explorerInspectionActivation)
+            {
+                if (_window is MainWindow mainWindow)
+                {
+                    _window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_pendingExplorerInspection is not null)
+                        {
+                            _window.AppWindow.Hide();
+                            DeliverPendingExplorerInspection(mainWindow);
+                        }
+                    });
+                }
+                return;
+            }
+
+            _pendingInteractiveActivation = true;
+            if (_window is null)
+            {
+                _window = new MainWindow();
+                _window.AppWindow.Closing += MainAppWindow_Closing;
+            }
+
+            _window.DispatcherQueue.TryEnqueue(ShowMainWindow);
+        }
+
+        private void DeliverPendingExplorerInspection(MainWindow mainWindow)
+        {
+            ExplorerInspectionRequest? request = _pendingExplorerInspection;
+            if (request is null) return;
+            _pendingExplorerInspection = null;
+            mainWindow.DispatcherQueue.TryEnqueue(() => mainWindow.HandleExplorerInspectionRequest(request));
+        }
+
+        private void PromptForExplorerRestartAfterInstall()
+        {
+            try
+            {
+                ExplorerRestartPromptState promptState = ExplorerRestartPromptState.Load();
+                if (promptState.ShouldPrompt())
+                {
+                    _ = _diagnosticLog.InformationAsync("ExplorerIntegration", "Explorer integration restart prompt is pending after package installation.");
+                    if (_window is MainWindow mainWindow)
+                        mainWindow.ShowExplorerRestartPrompt(promptState);
+                }
+            }
+            catch (Exception ex)
+            {
+                _ = _diagnosticLog.WarningAsync("ExplorerIntegration", "Explorer restart prompt check failed. " + ex.Message);
+            }
+        }
+
         private void MainAppWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
         {
             if (_isExplicitExit) return;
             args.Cancel = true;
             sender.Hide();
-            _ = _diagnosticLog.InformationAsync("SystemTray", "Main window hidden. Sentinel AI continues monitoring in the system tray.");
+            _ = _diagnosticLog.InformationAsync("ApplicationLifecycle", "Main window closed to the system tray; Sentinel continues monitoring.");
         }
 
         private void ShowMainWindow()
         {
-            Window? window = _window;
-            if (window is null) return;
-            window.DispatcherQueue.TryEnqueue(() =>
+            if (_window is null)
             {
-                window.AppWindow.Show();
-                window.Activate();
-            });
+                _window = new MainWindow();
+                _window.AppWindow.Closing += MainAppWindow_Closing;
+            }
+
+            _pendingInteractiveActivation = false;
+            _window.Activate();
+            _ = _diagnosticLog.InformationAsync("ApplicationLifecycle", "Main window activated from the system tray or secondary launch.");
         }
 
         private void ShowOptionsWindow()
         {
-            Window? window = _window;
-            if (window is null) return;
-            window.DispatcherQueue.TryEnqueue(() =>
+            if (_optionsWindow is null)
             {
-                try
-                {
-                    if (_optionsWindow is null)
-                    {
-                        _optionsWindow = new OptionsWindow();
-                        _optionsWindow.AppWindow.Resize(new Windows.Graphics.SizeInt32(720, 440));
-                        _optionsWindow.AppWindow.Closing += (_, _) => _optionsWindow = null;
-                    }
-                    _optionsWindow.AppWindow.Show();
-                    _optionsWindow.Activate();
-                    _ = _diagnosticLog.InformationAsync("Options", "Sentinel AI Options opened from the system tray.");
-                }
-                catch (Exception ex)
-                {
-                    _ = _diagnosticLog.ErrorAsync("OptionsOpenFailure", "Sentinel AI could not open Options.", ex);
-                    window.AppWindow.Show();
-                    window.Activate();
-                }
-            });
+                _optionsWindow = new OptionsWindow();
+                _optionsWindow.Closed += (_, _) => _optionsWindow = null;
+            }
+
+            _optionsWindow.Activate();
         }
 
         private void ExitApplication()
         {
-            Window? window = _window;
-            if (window is null)
-            {
-                if (_primaryInstance is not null) _primaryInstance.Activated -= PrimaryInstance_Activated;
-                _systemTrayService?.Dispose();
-                _systemTrayService = null;
-                Exit();
-                return;
-            }
-
-            window.DispatcherQueue.TryEnqueue(() =>
-            {
-                _isExplicitExit = true;
-                if (_primaryInstance is not null) _primaryInstance.Activated -= PrimaryInstance_Activated;
-                _optionsWindow?.Close();
-                _optionsWindow = null;
-                _systemTrayService?.Dispose();
-                _systemTrayService = null;
-                window.Close();
-                Exit();
-            });
+            _isExplicitExit = true;
+            _systemTrayService?.Dispose();
+            _systemTrayService = null;
+            _optionsWindow?.Close();
+            _optionsWindow = null;
+            _window?.Close();
+            Exit();
         }
 
         private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
         {
             _diagnosticLog.WriteCrashBreadcrumb("UnhandledException", e.Exception);
-            _ = _diagnosticLog.ErrorAsync(
-                "UnhandledException",
-                "An unhandled application exception reached the WinUI application boundary.",
-                e.Exception);
+            _ = _diagnosticLog.ErrorAsync("UnhandledException", "An unhandled UI exception reached the application boundary.", e.Exception);
         }
     }
 }
