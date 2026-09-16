@@ -3,6 +3,7 @@ name: Sentinel Premium Privacy Foundation
 on:
   push:
     branches:
+      - main
       - feature/premium-privacy-foundation
   workflow_dispatch:
 
