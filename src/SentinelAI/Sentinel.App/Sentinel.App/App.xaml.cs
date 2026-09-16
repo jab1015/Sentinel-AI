@@ -407,7 +407,7 @@ namespace Sentinel.App
                 e.Exception);
         }
 
-        private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        private void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
         {
             _diagnosticLog.WriteCrashBreadcrumb("AppDomainUnhandledException", e.ExceptionObject as Exception);
         }
