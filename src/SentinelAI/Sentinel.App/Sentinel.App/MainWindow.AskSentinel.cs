@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Sentinel.App.Services;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
@@ -44,6 +45,7 @@ namespace Sentinel.App
             {
                 AskSentinelStatusText.Text = "Type a question for Sentinel first.";
                 AskSentinelAnswerBorder.Visibility = Visibility.Collapsed;
+                ClearAskSentinelResearchSources();
                 HideAskSentinelRepairActions();
                 return;
             }
@@ -53,6 +55,7 @@ namespace Sentinel.App
             AskSentinelButton.IsEnabled = false;
             AskSentinelQuestionBox.IsEnabled = false;
             AskSentinelAnswerBorder.Visibility = Visibility.Collapsed;
+            ClearAskSentinelResearchSources();
             HideAskSentinelRepairActions();
             AskSentinelStatusText.Text = "Checking this computer…";
             AskSentinelProgressText.Text = "Checking local evidence…";
@@ -66,6 +69,8 @@ namespace Sentinel.App
                 var snapshot = _engine.CurrentSnapshot;
                 var history = await _investigationHistoryService.ReadRecentAsync(100);
                 bool optimizationQuestion = IsOptimizationQuestion(question);
+                IReadOnlyList<CloudAiCitation> displayCitations = Array.Empty<CloudAiCitation>();
+                IReadOnlyList<CloudAiSource> displaySources = Array.Empty<CloudAiSource>();
 
                 if (optimizationQuestion)
                 {
@@ -141,7 +146,7 @@ namespace Sentinel.App
 
                 if (response.IsInsufficientEvidence || route.UseExternalResearch)
                 {
-                    AskSentinelProgressText.Text = "Checking approved sources…";
+                    AskSentinelProgressText.Text = "Checking authoritative sources…";
                     ExternalInvestigationResult external = await _externalInvestigationGateway.InvestigateAsync(question, snapshot);
 
                     if (external.RequiresSubscription)
@@ -149,9 +154,9 @@ namespace Sentinel.App
                         driverIssue = false;
                         bool basicUnavailable = route.UseBasicAi && basicAi is not null && !basicAi.UsedCloudAi;
                         string answer = basicAi?.UsedCloudAi == true && !string.IsNullOrWhiteSpace(basicAi.Answer)
-                            ? basicAi.Answer + "\n\nI can also check current approved external sources and use Advanced AI for deeper investigation when the subscription is active."
+                            ? basicAi.Answer + "\n\nI can also check current authoritative external sources and use Advanced AI for deeper investigation when the subscription is active."
                             : basicUnavailable
-                                ? response.Answer + "\n\nCurrent approved-source research and Advanced AI require an active subscription. You can retry Basic AI without a subscription."
+                                ? response.Answer + "\n\nCurrent authoritative-source research and Advanced AI require an active subscription. You can retry Basic AI without a subscription."
                                 : BuildFreeExternalResearchFallback(question, external, snapshot);
 
                         response = response with
@@ -162,12 +167,13 @@ namespace Sentinel.App
                             PassedFinalSafetyValidation = false,
                             GroundingSummary = basicUnavailable
                                 ? "Basic AI was temporarily unavailable; paid external research was not available without entitlement."
-                                : "Sentinel returned available free local/Basic AI help; current approved external research and Advanced AI require the paid entitlement."
+                                : "Sentinel returned available free local/Basic AI help; current authoritative research and Advanced AI require the paid entitlement."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
                     else if (driverIssue)
                     {
+                        displaySources = MergeAskSentinelResearchSources(external, null);
                         _driverRepairDeviceName = GetDriverDeviceName(snapshot);
                         AskSentinelProgressText.Text = "I found the issue. Checking for a safe repair…";
                         _preparedDriverRepairPlan = await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
@@ -175,7 +181,7 @@ namespace Sentinel.App
                         {
                             Answer = BuildDriverConsumerAnswer(external, _preparedDriverRepairPlan),
                             PassedFinalSafetyValidation = false,
-                            GroundingSummary = "Sentinel combined verified local driver evidence, approved external research, and a locally verified repair check."
+                            GroundingSummary = "Sentinel combined verified local driver evidence, authoritative external research, and a locally verified repair check."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Inferred;
                     }
@@ -195,6 +201,11 @@ namespace Sentinel.App
                         string externalAnswer = externalAi.UsedCloudAi && !string.IsNullOrWhiteSpace(externalAi.Answer)
                             ? externalAi.Answer
                             : BuildConsumerExternalAnswer(question, external);
+                        displayCitations = externalAi.UsedWebSearch
+                            ? externalAi.Citations
+                            : Array.Empty<CloudAiCitation>();
+                        displaySources = MergeAskSentinelResearchSources(external, externalAi.Sources);
+
                         response = response with
                         {
                             Answer = externalAnswer,
@@ -204,16 +215,18 @@ namespace Sentinel.App
                             UsedInvestigationHistory = false,
                             PassedFinalSafetyValidation = false,
                             GroundingSummary = externalAi.UsedCloudAi
-                                ? "Sentinel combined verified local evidence, bounded approved-source passages, and one AI interpretation pass."
+                                ? externalAi.UsedWebSearch
+                                    ? "Sentinel combined verified local evidence, bounded authoritative-source passages, cited web research, and one AI interpretation pass."
+                                    : "Sentinel combined verified local evidence, bounded authoritative-source passages, and one AI interpretation pass."
                                 : external.Sources.Count > 0
                                     ? "Sentinel returned bounded authoritative source material because AI interpretation was unavailable."
-                                    : "Sentinel checked approved sources but did not find enough verified information to make a stronger claim."
+                                    : "Sentinel checked authoritative sources but did not find enough verified information to make a stronger claim."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
                     }
 
                     string sourceNames = external.Sources.Count == 0
-                        ? "approved authoritative sources"
+                        ? "authoritative sources"
                         : string.Join(", ", external.Sources.Select(x => x.SourceName).Distinct());
                     string fingerprint = $"external:{external.Topic}:{question.Trim().ToLowerInvariant()}";
                     await _investigationHistoryService.RecordAsync(
@@ -245,6 +258,8 @@ namespace Sentinel.App
                         GroundingSummary = $"Final display validation blocked the composed response: {finalValidation.Reason}"
                     };
                     driverIssue = false;
+                    displayCitations = Array.Empty<CloudAiCitation>();
+                    displaySources = Array.Empty<CloudAiSource>();
                 }
                 else
                 {
@@ -256,7 +271,7 @@ namespace Sentinel.App
                     };
                 }
 
-                AskSentinelAnswerText.Text = response.Answer;
+                RenderAskSentinelAnswer(response.Answer, displayCitations, displaySources);
                 AskSentinelAnswerText.FontSize = 17;
                 AskSentinelAnswerText.LineHeight = 25;
                 AskSentinelAnswerBorder.Padding = new Thickness(20);
@@ -279,12 +294,12 @@ namespace Sentinel.App
                     : response.UsedInvestigationHistory
                         ? "Answered from current evidence and Sentinel's verified investigation history."
                         : responseProvenance == AskSentinelProvenanceLabel.Advisory
-                            ? "Answered with available Sentinel AI and approved evidence sources."
+                            ? "Answered with available Sentinel AI and authoritative/cited evidence sources."
                             : "Answered from current verified evidence on this computer.";
             }
             catch (Exception)
             {
-                AskSentinelAnswerText.Text = "I couldn't finish checking the evidence, so I won't guess. You can retry the question or use one of the follow-up options.";
+                RenderAskSentinelAnswer("I couldn't finish checking the evidence, so I won't guess. You can retry the question or use one of the follow-up options.");
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 HideAskSentinelRepairActions();
                 AskSentinelStatusText.Text = "Verified evidence or AI assistance is temporarily unavailable.";
@@ -330,13 +345,13 @@ namespace Sentinel.App
             if (!AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(question))
             {
                 return external.Summary +
-                       "\n\nThis question depends on current approved external information. External research and Advanced AI require an active Sentinel subscription. Basic AI remains available for stable general questions that do not require current sources.";
+                       "\n\nThis question depends on current authoritative external information. External research and Advanced AI require an active Sentinel subscription. Basic AI remains available for stable general questions that do not require current sources.";
             }
 
             string local = snapshot.InvestigationRequiresAttention
                 ? $"From this computer's verified local evidence, Sentinel is currently reporting: {snapshot.InvestigationSummary}"
                 : $"From this computer's verified local evidence, Sentinel does not currently report a condition requiring attention. Defender is {snapshot.DefenderStatus} and Firewall is {snapshot.FirewallStatus}.";
-            return $"{local}\n\n{external.Summary}\n\nCurrent approved external research and Advanced AI require an active Sentinel subscription.";
+            return $"{local}\n\n{external.Summary}\n\nCurrent authoritative external research and Advanced AI require an active Sentinel subscription.";
         }
 
         private static string BuildDriverConsumerAnswer(
@@ -349,7 +364,7 @@ namespace Sentinel.App
                 ? $"I found a driver problem\n\n{plan.DeviceName} is reporting a problem."
                 : "I found evidence of a driver-related problem, but I cannot yet identify the exact device reliably.";
             string finding = external.Sources.Count > 0
-                ? "I checked this computer's driver evidence and approved Microsoft driver sources. The external material is relevant guidance, but Sentinel still requires local verification before treating it as proof of this device's root cause."
+                ? "I checked this computer's driver evidence and authoritative Microsoft driver sources. The external material is relevant guidance, but Sentinel still requires local verification before treating it as proof of this device's root cause."
                 : "I checked this computer's driver and system information. I do not have enough verified evidence yet to name one exact cause safely.";
             string action = plan.Available && plan.AutomaticInstallationVerified
                 ? "I found a Microsoft-signed driver package that Sentinel can install. Nothing will change until you approve the repair."
@@ -377,8 +392,8 @@ namespace Sentinel.App
             if (passages.Length == 0)
             {
                 return external.Sources.Count > 0
-                    ? external.Summary + "\n\nI reached approved sources, but AI interpretation is temporarily unavailable and I do not have a bounded passage to show safely."
-                    : "I checked approved external sources, but I don't have enough verified information to give you a reliable answer yet. I won't guess.";
+                    ? external.Summary + "\n\nI reached authoritative sources, but AI interpretation is temporarily unavailable and I do not have a bounded passage to show safely."
+                    : "I checked authoritative external sources, but I don't have enough verified information to give you a reliable answer yet. I won't guess.";
             }
 
             string excerpts = string.Join(
@@ -538,7 +553,7 @@ namespace Sentinel.App
         private async void ReviewAskSentinelRepair_Click(object sender, RoutedEventArgs e)
         {
             string details = _preparedDriverRepairPlan is null
-                ? "Sentinel detected a driver-related problem and is using verified local evidence plus approved Microsoft and manufacturer sources to determine a safe repair."
+                ? "Sentinel detected a driver-related problem and is using verified local evidence plus authoritative Microsoft and manufacturer sources to determine a safe repair."
                 : $"Device: {_preparedDriverRepairPlan.DeviceName}\n\nSource: {(_preparedDriverRepairPlan.Source.Length == 0 ? "Still investigating" : _preparedDriverRepairPlan.Source)}\n\n{_preparedDriverRepairPlan.Summary}" +
                   (string.IsNullOrWhiteSpace(_preparedDriverRepairPlan.DiagnosticEvidence)
                       ? string.Empty

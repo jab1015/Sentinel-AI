@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -100,7 +101,10 @@ namespace Sentinel.App.Services
                     Model: string.Empty,
                     InputTokens: 0,
                     OutputTokens: 0,
-                    Reason: "The verified evidence package could not be reduced enough to leave a safe response budget for AI.");
+                    Reason: "The verified evidence package could not be reduced enough to leave a safe response budget for AI.",
+                    UsedWebSearch: false,
+                    Citations: Array.Empty<CloudAiCitation>(),
+                    Sources: Array.Empty<CloudAiSource>());
             }
 
             RemoveExpiredCacheEntries();
@@ -108,10 +112,22 @@ namespace Sentinel.App.Services
             string cacheKey = Hash(CreateStableCachePayload(package.Payload) + "|" + decision.ModelTier);
             if (Cache.TryGetValue(cacheKey, out CacheEntry? entry) && entry.ExpiresUtc > DateTimeOffset.UtcNow)
             {
-                return new SmartAiResult(entry.Result.Used, entry.Result.Available, entry.Result.Answer,
-                    entry.Result.ConfidencePercent, entry.Result.RequiresMoreEvidence, true, false,
-                    entry.Result.Provider, entry.Result.Model, 0, 0,
-                    "Reused a recent AI analysis for identical redacted evidence; no new token request was sent.");
+                return new SmartAiResult(
+                    entry.Result.Used,
+                    entry.Result.Available,
+                    entry.Result.Answer,
+                    entry.Result.ConfidencePercent,
+                    entry.Result.RequiresMoreEvidence,
+                    true,
+                    false,
+                    entry.Result.Provider,
+                    entry.Result.Model,
+                    0,
+                    0,
+                    "Reused a recent AI analysis for identical redacted evidence; no new token request was sent.",
+                    entry.Result.UsedWebSearch,
+                    entry.Result.SafeCitations,
+                    entry.Result.SafeSources);
             }
 
             CloudAiResult cloud = await _gateway.AnalyzeAsync(package, decision, cancellationToken).ConfigureAwait(false);
@@ -123,9 +139,22 @@ namespace Sentinel.App.Services
                 Cache[cacheKey] = new CacheEntry(cloud, DateTimeOffset.UtcNow.Add(CacheLifetime));
             }
 
-            return new SmartAiResult(cloud.Used, cloud.Available, cloud.Answer, cloud.ConfidencePercent,
-                cloud.RequiresMoreEvidence, false, false, cloud.Provider, cloud.Model,
-                cloud.InputTokens, cloud.OutputTokens, cloud.Reason);
+            return new SmartAiResult(
+                cloud.Used,
+                cloud.Available,
+                cloud.Answer,
+                cloud.ConfidencePercent,
+                cloud.RequiresMoreEvidence,
+                false,
+                false,
+                cloud.Provider,
+                cloud.Model,
+                cloud.InputTokens,
+                cloud.OutputTokens,
+                cloud.Reason,
+                cloud.UsedWebSearch,
+                cloud.SafeCitations,
+                cloud.SafeSources);
         }
 
         public AiUsageSnapshot GetUsage() => new(
@@ -192,10 +221,14 @@ namespace Sentinel.App.Services
         string Model,
         int InputTokens,
         int OutputTokens,
-        string Reason)
+        string Reason,
+        bool UsedWebSearch,
+        IReadOnlyList<CloudAiCitation> Citations,
+        IReadOnlyList<CloudAiSource> Sources)
     {
         public static SmartAiResult NotUsed(string reason, bool researchFirst) =>
-            new(false, true, string.Empty, 0, false, false, researchFirst, string.Empty, string.Empty, 0, 0, reason);
+            new(false, true, string.Empty, 0, false, false, researchFirst, string.Empty, string.Empty, 0, 0, reason,
+                false, Array.Empty<CloudAiCitation>(), Array.Empty<CloudAiSource>());
     }
 
     public sealed record AiUsageSnapshot(

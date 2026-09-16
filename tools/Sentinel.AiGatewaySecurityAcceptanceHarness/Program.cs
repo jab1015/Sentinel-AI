@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 
 Environment.SetEnvironmentVariable("SENTINEL_GATEWAY_SESSION_SIGNING_KEY", "acceptance-harness-signing-key-32-bytes-minimum");
 
@@ -58,6 +59,145 @@ Check(!anonymous.Authorized, "Anonymous analyze request is rejected");
 
 SessionValidationResult badRequestId = security.ValidateSession("Bearer " + basicToken, "not-a-guid", "Basic");
 Check(!badRequestId.Authorized, "Malformed request ID is rejected");
+
+Dictionary<string, object?> basicProviderRequest = AiProviderRequestFactory.Create(
+    "gpt-basic", 300, "none", "SENTINEL_AI_EVIDENCE_V1", advanced: false, purpose: "ask-sentinel-basic");
+using (JsonDocument basicProviderJson = JsonDocument.Parse(JsonSerializer.Serialize(basicProviderRequest)))
+{
+    JsonElement root = basicProviderJson.RootElement;
+    Check(root.TryGetProperty("store", out JsonElement store) && store.ValueKind == JsonValueKind.False,
+        "Provider response storage is explicitly disabled for Basic AI");
+    Check(!root.TryGetProperty("tools", out _),
+        "Basic AI request cannot enable provider web search");
+    Check(!root.TryGetProperty("include", out _),
+        "Basic AI request does not request web-search source metadata");
+}
+
+Dictionary<string, object?> advancedNonResearchRequest = AiProviderRequestFactory.Create(
+    "gpt-advanced", 600, "low", "SENTINEL_AI_EVIDENCE_V1", advanced: true, purpose: "another-purpose");
+using (JsonDocument advancedNonResearchJson = JsonDocument.Parse(JsonSerializer.Serialize(advancedNonResearchRequest)))
+{
+    JsonElement root = advancedNonResearchJson.RootElement;
+    Check(root.TryGetProperty("store", out JsonElement store) && store.ValueKind == JsonValueKind.False,
+        "Provider response storage is explicitly disabled for Advanced AI");
+    Check(!root.TryGetProperty("tools", out _),
+        "Advanced non-research request cannot enable provider web search");
+}
+
+Dictionary<string, object?> advancedResearchRequest = AiProviderRequestFactory.Create(
+    "gpt-advanced", 600, "low", "SENTINEL_AI_EVIDENCE_V1", advanced: true, purpose: "external-investigation");
+using (JsonDocument advancedResearchJson = JsonDocument.Parse(JsonSerializer.Serialize(advancedResearchRequest)))
+{
+    JsonElement root = advancedResearchJson.RootElement;
+    Check(root.TryGetProperty("store", out JsonElement store) && store.ValueKind == JsonValueKind.False,
+        "External research also disables provider response storage");
+    Check(root.TryGetProperty("tools", out JsonElement tools) &&
+          tools.ValueKind == JsonValueKind.Array && tools.GetArrayLength() == 1 &&
+          tools[0].TryGetProperty("type", out JsonElement toolType) &&
+          toolType.GetString() == "web_search",
+        "Only Advanced external investigation enables the web_search tool");
+    Check(root.TryGetProperty("max_tool_calls", out JsonElement maxToolCalls) &&
+          maxToolCalls.TryGetInt32(out int toolCallLimit) &&
+          toolCallLimit == AiProviderRequestFactory.MaximumWebSearchToolCalls && toolCallLimit <= 2,
+        "External web research is bounded to at most two tool calls");
+    Check(root.TryGetProperty("include", out JsonElement include) &&
+          include.ValueKind == JsonValueKind.Array &&
+          include.EnumerateArray().Any(item =>
+              item.ValueKind == JsonValueKind.String &&
+              item.GetString() == "web_search_call.action.sources"),
+        "External web research requests attributable source metadata");
+}
+
+const string providerResponse = """
+{
+  "output": [
+    {
+      "type": "web_search_call",
+      "action": {
+        "type": "search",
+        "sources": [
+          { "type": "url", "url": "https://www.nvidia.com/download/index.aspx", "title": "NVIDIA Driver Downloads" }
+        ]
+      }
+    },
+    {
+      "type": "message",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "NVIDIA published current driver guidance.",
+          "annotations": [
+            {
+              "type": "url_citation",
+              "start_index": 0,
+              "end_index": 6,
+              "url": "https://www.nvidia.com/download/index.aspx",
+              "title": "NVIDIA Driver Downloads"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "usage": { "input_tokens": 120, "output_tokens": 24 }
+}
+""";
+using (JsonDocument providerDocument = JsonDocument.Parse(providerResponse))
+{
+    AiProviderParsedResponse parsed = AiProviderResponseParser.Parse(providerDocument.RootElement);
+    Check(parsed.Answer == "NVIDIA published current driver guidance.",
+        "Provider response parser extracts the answer text");
+    Check(parsed.InputTokens == 120 && parsed.OutputTokens == 24,
+        "Provider response parser preserves token usage");
+    Check(parsed.UsedWebSearch,
+        "Provider response parser detects web-search use");
+    Check(parsed.Citations.Count == 1 &&
+          parsed.Citations[0].StartIndex == 0 && parsed.Citations[0].EndIndex == 6 &&
+          parsed.Citations[0].Url.StartsWith("https://www.nvidia.com/", StringComparison.OrdinalIgnoreCase),
+        "Provider response parser accepts a bounded HTTPS inline citation");
+    Check(parsed.Sources.Count == 1 &&
+          parsed.Sources[0].Url.StartsWith("https://www.nvidia.com/", StringComparison.OrdinalIgnoreCase),
+        "Provider response parser returns a deduplicated attributable HTTPS source");
+}
+
+const string hostileProviderResponse = """
+{
+  "output": [
+    {
+      "type": "web_search_call",
+      "action": {
+        "sources": [
+          { "url": "http://insecure.example/source", "title": "Insecure" }
+        ]
+      }
+    },
+    {
+      "type": "message",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "Short answer.",
+          "annotations": [
+            { "type": "url_citation", "start_index": 0, "end_index": 999, "url": "https://example.com/out-of-range", "title": "Bad Range" },
+            { "type": "url_citation", "start_index": 0, "end_index": 5, "url": "http://example.com/insecure", "title": "HTTP" }
+          ]
+        }
+      ]
+    }
+  ],
+  "usage": { "input_tokens": 20, "output_tokens": 5 }
+}
+""";
+using (JsonDocument hostileDocument = JsonDocument.Parse(hostileProviderResponse))
+{
+    AiProviderParsedResponse parsed = AiProviderResponseParser.Parse(hostileDocument.RootElement);
+    Check(parsed.UsedWebSearch,
+        "Web-search tool use is detected even when returned source metadata is rejected");
+    Check(parsed.Citations.Count == 0,
+        "Out-of-range and non-HTTPS citations fail closed");
+    Check(parsed.Sources.Count == 0,
+        "Non-HTTPS web-search sources fail closed");
+}
 
 using (StringContent validJson = new("{\"ok\":true}", Encoding.UTF8, "application/json"))
 using (var validDocument = await BoundedHttpJson.TryReadAsync(validJson, 1024, 8, CancellationToken.None))

@@ -4,6 +4,8 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -24,6 +26,9 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan SessionRefreshCeiling = TimeSpan.FromMinutes(8);
         private static readonly TimeSpan SessionExpirySafetyMargin = TimeSpan.FromSeconds(30);
+        private const int MaximumResearchLinks = 12;
+        private const int MaximumResearchUrlLength = 2_048;
+        private const int MaximumResearchTitleLength = 300;
         private const string ProductionEndpoint =
             "https://sentinel-ai-gateway-49908265995.us-central1.run.app/v1/analyze";
 
@@ -125,18 +130,33 @@ namespace Sentinel.App.Services
                 if (body is null || string.IsNullOrWhiteSpace(body.Answer))
                     return CloudAiResult.Unavailable("Secure AI gateway returned no usable answer.");
 
+                string answer = Limit(body.Answer.Trim(), 8_000);
+                IReadOnlyList<CloudAiCitation> citations = NormalizeCitations(body.Citations, answer);
+                IReadOnlyList<CloudAiSource> sources = NormalizeSources(body.Sources, citations);
+
+                if (body.UsedWebSearch && sources.Count == 0)
+                {
+                    return CloudAiResult.Unavailable(
+                        "Secure AI gateway reported web research without a usable HTTPS source. Sentinel did not display the unattributed web answer.");
+                }
+
                 return new CloudAiResult(
                     Used: true,
                     Available: true,
-                    Answer: Limit(body.Answer.Trim(), 8_000),
+                    Answer: answer,
                     Provider: Limit(body.Provider?.Trim() ?? string.Empty, 100),
                     Model: Limit(body.Model?.Trim() ?? string.Empty, 100),
                     InputTokens: Math.Max(0, body.InputTokens),
                     OutputTokens: Math.Max(0, body.OutputTokens),
                     ConfidencePercent: Math.Clamp(body.ConfidencePercent, 0, 100),
                     RequiresMoreEvidence: body.RequiresMoreEvidence,
-                    Reason: "Secure AI gateway returned an advisory analysis. Sentinel must still validate any actionable conclusion against local evidence.",
-                    RequiresSubscription: false);
+                    Reason: body.UsedWebSearch
+                        ? "Secure AI gateway returned an advisory analysis with bounded attributable web research. Sentinel must still validate any machine-specific or actionable conclusion against local evidence."
+                        : "Secure AI gateway returned an advisory analysis. Sentinel must still validate any actionable conclusion against local evidence.",
+                    RequiresSubscription: false,
+                    UsedWebSearch: body.UsedWebSearch,
+                    Citations: citations,
+                    Sources: sources);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
@@ -278,6 +298,84 @@ namespace Sentinel.App.Services
             return refreshAge > TimeSpan.Zero && DateTimeOffset.UtcNow - session.CreatedAtUtc < refreshAge;
         }
 
+        private static IReadOnlyList<CloudAiCitation> NormalizeCitations(
+            IReadOnlyList<CloudAiCitationResponse>? values,
+            string answer)
+        {
+            if (values is null || values.Count == 0) return Array.Empty<CloudAiCitation>();
+
+            List<CloudAiCitation> result = new();
+            foreach (CloudAiCitationResponse value in values)
+            {
+                if (result.Count >= MaximumResearchLinks) break;
+                if (value.StartIndex < 0 || value.EndIndex <= value.StartIndex || value.EndIndex > answer.Length ||
+                    !TryNormalizeHttpsUri(value.Url, out string url))
+                    continue;
+
+                result.Add(new CloudAiCitation(
+                    value.StartIndex,
+                    value.EndIndex,
+                    url,
+                    NormalizeTitle(value.Title, url)));
+            }
+
+            return result
+                .OrderBy(value => value.StartIndex)
+                .ThenBy(value => value.EndIndex)
+                .ToArray();
+        }
+
+        private static IReadOnlyList<CloudAiSource> NormalizeSources(
+            IReadOnlyList<CloudAiSourceResponse>? values,
+            IReadOnlyList<CloudAiCitation> citations)
+        {
+            List<CloudAiSource> result = new();
+            if (values is not null)
+            {
+                foreach (CloudAiSourceResponse value in values)
+                {
+                    if (result.Count >= MaximumResearchLinks) break;
+                    if (!TryNormalizeHttpsUri(value.Url, out string url) ||
+                        result.Any(source => source.Url.Equals(url, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    result.Add(new CloudAiSource(NormalizeTitle(value.Title, url), url));
+                }
+            }
+
+            foreach (CloudAiCitation citation in citations)
+            {
+                if (result.Count >= MaximumResearchLinks) break;
+                if (result.Any(source => source.Url.Equals(citation.Url, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                result.Add(new CloudAiSource(citation.Title, citation.Url));
+            }
+
+            return result;
+        }
+
+        private static bool TryNormalizeHttpsUri(string? value, out string url)
+        {
+            url = string.Empty;
+            string candidate = (value ?? string.Empty).Trim();
+            if (candidate.Length == 0 || candidate.Length > MaximumResearchUrlLength ||
+                !Uri.TryCreate(candidate, UriKind.Absolute, out Uri? uri) ||
+                !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(uri.Host) ||
+                !string.IsNullOrWhiteSpace(uri.UserInfo))
+                return false;
+
+            url = uri.AbsoluteUri;
+            return true;
+        }
+
+        private static string NormalizeTitle(string? value, string url)
+        {
+            string title = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(title) && Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+                title = uri.Host;
+            return Limit(title, MaximumResearchTitleLength);
+        }
+
         private static void InvalidateSession(bool advanced)
         {
             if (advanced) _advancedSession = null;
@@ -307,15 +405,37 @@ namespace Sentinel.App.Services
             int MaximumTotalTokens,
             string Evidence);
 
-        private sealed record CloudAiResponse(
-            string? Answer,
-            string? Provider,
-            string? Model,
-            int InputTokens,
-            int OutputTokens,
-            int ConfidencePercent,
-            bool RequiresMoreEvidence);
+        private sealed class CloudAiResponse
+        {
+            public string? Answer { get; set; }
+            public string? Provider { get; set; }
+            public string? Model { get; set; }
+            public int InputTokens { get; set; }
+            public int OutputTokens { get; set; }
+            public int ConfidencePercent { get; set; }
+            public bool RequiresMoreEvidence { get; set; }
+            public bool UsedWebSearch { get; set; }
+            public List<CloudAiCitationResponse>? Citations { get; set; }
+            public List<CloudAiSourceResponse>? Sources { get; set; }
+        }
+
+        private sealed class CloudAiCitationResponse
+        {
+            public int StartIndex { get; set; }
+            public int EndIndex { get; set; }
+            public string? Url { get; set; }
+            public string? Title { get; set; }
+        }
+
+        private sealed class CloudAiSourceResponse
+        {
+            public string? Title { get; set; }
+            public string? Url { get; set; }
+        }
     }
+
+    public sealed record CloudAiCitation(int StartIndex, int EndIndex, string Url, string Title);
+    public sealed record CloudAiSource(string Title, string Url);
 
     public sealed record CloudAiResult(
         bool Used,
@@ -328,8 +448,14 @@ namespace Sentinel.App.Services
         int ConfidencePercent,
         bool RequiresMoreEvidence,
         string Reason,
-        bool RequiresSubscription = false)
+        bool RequiresSubscription = false,
+        bool UsedWebSearch = false,
+        IReadOnlyList<CloudAiCitation>? Citations = null,
+        IReadOnlyList<CloudAiSource>? Sources = null)
     {
+        public IReadOnlyList<CloudAiCitation> SafeCitations => Citations ?? Array.Empty<CloudAiCitation>();
+        public IReadOnlyList<CloudAiSource> SafeSources => Sources ?? Array.Empty<CloudAiSource>();
+
         public static CloudAiResult NotUsed(string reason) =>
             new(false, true, string.Empty, string.Empty, string.Empty, 0, 0, 0, false, reason);
 
