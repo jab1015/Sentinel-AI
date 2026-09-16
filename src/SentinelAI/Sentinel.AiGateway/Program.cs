@@ -245,10 +245,12 @@ app.MapPost("/v1/analyze", async (
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
 
-        long totalTokens = (long)parsed.InputTokens + parsed.OutputTokens;
-        if (parsed.InputTokens <= 0 || parsed.OutputTokens < 0 || totalTokens > requestedBudget)
+        int inputTokens = parsed.InputTokens;
+        int outputTokens = parsed.OutputTokens;
+        long totalTokens = (long)inputTokens + outputTokens;
+        if (inputTokens <= 0 || outputTokens < 0 || totalTokens > requestedBudget)
         {
-            Console.Error.WriteLine($"OPENAI_GATEWAY_TOKEN_BUDGET_VIOLATION input={parsed.InputTokens} output={parsed.OutputTokens} budget={requestedBudget}");
+            Console.Error.WriteLine($"OPENAI_GATEWAY_TOKEN_BUDGET_VIOLATION input={inputTokens} output={outputTokens} budget={requestedBudget}");
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
 
@@ -270,8 +272,8 @@ app.MapPost("/v1/analyze", async (
             Answer: Limit(parsed.Answer.Trim(), 8_000),
             Provider: "OpenAI",
             Model: model,
-            InputTokens: parsed.InputTokens,
-            OutputTokens: parsed.OutputTokens,
+            InputTokens: inputTokens,
+            OutputTokens: outputTokens,
             ConfidencePercent: confidence,
             RequiresMoreEvidence: moreEvidence,
             UsedWebSearch: usedWebSearch,
