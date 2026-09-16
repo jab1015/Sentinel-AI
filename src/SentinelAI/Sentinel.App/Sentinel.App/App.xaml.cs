@@ -34,6 +34,9 @@ namespace Sentinel.App
 
         public App()
         {
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+
             EnsurePerMonitorDpiAwareness();
             InitializeComponent();
             string handoffRoot = Path.Combine(ApplicationData.Current.LocalFolder.Path, "ExplorerHandoff");
@@ -49,51 +52,104 @@ namespace Sentinel.App
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            AppActivationArguments? activation = GetCurrentActivationArguments();
-            if (!EnsurePrimaryInstance(activation)) return;
-
-            bool explorerInspectionActivation = HandleExplorerInspectionActivation(activation, allowProcessArguments: true);
             Stopwatch startupTimer = Stopwatch.StartNew();
+            AppActivationArguments? activation = GetCurrentActivationArguments();
             bool launchedByWindowsStartup = activation?.Kind == ExtendedActivationKind.StartupTask;
+
             _ = _diagnosticLog.InformationAsync("ApplicationLaunch",
                 launchedByWindowsStartup ? "Sentinel AI Windows startup launch started." : "Sentinel AI interactive launch started.");
 
             try
             {
-                WindowsStartupRegistrationService.StartupRegistrationResult startup = _startupRegistrationService.EnsureRegisteredAndVerify();
-                _ = startup.Registered
-                    ? _diagnosticLog.InformationAsync("WindowsStartup", startup.Summary)
-                    : _diagnosticLog.WarningAsync("WindowsStartup", startup.Summary);
+                if (!EnsurePrimaryInstance(activation)) return;
+
+                bool explorerInspectionActivation = false;
+                try
+                {
+                    explorerInspectionActivation = HandleExplorerInspectionActivation(activation, allowProcessArguments: true);
+                }
+                catch (Exception ex)
+                {
+                    _ = _diagnosticLog.WarningAsync("ExplorerInspectionActivation",
+                        $"Explorer activation parsing failed ({ex.GetType().Name}). Sentinel will continue normal startup.");
+                }
+
+                TryInitializeWindowsStartupRegistration();
 
                 MainWindow mainWindow = new();
-                mainWindow.EnsureMonitoringSchedulerRunning();
-                mainWindow.Activated += (_, _) => mainWindow.CheckForMandatoryStoreUpdate();
                 _window = mainWindow;
                 _window.AppWindow.Closing += MainAppWindow_Closing;
-                _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);
 
+                // Make an interactive launch visible before initializing optional services.
+                // A tray-icon, Store, startup-registration, or monitoring setup failure must
+                // never make an otherwise healthy installed app appear to do nothing.
                 if (explorerInspectionActivation)
                 {
-                    // Explorer commands are intentionally dialog-only. Keep the dashboard hidden;
-                    // MainWindow owns the command handlers but presents them through a dedicated
-                    // compact dialog host instead of activating the full Sentinel dashboard.
                     _pendingInteractiveActivation = false;
                     _window.AppWindow.Hide();
                 }
                 else if (launchedByWindowsStartup && !_pendingInteractiveActivation)
                 {
-                    mainWindow.StartBackgroundMonitoring();
                     _window.AppWindow.Hide();
-                    _ = _diagnosticLog.InformationAsync("WindowsStartup", "Sentinel AI started with Windows and is monitoring from the system tray.");
                 }
                 else
                 {
                     _pendingInteractiveActivation = false;
-                    PromptForExplorerRestartAfterInstall();
                     _window.Activate();
                 }
 
-                DeliverPendingExplorerInspection(mainWindow);
+                try
+                {
+                    mainWindow.EnsureMonitoringSchedulerRunning();
+                    if (launchedByWindowsStartup && !explorerInspectionActivation)
+                        mainWindow.StartBackgroundMonitoring();
+                }
+                catch (Exception ex)
+                {
+                    _ = _diagnosticLog.ErrorAsync("MonitoringStartupFailure",
+                        "Sentinel opened, but background monitoring initialization failed. The dashboard remains available.", ex);
+                }
+
+                try
+                {
+                    mainWindow.Activated += (_, _) => mainWindow.CheckForMandatoryStoreUpdate();
+                }
+                catch (Exception ex)
+                {
+                    _ = _diagnosticLog.WarningAsync("StoreUpdateHookFailure",
+                        $"The Store update hook could not be initialized ({ex.GetType().Name}). Sentinel will continue running.");
+                }
+
+                TryInitializeSystemTray();
+
+                if (!explorerInspectionActivation && !launchedByWindowsStartup)
+                {
+                    try
+                    {
+                        PromptForExplorerRestartAfterInstall();
+                    }
+                    catch (Exception ex)
+                    {
+                        _ = _diagnosticLog.WarningAsync("ExplorerRestartPromptFailure",
+                            $"The Explorer restart prompt could not be shown ({ex.GetType().Name}). Sentinel will continue running.");
+                    }
+                }
+
+                try
+                {
+                    DeliverPendingExplorerInspection(mainWindow);
+                }
+                catch (Exception ex)
+                {
+                    _ = _diagnosticLog.ErrorAsync("ExplorerInspectionDeliveryFailure",
+                        "Sentinel opened, but the pending Explorer inspection request could not be delivered.", ex);
+                }
+
+                if (launchedByWindowsStartup && !explorerInspectionActivation)
+                {
+                    _ = _diagnosticLog.InformationAsync("WindowsStartup",
+                        "Sentinel AI started with Windows and is monitoring in the background.");
+                }
 
                 startupTimer.Stop();
                 _ = _diagnosticLog.InformationAsync("StartupPerformance",
@@ -116,7 +172,54 @@ namespace Sentinel.App
                 _diagnosticLog.WriteCrashBreadcrumb("ApplicationLaunchFailure", ex);
                 _ = _diagnosticLog.ErrorAsync("ApplicationLaunchFailure",
                     $"Sentinel AI could not complete startup after {startupTimer.ElapsedMilliseconds} ms.", ex);
+
+                // If the main window already exists, keep it alive instead of turning an
+                // optional initialization failure into a silent process exit.
+                if (_window is not null)
+                {
+                    try
+                    {
+                        _window.AppWindow.Show();
+                        _window.Activate();
+                        return;
+                    }
+                    catch
+                    {
+                    }
+                }
+
                 throw;
+            }
+        }
+
+        private void TryInitializeWindowsStartupRegistration()
+        {
+            try
+            {
+                WindowsStartupRegistrationService.StartupRegistrationResult startup = _startupRegistrationService.EnsureRegisteredAndVerify();
+                _ = startup.Registered
+                    ? _diagnosticLog.InformationAsync("WindowsStartup", startup.Summary)
+                    : _diagnosticLog.WarningAsync("WindowsStartup", startup.Summary);
+            }
+            catch (Exception ex)
+            {
+                _ = _diagnosticLog.WarningAsync("WindowsStartup",
+                    $"Startup registration could not be initialized ({ex.GetType().Name}). Sentinel will continue running.");
+            }
+        }
+
+        private void TryInitializeSystemTray()
+        {
+            try
+            {
+                _systemTrayService = new SystemTrayService(ShowMainWindow, ShowOptionsWindow, ExitApplication);
+            }
+            catch (Exception ex)
+            {
+                _systemTrayService?.Dispose();
+                _systemTrayService = null;
+                _ = _diagnosticLog.ErrorAsync("SystemTrayInitializationFailure",
+                    "The system-tray icon could not be initialized. Sentinel will remain usable from its main window.", ex);
             }
         }
 
@@ -143,9 +246,10 @@ namespace Sentinel.App
             }
             catch (Exception ex)
             {
-                _ = _diagnosticLog.ErrorAsync("SingleInstanceFailure",
-                    "Sentinel AI could not establish its single-instance activation boundary.", ex);
-                throw;
+                _ = _diagnosticLog.WarningAsync("SingleInstanceFailure",
+                    $"Sentinel AI could not establish its single-instance activation boundary ({ex.GetType().Name}). Startup will continue without redirection.");
+                _primaryInstance = null;
+                return true;
             }
         }
 
@@ -167,9 +271,6 @@ namespace Sentinel.App
 
             if (explorerInspectionActivation && window is MainWindow mainWindow)
             {
-                // Do not surface the dashboard merely because Explorer invoked a command.
-                // If the user already has the dashboard open, leave its state alone; otherwise
-                // the command is presented only through the dedicated compact dialog host.
                 DeliverPendingExplorerInspection(mainWindow);
                 _ = _diagnosticLog.InformationAsync("SingleInstance", "The existing Sentinel AI instance handled an Explorer command without opening the dashboard.");
                 return;
@@ -303,6 +404,16 @@ namespace Sentinel.App
                 "UnhandledException",
                 "An unhandled application exception reached the WinUI application boundary.",
                 e.Exception);
+        }
+
+        private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            _diagnosticLog.WriteCrashBreadcrumb("AppDomainUnhandledException", e.ExceptionObject as Exception);
+        }
+
+        private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            _diagnosticLog.WriteCrashBreadcrumb("UnobservedTaskException", e.Exception);
         }
     }
 }
