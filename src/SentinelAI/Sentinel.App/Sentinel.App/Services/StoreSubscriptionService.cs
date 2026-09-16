@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.ApplicationModel;
 using Windows.Services.Store;
 
 namespace Sentinel.App.Services
@@ -17,12 +16,8 @@ namespace Sentinel.App.Services
         public const string MonthlyOfferToken = "sentinel-ai-monthly";
         public const string AnnualOfferToken = "sentinel-ai-annual";
 
-        private readonly StoreContext _storeContext;
-
-        public StoreSubscriptionService()
-        {
-            _storeContext = StoreContext.GetDefault();
-        }
+        private readonly object _storeContextGate = new();
+        private StoreContext? _storeContext;
 
         public async Task<SubscriptionState> GetStateAsync()
         {
@@ -30,13 +25,24 @@ namespace Sentinel.App.Services
             return new SubscriptionState(true, SubscriptionPlan.Development, "Local development build", null, null,
                 "Cloud AI is enabled for this local development build. Microsoft Store subscription licensing remains enforced by the production gateway.");
 #else
-            if (!HasPackageIdentity())
-                return SubscriptionState.Unavailable("Microsoft Store licensing is available only in an installed Sentinel package.");
+            if (!MicrosoftStoreRuntimePolicy.IsStoreSignedPackage(out string storePolicyDiagnostic))
+            {
+                return SubscriptionState.Unavailable(
+                    "Free local monitoring is active. Microsoft Store subscription licensing is unavailable in this sideloaded/test package.",
+                    storePolicyDiagnostic);
+            }
+
+            if (!TryGetStoreContext(out StoreContext? storeContext, out string contextDiagnostic) || storeContext is null)
+            {
+                return SubscriptionState.Unavailable(
+                    "Sentinel could not initialize Microsoft Store licensing. Premium features will remain off; free local monitoring will continue.",
+                    contextDiagnostic);
+            }
 
             try
             {
-                StoreAppLicense license = await _storeContext.GetAppLicenseAsync();
-                IReadOnlyList<StoreProduct> products = await GetSubscriptionProductsAsync();
+                StoreAppLicense license = await storeContext.GetAppLicenseAsync();
+                IReadOnlyList<StoreProduct> products = await GetSubscriptionProductsAsync(storeContext);
 
                 StoreProduct? monthly = products.FirstOrDefault(p =>
                     string.Equals(p.InAppOfferToken, MonthlyOfferToken, StringComparison.OrdinalIgnoreCase));
@@ -89,16 +95,18 @@ namespace Sentinel.App.Services
             string serviceTicket,
             string publisherUserId)
         {
-            if (!HasPackageIdentity())
-                return StoreCollectionsIdentityResult.Unavailable("Microsoft Store entitlement verification requires the installed Store package.");
+            if (!MicrosoftStoreRuntimePolicy.IsStoreSignedPackage(out string storePolicyDiagnostic))
+                return StoreCollectionsIdentityResult.Unavailable("Microsoft Store entitlement verification requires the retail Store package.", storePolicyDiagnostic);
             if (string.IsNullOrWhiteSpace(serviceTicket) || serviceTicket.Length > 16_384)
                 return StoreCollectionsIdentityResult.Unavailable("The gateway did not provide a valid Microsoft Store collections ticket.");
             if (string.IsNullOrWhiteSpace(publisherUserId) || publisherUserId.Length > 128)
                 return StoreCollectionsIdentityResult.Unavailable("The gateway did not provide a valid publisher session identifier.");
+            if (!TryGetStoreContext(out StoreContext? storeContext, out string contextDiagnostic) || storeContext is null)
+                return StoreCollectionsIdentityResult.Unavailable("Microsoft Store entitlement verification is unavailable right now.", contextDiagnostic);
 
             try
             {
-                string collectionsId = await _storeContext.GetCustomerCollectionsIdAsync(serviceTicket, publisherUserId);
+                string collectionsId = await storeContext.GetCustomerCollectionsIdAsync(serviceTicket, publisherUserId);
                 if (string.IsNullOrWhiteSpace(collectionsId))
                     return StoreCollectionsIdentityResult.Unavailable("Microsoft Store did not return a collections identifier.");
 
@@ -117,12 +125,14 @@ namespace Sentinel.App.Services
             if (plan is not SubscriptionPlan.Monthly and not SubscriptionPlan.Annual)
                 return new(false, "Choose a monthly or annual subscription.", StorePurchaseStatus.NotPurchased);
 
-            if (!HasPackageIdentity())
+            if (!MicrosoftStoreRuntimePolicy.IsStoreSignedPackage(out _))
                 return new(false, "Subscription purchases are available only in the installed Microsoft Store package.", StorePurchaseStatus.NotPurchased);
+            if (!TryGetStoreContext(out StoreContext? storeContext, out string contextDiagnostic) || storeContext is null)
+                return new(false, "Sentinel could not initialize Microsoft Store purchasing. " + contextDiagnostic, StorePurchaseStatus.ServerError);
 
             try
             {
-                IReadOnlyList<StoreProduct> products = await GetSubscriptionProductsAsync();
+                IReadOnlyList<StoreProduct> products = await GetSubscriptionProductsAsync(storeContext);
                 string offerToken = plan == SubscriptionPlan.Monthly ? MonthlyOfferToken : AnnualOfferToken;
                 StoreProduct? product = products.FirstOrDefault(p =>
                     string.Equals(p.InAppOfferToken, offerToken, StringComparison.OrdinalIgnoreCase));
@@ -149,9 +159,36 @@ namespace Sentinel.App.Services
             }
         }
 
-        private async Task<IReadOnlyList<StoreProduct>> GetSubscriptionProductsAsync()
+        private bool TryGetStoreContext(out StoreContext? storeContext, out string diagnostic)
         {
-            StoreProductQueryResult query = await _storeContext.GetAssociatedStoreProductsAsync(new[] { "Durable" });
+            lock (_storeContextGate)
+            {
+                if (_storeContext is not null)
+                {
+                    storeContext = _storeContext;
+                    diagnostic = string.Empty;
+                    return true;
+                }
+
+                try
+                {
+                    _storeContext = StoreContext.GetDefault();
+                    storeContext = _storeContext;
+                    diagnostic = storeContext is null ? "Microsoft Store returned no StoreContext." : string.Empty;
+                    return storeContext is not null;
+                }
+                catch (Exception ex)
+                {
+                    storeContext = null;
+                    diagnostic = $"Microsoft Store context initialization failed ({ex.GetType().Name}): {ex.Message}";
+                    return false;
+                }
+            }
+        }
+
+        private static async Task<IReadOnlyList<StoreProduct>> GetSubscriptionProductsAsync(StoreContext storeContext)
+        {
+            StoreProductQueryResult query = await storeContext.GetAssociatedStoreProductsAsync(new[] { "Durable" });
             if (query.ExtendedError is not null)
                 throw query.ExtendedError;
             return query.Products.Values.ToArray();
@@ -164,12 +201,6 @@ namespace Sentinel.App.Services
                 return false;
             expiration = addOn.ExpirationDate;
             return true;
-        }
-
-        private static bool HasPackageIdentity()
-        {
-            try { return !string.IsNullOrWhiteSpace(Package.Current.Id.FamilyName); }
-            catch (InvalidOperationException) { return false; }
         }
     }
 
