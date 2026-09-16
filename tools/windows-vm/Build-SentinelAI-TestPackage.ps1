@@ -45,10 +45,9 @@ function Invoke-BoundedProcess {
     try {
         if (-not $process.Start()) { throw "Failed to start $Description." }
 
-        # ReadToEndAsync is implemented by the .NET stream reader and does not execute
-        # PowerShell script blocks on ThreadPool callbacks. That keeps output draining
-        # concurrently (avoiding pipe deadlock) without requiring a PowerShell runspace
-        # on DataReceived event threads.
+        # Drain redirected output while the child runs so a full pipe cannot deadlock it.
+        # The drain itself is also bounded after process exit because a descendant can
+        # otherwise retain an inherited stdout/stderr handle indefinitely.
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
 
@@ -56,6 +55,15 @@ function Invoke-BoundedProcess {
             try { $process.Kill($true) } catch {}
             [void]$process.WaitForExit(10000)
             throw "$Description exceeded the $([int]($TimeoutMilliseconds / 1000))-second safety bound."
+        }
+
+        $drainTimer = [Diagnostics.Stopwatch]::StartNew()
+        while ((-not $stdoutTask.IsCompleted -or -not $stderrTask.IsCompleted) -and $drainTimer.ElapsedMilliseconds -lt 15000) {
+            Start-Sleep -Milliseconds 100
+        }
+        $drainTimer.Stop()
+        if (-not $stdoutTask.IsCompleted -or -not $stderrTask.IsCompleted) {
+            throw "$Description exited but redirected output did not close within 15 seconds. A descendant process likely retained an inherited pipe handle."
         }
 
         $stdout = $stdoutTask.GetAwaiter().GetResult()
@@ -112,6 +120,7 @@ try {
         $packageProject,
         '/restore',
         '/m',
+        '/nr:false',
         "/p:Configuration=$configuration",
         '/p:Platform=x64',
         '/p:AppxBundle=Never',
