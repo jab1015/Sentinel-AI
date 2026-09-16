@@ -34,6 +34,49 @@ function Get-ExpectedPackageHash {
     throw "SHA256SUMS.txt does not contain an entry for $PackageFileName."
 }
 
+function Show-SentinelLaunchDiagnostics {
+    param([string]$PackageFamilyName)
+
+    Write-Host ''
+    Write-Warning 'Sentinel AI did not remain running. Collecting launch diagnostics...'
+
+    $candidateRoots = @(
+        (Join-Path $env:LOCALAPPDATA 'Modern Methods\Sentinel AI\Logs'),
+        (Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName")
+    )
+
+    foreach ($root in $candidateRoots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $diagnosticFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -in @('last-crash.txt', 'sentinel.log', 'sentinel.previous.log') } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 6)
+        foreach ($file in $diagnosticFiles) {
+            Write-Host ''
+            Write-Host "--- $($file.FullName) ---"
+            Get-Content -LiteralPath $file.FullName -Tail 80 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+        }
+    }
+
+    $since = (Get-Date).AddMinutes(-5)
+    Write-Host ''
+    Write-Host '--- Recent Application log crash/runtime events ---'
+    Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$since } -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProviderName -in @('.NET Runtime', 'Application Error', 'Windows Error Reporting') -or $_.Message -match 'Sentinel\.App' } |
+        Sort-Object TimeCreated -Descending |
+        Select-Object -First 12 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+        Format-List | Out-String -Width 220 | Write-Host
+
+    Write-Host '--- Recent AppModel-Runtime events ---'
+    Get-WinEvent -FilterHashtable @{ LogName='Microsoft-Windows-AppModel-Runtime/Admin'; StartTime=$since } -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match 'Sentinel|ModernMethods\.SentinelAI' } |
+        Sort-Object TimeCreated -Descending |
+        Select-Object -First 12 TimeCreated, Id, LevelDisplayName, Message |
+        Format-List | Out-String -Width 220 | Write-Host
+
+    Write-Host 'Copy the diagnostic output above if Sentinel still will not open.'
+}
+
 function Prompt-ForReboot {
     Write-Host ''
     Write-Warning 'REBOOT REQUIRED BEFORE EXPLORER TESTING.'
@@ -154,7 +197,7 @@ try {
     Write-Host ''
     Write-Host 'Launching Sentinel AI so first-run setup can complete...'
     Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
-    Start-Sleep -Seconds 2
+    Start-Sleep -Seconds 5
     $launched = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue).Count -gt 0
 }
 catch {
@@ -166,6 +209,6 @@ if ($launched) {
     Write-Warning 'Explorer right-click testing is not valid until Windows has restarted.'
 }
 else {
-    Write-Warning 'Sentinel AI did not confirm an automatic launch. Open Sentinel AI manually, then restart Windows before Explorer testing.'
-    Prompt-ForReboot
+    Show-SentinelLaunchDiagnostics -PackageFamilyName $installed.PackageFamilyName
+    Write-Warning 'Sentinel AI did not confirm an automatic launch. Open Sentinel AI manually after reviewing the diagnostics above.'
 }
