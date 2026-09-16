@@ -138,6 +138,11 @@ namespace Sentinel.App.Services
                 }
             }
 
+            // Only the answer that crosses the final display-safety boundary is eligible
+            // for short-lived conversational memory. The store treats it as context, never
+            // as independent proof of current machine state or a completed action.
+            AskSentinelConversationContextStore.RememberValidatedAnswer(response.Answer);
+
             return new ValidationResult(
                 IsSafe: true,
                 Answer: response.Answer,

@@ -13,6 +13,9 @@ namespace Sentinel.App.Services
     /// </summary>
     public sealed class AiEscalationPolicy
     {
+        public const int BasicMaximumTotalTokens = 900;
+        public const int AdvancedMaximumTotalTokens = 2_300;
+
         public AiEscalationDecision Evaluate(AiEscalationContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
@@ -36,17 +39,27 @@ namespace Sentinel.App.Services
             if (!context.LocalEvidenceAvailable)
                 return AiEscalationDecision.LocalOnly("Sentinel will not spend AI tokens to speculate without verified local evidence.");
 
-            AiModelTier tier = context.HighComplexity || context.HighRisk
-                ? AiModelTier.Advanced
-                : AiModelTier.Economy;
+            // Ask Sentinel's first cloud fallback is always the Basic/economy tier. A question
+            // mentioning security or containing complex wording must not silently turn a free
+            // baseline question into a paid Advanced request. Advanced is reserved for a later
+            // stage after authoritative research or other explicit escalation evidence exists.
+            bool basicFirstPass = !context.AuthoritativeResearchAttempted && !context.ExternalResearchApplicable;
+            AiModelTier tier = basicFirstPass
+                ? AiModelTier.Economy
+                : context.HighComplexity || context.HighRisk
+                    ? AiModelTier.Advanced
+                    : AiModelTier.Economy;
 
-            int inputBudget = tier == AiModelTier.Advanced ? 1800 : 900;
-            int outputBudget = context.NeedsUserExplanation ? 500 : 300;
+            int maximumTotalTokens = tier == AiModelTier.Advanced
+                ? AdvancedMaximumTotalTokens
+                : BasicMaximumTotalTokens;
 
-            return new AiEscalationDecision(true, false, tier, inputBudget + outputBudget,
+            return new AiEscalationDecision(true, false, tier, maximumTotalTokens,
                 tier == AiModelTier.Advanced
-                    ? "AI escalation is justified for a complex or high-risk unresolved investigation."
-                    : "A compact economy-model request is justified after local and authoritative methods were insufficient.");
+                    ? "AI escalation is justified for a complex or high-risk unresolved investigation after authoritative research."
+                    : basicFirstPass
+                        ? "Basic AI is the first reasoning fallback for an unresolved Ask Sentinel question."
+                        : "A compact economy-model request is justified after local and authoritative methods were insufficient.");
         }
     }
 

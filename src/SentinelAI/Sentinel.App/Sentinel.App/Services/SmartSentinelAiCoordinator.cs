@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -17,6 +18,10 @@ namespace Sentinel.App.Services
     public sealed class SmartSentinelAiCoordinator
     {
         private const int MaximumCacheEntries = 200;
+        private const int BasicEvidenceCharacterBudget = 2_200;
+        private const int AdvancedEvidenceCharacterBudget = 6_000;
+        private const int BasicMaximumEstimatedInputTokens = 600;
+        private const int AdvancedMaximumEstimatedInputTokens = 1_600;
         private static readonly TimeSpan CacheLifetime = TimeSpan.FromHours(6);
         private static readonly ConcurrentDictionary<string, CacheEntry> Cache = new(StringComparer.Ordinal);
         private static long _requestsSent;
@@ -41,21 +46,88 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(context);
 
+            if (purpose.Equals("ask-sentinel-basic", StringComparison.OrdinalIgnoreCase) ||
+                purpose.Equals("external-investigation", StringComparison.OrdinalIgnoreCase))
+            {
+                supplementalEvidence = MergeSupplementalContext(
+                    supplementalEvidence,
+                    AskSentinelConversationContextStore.GetSupplementalContext(userQuestion ?? string.Empty));
+            }
+
             AiEscalationDecision decision = _policy.Evaluate(context);
             if (!decision.UseCloudAi) return SmartAiResult.NotUsed(decision.Reason, decision.ResearchFirst);
 
-            int characterBudget = decision.ModelTier == AiModelTier.Advanced ? 7_000 : 3_500;
-            AiEvidencePackage package = _packageBuilder.Build(purpose, userQuestion ?? string.Empty, snapshot, external, characterBudget, supplementalEvidence);
+            int characterBudget = decision.ModelTier == AiModelTier.Advanced
+                ? AdvancedEvidenceCharacterBudget
+                : BasicEvidenceCharacterBudget;
+            int maximumEstimatedInputTokens = decision.ModelTier == AiModelTier.Advanced
+                ? AdvancedMaximumEstimatedInputTokens
+                : BasicMaximumEstimatedInputTokens;
+
+            AiEvidencePackage package = _packageBuilder.Build(
+                purpose,
+                userQuestion ?? string.Empty,
+                snapshot,
+                external,
+                characterBudget,
+                supplementalEvidence);
+
+            // Reserve enough of the total request budget for a useful model response. This
+            // prevents the gateway from accepting the request and then rejecting the provider
+            // result because input + output exceeded MaximumTotalTokens.
+            if (package.EstimatedInputTokens > maximumEstimatedInputTokens)
+            {
+                int tighterCharacterBudget = Math.Max(1_500, maximumEstimatedInputTokens * 4 - 200);
+                package = _packageBuilder.Build(
+                    purpose,
+                    userQuestion ?? string.Empty,
+                    snapshot,
+                    external,
+                    tighterCharacterBudget,
+                    supplementalEvidence);
+            }
+
+            if (package.EstimatedInputTokens > maximumEstimatedInputTokens)
+            {
+                return new SmartAiResult(
+                    UsedCloudAi: false,
+                    Available: false,
+                    Answer: string.Empty,
+                    ConfidencePercent: 0,
+                    RequiresMoreEvidence: true,
+                    FromCache: false,
+                    ResearchFirst: false,
+                    Provider: string.Empty,
+                    Model: string.Empty,
+                    InputTokens: 0,
+                    OutputTokens: 0,
+                    Reason: "The verified evidence package could not be reduced enough to leave a safe response budget for AI.",
+                    UsedWebSearch: false,
+                    Citations: Array.Empty<CloudAiCitation>(),
+                    Sources: Array.Empty<CloudAiSource>());
+            }
 
             RemoveExpiredCacheEntries();
             TrimCacheIfNeeded();
             string cacheKey = Hash(CreateStableCachePayload(package.Payload) + "|" + decision.ModelTier);
             if (Cache.TryGetValue(cacheKey, out CacheEntry? entry) && entry.ExpiresUtc > DateTimeOffset.UtcNow)
             {
-                return new SmartAiResult(entry.Result.Used, entry.Result.Available, entry.Result.Answer,
-                    entry.Result.ConfidencePercent, entry.Result.RequiresMoreEvidence, true, false,
-                    entry.Result.Provider, entry.Result.Model, 0, 0,
-                    "Reused a recent AI analysis for identical redacted evidence; no new token request was sent.");
+                return new SmartAiResult(
+                    entry.Result.Used,
+                    entry.Result.Available,
+                    entry.Result.Answer,
+                    entry.Result.ConfidencePercent,
+                    entry.Result.RequiresMoreEvidence,
+                    true,
+                    false,
+                    entry.Result.Provider,
+                    entry.Result.Model,
+                    0,
+                    0,
+                    "Reused a recent AI analysis for identical redacted evidence; no new token request was sent.",
+                    entry.Result.UsedWebSearch,
+                    entry.Result.SafeCitations,
+                    entry.Result.SafeSources);
             }
 
             CloudAiResult cloud = await _gateway.AnalyzeAsync(package, decision, cancellationToken).ConfigureAwait(false);
@@ -67,12 +139,30 @@ namespace Sentinel.App.Services
                 Cache[cacheKey] = new CacheEntry(cloud, DateTimeOffset.UtcNow.Add(CacheLifetime));
             }
 
-            return new SmartAiResult(cloud.Used, cloud.Available, cloud.Answer, cloud.ConfidencePercent,
-                cloud.RequiresMoreEvidence, false, false, cloud.Provider, cloud.Model,
-                cloud.InputTokens, cloud.OutputTokens, cloud.Reason);
+            return new SmartAiResult(
+                cloud.Used,
+                cloud.Available,
+                cloud.Answer,
+                cloud.ConfidencePercent,
+                cloud.RequiresMoreEvidence,
+                false,
+                false,
+                cloud.Provider,
+                cloud.Model,
+                cloud.InputTokens,
+                cloud.OutputTokens,
+                cloud.Reason,
+                cloud.UsedWebSearch,
+                cloud.SafeCitations,
+                cloud.SafeSources);
         }
 
-        public AiUsageSnapshot GetUsage() => new(Interlocked.Read(ref _requestsSent), Interlocked.Read(ref _inputTokens), Interlocked.Read(ref _outputTokens), Cache.Count, _gateway.IsConfigured);
+        public AiUsageSnapshot GetUsage() => new(
+            Interlocked.Read(ref _requestsSent),
+            Interlocked.Read(ref _inputTokens),
+            Interlocked.Read(ref _outputTokens),
+            Cache.Count,
+            _gateway.IsConfigured);
 
         public int RemoveExpiredCacheEntries()
         {
@@ -83,11 +173,19 @@ namespace Sentinel.App.Services
             return removed;
         }
 
-        private static string CreateStableCachePayload(string payload)
+        internal static string CreateStableCachePayload(string payload)
         {
             string[] lines = payload.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-            return string.Join("\n", Array.FindAll(lines,
-                line => !line.StartsWith("- snapshot-time:", StringComparison.OrdinalIgnoreCase)));
+            return string.Join("\n", Array.FindAll(lines, line =>
+                !line.StartsWith("- snapshot-time:", StringComparison.OrdinalIgnoreCase) &&
+                !line.StartsWith("- external-summary:", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static string? MergeSupplementalContext(string? supplementalEvidence, string? conversationContext)
+        {
+            if (string.IsNullOrWhiteSpace(conversationContext)) return supplementalEvidence;
+            if (string.IsNullOrWhiteSpace(supplementalEvidence)) return conversationContext.Trim();
+            return supplementalEvidence.Trim() + "\n" + conversationContext.Trim();
         }
 
         private static void TrimCacheIfNeeded()
@@ -111,12 +209,32 @@ namespace Sentinel.App.Services
         private sealed record CacheEntry(CloudAiResult Result, DateTimeOffset ExpiresUtc);
     }
 
-    public sealed record SmartAiResult(bool UsedCloudAi, bool Available, string Answer, int ConfidencePercent,
-        bool RequiresMoreEvidence, bool FromCache, bool ResearchFirst, string Provider, string Model,
-        int InputTokens, int OutputTokens, string Reason)
+    public sealed record SmartAiResult(
+        bool UsedCloudAi,
+        bool Available,
+        string Answer,
+        int ConfidencePercent,
+        bool RequiresMoreEvidence,
+        bool FromCache,
+        bool ResearchFirst,
+        string Provider,
+        string Model,
+        int InputTokens,
+        int OutputTokens,
+        string Reason,
+        bool UsedWebSearch,
+        IReadOnlyList<CloudAiCitation> Citations,
+        IReadOnlyList<CloudAiSource> Sources)
     {
-        public static SmartAiResult NotUsed(string reason, bool researchFirst) => new(false, true, string.Empty, 0, false, false, researchFirst, string.Empty, string.Empty, 0, 0, reason);
+        public static SmartAiResult NotUsed(string reason, bool researchFirst) =>
+            new(false, true, string.Empty, 0, false, false, researchFirst, string.Empty, string.Empty, 0, 0, reason,
+                false, Array.Empty<CloudAiCitation>(), Array.Empty<CloudAiSource>());
     }
 
-    public sealed record AiUsageSnapshot(long RequestsSent, long InputTokens, long OutputTokens, int CachedAnalyses, bool CloudConfigured);
+    public sealed record AiUsageSnapshot(
+        long RequestsSent,
+        long InputTokens,
+        long OutputTokens,
+        int CachedAnalyses,
+        bool CloudConfigured);
 }

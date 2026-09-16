@@ -180,35 +180,13 @@ app.MapPost("/v1/analyze", async (
     string model = advanced ? advancedModel : economyModel;
     string reasoningEffort = advanced ? "low" : "none";
 
-    var prompt = new
-    {
+    Dictionary<string, object?> prompt = AiProviderRequestFactory.Create(
         model,
-        max_output_tokens = maxOutputTokens,
-        reasoning = new { effort = reasoningEffort },
-        input = new object[]
-        {
-            new
-            {
-                role = "system",
-                content = new object[]
-                {
-                    new
-                    {
-                        type = "input_text",
-                        text = "You are the advisory reasoning layer for Sentinel AI, a Windows monitoring and repair application. Use only the supplied verified evidence. Clearly separate facts from inference. Never claim a repair succeeded, never authorize a system change, and never invent missing evidence. If evidence is insufficient, say exactly what additional local evidence is needed. Keep the answer concise for a nontechnical user."
-                    }
-                }
-            },
-            new
-            {
-                role = "user",
-                content = new object[]
-                {
-                    new { type = "input_text", text = request.Evidence }
-                }
-            }
-        }
-    };
+        maxOutputTokens,
+        reasoningEffort,
+        request.Evidence,
+        advanced,
+        request.Purpose ?? string.Empty);
 
     using IDisposable? providerLease = await security.TryEnterProviderAsync(cancellationToken).ConfigureAwait(false);
     if (providerLease is null)
@@ -260,16 +238,15 @@ app.MapPost("/v1/analyze", async (
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
 
-        JsonElement root = document.RootElement;
-        string answer = ExtractOutputText(root);
-        if (string.IsNullOrWhiteSpace(answer))
+        AiProviderParsedResponse parsed = AiProviderResponseParser.Parse(document.RootElement);
+        if (string.IsNullOrWhiteSpace(parsed.Answer))
         {
             Console.Error.WriteLine("OPENAI_GATEWAY_EMPTY_RESPONSE");
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
 
-        int inputTokens = ReadUsage(root, "input_tokens");
-        int outputTokens = ReadUsage(root, "output_tokens");
+        int inputTokens = parsed.InputTokens;
+        int outputTokens = parsed.OutputTokens;
         long totalTokens = (long)inputTokens + outputTokens;
         if (inputTokens <= 0 || outputTokens < 0 || totalTokens > requestedBudget)
         {
@@ -277,17 +254,31 @@ app.MapPost("/v1/analyze", async (
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
 
-        bool moreEvidence = IndicatesMoreEvidence(answer);
+        // Defense in depth: a provider must not be able to smuggle web-derived material into
+        // a Basic or non-research request even if its response shape unexpectedly contains it.
+        bool webAuthorized = AiProviderRequestFactory.ShouldEnableWebSearch(advanced, request.Purpose);
+        bool usedWebSearch = webAuthorized && parsed.UsedWebSearch;
+        IReadOnlyList<AiProviderCitation> citations = usedWebSearch
+            ? parsed.Citations
+            : Array.Empty<AiProviderCitation>();
+        IReadOnlyList<AiProviderSource> sources = usedWebSearch
+            ? parsed.Sources
+            : Array.Empty<AiProviderSource>();
+
+        bool moreEvidence = IndicatesMoreEvidence(parsed.Answer);
         int confidence = moreEvidence ? 55 : 75;
 
         return Results.Ok(new SentinelAiResponse(
-            Answer: Limit(answer.Trim(), 8_000),
+            Answer: Limit(parsed.Answer.Trim(), 8_000),
             Provider: "OpenAI",
             Model: model,
             InputTokens: inputTokens,
             OutputTokens: outputTokens,
             ConfidencePercent: confidence,
-            RequiresMoreEvidence: moreEvidence));
+            RequiresMoreEvidence: moreEvidence,
+            UsedWebSearch: usedWebSearch,
+            Citations: citations,
+            Sources: sources));
     }
 });
 
@@ -312,46 +303,6 @@ static int ReadInt(string name, int fallback, int min, int max)
     return int.TryParse(Environment.GetEnvironmentVariable(name), out int parsed)
         ? Math.Clamp(parsed, min, max)
         : fallback;
-}
-
-static string ExtractOutputText(JsonElement root)
-{
-    if (root.TryGetProperty("output_text", out JsonElement direct) && direct.ValueKind == JsonValueKind.String)
-    {
-        string? text = direct.GetString();
-        if (!string.IsNullOrWhiteSpace(text)) return text;
-    }
-
-    if (!root.TryGetProperty("output", out JsonElement output) || output.ValueKind != JsonValueKind.Array)
-        return string.Empty;
-
-    foreach (JsonElement item in output.EnumerateArray())
-    {
-        if (!item.TryGetProperty("content", out JsonElement content) || content.ValueKind != JsonValueKind.Array)
-            continue;
-
-        foreach (JsonElement part in content.EnumerateArray())
-        {
-            if (part.TryGetProperty("type", out JsonElement type) &&
-                type.GetString()?.Equals("output_text", StringComparison.OrdinalIgnoreCase) == true &&
-                part.TryGetProperty("text", out JsonElement text))
-            {
-                string? value = text.GetString();
-                if (!string.IsNullOrWhiteSpace(value)) return value;
-            }
-        }
-    }
-
-    return string.Empty;
-}
-
-static int ReadUsage(JsonElement root, string property)
-{
-    if (root.TryGetProperty("usage", out JsonElement usage) &&
-        usage.TryGetProperty(property, out JsonElement value) &&
-        value.TryGetInt32(out int number))
-        return Math.Max(0, number);
-    return 0;
 }
 
 static bool IndicatesMoreEvidence(string answer)
@@ -385,7 +336,10 @@ public sealed record SentinelAiResponse(
     int InputTokens,
     int OutputTokens,
     int ConfidencePercent,
-    bool RequiresMoreEvidence);
+    bool RequiresMoreEvidence,
+    bool UsedWebSearch,
+    IReadOnlyList<AiProviderCitation> Citations,
+    IReadOnlyList<AiProviderSource> Sources);
 
 public sealed record AiContentReportRequest(
     int SchemaVersion,

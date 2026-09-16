@@ -10,5 +10,7 @@
     <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/GatewaySecurity.cs" Link="GatewaySecurity.cs" />
     <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/PrivacyCapabilitySecurity.cs" Link="PrivacyCapabilitySecurity.cs" />
     <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/BoundedHttpJson.cs" Link="BoundedHttpJson.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/AiProviderRequestFactory.cs" Link="AiProviderRequestFactory.cs" />
+    <Compile Include="../../src/SentinelAI/Sentinel.AiGateway/AiProviderResponseParser.cs" Link="AiProviderResponseParser.cs" />
   </ItemGroup>
 </Project>
