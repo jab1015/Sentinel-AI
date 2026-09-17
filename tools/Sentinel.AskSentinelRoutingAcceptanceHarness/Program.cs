@@ -45,6 +45,14 @@ AskSentinelRoute latestLocal = routing.Decide("What is the latest status on my c
 Require(!latestLocal.UseBasicAi && !latestLocal.UseExternalResearch,
     "A latest local-PC status question was incorrectly routed to external research.");
 
+AskSentinelRoute slowSignIn = routing.Decide("why does it take my computer almost 10 minutes to log in?", localAnswerInsufficient: false);
+Require(!slowSignIn.UseBasicAi && !slowSignIn.UseExternalResearch,
+    "A verified slow sign-in question did not remain on local Windows startup evidence.");
+
+AskSentinelRoute unresolvedSlowSignIn = routing.Decide("why does it take my computer almost 10 minutes to log in?", localAnswerInsufficient: true);
+Require(unresolvedSlowSignIn.UseBasicAi && !unresolvedSlowSignIn.UseExternalResearch,
+    "An unresolved slow sign-in question skipped the Basic AI layer or jumped straight to external research.");
+
 AskSentinelRoute ambiguousApp = routing.Decide("Which app is best for editing photos?", localAnswerInsufficient: false);
 Require(ambiguousApp.UseBasicAi && !ambiguousApp.UseExternalResearch,
     "General app question was incorrectly trusted as a local running-process answer.");
@@ -168,6 +176,7 @@ Console.WriteLine("Verified broad local overview -> local answer: PASS");
 Console.WriteLine("Definition -> Basic AI; terse topic -> local status: PASS");
 Console.WriteLine("Explanation -> Basic AI: PASS");
 Console.WriteLine("Direct/local freshness questions -> local answer: PASS");
+Console.WriteLine("Slow sign-in -> local evidence first, Basic AI only if unresolved: PASS");
 Console.WriteLine("Ambiguous keyword and natural fragment input -> Basic AI: PASS");
 Console.WriteLine("Fresh external/research/according-to wording -> external research: PASS");
 Console.WriteLine("Typed conversational follow-ups -> bounded prior context: PASS");
