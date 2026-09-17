@@ -50,6 +50,7 @@ $criticalNames = @(
     'Sentinel.App.dll',
     'Sentinel.App.runtimeconfig.json',
     'Sentinel.App.deps.json',
+    'System.Text.Json.dll',
     'Microsoft.WindowsAppRuntime.Bootstrap.dll',
     'Microsoft.WindowsAppRuntime.dll',
     'Microsoft.UI.Xaml.dll',
@@ -97,7 +98,8 @@ if (-not $SkipLaunch) {
         Start-Sleep -Seconds 8
         $running = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
         if ($running.Count -gt 0) {
-            Write-Lines "PASS: Sentinel.App remained running. PID(s): $($running.Id -join ', ')"
+            $runningIds = @($running | ForEach-Object { $_.Id })
+            Write-Lines "PASS: Sentinel.App remained running. PID(s): $($runningIds -join ', ')"
         } else {
             Write-Lines 'FAIL: Sentinel.App did not remain running after packaged activation.'
         }
@@ -118,7 +120,7 @@ foreach ($root in $candidateRoots) {
         continue
     }
     $files = @(Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -in @('last-crash.txt','sentinel.log','sentinel.previous.log') } |
+        Where-Object { $_.Name -in @('last-crash.txt','sentinel.log','sentinel.previous.log','bootstrap-launch.log') } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 8)
     if ($files.Count -eq 0) { Write-Lines '  (no Sentinel diagnostic files found)' }
@@ -161,12 +163,13 @@ Write-Lines $deploymentEvents
 
 Write-Section 'Summary'
 $processNow = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+$processIds = @($processNow | ForEach-Object { $_.Id })
 Write-Lines ([pscustomobject]@{
     Package = $installed.PackageFullName
     InstallLocation = $installRoot
     ExePresent = (Test-Path -LiteralPath $exePath -PathType Leaf)
     ProcessRunning = ($processNow.Count -gt 0)
-    ProcessIds = ($processNow.Id -join ', ')
+    ProcessIds = ($processIds -join ', ')
     OutputFile = $outputPath
 })
 
