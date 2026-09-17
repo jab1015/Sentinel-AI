@@ -59,14 +59,10 @@
                       Version="10.0.28000.2526" />
     <PackageReference Include="Microsoft.WindowsAppSDK"
                       Version="2.3.1" />
-    <PackageReference Include="ModelContextProtocol.Core"
-                      Version="2.2.0" />
     <PackageReference Include="System.Diagnostics.EventLog"
                       Version="8.0.1" />
     <PackageReference Include="System.ServiceProcess.ServiceController"
                       Version="8.0.1" />
-    <PackageReference Include="System.Text.Json"
-                      Version="10.0.10" />
   </ItemGroup>
 
   <PropertyGroup>
