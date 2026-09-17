@@ -447,7 +447,8 @@ namespace Sentinel.App
         {
             string q = question.Trim().ToLowerInvariant();
             if (ContainsDriverIntent(q)) return true;
-            if (!RefersToCurrentIssue(q)) return false;
+            bool refersToCurrentFinding = RefersToCurrentIssue(q) || IsBroadRepairQuestion(q);
+            if (!refersToCurrentFinding) return false;
 
             string currentEvidence = string.Join(' ', new[]
             {
@@ -465,6 +466,16 @@ namespace Sentinel.App
             value.Contains("code 10", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("device manager", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("firmware", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsBroadRepairQuestion(string value) =>
+            value.Contains("what is wrong with my computer", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("what's wrong with my computer", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("what is wrong with this computer", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("what's wrong with this computer", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("can you fix it", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("can sentinel fix", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("fix my computer", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("repair my computer", StringComparison.OrdinalIgnoreCase);
 
         private static bool RefersToCurrentIssue(string value) =>
             value.Contains("this issue", StringComparison.OrdinalIgnoreCase) ||
