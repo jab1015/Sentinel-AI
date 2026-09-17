@@ -15,6 +15,8 @@ namespace Sentinel.App
         private readonly AskSentinelResolutionPlanner _askSentinelResolutionPlanner = new();
         private StackPanel? _askSentinelApprovalPanel;
         private Button? _askSentinelApprovalButton;
+        private string _lastDeepStartupQuestion = string.Empty;
+        private string _lastDeepStartupFinding = string.Empty;
 
         private enum AskSentinelFollowUpAction
         {
@@ -146,63 +148,77 @@ namespace Sentinel.App
                 else if (action == AskSentinelFollowUpAction.NextSteps)
                 {
                     bool startupQuestion = IsStartupLogonQuestion(original);
-                    bool deepStartupCompleted = startupQuestion &&
-                        previousDisplayedAnswer.Contains("Deeper startup check completed", StringComparison.OrdinalIgnoreCase);
+                    bool hasStoredDeepStartupFinding = startupQuestion &&
+                        string.Equals(_lastDeepStartupQuestion, original, StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(_lastDeepStartupFinding);
 
-                    if (startupQuestion && !deepStartupCompleted)
+                    string resolutionEvidence;
+                    bool deepStartupCompleted = false;
+
+                    if (startupQuestion && !hasStoredDeepStartupFinding)
                     {
                         AskSentinelProgressText.Text = "Running a deeper local startup and sign-in investigation…";
-                        answer = await Task.Run(() => _askSentinelStartupLogonEvidence.GetDeepStartupLogonEvidence(snapshot));
-                        insufficient = false;
-                        provenance = AskSentinelProvenanceLabel.Observed;
-                        grounding = "Sentinel performed the offered deeper startup/sign-in investigation using bounded local Windows event, startup, task, service, and process evidence only.";
+                        string deepFinding = await Task.Run(() => _askSentinelStartupLogonEvidence.GetDeepStartupLogonEvidence(snapshot));
+                        _lastDeepStartupQuestion = original;
+                        _lastDeepStartupFinding = deepFinding;
+                        resolutionEvidence = deepFinding;
+                        deepStartupCompleted = true;
                     }
                     else
                     {
-                        AskSentinelProgressText.Text = "Determining whether Sentinel can safely fix the verified finding…";
-                        string resolutionEvidence = deepStartupCompleted ? previousDisplayedAnswer : localAnswer;
-                        AskSentinelResolutionPlan plan = _askSentinelResolutionPlanner.CreatePlan(
-                            original,
-                            snapshot,
-                            resolutionEvidence,
-                            deepStartupCompleted);
-
-                        if (plan.Disposition == AskSentinelResolutionDisposition.RepairCheckAvailable &&
-                            plan.Action.Equals("driver-repair-check", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _driverRepairDeviceName = GetDriverDeviceName(snapshot);
-                            _preparedDriverRepairPlan = await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
-                            showDriverRepairActions = true;
-
-                            answer = _preparedDriverRepairPlan.Available && _preparedDriverRepairPlan.AutomaticInstallationVerified
-                                ? "Resolution decision\n\nSentinel found a driver repair path that passed the exact-device and signed-package checks. Use the repair controls below to review or explicitly approve the repair. Sentinel will not install it until you approve it, and it will verify the result afterward."
-                                : "Resolution decision\n\nSentinel checked its dedicated driver-repair workflow. Use Continue Repair below to review the verified investigation result or official repair source. Sentinel will not install an unverified or merely similar driver package.";
-                        }
-                        else
-                        {
-                            answer = BuildResolutionAnswer(plan, resolutionEvidence);
-                            if (plan.Disposition == AskSentinelResolutionDisposition.ApprovalRequired &&
-                                snapshot.AutonomousProtectionRequiresUserApproval &&
-                                !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
-                                !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase))
-                            {
-                                actionableApprovalPlan = plan;
-                                answer += "\n\nUse Review & Approve below to inspect the exact action. Sentinel will revalidate the finding immediately before execution, and the approval is single-use.";
-                            }
-                        }
-
-                        insufficient = false;
-                        provenance = AskSentinelProvenanceLabel.Observed;
-                        grounding = "Sentinel converted the verified finding into a terminal resolution state using only supported remediation capabilities and exact current remediation state; no repair was invented from AI text.";
+                        resolutionEvidence = hasStoredDeepStartupFinding ? _lastDeepStartupFinding : localAnswer;
+                        deepStartupCompleted = hasStoredDeepStartupFinding;
                     }
+
+                    AskSentinelProgressText.Text = "Determining whether Sentinel can safely fix the verified finding…";
+                    AskSentinelResolutionPlan plan = _askSentinelResolutionPlanner.CreatePlan(
+                        original,
+                        snapshot,
+                        resolutionEvidence,
+                        deepStartupCompleted);
+
+                    if (plan.Disposition == AskSentinelResolutionDisposition.RepairCheckAvailable &&
+                        plan.Action.Equals("driver-repair-check", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _driverRepairDeviceName = GetDriverDeviceName(snapshot);
+                        _preparedDriverRepairPlan = await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
+                        showDriverRepairActions = true;
+
+                        answer = _preparedDriverRepairPlan.Available && _preparedDriverRepairPlan.AutomaticInstallationVerified
+                            ? "Resolution decision\n\nSentinel found a driver repair path that passed the exact-device and signed-package checks. Use the repair controls below to review or explicitly approve the repair. Sentinel will not install it until you approve it, and it will verify the result afterward."
+                            : "Resolution decision\n\nSentinel checked its dedicated driver-repair workflow. Use Continue Repair below to review the verified investigation result or official repair source. Sentinel will not install an unverified or merely similar driver package.";
+                    }
+                    else
+                    {
+                        answer = BuildResolutionAnswer(plan, resolutionEvidence);
+                        if (plan.Disposition == AskSentinelResolutionDisposition.ApprovalRequired &&
+                            snapshot.AutonomousProtectionRequiresUserApproval &&
+                            !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
+                            !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase))
+                        {
+                            actionableApprovalPlan = plan;
+                            answer += "\n\nUse Review & Approve below to inspect the exact action. Sentinel will revalidate the finding immediately before execution, and the approval is single-use.";
+                        }
+                    }
+
+                    insufficient = false;
+                    provenance = AskSentinelProvenanceLabel.Observed;
+                    grounding = startupQuestion
+                        ? "Sentinel completed the deeper startup/sign-in investigation and immediately converted that result into a terminal resolution decision using only supported remediation capabilities and exact current remediation state."
+                        : "Sentinel converted the verified finding into a terminal resolution state using only supported remediation capabilities and exact current remediation state; no repair was invented from AI text.";
                 }
                 else
                 {
                     AskSentinelProgressText.Text = "Explaining the local evidence in more detail…";
 
+                    string explanationEvidence = string.Equals(_lastDeepStartupQuestion, original, StringComparison.OrdinalIgnoreCase) &&
+                                                 !string.IsNullOrWhiteSpace(_lastDeepStartupFinding)
+                        ? _lastDeepStartupFinding
+                        : localAnswer;
+
                     string followUpPrompt =
                         "Explain the current verified local answer in clearer, more detailed language. Separate measured facts, likely contributors, and anything that is still unknown. If Sentinel can perform a safe additional diagnostic itself, say so explicitly. Do not replace local evidence with generic web guidance. " +
-                        $"Original question: {LimitFollowUpQuestion(original)} Current verified local answer: {LimitFollowUpAnswer(localAnswer)}";
+                        $"Original question: {LimitFollowUpQuestion(original)} Current verified local answer: {LimitFollowUpAnswer(explanationEvidence)}";
 
                     SmartAiResult followUpAi = await _askSentinelAiCoordinator.AnalyzeAsync(
                         "ask-sentinel-explain-more",
@@ -220,7 +236,7 @@ namespace Sentinel.App
                     }
                     else
                     {
-                        answer = BuildDeterministicExplainMore(localAnswer);
+                        answer = BuildDeterministicExplainMore(explanationEvidence);
                         insufficient = false;
                         grounding = "Sentinel expanded the freshly re-checked local answer without external research because AI interpretation was unavailable.";
                     }
@@ -263,7 +279,7 @@ namespace Sentinel.App
                         AskSentinelFollowUpAction.SearchSources => "Kept the verified local findings and reported the current authoritative-source search result.",
                         AskSentinelFollowUpAction.NextSteps when showDriverRepairActions => "Sentinel prepared the driver repair workflow. Review or approve the repair below.",
                         AskSentinelFollowUpAction.NextSteps when actionableApprovalPlan is not null => "Sentinel found an exact supported action. Review and approve it below if you want Sentinel to proceed.",
-                        AskSentinelFollowUpAction.NextSteps => "Sentinel reached a resolution decision from the current verified evidence and supported repair capabilities.",
+                        AskSentinelFollowUpAction.NextSteps => "Sentinel completed the diagnostic and reached a final resolution decision from the current verified evidence.",
                         _ => "Expanded the answer from the current verified local evidence."
                     };
                 }
