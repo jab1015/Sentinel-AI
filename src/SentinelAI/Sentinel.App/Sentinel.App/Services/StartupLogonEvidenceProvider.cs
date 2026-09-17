@@ -69,18 +69,20 @@ namespace Sentinel.App.Services
                 return "I treated this as a local startup/sign-in performance question and checked the evidence available on this computer first. " +
                        "Windows' Diagnostics-Performance log could not be read during this check, so I cannot verify the measured boot or post-boot duration. " +
                        string.Join(" ", observations) + ". " + currentResources + " " +
-                       "That local evidence is not enough to name a root cause safely. I can next check additional Windows logs or approved external guidance, but I will not guess.";
+                       "The reason I cannot name one root cause is that the Windows boot-timing log was unavailable, not that Sentinel skipped the local investigation. " +
+                       "This is still a completed local diagnostic result. I can check additional local Windows evidence next, and I will not replace these findings with unrelated external guidance or guess at a cause.";
             }
 
             if (observations.Count == 0)
             {
                 return "I checked this computer's local Windows startup evidence first, but the recent Diagnostics-Performance records did not contain enough usable timing data to explain the delay. " +
-                       currentResources + " I do not have enough verified local evidence to name a cause yet, so I will not guess.";
+                       currentResources + " The reason I cannot name one cause is that Windows did not record enough usable startup timing detail in the bounded local records I could verify. " +
+                       "This is still a completed local diagnostic result; I will keep the local findings rather than replace them with generic external guidance.";
             }
 
             string reason = BuildReason(evidence, snapshot);
             return "I checked this computer's local startup evidence before looking outward. " +
-                   string.Join(" ", observations) + ". " + currentResources + " " + reason +
+                   string.Join(" ", observations) + ". " + currentResources + " Local evidence reason: " + reason +
                    " These records can identify measured delays and likely contributors, but they do not prove a single root cause unless Windows recorded a specific degradation source.";
         }
 
