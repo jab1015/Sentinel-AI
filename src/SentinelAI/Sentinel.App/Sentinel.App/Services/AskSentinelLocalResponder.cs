@@ -17,6 +17,7 @@ namespace Sentinel.App.Services
         private readonly DriverHealthEvidenceProvider _driverHealth = new();
         private readonly PersistentInvestigationMemoryService _persistentMemory = new();
         private readonly PerformanceBaselineService _performanceBaseline = new();
+        private readonly StartupLogonEvidenceProvider _startupLogon = new();
 
         public string Answer(string question, SystemSnapshot snapshot)
         {
@@ -42,6 +43,7 @@ namespace Sentinel.App.Services
                 string? persistentAnswer = BuildPersistentDriverAnswer(snapshot);
                 return persistentAnswer ?? _driverHealth.GetDriverHealthStatus();
             }
+            if (IsStartupLogonPerformanceQuestion(q)) return _startupLogon.GetStartupLogonEvidence(snapshot);
             if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
             if (IsBroadComputerOverviewQuestion(q)) return BuildComputerOverviewAnswer(snapshot);
 
@@ -296,6 +298,18 @@ namespace Sentinel.App.Services
                                 value.Contains("reboot", StringComparison.OrdinalIgnoreCase);
             bool pendingIntent = Has(value, "pending", "waiting", "required", "requires", "needed", "needs", "what caused", "why");
             return restartTopic && pendingIntent;
+        }
+
+        private static bool IsStartupLogonPerformanceQuestion(string value)
+        {
+            bool localMachine = Has(value, "my computer", "my pc", "this computer", "this pc", "windows");
+            bool startupTopic = Has(value,
+                "log in", "login", "log on", "logon", "sign in", "signin", "sign-in",
+                "boot", "boot up", "startup", "start up", "starting windows", "windows start");
+            bool delayIntent = Has(value,
+                "slow", "takes", "taking", "long", "minutes", "delay", "delayed", "hang", "stuck", "waiting");
+
+            return startupTopic && (delayIntent || localMachine);
         }
 
         private static bool IsPerformanceQuestion(string value) =>
