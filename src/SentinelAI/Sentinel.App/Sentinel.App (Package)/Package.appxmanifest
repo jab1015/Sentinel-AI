@@ -13,7 +13,7 @@
   <Identity
     Name="ModernMethods.SentinelAI"
     Publisher="CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A"
-    Version="1.0.28.0" />
+    Version="1.0.29.0" />
 
   <Properties>
     <DisplayName>Sentinel AI</DisplayName>
