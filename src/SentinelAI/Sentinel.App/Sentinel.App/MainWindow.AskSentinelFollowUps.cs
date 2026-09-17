@@ -34,6 +34,8 @@ namespace Sentinel.App
             _lastDeepStartupFinding = string.Empty;
             AskSentinelNextStepsButton.IsEnabled = true;
             AskSentinelNextStepsButton.Content = "Next steps";
+            AskSentinelExplainMoreButton.Content = "Explain more";
+            AskSentinelSearchSourcesButton.Content = "Search current sources";
         }
 
         private void CaptureAskSentinelPrimaryAnswer(string question, string localAnswer, string displayedAnswer)
@@ -45,6 +47,8 @@ namespace Sentinel.App
             _askSentinelResolutionReached = false;
             AskSentinelNextStepsButton.IsEnabled = true;
             AskSentinelNextStepsButton.Content = "Next steps";
+            AskSentinelExplainMoreButton.Content = "Explain more";
+            AskSentinelSearchSourcesButton.Content = "Search current sources";
         }
 
         private void CaptureAskSentinelFollowUpAnswer(string displayedAnswer, AskSentinelResolutionPlan? plan = null)
@@ -60,6 +64,8 @@ namespace Sentinel.App
 
             AskSentinelNextStepsButton.IsEnabled = !_askSentinelResolutionReached;
             AskSentinelNextStepsButton.Content = _askSentinelResolutionReached ? "Resolution reached" : "Next steps";
+            AskSentinelExplainMoreButton.Content = _askSentinelResolutionReached ? "Explain decision" : "Explain more";
+            AskSentinelSearchSourcesButton.Content = _askSentinelResolutionReached ? "Research this finding" : "Search current sources";
         }
 
         private enum AskSentinelFollowUpAction
