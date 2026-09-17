@@ -63,6 +63,47 @@ foreach ($name in $criticalNames) {
     Write-Lines ("{0}: {1}{2}" -f $name, $matches.Count, $(if ($matches.Count -gt 0) { " -> " + (($matches.FullName | ForEach-Object { $_.Substring($installRoot.Length).TrimStart('\\') }) -join '; ') } else { '' }))
 }
 
+Write-Section 'System.Text.Json assembly identity and dependency registration'
+$jsonPath = Join-Path $installRoot 'System.Text.Json.dll'
+if (Test-Path -LiteralPath $jsonPath -PathType Leaf) {
+    try {
+        $assemblyName = [System.Reflection.AssemblyName]::GetAssemblyName($jsonPath)
+        $jsonFile = Get-Item -LiteralPath $jsonPath
+        Write-Lines ([pscustomobject]@{
+            Path = $jsonPath
+            AssemblyFullName = $assemblyName.FullName
+            AssemblyVersion = $assemblyName.Version
+            FileVersion = $jsonFile.VersionInfo.FileVersion
+            ProductVersion = $jsonFile.VersionInfo.ProductVersion
+            Length = $jsonFile.Length
+            LastWriteTime = $jsonFile.LastWriteTime
+        })
+    } catch {
+        Write-Lines "ERROR reading System.Text.Json assembly identity: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+    }
+} else {
+    Write-Lines 'ERROR: System.Text.Json.dll is not present at the package root.'
+}
+
+$depsPath = Join-Path $installRoot 'Sentinel.App.deps.json'
+if (Test-Path -LiteralPath $depsPath -PathType Leaf) {
+    try {
+        $depsText = Get-Content -LiteralPath $depsPath -Raw
+        $depsMatches = [regex]::Matches($depsText, '.{0,180}System\.Text\.Json.{0,260}', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if ($depsMatches.Count -eq 0) {
+            Write-Lines 'ERROR: Sentinel.App.deps.json contains no System.Text.Json registration.'
+        } else {
+            foreach ($match in $depsMatches) {
+                Write-Lines $match.Value
+            }
+        }
+    } catch {
+        Write-Lines "ERROR reading Sentinel.App.deps.json: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+    }
+} else {
+    Write-Lines "ERROR: Sentinel.App.deps.json is missing at $depsPath"
+}
+
 Write-Section 'Registered application identity'
 $manifestPath = Join-Path $installRoot 'AppxManifest.xml'
 if (Test-Path -LiteralPath $manifestPath) {
@@ -175,4 +216,4 @@ Write-Lines ([pscustomobject]@{
 
 Write-Host ''
 Write-Host "Diagnostics saved to: $outputPath"
-Write-Host 'Paste the Summary plus any ERROR/FAIL, AppModel-Runtime, TWinUI, .NET Runtime, or Application Error entries into the Sentinel investigation chat.'
+Write-Host 'Paste the System.Text.Json assembly identity/deps section plus the Summary and any ERROR/FAIL entries into the Sentinel investigation chat.'
