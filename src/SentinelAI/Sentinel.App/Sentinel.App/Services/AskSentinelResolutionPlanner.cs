@@ -69,22 +69,11 @@ namespace Sentinel.App.Services
                     snapshot.AutonomousProtectionTarget);
             }
 
-            if (snapshot.RemediationAvailable && HasValue(snapshot.RemediationAction))
-            {
-                string target = HasValue(snapshot.RemediationTarget) ? snapshot.RemediationTarget : "the verified finding";
-                return new AskSentinelResolutionPlan(
-                    snapshot.RemediationRequiresUserApproval
-                        ? AskSentinelResolutionDisposition.ApprovalRequired
-                        : AskSentinelResolutionDisposition.RepairAvailable,
-                    "A verified repair path is available",
-                    Safe(snapshot.RemediationSummary,
-                        $"Sentinel has a verified remediation path for {target}: {snapshot.RemediationAction}."),
-                    snapshot.RemediationRequiresUserApproval,
-                    snapshot.RemediationAction,
-                    target);
-            }
-
-            if (IsDriverQuestion(q, finding))
+            // Driver remediation must use the dedicated exact-device repair workflow even
+            // when the generic snapshot also advertises a review-driver-repair action.
+            // That workflow is the one that prepares a signed package and surfaces the
+            // actual approval controls in Ask Sentinel.
+            if (IsDriverQuestion(q, finding) || IsDriverRemediation(snapshot.RemediationAction))
             {
                 return new AskSentinelResolutionPlan(
                     AskSentinelResolutionDisposition.RepairCheckAvailable,
@@ -92,7 +81,24 @@ namespace Sentinel.App.Services
                     "Sentinel has a dedicated driver-repair workflow that requires an exact device identity and an exact Microsoft-signed update match before installation is offered. If no exact verified package is available, Sentinel should conclude that it cannot safely repair the driver automatically.",
                     true,
                     "driver-repair-check",
-                    string.Empty);
+                    HasValue(snapshot.RemediationTarget) ? snapshot.RemediationTarget : string.Empty);
+            }
+
+            if (snapshot.RemediationAvailable && HasValue(snapshot.RemediationAction))
+            {
+                string target = HasValue(snapshot.RemediationTarget) ? snapshot.RemediationTarget : "the verified finding";
+                return new AskSentinelResolutionPlan(
+                    snapshot.RemediationRequiresUserApproval
+                        ? AskSentinelResolutionDisposition.ManualReviewRequired
+                        : AskSentinelResolutionDisposition.RepairAvailable,
+                    snapshot.RemediationRequiresUserApproval
+                        ? "A repair path exists but no Ask Sentinel executor is available for it yet"
+                        : "A verified repair path is available",
+                    Safe(snapshot.RemediationSummary,
+                        $"Sentinel has a verified remediation path for {target}: {snapshot.RemediationAction}."),
+                    snapshot.RemediationRequiresUserApproval,
+                    snapshot.RemediationAction,
+                    target);
             }
 
             if (IsStartupQuestion(q))
@@ -168,6 +174,11 @@ namespace Sentinel.App.Services
         private static bool IsDriverQuestion(string q, string finding) =>
             q.Contains("driver") || finding.Contains("driver", StringComparison.OrdinalIgnoreCase) ||
             finding.Contains("device manager", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsDriverRemediation(string? action) =>
+            !string.IsNullOrWhiteSpace(action) &&
+            (action.Contains("driver", StringComparison.OrdinalIgnoreCase) ||
+             action.Equals("review-driver-repair", StringComparison.OrdinalIgnoreCase));
 
         private static string DescribeAction(string action) => action switch
         {
