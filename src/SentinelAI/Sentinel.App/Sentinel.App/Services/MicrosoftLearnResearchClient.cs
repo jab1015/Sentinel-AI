@@ -3,8 +3,6 @@
  * Copyright (c) 2026 Modern Methods.
  */
 
-using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,90 +13,26 @@ using System.Threading.Tasks;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Performs bounded, read-only research against Microsoft's public Learn MCP server.
-    /// Tool discovery is performed for every connection so Sentinel does not depend on a
-    /// permanently hard-coded MCP request schema.
+    /// Provides the Microsoft Learn research boundary used by external investigation.
+    /// The desktop app intentionally avoids loading the MCP client SDK because its current
+    /// dependency graph requires .NET 10-era runtime assemblies that conflict with Sentinel's
+    /// self-contained .NET 8 MSIX. ExternalInvestigationGateway already falls back to bounded,
+    /// pinned Microsoft sources when this boundary reports unavailable.
     /// </summary>
     public sealed class MicrosoftLearnResearchClient
     {
-        private static readonly Uri Endpoint = new("https://learn.microsoft.com/api/mcp");
-        private static readonly TimeSpan OverallTimeout = TimeSpan.FromSeconds(15);
         private const int MaximumResults = 5;
         private const int MaximumPassageCharacters = 2_000;
 
-        public async Task<MicrosoftLearnResearchResult> SearchAsync(
+        public Task<MicrosoftLearnResearchResult> SearchAsync(
             string question,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(question);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            deadline.CancelAfter(OverallTimeout);
-
-            try
-            {
-                var transport = new HttpClientTransport(new HttpClientTransportOptions
-                {
-                    Endpoint = Endpoint,
-                    TransportMode = HttpTransportMode.StreamableHttp,
-                    ConnectionTimeout = TimeSpan.FromSeconds(8),
-                    EnableStandaloneGetStream = false
-                });
-
-                await using McpClient client = await McpClient.CreateAsync(
-                    transport,
-                    cancellationToken: deadline.Token).ConfigureAwait(false);
-
-                IList<McpClientTool> tools = await client.ListToolsAsync(
-                    cancellationToken: deadline.Token).ConfigureAwait(false);
-                McpClientTool? searchTool = tools.FirstOrDefault(tool =>
-                    tool.Name.Equals("microsoft_docs_search", StringComparison.OrdinalIgnoreCase));
-                if (searchTool is null)
-                    return MicrosoftLearnResearchResult.Unavailable("Microsoft Learn did not advertise its documentation search tool.");
-
-                string? queryParameter = FindQueryParameter(searchTool.ProtocolTool.InputSchema);
-                if (string.IsNullOrWhiteSpace(queryParameter))
-                    return MicrosoftLearnResearchResult.Unavailable("Microsoft Learn's search tool did not advertise a compatible text query parameter.");
-
-                CallToolResult result = await searchTool.CallAsync(
-                    new Dictionary<string, object?> { [queryParameter] = Limit(question.Trim(), 500) },
-                    cancellationToken: deadline.Token).ConfigureAwait(false);
-
-                if (result.IsError is true)
-                    return MicrosoftLearnResearchResult.Unavailable("Microsoft Learn returned an error for the documentation search.");
-
-                List<MicrosoftLearnDocument> documents = new();
-                if (result.StructuredContent is JsonElement structured)
-                    ExtractDocuments(structured, documents);
-
-                foreach (TextContentBlock textBlock in result.Content.OfType<TextContentBlock>())
-                {
-                    if (documents.Count >= MaximumResults) break;
-                    TryExtractDocumentsFromText(textBlock.Text, documents);
-                }
-
-                MicrosoftLearnDocument[] bounded = documents
-                    .Where(IsTrustedDocument)
-                    .GroupBy(item => item.ContentUrl, StringComparer.OrdinalIgnoreCase)
-                    .Select(group => group.First())
-                    .Take(MaximumResults)
-                    .ToArray();
-
-                return new MicrosoftLearnResearchResult(
-                    Available: true,
-                    Documents: bounded,
-                    Reason: bounded.Length > 0
-                        ? $"Microsoft Learn returned {bounded.Length} authoritative documentation result(s)."
-                        : "Microsoft Learn search completed but returned no usable authoritative documentation results.");
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                return MicrosoftLearnResearchResult.Unavailable("Microsoft Learn documentation search timed out.");
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                return MicrosoftLearnResearchResult.Unavailable("Microsoft Learn documentation search was temporarily unavailable.");
-            }
+            return Task.FromResult(MicrosoftLearnResearchResult.Unavailable(
+                "Microsoft Learn MCP search is disabled in the Windows desktop runtime because the current MCP client dependency requires a newer runtime than Sentinel's supported .NET 8 package. Approved Microsoft source fallback remains enabled."));
         }
 
         internal static string? FindQueryParameter(JsonElement inputSchema)
@@ -140,8 +74,8 @@ namespace Sentinel.App.Services
             }
             catch (JsonException)
             {
-                // MCP tool output is expected to be structured JSON. Do not convert arbitrary
-                // prose into a trusted external document if provenance cannot be preserved.
+                // Preserve fail-closed parsing: arbitrary prose is never promoted to trusted
+                // external evidence when provenance cannot be verified.
             }
         }
 
