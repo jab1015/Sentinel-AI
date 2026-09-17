@@ -25,12 +25,12 @@ namespace Sentinel.App.Services
             bool explanation = NeedsNaturalLanguageExplanation(value);
             bool clearlyLocal = IsClearlyLocalStateQuestion(value);
 
-            // This is intentionally default-to-AI rather than default-to-keywords.
-            // Deterministic handlers are authoritative for clearly local state. They may
-            // still provide useful evidence for every other question, but they must not
-            // prevent natural-language reasoning merely because one broad keyword matched.
+            // Verified local evidence wins for clearly local PC questions. Natural-language
+            // wording such as "why" must not replace a sufficient local answer with cloud AI.
+            // Basic AI is used only when local evidence is insufficient or the question is
+            // not actually about this computer's current/local state.
             bool useBasicAi = !freshResearch &&
-                              (localAnswerInsufficient || explanation || !clearlyLocal);
+                              (localAnswerInsufficient || !clearlyLocal);
 
             return new AskSentinelRoute(
                 UseBasicAi: useBasicAi,
@@ -38,12 +38,12 @@ namespace Sentinel.App.Services
                 ExplanationRequested: explanation || (!clearlyLocal && !freshResearch),
                 Reason: freshResearch
                     ? "The request depends on current or explicitly requested external information."
-                    : clearlyLocal && !localAnswerInsufficient && !explanation
+                    : clearlyLocal && !localAnswerInsufficient
                         ? "Verified local evidence directly answers this computer-state question."
                         : localAnswerInsufficient
-                            ? "Deterministic local evidence did not fully answer the request; use Basic AI."
+                            ? "Deterministic local evidence did not fully answer the request; use Basic AI before considering external research."
                             : explanation
-                                ? "The request asks for explanation or interpretation beyond a terse local status value."
+                                ? "The request asks for explanation or interpretation beyond a local status value."
                                 : "The request is not clearly a local state query, so Basic AI is the default natural-language reasoning layer.");
         }
 
@@ -145,6 +145,14 @@ namespace Sentinel.App.Services
                 "right now", "currently", "what is my ", "what are my ", "what's my ", "whats my ",
                 "using now", "using right now", "usage now", "usage right now", "installed on", "running on",
                 "enabled on", "disabled on", "flagged on", "detected on", "found on"))
+                return true;
+
+            bool startupOrLogonTopic = ContainsAny(value,
+                "log in", "login", "log on", "logon", "sign in", "signin", "sign-in",
+                "boot", "boot up", "startup", "start up", "starting windows");
+            bool localDelayIntent = ContainsAny(value,
+                "slow", "takes", "taking", "long", "minutes", "delay", "delayed", "hang", "stuck", "waiting");
+            if (startupOrLogonTopic && localDelayIntent)
                 return true;
 
             if (ContainsAny(value,
