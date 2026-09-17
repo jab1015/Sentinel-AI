@@ -10,6 +10,7 @@ namespace Sentinel.App
     public sealed partial class MainWindow
     {
         private const string AskSentinelOriginalQuestionMarker = "\nOriginal question: ";
+        private readonly StartupLogonEvidenceProvider _askSentinelStartupLogonEvidence = new();
 
         private enum AskSentinelFollowUpAction
         {
@@ -87,7 +88,8 @@ namespace Sentinel.App
                     string externalAnswer;
                     if (external.RequiresSubscription)
                     {
-                        externalAnswer = external.Summary;
+                        externalAnswer = external.Summary +
+                            "\n\nThe verified local startup findings above remain the active evidence for this computer.";
                     }
                     else
                     {
@@ -102,16 +104,14 @@ namespace Sentinel.App
                                 external.Sources.Count,
                                 external.Verified));
 
-                        externalAnswer = externalAi.UsedCloudAi && !string.IsNullOrWhiteSpace(externalAi.Answer)
-                            ? externalAi.Answer.Trim()
-                            : BuildConsumerExternalAnswer(original, external);
+                        externalAnswer = BuildExternalResearchFollowUp(external, externalAi);
                         displayCitations = externalAi.UsedWebSearch
                             ? externalAi.Citations
                             : Array.Empty<CloudAiCitation>();
                         displaySources = MergeAskSentinelResearchSources(external, externalAi.Sources);
 
                         string sourceNames = external.Sources.Count == 0
-                            ? "authoritative sources"
+                            ? "none"
                             : string.Join(", ", external.Sources.Select(x => x.SourceName).Distinct());
                         string fingerprint = $"external-follow-up:{external.Topic}:{original.Trim().ToLowerInvariant()}";
                         await _investigationHistoryService.RecordAsync(
@@ -136,6 +136,14 @@ namespace Sentinel.App
                     provenance = AskSentinelProvenanceLabel.Advisory;
                     grounding = "Sentinel preserved the freshly re-checked local answer and added current authoritative-source research without treating external guidance as proof of this computer's state.";
                 }
+                else if (action == AskSentinelFollowUpAction.NextSteps && IsStartupLogonQuestion(original))
+                {
+                    AskSentinelProgressText.Text = "Running a deeper local startup and sign-in investigation…";
+                    answer = await Task.Run(() => _askSentinelStartupLogonEvidence.GetDeepStartupLogonEvidence(snapshot));
+                    insufficient = false;
+                    provenance = AskSentinelProvenanceLabel.Observed;
+                    grounding = "Sentinel performed the offered deeper startup/sign-in investigation using bounded local Windows event, startup, task, service, and process evidence only.";
+                }
                 else
                 {
                     bool nextSteps = action == AskSentinelFollowUpAction.NextSteps;
@@ -144,9 +152,9 @@ namespace Sentinel.App
                         : "Explaining the local evidence in more detail…";
 
                     string followUpPrompt = nextSteps
-                        ? "Using only the current verified local evidence, explain the safest next steps for the original question. Do not claim a cause that the evidence does not prove. Do not claim any action was performed. " +
+                        ? "Using only the current verified local evidence, explain the safest next steps for the original question. Prefer actions Sentinel can perform or verify itself before telling the user to do manual work. Do not claim a cause that the evidence does not prove. Do not claim any action was performed. " +
                           $"Original question: {LimitFollowUpQuestion(original)} Current verified local answer: {LimitFollowUpAnswer(localAnswer)}"
-                        : "Explain the current verified local answer in clearer, more detailed language. Separate measured facts, likely contributors, and anything that is still unknown. Do not replace local evidence with generic web guidance. " +
+                        : "Explain the current verified local answer in clearer, more detailed language. Separate measured facts, likely contributors, and anything that is still unknown. If Sentinel can perform a safe additional diagnostic itself, say so explicitly. Do not replace local evidence with generic web guidance. " +
                           $"Original question: {LimitFollowUpQuestion(original)} Current verified local answer: {LimitFollowUpAnswer(localAnswer)}";
 
                     SmartAiResult followUpAi = await _askSentinelAiCoordinator.AnalyzeAsync(
@@ -200,7 +208,8 @@ namespace Sentinel.App
                     RenderAskSentinelAnswer(validation.Answer, displayCitations, displaySources);
                     AskSentinelStatusText.Text = action switch
                     {
-                        AskSentinelFollowUpAction.SearchSources => "Kept the verified local findings and added current authoritative-source research.",
+                        AskSentinelFollowUpAction.SearchSources => "Kept the verified local findings and reported the current authoritative-source search result.",
+                        AskSentinelFollowUpAction.NextSteps when IsStartupLogonQuestion(original) => "Completed the deeper local startup and sign-in investigation.",
                         AskSentinelFollowUpAction.NextSteps => "Next steps are based on the current verified local evidence.",
                         _ => "Expanded the answer from the current verified local evidence."
                     };
@@ -230,14 +239,48 @@ namespace Sentinel.App
             }
         }
 
+        private static string BuildExternalResearchFollowUp(ExternalInvestigationResult external, SmartAiResult externalAi)
+        {
+            if (external.Sources.Count == 0)
+            {
+                return "Sentinel completed the authoritative-source search but did not find relevant attributable source material for this question. " +
+                       "That search result does not override or weaken the verified local findings above.";
+            }
+
+            string sources = string.Join(", ", external.Sources.Select(x => x.SourceName).Distinct().Take(6));
+            string matched = external.MatchedTerms.Count > 0
+                ? " Matched terms included: " + string.Join(", ", external.MatchedTerms.Take(8)) + "."
+                : string.Empty;
+            string research = $"Sentinel reached {external.Sources.Count} approved source result(s): {sources}.{matched}";
+
+            if (externalAi.UsedCloudAi && !string.IsNullOrWhiteSpace(externalAi.Answer))
+                return research + "\n\nInterpretation of the external material:\n" + externalAi.Answer.Trim();
+
+            return research + "\n\n" + external.Summary +
+                   "\n\nNo AI interpretation was substituted for missing evidence; the local findings above remain the evidence about this computer.";
+        }
+
         private static string BuildDeterministicExplainMore(string localAnswer) =>
             "Here is the same local finding with the uncertainty made explicit:\n\n" +
             localAnswer +
             "\n\nThe measured items above are evidence from this computer. They can show where a delay or problem occurred and identify possible contributors, but Sentinel should not turn a correlation into a confirmed root cause unless Windows or another local diagnostic records that connection directly.";
 
         private static string BuildDeterministicNextSteps(string localAnswer) =>
-            "Based on the verified local evidence, the safest next step is to keep the current finding intact and gather the next matching local sample before making a broad system change. Review only items Sentinel or Windows specifically flags, prefer reversible changes, and re-check the result afterward. Sentinel has not changed anything automatically from this follow-up.\n\nCurrent verified finding:\n\n" +
+            "Based on the verified local evidence, Sentinel should perform any safe diagnostic it can verify itself before asking you to make broad manual changes. If a deeper local check is available for this type of issue, Sentinel will offer it. Review only items Sentinel or Windows specifically flags, prefer reversible changes, and re-check the result afterward. Sentinel has not changed anything automatically from this follow-up.\n\nCurrent verified finding:\n\n" +
             localAnswer;
+
+        private static bool IsStartupLogonQuestion(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool startupTopic = value.Contains("log in") || value.Contains("login") || value.Contains("log on") ||
+                                value.Contains("logon") || value.Contains("sign in") || value.Contains("signin") ||
+                                value.Contains("sign-in") || value.Contains("boot") || value.Contains("startup") ||
+                                value.Contains("start up") || value.Contains("starting windows");
+            bool delay = value.Contains("slow") || value.Contains("takes") || value.Contains("taking") ||
+                         value.Contains("long") || value.Contains("minutes") || value.Contains("delay") ||
+                         value.Contains("hang") || value.Contains("stuck") || value.Contains("waiting");
+            return startupTopic && delay;
+        }
 
         private static string ExtractAskSentinelOriginalQuestion(string question)
         {
