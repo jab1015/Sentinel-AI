@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Sentinel.App.Services;
 using System;
 using System.Collections.Generic;
@@ -12,6 +13,8 @@ namespace Sentinel.App
         private const string AskSentinelOriginalQuestionMarker = "\nOriginal question: ";
         private readonly StartupLogonEvidenceProvider _askSentinelStartupLogonEvidence = new();
         private readonly AskSentinelResolutionPlanner _askSentinelResolutionPlanner = new();
+        private StackPanel? _askSentinelApprovalPanel;
+        private Button? _askSentinelApprovalButton;
 
         private enum AskSentinelFollowUpAction
         {
@@ -54,6 +57,7 @@ namespace Sentinel.App
             AskSentinelQuestionBox.IsEnabled = false;
             ClearAskSentinelResearchSources();
             HideAskSentinelRepairActions();
+            HideAskSentinelApprovalAction();
             AskSentinelProgressPanel.Visibility = Visibility.Visible;
             AskSentinelProgressRing.IsActive = true;
             AskSentinelStatusText.Text = "Continuing from the verified answer…";
@@ -80,6 +84,8 @@ namespace Sentinel.App
                 string answer;
                 bool insufficient = localResponse.IsInsufficientEvidence;
                 string grounding;
+                bool showDriverRepairActions = false;
+                AskSentinelResolutionPlan? actionableApprovalPlan = null;
 
                 if (action == AskSentinelFollowUpAction.SearchSources)
                 {
@@ -166,15 +172,23 @@ namespace Sentinel.App
                         {
                             _driverRepairDeviceName = GetDriverDeviceName(snapshot);
                             _preparedDriverRepairPlan = await _driverRepairCoordinator.PrepareAsync(_driverRepairDeviceName);
-                            UpdateAskSentinelRepairActions(true, _preparedDriverRepairPlan);
+                            showDriverRepairActions = true;
 
                             answer = _preparedDriverRepairPlan.Available && _preparedDriverRepairPlan.AutomaticInstallationVerified
-                                ? "Resolution decision\n\nSentinel found a driver repair path that passed the exact-device and signed-package checks. Review the repair action shown below; Sentinel will not install it until you explicitly approve it, and it will verify the result afterward."
-                                : "Resolution decision\n\nSentinel checked its dedicated driver-repair workflow but did not find an exact, verified automatic repair package for this device. Sentinel cannot safely repair this driver automatically from the current evidence and will not install a merely similar update.";
+                                ? "Resolution decision\n\nSentinel found a driver repair path that passed the exact-device and signed-package checks. Use the repair controls below to review or explicitly approve the repair. Sentinel will not install it until you approve it, and it will verify the result afterward."
+                                : "Resolution decision\n\nSentinel checked its dedicated driver-repair workflow. Use Continue Repair below to review the verified investigation result or official repair source. Sentinel will not install an unverified or merely similar driver package.";
                         }
                         else
                         {
                             answer = BuildResolutionAnswer(plan, resolutionEvidence);
+                            if (plan.Disposition == AskSentinelResolutionDisposition.ApprovalRequired &&
+                                snapshot.AutonomousProtectionRequiresUserApproval &&
+                                !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
+                                !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase))
+                            {
+                                actionableApprovalPlan = plan;
+                                answer += "\n\nUse Review & Approve below to inspect the exact action. Sentinel will revalidate the finding immediately before execution, and the approval is single-use.";
+                            }
                         }
 
                         insufficient = false;
@@ -228,14 +242,27 @@ namespace Sentinel.App
                 if (!validation.IsSafe)
                 {
                     RenderAskSentinelAnswer(validation.Answer);
+                    HideAskSentinelRepairActions();
+                    HideAskSentinelApprovalAction();
                     AskSentinelStatusText.Text = "The follow-up was blocked because it could not be grounded safely.";
                 }
                 else
                 {
                     RenderAskSentinelAnswer(validation.Answer, displayCitations, displaySources);
+                    if (showDriverRepairActions)
+                    {
+                        UpdateAskSentinelRepairActions(true, _preparedDriverRepairPlan);
+                    }
+                    else if (actionableApprovalPlan is not null)
+                    {
+                        ShowAskSentinelApprovalAction(actionableApprovalPlan);
+                    }
+
                     AskSentinelStatusText.Text = action switch
                     {
                         AskSentinelFollowUpAction.SearchSources => "Kept the verified local findings and reported the current authoritative-source search result.",
+                        AskSentinelFollowUpAction.NextSteps when showDriverRepairActions => "Sentinel prepared the driver repair workflow. Review or approve the repair below.",
+                        AskSentinelFollowUpAction.NextSteps when actionableApprovalPlan is not null => "Sentinel found an exact supported action. Review and approve it below if you want Sentinel to proceed.",
                         AskSentinelFollowUpAction.NextSteps => "Sentinel reached a resolution decision from the current verified evidence and supported repair capabilities.",
                         _ => "Expanded the answer from the current verified local evidence."
                     };
@@ -245,6 +272,8 @@ namespace Sentinel.App
             }
             catch (Exception)
             {
+                HideAskSentinelRepairActions();
+                HideAskSentinelApprovalAction();
                 if (!string.IsNullOrWhiteSpace(previousDisplayedAnswer))
                 {
                     RenderAskSentinelAnswer(
@@ -263,6 +292,74 @@ namespace Sentinel.App
                 AskSentinelQuestionBox.IsEnabled = true;
                 AskSentinelQuestionBox.Focus(FocusState.Programmatic);
             }
+        }
+
+        private void ShowAskSentinelApprovalAction(AskSentinelResolutionPlan plan)
+        {
+            EnsureAskSentinelApprovalPanel();
+            if (_askSentinelApprovalPanel is null || _askSentinelApprovalButton is null) return;
+
+            _askSentinelApprovalButton.Content = "Review & Approve";
+            ToolTipService.SetToolTip(
+                _askSentinelApprovalButton,
+                string.IsNullOrWhiteSpace(plan.Target)
+                    ? "Review Sentinel's exact approved remediation before any change is made."
+                    : $"Review the approved action for {plan.Target}. Sentinel will revalidate it before execution.");
+            _askSentinelApprovalPanel.Visibility = Visibility.Visible;
+        }
+
+        private void EnsureAskSentinelApprovalPanel()
+        {
+            if (_askSentinelApprovalPanel is not null ||
+                AskSentinelAnswerBorder.Child is not StackPanel answerStack)
+                return;
+
+            _askSentinelApprovalButton = new Button
+            {
+                Content = "Review & Approve",
+                MinWidth = 155,
+                Padding = new Thickness(16, 8, 16, 8),
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold
+            };
+            _askSentinelApprovalButton.Click += AskSentinelApprovalButton_Click;
+
+            Button notNow = new()
+            {
+                Content = "Not Now",
+                MinWidth = 95,
+                Padding = new Thickness(14, 8, 14, 8)
+            };
+            notNow.Click += (_, _) =>
+            {
+                HideAskSentinelApprovalAction();
+                AskSentinelStatusText.Text = "No repair was started. Sentinel will keep monitoring the finding.";
+            };
+
+            _askSentinelApprovalPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Margin = new Thickness(0, 16, 0, 0),
+                Visibility = Visibility.Collapsed
+            };
+            _askSentinelApprovalPanel.Children.Add(_askSentinelApprovalButton);
+            _askSentinelApprovalPanel.Children.Add(notNow);
+            answerStack.Children.Add(_askSentinelApprovalPanel);
+        }
+
+        private async void AskSentinelApprovalButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_askSentinelBusy) return;
+            await ReviewApprovedRemediationAsync();
+            await _engine.RefreshAsync();
+            AskSentinelStatusText.Text = "Sentinel completed the approval workflow and refreshed the verified system state.";
+            HideAskSentinelApprovalAction();
+        }
+
+        private void HideAskSentinelApprovalAction()
+        {
+            if (_askSentinelApprovalPanel is not null)
+                _askSentinelApprovalPanel.Visibility = Visibility.Collapsed;
         }
 
         private static string BuildResolutionAnswer(
