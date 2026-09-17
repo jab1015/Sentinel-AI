@@ -50,6 +50,7 @@ namespace Sentinel.App
                 return;
             }
 
+            ResetAskSentinelConversationState(question);
             _askSentinelBusy = true;
             _preparedDriverRepairPlan = null;
             AskSentinelButton.IsEnabled = false;
@@ -82,6 +83,7 @@ namespace Sentinel.App
                 AskSentinelProgressText.Text = "Reviewing what Sentinel already knows…";
                 AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
                     _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
+                string verifiedLocalAnswer = response.Answer;
                 AskSentinelProvenanceLabel responseProvenance = response.UsedInvestigationHistory
                     ? AskSentinelProvenanceLabel.VerifiedFact
                     : AskSentinelProvenanceLabel.Observed;
@@ -140,7 +142,7 @@ namespace Sentinel.App
                             GroundingSummary = "The question required natural-language AI interpretation, but Basic AI was unavailable. Sentinel did not substitute an unrelated deterministic status as the answer."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
-                        driverIssue = false;
+                        driverIssue = !optimizationQuestion && !crashQuestion && ContainsDriverIntent(question);
                     }
                 }
 
@@ -272,6 +274,7 @@ namespace Sentinel.App
                 }
 
                 RenderAskSentinelAnswer(response.Answer, displayCitations, displaySources);
+                CaptureAskSentinelPrimaryAnswer(question, verifiedLocalAnswer, response.Answer);
                 AskSentinelAnswerText.FontSize = 17;
                 AskSentinelAnswerText.LineHeight = 25;
                 AskSentinelAnswerBorder.Padding = new Thickness(20);
