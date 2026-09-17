@@ -17,6 +17,50 @@ namespace Sentinel.App
         private Button? _askSentinelApprovalButton;
         private string _lastDeepStartupQuestion = string.Empty;
         private string _lastDeepStartupFinding = string.Empty;
+        private string _askSentinelConversationQuestion = string.Empty;
+        private string _askSentinelConversationLocalAnswer = string.Empty;
+        private string _askSentinelConversationCurrentAnswer = string.Empty;
+        private AskSentinelResolutionPlan? _askSentinelCurrentResolutionPlan;
+        private bool _askSentinelResolutionReached;
+
+        private void ResetAskSentinelConversationState(string question)
+        {
+            _askSentinelConversationQuestion = question.Trim();
+            _askSentinelConversationLocalAnswer = string.Empty;
+            _askSentinelConversationCurrentAnswer = string.Empty;
+            _askSentinelCurrentResolutionPlan = null;
+            _askSentinelResolutionReached = false;
+            _lastDeepStartupQuestion = string.Empty;
+            _lastDeepStartupFinding = string.Empty;
+            AskSentinelNextStepsButton.IsEnabled = true;
+            AskSentinelNextStepsButton.Content = "Next steps";
+        }
+
+        private void CaptureAskSentinelPrimaryAnswer(string question, string localAnswer, string displayedAnswer)
+        {
+            _askSentinelConversationQuestion = question.Trim();
+            _askSentinelConversationLocalAnswer = localAnswer?.Trim() ?? string.Empty;
+            _askSentinelConversationCurrentAnswer = displayedAnswer?.Trim() ?? string.Empty;
+            _askSentinelCurrentResolutionPlan = null;
+            _askSentinelResolutionReached = false;
+            AskSentinelNextStepsButton.IsEnabled = true;
+            AskSentinelNextStepsButton.Content = "Next steps";
+        }
+
+        private void CaptureAskSentinelFollowUpAnswer(string displayedAnswer, AskSentinelResolutionPlan? plan = null)
+        {
+            _askSentinelConversationCurrentAnswer = displayedAnswer?.Trim() ?? string.Empty;
+            if (plan is null) return;
+
+            _askSentinelCurrentResolutionPlan = plan;
+            _askSentinelResolutionReached =
+                plan.Disposition == AskSentinelResolutionDisposition.Resolved ||
+                plan.Disposition == AskSentinelResolutionDisposition.NoActionNeeded ||
+                plan.Disposition == AskSentinelResolutionDisposition.CannotRepairSafely;
+
+            AskSentinelNextStepsButton.IsEnabled = !_askSentinelResolutionReached;
+            AskSentinelNextStepsButton.Content = _askSentinelResolutionReached ? "Resolution reached" : "Next steps";
+        }
 
         private enum AskSentinelFollowUpAction
         {
@@ -51,8 +95,12 @@ namespace Sentinel.App
                 return;
             }
 
-            string original = ExtractAskSentinelOriginalQuestion(current);
-            string previousDisplayedAnswer = AskSentinelAnswerText.Text?.Trim() ?? string.Empty;
+            string original = !string.IsNullOrWhiteSpace(_askSentinelConversationQuestion)
+                ? _askSentinelConversationQuestion
+                : ExtractAskSentinelOriginalQuestion(current);
+            string previousDisplayedAnswer = !string.IsNullOrWhiteSpace(_askSentinelConversationCurrentAnswer)
+                ? _askSentinelConversationCurrentAnswer
+                : AskSentinelAnswerText.Text?.Trim() ?? string.Empty;
 
             _askSentinelBusy = true;
             AskSentinelButton.IsEnabled = false;
@@ -74,9 +122,11 @@ namespace Sentinel.App
                 AskSentinelResponseOrchestrator.AskSentinelResponse localResponse = await Task.Run(() =>
                     _askSentinelResponseOrchestrator.CreateResponse(original, snapshot, history));
 
-                string localAnswer = !string.IsNullOrWhiteSpace(localResponse.Answer)
-                    ? localResponse.Answer.Trim()
-                    : previousDisplayedAnswer;
+                string localAnswer = !string.IsNullOrWhiteSpace(_askSentinelConversationLocalAnswer)
+                    ? _askSentinelConversationLocalAnswer
+                    : !string.IsNullOrWhiteSpace(localResponse.Answer)
+                        ? localResponse.Answer.Trim()
+                        : previousDisplayedAnswer;
                 if (string.IsNullOrWhiteSpace(localAnswer))
                     localAnswer = "Sentinel does not yet have enough verified local information to restate the earlier finding.";
 
@@ -88,6 +138,7 @@ namespace Sentinel.App
                 string grounding;
                 bool showDriverRepairActions = false;
                 AskSentinelResolutionPlan? actionableApprovalPlan = null;
+                AskSentinelResolutionPlan? resolutionPlan = null;
 
                 if (action == AskSentinelFollowUpAction.SearchSources)
                 {
@@ -138,8 +189,13 @@ namespace Sentinel.App
                         UpdateMaintenanceReport();
                     }
 
+                    string searchContext = !string.IsNullOrWhiteSpace(_askSentinelConversationCurrentAnswer)
+                        ? _askSentinelConversationCurrentAnswer
+                        : !string.IsNullOrWhiteSpace(_lastDeepStartupFinding)
+                            ? _lastDeepStartupFinding
+                            : localAnswer;
                     answer =
-                        "What I verified locally:\n\n" + localAnswer +
+                        "Current Sentinel finding:\n\n" + searchContext +
                         "\n\nCurrent authoritative-source research:\n\n" + externalAnswer;
                     insufficient = false;
                     provenance = AskSentinelProvenanceLabel.Advisory;
@@ -176,6 +232,7 @@ namespace Sentinel.App
                         snapshot,
                         resolutionEvidence,
                         deepStartupCompleted);
+                    resolutionPlan = plan;
 
                     if (plan.Disposition == AskSentinelResolutionDisposition.RepairCheckAvailable &&
                         plan.Action.Equals("driver-repair-check", StringComparison.OrdinalIgnoreCase))
@@ -211,10 +268,12 @@ namespace Sentinel.App
                 {
                     AskSentinelProgressText.Text = "Explaining the local evidence in more detail…";
 
-                    string explanationEvidence = string.Equals(_lastDeepStartupQuestion, original, StringComparison.OrdinalIgnoreCase) &&
-                                                 !string.IsNullOrWhiteSpace(_lastDeepStartupFinding)
-                        ? _lastDeepStartupFinding
-                        : localAnswer;
+                    string explanationEvidence = !string.IsNullOrWhiteSpace(_askSentinelConversationCurrentAnswer)
+                        ? _askSentinelConversationCurrentAnswer
+                        : string.Equals(_lastDeepStartupQuestion, original, StringComparison.OrdinalIgnoreCase) &&
+                          !string.IsNullOrWhiteSpace(_lastDeepStartupFinding)
+                            ? _lastDeepStartupFinding
+                            : localAnswer;
 
                     string followUpPrompt =
                         "Explain the current verified local answer in clearer, more detailed language. Separate measured facts, likely contributors, and anything that is still unknown. If Sentinel can perform a safe additional diagnostic itself, say so explicitly. Do not replace local evidence with generic web guidance. " +
@@ -265,6 +324,7 @@ namespace Sentinel.App
                 else
                 {
                     RenderAskSentinelAnswer(validation.Answer, displayCitations, displaySources);
+                    CaptureAskSentinelFollowUpAnswer(validation.Answer, resolutionPlan);
                     if (showDriverRepairActions)
                     {
                         UpdateAskSentinelRepairActions(true, _preparedDriverRepairPlan);
