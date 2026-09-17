@@ -142,7 +142,8 @@ namespace Sentinel.App
                             GroundingSummary = "The question required natural-language AI interpretation, but Basic AI was unavailable. Sentinel did not substitute an unrelated deterministic status as the answer."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
-                        driverIssue = !optimizationQuestion && !crashQuestion && ContainsDriverIntent(question);
+                        driverIssue = driverIssue ||
+                                      (!optimizationQuestion && !crashQuestion && ContainsDriverIntent(question));
                     }
                 }
 
