@@ -96,8 +96,8 @@ jobs:
             New-Item -ItemType Directory -Path $unbundle | Out-Null
             & '${{ steps.tools.outputs.makeappx }}' unbundle /p $bundle.FullName /d $unbundle /o
             if ($LASTEXITCODE -ne 0) { throw 'MakeAppx could not inspect the generated Store bundle.' }
-            $inner = Get-ChildItem $unbundle -File -Filter '*.msix' | Select-Object -First 1
-            if ($null -eq $inner) { throw 'No application MSIX was found inside the bundle.' }
+            $inner = Get-ChildItem $unbundle -File -Filter '*_x64.msix' | Select-Object -First 1
+            if ($null -eq $inner) { throw 'No x64 application MSIX was found inside the bundle.' }
             $unpack = Join-Path $env:RUNNER_TEMP 'sentinel-store-msix'
             if (Test-Path $unpack) { Remove-Item $unpack -Recurse -Force }
             New-Item -ItemType Directory -Path $unpack | Out-Null
