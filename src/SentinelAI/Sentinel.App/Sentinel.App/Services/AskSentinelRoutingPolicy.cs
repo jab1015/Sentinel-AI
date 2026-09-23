@@ -166,6 +166,31 @@ namespace Sentinel.App.Services
                 "running processes", "running services", "startup apps", "scheduled tasks"))
                 return true;
 
+            // Natural diagnostic questions about machine-local topics should remain
+            // on verified local evidence even when phrased as "why", "too high",
+            // "so many", "slow", "failing", etc. Definitions and comparisons are
+            // intentionally excluded so general knowledge still routes to AI.
+            bool generalDefinitionOrComparison =
+                StartsWithAny(value, "what is ", "what are ", "what does ", "how does ", "who is ", "who are ") ||
+                ContainsAny(value, " vs ", " versus ", "compare ", "difference between", "which is better");
+
+            bool localDiagnosticTopic = ContainsAny(value,
+                "cpu", "processor", "memory", "ram", "disk", "storage", "drive",
+                "process", "processes", "service", "services", "startup", "scheduled task",
+                "network", "internet", "connection", "connections", "driver", "drivers",
+                "defender", "firewall", "windows update", "restart", "reboot",
+                "bitlocker", "secure boot", "tpm");
+
+            bool diagnosticIntent = ContainsAny(value,
+                "why ", "why is", "why are", "why does", "why do",
+                "high", "too high", "so much", "so many", "using", "usage",
+                "slow", "slower", "full", "low", "problem", "issue", "wrong",
+                "failing", "failed", "error", "errors", "not working", "stuck",
+                "blocked", "disconnect", "dropping", "spike", "spiking");
+
+            if (!generalDefinitionOrComparison && localDiagnosticTopic && diagnosticIntent)
+                return true;
+
             // Very short topic prompts are useful Sentinel shorthand for local status.
             // Explicit definitions are never treated as that shorthand.
             bool explicitDefinition = StartsWithAny(value,
