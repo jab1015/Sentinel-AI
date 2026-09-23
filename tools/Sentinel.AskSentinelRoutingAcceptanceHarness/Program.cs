@@ -53,6 +53,44 @@ AskSentinelRoute unresolvedSlowSignIn = routing.Decide("why does it take my comp
 Require(unresolvedSlowSignIn.UseBasicAi && !unresolvedSlowSignIn.UseExternalResearch,
     "An unresolved slow sign-in question skipped the Basic AI layer or jumped straight to external research.");
 
+string[] verifiedLocalDiagnosticQuestions =
+{
+    "Why is my computer using so much memory?",
+    "Why is memory usage so high?",
+    "Why is CPU so high?",
+    "Why is my disk almost full?",
+    "Why are so many processes running?",
+    "Why are so many services running?",
+    "Why is startup so slow?",
+    "Why is my network connection slow?",
+    "Why does my internet keep dropping?",
+    "Why is this driver failing?",
+    "Why is Defender reporting a problem?",
+    "Why is my firewall blocking this connection?",
+    "Why is Windows Update failing?",
+    "Why is a restart pending?"
+};
+
+foreach (string question in verifiedLocalDiagnosticQuestions)
+{
+    AskSentinelRoute route = routing.Decide(question, localAnswerInsufficient: false);
+    Require(!route.UseBasicAi && !route.UseExternalResearch,
+        $"Verified local diagnostic question escaped local-first routing: {question}");
+}
+
+foreach (string question in verifiedLocalDiagnosticQuestions)
+{
+    AskSentinelRoute route = routing.Decide(question, localAnswerInsufficient: true);
+    Require(route.UseBasicAi && !route.UseExternalResearch,
+        $"Insufficient local diagnostic question skipped Basic AI or jumped straight to web research: {question}");
+}
+
+AskSentinelRoute explicitResearchOnLocal = routing.Decide(
+    "Search current Microsoft sources for why my memory usage is high",
+    localAnswerInsufficient: false);
+Require(!explicitResearchOnLocal.UseBasicAi && explicitResearchOnLocal.UseExternalResearch,
+    "Explicit research intent did not override the local-first default.");
+
 AskSentinelRoute ambiguousApp = routing.Decide("Which app is best for editing photos?", localAnswerInsufficient: false);
 Require(ambiguousApp.UseBasicAi && !ambiguousApp.UseExternalResearch,
     "General app question was incorrectly trusted as a local running-process answer.");
@@ -177,6 +215,7 @@ Console.WriteLine("Definition -> Basic AI; terse topic -> local status: PASS");
 Console.WriteLine("Explanation -> Basic AI: PASS");
 Console.WriteLine("Direct/local freshness questions -> local answer: PASS");
 Console.WriteLine("Slow sign-in -> local evidence first, Basic AI only if unresolved: PASS");
+Console.WriteLine("Memory/CPU/disk/process/service/startup/network/driver/security/update diagnostics -> local first: PASS");
 Console.WriteLine("Ambiguous keyword and natural fragment input -> Basic AI: PASS");
 Console.WriteLine("Fresh external/research/according-to wording -> external research: PASS");
 Console.WriteLine("Typed conversational follow-ups -> bounded prior context: PASS");
