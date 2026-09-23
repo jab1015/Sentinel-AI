@@ -97,11 +97,17 @@ namespace Sentinel.App.Services
 
             if (explicitExternalIntent.Any(value.Contains)) return true;
 
-            // These questions are explicitly backed by deterministic local providers.
-            // Do not discard a useful local answer merely because the user phrased it
-            // as "why" or "what caused". The local responder already states when the
-            // evidence can identify only a contributing condition rather than one
-            // guaranteed root cause.
+            // One routing authority for local-first behavior:
+            // if the question is clearly about this PC's current state and the local
+            // responder produced a usable answer, do not discard that answer merely
+            // because the user asked "why", "explain", or "what caused". Insufficient
+            // local answers are handled separately by localInsufficient and may then
+            // move to Basic AI. External research remains opt-in/explicit.
+            if (AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(value))
+                return false;
+
+            // Preserve bounded deterministic local providers that may not contain an
+            // explicit "my PC" phrase but still represent current machine evidence.
             if (IsLocalPerformanceQuestion(value) || IsPendingRestartQuestion(value))
                 return false;
 
