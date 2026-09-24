@@ -16,9 +16,15 @@ namespace Sentinel.App.Services
     public sealed class RemediationApprovalCoordinator
     {
         private static readonly TimeSpan ApprovalLifetime = TimeSpan.FromMinutes(2);
+        private readonly Func<DateTimeOffset> _now;
         private readonly HashSet<Guid> _consumedRequestIds = new();
         private readonly Dictionary<Guid, RemediationApprovalRequest> _issuedRequests = new();
         private readonly object _sync = new();
+
+        public RemediationApprovalCoordinator(Func<DateTimeOffset>? nowProvider = null)
+        {
+            _now = nowProvider ?? (() => DateTimeOffset.Now);
+        }
 
         public RemediationApprovalRequest? CreateRequest(SystemSnapshot snapshot)
         {
@@ -33,7 +39,7 @@ namespace Sentinel.App.Services
                 return null;
             }
 
-            DateTimeOffset createdAt = DateTimeOffset.Now;
+            DateTimeOffset createdAt = _now();
 
             var request = new RemediationApprovalRequest(
                 RequestId: Guid.NewGuid(),
@@ -90,7 +96,7 @@ namespace Sentinel.App.Services
                 return ApprovalValidationResult.Denied("You did not approve this action. Sentinel made no system change.");
             }
 
-            if (DateTimeOffset.Now > request.ExpiresAt)
+            if (_now() > request.ExpiresAt)
             {
                 return ApprovalValidationResult.Denied("This approval expired because the system may have changed. Sentinel will investigate again before offering the action.");
             }
