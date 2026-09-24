@@ -16,6 +16,7 @@ namespace Sentinel.App
         private StackPanel? _askSentinelApprovalPanel;
         private Button? _askSentinelApprovalButton;
         private readonly ApprovedFirewallContainmentCoordinator _askSentinelFirewallRollbackCoordinator = new();
+        private readonly NetworkContainmentHistoryService _networkContainmentHistory = new();
         private string _askSentinelNetworkRollbackTarget = string.Empty;
         private string _lastVerifiedNetworkContainmentTarget = string.Empty;
         private string _lastDeepStartupQuestion = string.Empty;
@@ -569,6 +570,7 @@ namespace Sentinel.App
 
                 if (result.Succeeded)
                 {
+                    _networkContainmentHistory.ClearContainedEndpoint(remoteEndpoint);
                     _lastVerifiedNetworkContainmentTarget = string.Empty;
                     AskSentinelStatusText.Text = "Sentinel verified that the exact network block is no longer present.";
                 }
