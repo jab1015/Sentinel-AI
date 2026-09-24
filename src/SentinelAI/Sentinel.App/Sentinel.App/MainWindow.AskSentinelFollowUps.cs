@@ -384,11 +384,14 @@ namespace Sentinel.App
             EnsureAskSentinelApprovalPanel();
             if (_askSentinelApprovalPanel is null || _askSentinelApprovalButton is null) return;
 
-            _askSentinelManualNetworkContainmentTarget = remoteEndpoint.Trim();
-            _askSentinelApprovalButton.Content = "Review & Quarantine";
+            // Network containment must use the same short-lived, single-use approval
+            // request as every other supported remediation. Never create a parallel
+            // "manual flagged endpoint" execution path that bypasses remediation policy.
+            _askSentinelManualNetworkContainmentTarget = string.Empty;
+            _askSentinelApprovalButton.Content = "Review & Approve";
             ToolTipService.SetToolTip(
                 _askSentinelApprovalButton,
-                $"Review and approve a temporary Sentinel firewall block for {_askSentinelManualNetworkContainmentTarget}. Sentinel will revalidate the endpoint before acting.");
+                $"Review the exact Sentinel-approved firewall containment for {remoteEndpoint}. Sentinel will refresh and revalidate the same action, target, reason, and evidence before execution.");
             _askSentinelApprovalPanel.Visibility = Visibility.Visible;
         }
 
@@ -396,8 +399,11 @@ namespace Sentinel.App
         {
             if (!snapshot.NetworkConnectionMonitoringAvailable ||
                 snapshot.FlaggedConnectionCount <= 0 ||
-                string.IsNullOrWhiteSpace(snapshot.PrimaryFlaggedConnectionRemoteEndpoint) ||
-                snapshot.PrimaryFlaggedConnectionRemoteEndpoint.Equals("None", StringComparison.OrdinalIgnoreCase))
+                !snapshot.AutonomousProtectionRequiresUserApproval ||
+                !snapshot.AutonomousProtectionAction.Equals("block-outbound-endpoint", StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) ||
+                snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                !snapshot.AutonomousProtectionTarget.Equals(snapshot.PrimaryFlaggedConnectionRemoteEndpoint, StringComparison.OrdinalIgnoreCase))
                 return false;
 
             string value = question.Trim().ToLowerInvariant();
