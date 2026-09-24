@@ -129,8 +129,10 @@ namespace Sentinel.App.Services
             // Strong research intent always wins, even when the request also mentions
             // this PC (for example, "search current Microsoft guidance for my firewall").
             bool explicitExternalIntent = ContainsAny(value,
-                "search online", "search the internet", "look online", "look it up", "external source", "external sources",
+                "search online", "search the internet", "search current", "search microsoft", "search vendor", "search manufacturer",
+                "look online", "look it up", "external source", "external sources",
                 "authoritative source", "authoritative sources", "official source", "official sources", "official documentation",
+                "current microsoft source", "current microsoft sources", "current vendor source", "current vendor sources",
                 "according to", "microsoft says", "vendor says", "manufacturer says", "release notes",
                 "known issue", "known issues", "known cause", "known causes", "cve", "security advisory",
                 "research this", "research the", "research my", "research whether", "research why", "research how",
