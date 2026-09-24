@@ -60,7 +60,7 @@ namespace Sentinel.App.Services
                     true,
                     "block-outbound-endpoint",
                     snapshot.PrimaryFlaggedConnectionRemoteEndpoint,
-                    "Sentinel correlated this network endpoint with additional process evidence. Approval is required before blocking it, and Sentinel will verify the resulting firewall rule before reporting success.",
+                    "Sentinel corroborated this network finding with additional evidence. Approval is required before Sentinel blocks all outbound traffic to the remote IP represented by the flagged connection. The current firewall containment scope is IP-wide across applications, services, profiles, protocols, and ports, and Sentinel will verify the resulting rule before reporting success.",
                     RemediationDisposition.ApprovalRequired);
             }
 
