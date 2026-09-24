@@ -44,20 +44,18 @@ namespace Sentinel.App.Services
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(validation);
 
-            return request.Action switch
+            return ApprovedRemediationRoutingPolicy.Resolve(request.Action) switch
             {
-                "restart-service" => _serviceRestart.ExecuteAsync(
+                ApprovedRemediationRoute.ServiceRestart => _serviceRestart.ExecuteAsync(
                     currentSnapshot, request, validation, canRequestElevation, cancellationToken),
 
-                "block-outbound-endpoint" => _firewallContainment.ExecuteAsync(
+                ApprovedRemediationRoute.FirewallContainment => _firewallContainment.ExecuteAsync(
                     currentSnapshot, request, validation),
 
-                "contain-process" => _processContainment.ExecuteAsync(
+                ApprovedRemediationRoute.ProcessContainment => _processContainment.ExecuteAsync(
                     currentSnapshot, request, validation),
 
-                "quarantine-file" or
-                "restore-quarantined-file" or
-                "delete-quarantined-file" => _quarantine.ExecuteAsync(
+                ApprovedRemediationRoute.Quarantine => _quarantine.ExecuteAsync(
                     currentSnapshot, request, validation, cancellationToken),
 
                 _ => Task.FromResult(
