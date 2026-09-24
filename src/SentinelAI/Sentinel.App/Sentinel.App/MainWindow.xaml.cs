@@ -38,6 +38,7 @@ namespace Sentinel.App
         public MainWindow()
         {
             InitializeComponent();
+            _lastVerifiedNetworkContainmentTarget = _networkContainmentHistory.GetLastContainedEndpoint();
             _timer.Interval = TimeSpan.FromSeconds(5);
             _timer.Tick += Timer_Tick;
             Activated += MainWindow_Activated;
@@ -301,6 +302,7 @@ namespace Sentinel.App
                 request.Action.Equals("block-outbound-endpoint", StringComparison.OrdinalIgnoreCase))
             {
                 _lastVerifiedNetworkContainmentTarget = request.Target;
+                _networkContainmentHistory.RecordContainedEndpoint(request.Target);
             }
 
             ContentDialog outcomeDialog = new() { Title = string.IsNullOrWhiteSpace(execution.Title) ? "Sentinel did not make a change" : execution.Title, Content = execution.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot }; await outcomeDialog.ShowAsync(); await UpdateDashboardAsync(); }
