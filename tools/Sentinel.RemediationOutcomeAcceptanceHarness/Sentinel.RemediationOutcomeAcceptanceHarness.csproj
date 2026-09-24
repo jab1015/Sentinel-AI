@@ -11,5 +11,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Models\SystemSnapshot.cs" Link="SystemSnapshot.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\ApprovedRemediationExecutor.cs" Link="ApprovedRemediationExecutor.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RemediationApprovalCoordinator.cs" Link="RemediationApprovalCoordinator.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\ApprovedRemediationRoutingPolicy.cs" Link="ApprovedRemediationRoutingPolicy.cs" />
   </ItemGroup>
 </Project>
