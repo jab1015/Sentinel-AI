@@ -394,7 +394,7 @@ namespace Sentinel.App
             _askSentinelApprovalButton.Content = "Review & Approve";
             ToolTipService.SetToolTip(
                 _askSentinelApprovalButton,
-                $"Review the exact Sentinel-approved firewall containment for {remoteEndpoint}. Sentinel will refresh and revalidate the same action, target, reason, and evidence before execution.");
+                $"Review containment for flagged connection {remoteEndpoint}. The firewall rule blocks all outbound traffic to that remote IP, not only the flagged port. Sentinel will refresh and revalidate the same action, target, reason, and evidence before execution.");
             _askSentinelApprovalPanel.Visibility = Visibility.Visible;
         }
 
