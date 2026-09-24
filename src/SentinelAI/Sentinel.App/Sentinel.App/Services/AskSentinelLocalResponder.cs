@@ -47,6 +47,9 @@ namespace Sentinel.App.Services
             if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
             if (IsBroadComputerOverviewQuestion(q)) return BuildComputerOverviewAnswer(snapshot);
 
+            string? remediationIntent = BuildRemediationIntentAnswer(q, snapshot);
+            if (!string.IsNullOrWhiteSpace(remediationIntent)) return remediationIntent;
+
             string? detailedFinding = BuildDetailedFindingAnswer(q, snapshot);
             if (!string.IsNullOrWhiteSpace(detailedFinding)) return detailedFinding;
 
@@ -169,6 +172,72 @@ namespace Sentinel.App.Services
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.GuidanceRecommendedAction, snapshot.Recommendation) : "No action is required based on current verified evidence. Sentinel will continue monitoring.";
 
             return InsufficientEvidence;
+        }
+
+        private static string? BuildRemediationIntentAnswer(string question, SystemSnapshot snapshot)
+        {
+            bool actionIntent = Has(question,
+                "quarantine", "contain", "block", "unblock", "restore", "undo", "rollback",
+                "reverse", "revert", "repair", "fix", "restart", "remove the block",
+                "mess something up", "break something", "causes a problem", "if it breaks");
+            if (!actionIntent) return null;
+
+            bool asksAboutNetwork = Has(question, "network", "connection", "traffic", "endpoint", "firewall");
+            bool asksAboutFile = Has(question, "file", "folder");
+            bool asksAboutProcess = Has(question, "process", "program", "application", "app");
+            bool asksAboutService = Has(question, "service", "windows service");
+
+            if (asksAboutNetwork || (!asksAboutFile && !asksAboutProcess && !asksAboutService &&
+                                    Has(question, "quarantine", "block", "unblock", "restore")))
+            {
+                string endpoint = Friendly(snapshot.PrimaryFlaggedConnectionRemoteEndpoint, "the exact remote endpoint");
+                bool hasCurrentNetworkAction =
+                    snapshot.AutonomousProtectionRequiresUserApproval &&
+                    snapshot.AutonomousProtectionAction.Equals("block-outbound-endpoint", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
+                    !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
+
+                return
+                    "Network containment and rollback\n\n" +
+                    $"For a suspicious connection, Sentinel does not move the connection into a file-style quarantine. It contains the destination by creating an exact outbound Windows Firewall block for {endpoint}. " +
+                    "Sentinel verifies the rule after creation and checks connectivity before and after the change. If general connectivity is lost immediately after containment, Sentinel automatically removes the new rule and verifies that rollback.\n\n" +
+                    "If the block later causes a problem for a specific application while the rest of the internet still works, automatic rollback may not trigger. In that case Sentinel can remove the exact Sentinel-created firewall block and verify that it is gone.\n\n" +
+                    (hasCurrentNetworkAction
+                        ? $"A current approval-gated network containment action is available for {snapshot.AutonomousProtectionTarget}. Sentinel must get your approval before applying it."
+                        : "Sentinel does not currently have an approval-gated network containment action ready for this question, so it should explain the option rather than change Windows.");
+            }
+
+            if (asksAboutFile)
+            {
+                return
+                    "File quarantine and restore\n\n" +
+                    "Sentinel's file quarantine is reversible. A quarantined file is moved into Sentinel's protected quarantine store with verified metadata. If you later choose Restore, Sentinel uses the protected quarantine record to restore that exact file and verifies the result. Permanent delete is a separate action and cannot be undone.";
+            }
+
+            if (asksAboutProcess)
+            {
+                return
+                    "Process containment\n\n" +
+                    "Sentinel can contain an exact verified process instance when a supported approval-gated action is available. Process containment is not a reversible quarantine: if a process is terminated, Sentinel cannot restore that same running process instance. The application may be relaunched later if it is safe to do so.";
+            }
+
+            if (asksAboutService)
+            {
+                return
+                    "Service remediation\n\n" +
+                    "A service restart is an approval-gated repair action, not a quarantine. Sentinel verifies the exact service before acting and verifies that it is running afterward. There is no separate 'restore' object for a restart; if a configuration change were ever required, that would need its own verified remediation and rollback path.";
+            }
+
+            if (snapshot.AutonomousProtectionRequiresUserApproval &&
+                !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionAction) &&
+                !snapshot.AutonomousProtectionAction.Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                return
+                    $"Sentinel currently has an approval-gated action available: {snapshot.AutonomousProtectionAction} targeting {snapshot.AutonomousProtectionTarget}. " +
+                    "Sentinel should explain the exact effect and rollback behavior for that action before asking you to approve it.";
+            }
+
+            return null;
         }
 
         private static string? BuildDetailedFindingAnswer(string question, SystemSnapshot snapshot)
