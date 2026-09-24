@@ -102,7 +102,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $certificatePath)) { throw "Missing VM certificate: $certificatePath" }
 
           $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
-          $stores = @('TrustedPeople', 'Root')
+          $stores = @('TrustedPeople')
           try {
             foreach ($storeName in $stores) {
               $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
