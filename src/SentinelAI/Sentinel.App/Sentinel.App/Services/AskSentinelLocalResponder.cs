@@ -197,14 +197,16 @@ namespace Sentinel.App.Services
                     !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
                     !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
 
+                string availability = hasCurrentNetworkAction
+                    ? $"A current approval-gated network containment action is available for {snapshot.AutonomousProtectionTarget}. Sentinel must get your approval before applying it."
+                    : BuildNetworkContainmentUnavailableReason(snapshot);
+
                 return
                     "Network containment and rollback\n\n" +
                     $"For a suspicious connection, Sentinel does not move the connection into a file-style quarantine. It contains the destination by creating an exact outbound Windows Firewall block for {endpoint}. " +
                     "Sentinel verifies the rule after creation and checks connectivity before and after the change. If general connectivity is lost immediately after containment, Sentinel automatically removes the new rule and verifies that rollback.\n\n" +
                     "If the block later causes a problem for a specific application while the rest of the internet still works, automatic rollback may not trigger. In that case Sentinel can remove the exact Sentinel-created firewall block and verify that it is gone.\n\n" +
-                    (hasCurrentNetworkAction
-                        ? $"A current approval-gated network containment action is available for {snapshot.AutonomousProtectionTarget}. Sentinel must get your approval before applying it."
-                        : "Sentinel does not currently have an approval-gated network containment action ready for this question, so it should explain the option rather than change Windows.");
+                    availability;
             }
 
             if (asksAboutFile)
@@ -238,6 +240,23 @@ namespace Sentinel.App.Services
             }
 
             return null;
+        }
+
+        private static string BuildNetworkContainmentUnavailableReason(SystemSnapshot snapshot)
+        {
+            if (!snapshot.NetworkConnectionMonitoringAvailable)
+                return $"Sentinel cannot offer containment because network monitoring is currently {snapshot.NetworkConnectionMonitoringStatus}.";
+
+            if (snapshot.FlaggedConnectionCount <= 0)
+                return "Sentinel cannot offer containment because the refreshed evidence no longer contains a flagged network destination.";
+
+            if (!snapshot.ConnectionIntelligenceHasCorroboratingEvidence)
+                return $"Sentinel is withholding containment because this connection is still an uncorroborated network finding (confidence {snapshot.ConnectionIntelligenceConfidenceScore}%). The current policy requires corroborating evidence before Sentinel can prepare a firewall-changing action.";
+
+            if (snapshot.ConnectionIntelligenceConfidenceScore < 80)
+                return $"Sentinel is withholding containment because the corroborated network evidence is only {snapshot.ConnectionIntelligenceConfidenceScore}% confidence. The current high-confidence containment threshold is 80%.";
+
+            return $"Sentinel is withholding containment because the current investigation state '{snapshot.InvestigationReasonCode}' did not produce a supported exact-target network action. No firewall change will be made unless that verified remediation state is present.";
         }
 
         private static string? BuildDetailedFindingAnswer(string question, SystemSnapshot snapshot)
