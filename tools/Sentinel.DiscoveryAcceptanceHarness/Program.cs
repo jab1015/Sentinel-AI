@@ -73,6 +73,50 @@ Console.WriteLine("--- Scenario 3: correlated network behavior requires approval
 }
 Console.WriteLine();
 
+Console.WriteLine("--- Scenario 3b: high-confidence corroborated network finding requires approval ---");
+{
+    var snapshot = BaseHealthy();
+    snapshot.FlaggedConnectionCount = 1;
+    snapshot.PrimaryFlaggedConnectionProcessName = "Unknown process";
+    snapshot.PrimaryFlaggedConnectionRemoteEndpoint = "20.44.17.102:8883";
+    snapshot.PrimaryFlaggedConnectionReason = "Rare external destination with corroborating security evidence.";
+    snapshot.ConnectionIntelligenceConfidenceScore = 88;
+    snapshot.ConnectionIntelligenceHasCorroboratingEvidence = true;
+    snapshot.ConnectionIntelligenceState = "HighConcern";
+    snapshot.ConnectionIntelligenceSummary = "The endpoint is corroborated by independent local security evidence.";
+    var result = investigationEngine.Investigate(snapshot);
+    snapshot.InvestigationRequiresAttention = result.RequiresAttention;
+    snapshot.InvestigationReasonCode = result.ReasonCode;
+    snapshot.GuidanceConfidencePercent = 88;
+    var remediation = remediationEngine.Evaluate(snapshot);
+    Check("Corroborated network reason retained", result.ReasonCode == "corroborated-network-finding");
+    Check("Corroborated network approval required", remediation.Disposition == RemediationRecommendationEngine.RemediationDisposition.ApprovalRequired);
+    Check("Exact network block action prepared", remediation.Action == "block-outbound-endpoint");
+    Check("Exact endpoint preserved", remediation.Target == "20.44.17.102:8883");
+}
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 3c: flagged network evidence without corroboration is not promoted ---");
+{
+    var snapshot = BaseHealthy();
+    snapshot.FlaggedConnectionCount = 1;
+    snapshot.PrimaryFlaggedConnectionProcessName = "Unknown process";
+    snapshot.PrimaryFlaggedConnectionRemoteEndpoint = "203.0.113.20:443";
+    snapshot.PrimaryFlaggedConnectionReason = "Rare external destination.";
+    snapshot.ConnectionIntelligenceConfidenceScore = 70;
+    snapshot.ConnectionIntelligenceHasCorroboratingEvidence = false;
+    snapshot.ConnectionIntelligenceState = "Review";
+    var result = investigationEngine.Investigate(snapshot);
+    snapshot.InvestigationRequiresAttention = result.RequiresAttention;
+    snapshot.InvestigationReasonCode = result.ReasonCode;
+    snapshot.GuidanceConfidencePercent = 70;
+    var remediation = remediationEngine.Evaluate(snapshot);
+    Check("Uncorroborated network remains under review", result.ReasonCode == "network-evidence-under-review");
+    Check("No containment action exposed", remediation.Action != "block-outbound-endpoint");
+    Check("No approval-gated network mutation", remediation.Disposition != RemediationRecommendationEngine.RemediationDisposition.ApprovalRequired);
+}
+Console.WriteLine();
+
 Console.WriteLine("--- Scenario 4: uncorroborated process evidence stays observation-only ---");
 {
     var snapshot = BaseHealthy();
