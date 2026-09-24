@@ -203,7 +203,7 @@ namespace Sentinel.App.Services
 
                 return
                     "Network containment and rollback\n\n" +
-                    $"For a suspicious connection, Sentinel does not move the connection into a file-style quarantine. It contains the destination by creating an exact outbound Windows Firewall block for {endpoint}. " +
+                    $"For a suspicious connection, Sentinel does not move the connection into a file-style quarantine. For the flagged connection {endpoint}, Sentinel's current containment method blocks the remote IP address in Windows Firewall. That rule applies to all outbound traffic to that IP across applications, services, profiles, protocols, and ports; it is not limited to only the flagged port. " +
                     "Sentinel verifies the rule after creation and checks connectivity before and after the change. If general connectivity is lost immediately after containment, Sentinel automatically removes the new rule and verifies that rollback.\n\n" +
                     "If the block later causes a problem for a specific application while the rest of the internet still works, automatic rollback may not trigger. In that case Sentinel can remove the exact Sentinel-created firewall block and verify that it is gone.\n\n" +
                     availability;
