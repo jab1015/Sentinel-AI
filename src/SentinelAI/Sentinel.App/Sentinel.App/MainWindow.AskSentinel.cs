@@ -294,6 +294,8 @@ namespace Sentinel.App
 
                 RenderAskSentinelAnswer(response.Answer, displayCitations, displaySources);
                 CaptureAskSentinelPrimaryAnswer(question, verifiedLocalAnswer, response.Answer);
+                if (IsManualNetworkContainmentRequest(question, snapshot))
+                    ShowAskSentinelManualNetworkContainmentAction(snapshot.PrimaryFlaggedConnectionRemoteEndpoint);
                 AskSentinelAnswerText.FontSize = 17;
                 AskSentinelAnswerText.LineHeight = 25;
                 AskSentinelAnswerBorder.Padding = new Thickness(20);
