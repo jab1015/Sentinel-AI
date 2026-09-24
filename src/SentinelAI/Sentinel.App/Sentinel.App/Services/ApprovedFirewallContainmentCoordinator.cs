@@ -79,6 +79,43 @@ namespace Sentinel.App.Services
                 .ConfigureAwait(false);
         }
 
+        public async Task<FirewallContainmentService.FirewallContainmentResult> ExecuteManualFlaggedEndpointAsync(
+            SystemSnapshot currentSnapshot,
+            string remoteEndpoint)
+        {
+            ArgumentNullException.ThrowIfNull(currentSnapshot);
+
+            SubscriptionState subscription = await _subscriptionService.GetStateAsync().ConfigureAwait(false);
+            if (!subscription.IsActive)
+            {
+                return FirewallContainmentService.FirewallContainmentResult.Failure(
+                    "Subscription required",
+                    "An active Sentinel AI subscription is required for suspicious-traffic containment.");
+            }
+
+            if (!currentSnapshot.NetworkConnectionMonitoringAvailable ||
+                currentSnapshot.FlaggedConnectionCount <= 0)
+            {
+                return FirewallContainmentService.FirewallContainmentResult.Failure(
+                    "The flagged connection is no longer present",
+                    "Sentinel refreshed the network evidence before acting and no longer has a flagged connection to contain. No firewall change was made.");
+            }
+
+            string currentTarget = currentSnapshot.PrimaryFlaggedConnectionRemoteEndpoint?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(currentTarget) ||
+                currentTarget.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                !currentTarget.Equals(remoteEndpoint.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return FirewallContainmentService.FirewallContainmentResult.Failure(
+                    "The containment target changed",
+                    "Sentinel refreshed the network evidence and the flagged endpoint no longer matches the endpoint you approved. No firewall change was made.");
+            }
+
+            return await _firewallContainment
+                .BlockEndpointAsync(currentTarget)
+                .ConfigureAwait(false);
+        }
+
         public async Task<FirewallContainmentService.FirewallContainmentResult> RemoveBlockAsync(
             string remoteEndpoint)
         {
