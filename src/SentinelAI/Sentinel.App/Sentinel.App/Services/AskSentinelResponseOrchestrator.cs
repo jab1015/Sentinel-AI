@@ -54,7 +54,14 @@ namespace Sentinel.App.Services
             if (string.IsNullOrWhiteSpace(answer)) answer = InsufficientEvidence;
 
             bool localInsufficient = IsInsufficientEvidence(answer);
-            bool requiresExternalKnowledge = !usedHistory && RequiresExternalKnowledge(question, answer);
+            // One routing authority: the orchestrator never infers web research from
+            // wording such as "why", "cause", "explain", or from answer length.
+            // Explicit/current external-research intent is decided by the shared
+            // AskSentinelRoutingPolicy. Unresolved local/general questions move to
+            // Basic AI first in the UI pipeline and only then may fall through to
+            // external investigation if they remain unresolved.
+            bool requiresExternalKnowledge = !usedHistory &&
+                AskSentinelRoutingPolicy.RequiresFreshExternalResearch(question);
             bool insufficientEvidence = localInsufficient || requiresExternalKnowledge;
 
             AskSentinelResponse preliminary = new(answer, snapshot.Timestamp, context.Evidence.Count,
@@ -77,67 +84,6 @@ namespace Sentinel.App.Services
 
             return preliminary with { PassedFinalSafetyValidation = true };
         }
-
-        private static bool RequiresExternalKnowledge(string question, string localAnswer)
-        {
-            string value = question.Trim().ToLowerInvariant();
-
-            // External reasoning cannot inspect the local dump and must not connect an
-            // unrelated active finding to a crash. Return the bounded local crash
-            // evidence until Sentinel has crash-specific causal evidence.
-            if (IsCrashQuestion(value)) return false;
-
-            string[] explicitExternalIntent =
-            {
-                "external source", "external sources", "authoritative source", "authoritative sources",
-                "according to", "look online", "search online", "search the internet", "check the internet",
-                "research", "known cause", "known causes", "microsoft says", "vendor says",
-                "manufacturer says", "official documentation", "latest information"
-            };
-
-            if (explicitExternalIntent.Any(value.Contains)) return true;
-
-            // One routing authority for local-first behavior:
-            // if the question is clearly about this PC's current state and the local
-            // responder produced a usable answer, do not discard that answer merely
-            // because the user asked "why", "explain", or "what caused". Insufficient
-            // local answers are handled separately by localInsufficient and may then
-            // move to Basic AI. External research remains opt-in/explicit.
-            if (AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(value))
-                return false;
-
-            // Preserve bounded deterministic local providers that may not contain an
-            // explicit "my PC" phrase but still represent current machine evidence.
-            if (IsLocalPerformanceQuestion(value) || IsPendingRestartQuestion(value))
-                return false;
-
-            bool asksForInterpretation =
-                value.Contains("what does") || value.Contains("what does this mean") ||
-                value.Contains("why is") || value.Contains("why does") || value.Contains("why did") ||
-                value.Contains("root cause") || value.Contains("cause of") || value.Contains("causes of") ||
-                value.Contains("which cause") || value.Contains("best matches") || value.Contains("explain");
-
-            if (!asksForInterpretation) return false;
-
-            string answer = localAnswer?.Trim() ?? string.Empty;
-            if (answer.Length < 420) return true;
-
-            bool containsCausalExplanation =
-                answer.Contains("because", StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("caused by", StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("reason", StringComparison.OrdinalIgnoreCase) ||
-                answer.Contains("evidence shows", StringComparison.OrdinalIgnoreCase);
-
-            return !containsCausalExplanation;
-        }
-
-        private static bool IsLocalPerformanceQuestion(string value) =>
-            value.Contains("computer slow") || value.Contains("pc slow") ||
-            value.Contains("running slow") || value.Contains("running slowly") ||
-            value.Contains("feels slow") || value.Contains("sluggish") ||
-            value.Contains("lagging") || value.Contains("laggy") ||
-            value.Contains("performance problem") || value.Contains("performance issue") ||
-            value.Contains("why is my computer slow") || value.Contains("why is my pc slow");
 
         private static bool IsPendingRestartQuestion(string value)
         {
