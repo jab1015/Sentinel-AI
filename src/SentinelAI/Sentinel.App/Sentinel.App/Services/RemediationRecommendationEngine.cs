@@ -92,6 +92,7 @@ namespace Sentinel.App.Services
 
         private static bool IsVerifiedNetworkFinding(SystemSnapshot snapshot) =>
             snapshot.InvestigationReasonCode is
+                "corroborated-network-finding" or
                 "correlated-process-network-finding" or
                 "correlated-lineage-network-finding" or
                 "correlated-command-network-finding";
