@@ -297,6 +297,12 @@ namespace Sentinel.App
                 request,
                 validation,
                 canRequestElevation: true);
+            if (execution.Verified &&
+                request.Action.Equals("block-outbound-endpoint", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastVerifiedNetworkContainmentTarget = request.Target;
+            }
+
             ContentDialog outcomeDialog = new() { Title = string.IsNullOrWhiteSpace(execution.Title) ? "Sentinel did not make a change" : execution.Title, Content = execution.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot }; await outcomeDialog.ShowAsync(); await UpdateDashboardAsync(); }
         private async void VerifyGuidanceButton_Click(object sender, RoutedEventArgs e) { var result = await _engine.VerifyCurrentGuidanceAsync(); ContentDialog dialog = new() { Title = result.Title, Content = result.Summary, CloseButtonText = "OK", XamlRoot = ((FrameworkElement)Content).XamlRoot }; await dialog.ShowAsync(); await UpdateDashboardAsync(); }
     }
