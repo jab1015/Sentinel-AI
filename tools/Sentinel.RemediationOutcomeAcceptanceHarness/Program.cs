@@ -26,6 +26,37 @@ var fabricated = request with { RequestId = Guid.NewGuid() };
 var fabricatedValidation = approval.Validate(fabricated, snapshot, true);
 Check("Fabricated approval request is rejected", !fabricatedValidation.IsApproved);
 
+DateTimeOffset fakeNow = new DateTimeOffset(2026, 1, 10, 12, 0, 0, TimeSpan.Zero);
+var expiryApproval = new RemediationApprovalCoordinator(() => fakeNow);
+var expirySnapshot = new SystemSnapshot
+{
+    InvestigationRequiresAttention = true,
+    InvestigationReasonCode = "expiry-test-condition",
+    GuidanceConfidencePercent = 90,
+    AutonomousProtectionRequiresUserApproval = true,
+    AutonomousProtectionAction = "block-outbound-endpoint",
+    AutonomousProtectionTarget = "203.0.113.40:443"
+};
+var expiringRequest = expiryApproval.CreateRequest(expirySnapshot)!;
+fakeNow = fakeNow.AddMinutes(3);
+var expiredValidation = expiryApproval.Validate(expiringRequest, expirySnapshot, true);
+Check("Expired approval is rejected", !expiredValidation.IsApproved);
+
+var changedTargetApproval = new RemediationApprovalCoordinator();
+var changedTargetSnapshot = new SystemSnapshot
+{
+    InvestigationRequiresAttention = true,
+    InvestigationReasonCode = "target-change-test",
+    GuidanceConfidencePercent = 90,
+    AutonomousProtectionRequiresUserApproval = true,
+    AutonomousProtectionAction = "block-outbound-endpoint",
+    AutonomousProtectionTarget = "203.0.113.50:443"
+};
+var changedTargetRequest = changedTargetApproval.CreateRequest(changedTargetSnapshot)!;
+changedTargetSnapshot.AutonomousProtectionTarget = "203.0.113.51:443";
+var changedTargetValidation = changedTargetApproval.Validate(changedTargetRequest, changedTargetSnapshot, true);
+Check("Changed exact target invalidates approval", !changedTargetValidation.IsApproved);
+
 var executor = new ApprovedRemediationExecutor();
 bool delegateCalled = false;
 
