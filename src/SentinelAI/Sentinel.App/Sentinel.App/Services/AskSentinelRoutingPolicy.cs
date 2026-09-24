@@ -114,6 +114,10 @@ namespace Sentinel.App.Services
                 "recommend an app", "recommend software", "should i use "))
                 return true;
 
+            if (!IsClearlyLocalStateQuestion(value) &&
+                ContainsAny(value, "what virus", "which virus", "worst virus", "most dangerous virus"))
+                return true;
+
             if (ContainsAny(value,
                 "need help understanding", "help me understand") &&
                 !IsClearlyLocalStateQuestion(value))
