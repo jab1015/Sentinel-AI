@@ -24,13 +24,15 @@ namespace Sentinel.App.Services
             bool freshResearch = RequiresFreshExternalResearch(value);
             bool explanation = NeedsNaturalLanguageExplanation(value);
             bool clearlyLocal = IsClearlyLocalStateQuestion(value);
+            bool clearlyGeneral = IsClearlyGeneralKnowledgeQuestion(value);
 
-            // Verified local evidence wins for clearly local PC questions. Natural-language
-            // wording such as "why" must not replace a sufficient local answer with cloud AI.
-            // Basic AI is used only when local evidence is insufficient or the question is
-            // not actually about this computer's current/local state.
+            // A sufficient deterministic local answer wins by default even when the
+            // user's wording is novel. This avoids requiring an ever-growing phrase
+            // dictionary for machine-local questions. Basic AI is used when local
+            // evidence is insufficient or when the request is clearly general
+            // knowledge/definition/comparison rather than a request about this PC.
             bool useBasicAi = !freshResearch &&
-                              (localAnswerInsufficient || !clearlyLocal);
+                              (localAnswerInsufficient || clearlyGeneral);
 
             return new AskSentinelRoute(
                 UseBasicAi: useBasicAi,
@@ -38,13 +40,15 @@ namespace Sentinel.App.Services
                 ExplanationRequested: explanation || (!clearlyLocal && !freshResearch),
                 Reason: freshResearch
                     ? "The request depends on current or explicitly requested external information."
-                    : clearlyLocal && !localAnswerInsufficient
-                        ? "Verified local evidence directly answers this computer-state question."
+                    : !localAnswerInsufficient && !clearlyGeneral
+                        ? "A sufficient deterministic answer is available from current Sentinel evidence."
                         : localAnswerInsufficient
                             ? "Deterministic local evidence did not fully answer the request; use Basic AI before considering external research."
-                            : explanation
-                                ? "The request asks for explanation or interpretation beyond a local status value."
-                                : "The request is not clearly a local state query, so Basic AI is the default natural-language reasoning layer.");
+                            : clearlyGeneral
+                                ? "The request is clearly general knowledge, definition, comparison, or non-local guidance; use Basic AI."
+                                : explanation
+                                    ? "The request asks for explanation or interpretation."
+                                    : "Use the sufficient deterministic Sentinel answer.");
         }
 
         public AiEscalationContext CreateBasicAiContext(string question)
@@ -93,6 +97,29 @@ namespace Sentinel.App.Services
                 NeedsUserExplanation: true,
                 HighComplexity: sourceCount > 1 || question.Length > 180,
                 HighRisk: highRisk);
+        }
+
+        internal static bool IsClearlyGeneralKnowledgeQuestion(string question)
+        {
+            string value = Normalize(question);
+
+            if (StartsWithAny(value,
+                "what is ", "what are ", "what does ", "how does ", "who is ", "who are ",
+                "define ", "explain what ", "tell me about "))
+                return !IsClearlyLocalStateQuestion(value);
+
+            if (ContainsAny(value,
+                " vs ", " versus ", "compare ", "difference between", "which is better",
+                "which app", "which software", "best app", "best software",
+                "recommend an app", "recommend software", "should i use "))
+                return true;
+
+            if (ContainsAny(value,
+                "need help understanding", "help me understand") &&
+                !IsClearlyLocalStateQuestion(value))
+                return true;
+
+            return false;
         }
 
         public static bool RequiresFreshExternalResearch(string question)
