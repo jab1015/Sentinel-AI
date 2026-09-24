@@ -1,0 +1,44 @@
+name: Sentinel Remediation Approval Acceptance
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Models/**'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/InvestigationEngine.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/RemediationRecommendationEngine.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/RemediationApprovalCoordinator.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedRemediationExecutor.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedRemediationRoutingPolicy.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedRemediationDispatcher.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedFirewallContainmentCoordinator.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedProcessContainmentCoordinator.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedQuarantineCoordinator.cs'
+      - 'tools/Sentinel.DiscoveryAcceptanceHarness/**'
+      - 'tools/Sentinel.RemediationOutcomeAcceptanceHarness/**'
+      - 'tools/Run-DiscoveryAcceptance.ps1'
+      - 'tools/Run-RemediationOutcomeAcceptance.ps1'
+      - '.github/workflows/remediation-approval-acceptance.yml'
+  workflow_dispatch:
+
+jobs:
+  remediation-approval:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run Discovery promotion acceptance
+        shell: pwsh
+        run: ./tools/Run-DiscoveryAcceptance.ps1
+
+      - name: Run approval and dispatcher acceptance
+        shell: pwsh
+        run: ./tools/Run-RemediationOutcomeAcceptance.ps1
