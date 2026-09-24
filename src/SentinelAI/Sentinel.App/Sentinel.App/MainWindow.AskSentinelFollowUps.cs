@@ -15,8 +15,6 @@ namespace Sentinel.App
         private readonly AskSentinelResolutionPlanner _askSentinelResolutionPlanner = new();
         private StackPanel? _askSentinelApprovalPanel;
         private Button? _askSentinelApprovalButton;
-        private readonly ApprovedFirewallContainmentCoordinator _askSentinelFirewallContainmentCoordinator = new();
-        private string _askSentinelManualNetworkContainmentTarget = string.Empty;
         private string _lastDeepStartupQuestion = string.Empty;
         private string _lastDeepStartupFinding = string.Empty;
         private string _askSentinelConversationQuestion = string.Empty;
@@ -32,7 +30,6 @@ namespace Sentinel.App
             _askSentinelConversationCurrentAnswer = string.Empty;
             _askSentinelCurrentResolutionPlan = null;
             _askSentinelResolutionReached = false;
-            _askSentinelManualNetworkContainmentTarget = string.Empty;
             _lastDeepStartupQuestion = string.Empty;
             _lastDeepStartupFinding = string.Empty;
             AskSentinelNextStepsButton.IsEnabled = true;
@@ -395,7 +392,7 @@ namespace Sentinel.App
             _askSentinelApprovalPanel.Visibility = Visibility.Visible;
         }
 
-        private static bool IsManualNetworkContainmentRequest(string question, Models.SystemSnapshot snapshot)
+        private static bool IsApprovedNetworkContainmentRequest(string question, Models.SystemSnapshot snapshot)
         {
             if (!snapshot.NetworkConnectionMonitoringAvailable ||
                 snapshot.FlaggedConnectionCount <= 0 ||
@@ -476,83 +473,10 @@ namespace Sentinel.App
         {
             if (_askSentinelBusy) return;
 
-            if (!string.IsNullOrWhiteSpace(_askSentinelManualNetworkContainmentTarget))
-            {
-                await ReviewAndApproveManualNetworkContainmentAsync(_askSentinelManualNetworkContainmentTarget);
-                return;
-            }
-
             await ReviewApprovedRemediationAsync();
             await _engine.RefreshAsync();
             AskSentinelStatusText.Text = "Sentinel completed the approval workflow and refreshed the verified system state.";
             HideAskSentinelApprovalAction();
-        }
-
-        private async Task ReviewAndApproveManualNetworkContainmentAsync(string remoteEndpoint)
-        {
-            ContentDialog approval = new()
-            {
-                Title = "Quarantine this network destination?",
-                Content =
-                    $"Sentinel will create an exact outbound Windows Firewall block for {remoteEndpoint}.\n\n" +
-                    "The connection is flagged for review, but Sentinel is not claiming it is confirmed malicious. " +
-                    "Before acting, Sentinel will refresh the network evidence and verify that this exact endpoint is still the current flagged target.\n\n" +
-                    "If general connectivity drops immediately after containment, Sentinel will automatically remove the rule and verify rollback. " +
-                    "You can also remove the Sentinel-created block later.",
-                PrimaryButtonText = "Quarantine",
-                CloseButtonText = "Cancel",
-                DefaultButton = ContentDialogButton.Close,
-                XamlRoot = ((FrameworkElement)Content).XamlRoot
-            };
-
-            if (await approval.ShowAsync() != ContentDialogResult.Primary)
-            {
-                AskSentinelStatusText.Text = "Network quarantine canceled. No firewall change was made.";
-                return;
-            }
-
-            _askSentinelBusy = true;
-            if (_askSentinelApprovalButton is not null)
-                _askSentinelApprovalButton.IsEnabled = false;
-            AskSentinelProgressText.Text = "Revalidating the flagged endpoint and applying containment…";
-            AskSentinelProgressPanel.Visibility = Visibility.Visible;
-            AskSentinelProgressRing.IsActive = true;
-
-            try
-            {
-                await _engine.RefreshAsync();
-                Models.SystemSnapshot currentSnapshot = _engine.CurrentSnapshot;
-                FirewallContainmentService.FirewallContainmentResult result =
-                    await _askSentinelFirewallContainmentCoordinator.ExecuteManualFlaggedEndpointAsync(
-                        currentSnapshot,
-                        remoteEndpoint);
-
-                ContentDialog outcome = new()
-                {
-                    Title = result.Title,
-                    Content = result.Summary,
-                    CloseButtonText = "OK",
-                    XamlRoot = ((FrameworkElement)Content).XamlRoot
-                };
-                await outcome.ShowAsync();
-
-                await _engine.RefreshAsync();
-                AskSentinelStatusText.Text = result.Succeeded
-                    ? result.RolledBack
-                        ? "Sentinel attempted containment, detected an impact, and verified rollback."
-                        : "Sentinel verified the network destination is contained."
-                    : "Sentinel did not make or keep an unverified network change.";
-            }
-            finally
-            {
-                AskSentinelProgressRing.IsActive = false;
-                AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
-                _askSentinelBusy = false;
-                _askSentinelManualNetworkContainmentTarget = string.Empty;
-                if (_askSentinelApprovalButton is not null)
-                    _askSentinelApprovalButton.IsEnabled = true;
-                HideAskSentinelApprovalAction();
-            }
         }
 
         private void HideAskSentinelApprovalAction()
