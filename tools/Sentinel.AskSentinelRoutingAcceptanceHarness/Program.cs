@@ -91,6 +91,25 @@ AskSentinelRoute explicitResearchOnLocal = routing.Decide(
 Require(!explicitResearchOnLocal.UseBasicAi && explicitResearchOnLocal.UseExternalResearch,
     "Explicit research intent did not override the local-first default.");
 
+string[] novelLocalPhrasingWithUsableAnswer =
+{
+    "How many processes are running?",
+    "What's eating my RAM?",
+    "Which process is using the most memory?",
+    "How much storage do I have left?",
+    "Are there services running that need attention?",
+    "Is anything weird happening with my network?",
+    "Do I have a driver problem?",
+    "Is Windows waiting on a restart?"
+};
+
+foreach (string question in novelLocalPhrasingWithUsableAnswer)
+{
+    AskSentinelRoute route = routing.Decide(question, localAnswerInsufficient: false);
+    Require(!route.UseBasicAi && !route.UseExternalResearch,
+        $"A sufficient deterministic local answer was unnecessarily replaced for novel phrasing: {question}");
+}
+
 AskSentinelRoute ambiguousApp = routing.Decide("Which app is best for editing photos?", localAnswerInsufficient: false);
 Require(ambiguousApp.UseBasicAi && !ambiguousApp.UseExternalResearch,
     "General app question was incorrectly trusted as a local running-process answer.");
@@ -221,5 +240,12 @@ Console.WriteLine("Fresh external/research/according-to wording -> external rese
 Console.WriteLine("Typed conversational follow-ups -> bounded prior context: PASS");
 Console.WriteLine("Unrelated/local/stale prompts -> no inherited conversation: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
+string orchestratorSource = File.ReadAllText(Path.Combine(
+    "..", "..", "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "AskSentinelResponseOrchestrator.cs"));
+Require(orchestratorSource.Contains("AskSentinelRoutingPolicy.RequiresFreshExternalResearch", StringComparison.Ordinal),
+    "Response orchestrator is not using the shared external-research routing authority.");
+Require(!orchestratorSource.Contains("private static bool RequiresExternalKnowledge(", StringComparison.Ordinal),
+    "A duplicate orchestrator external-knowledge heuristic was reintroduced.");
+
 Console.WriteLine("Basic/Advanced token budgets match gateway limits: PASS");
 Console.WriteLine("RESULT: PASS");
