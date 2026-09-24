@@ -15,6 +15,9 @@ namespace Sentinel.App
         private readonly AskSentinelResolutionPlanner _askSentinelResolutionPlanner = new();
         private StackPanel? _askSentinelApprovalPanel;
         private Button? _askSentinelApprovalButton;
+        private readonly ApprovedFirewallContainmentCoordinator _askSentinelFirewallRollbackCoordinator = new();
+        private string _askSentinelNetworkRollbackTarget = string.Empty;
+        private string _lastVerifiedNetworkContainmentTarget = string.Empty;
         private string _lastDeepStartupQuestion = string.Empty;
         private string _lastDeepStartupFinding = string.Empty;
         private string _askSentinelConversationQuestion = string.Empty;
@@ -30,6 +33,7 @@ namespace Sentinel.App
             _askSentinelConversationCurrentAnswer = string.Empty;
             _askSentinelCurrentResolutionPlan = null;
             _askSentinelResolutionReached = false;
+            _askSentinelNetworkRollbackTarget = string.Empty;
             _lastDeepStartupQuestion = string.Empty;
             _lastDeepStartupFinding = string.Empty;
             AskSentinelNextStepsButton.IsEnabled = true;
@@ -384,11 +388,46 @@ namespace Sentinel.App
             // Network containment must use the same short-lived, single-use approval
             // request as every other supported remediation. Never create a parallel
             // "manual flagged endpoint" execution path that bypasses remediation policy.
-            _askSentinelManualNetworkContainmentTarget = string.Empty;
             _askSentinelApprovalButton.Content = "Review & Approve";
             ToolTipService.SetToolTip(
                 _askSentinelApprovalButton,
                 $"Review the exact Sentinel-approved firewall containment for {remoteEndpoint}. Sentinel will refresh and revalidate the same action, target, reason, and evidence before execution.");
+            _askSentinelApprovalPanel.Visibility = Visibility.Visible;
+        }
+
+        private static bool IsNetworkRollbackRequest(string question)
+        {
+            string value = question.Trim().ToLowerInvariant();
+            bool rollbackIntent =
+                value.Contains("unblock") ||
+                value.Contains("undo") ||
+                value.Contains("remove the block") ||
+                value.Contains("remove block") ||
+                value.Contains("release the block") ||
+                value.Contains("revert the block") ||
+                value.Contains("reverse the block");
+
+            bool networkIntent =
+                value.Contains("network") ||
+                value.Contains("connection") ||
+                value.Contains("traffic") ||
+                value.Contains("endpoint") ||
+                value.Contains("firewall") ||
+                value.Contains("block");
+
+            return rollbackIntent && networkIntent;
+        }
+
+        private void ShowAskSentinelNetworkRollbackAction(string remoteEndpoint)
+        {
+            EnsureAskSentinelApprovalPanel();
+            if (_askSentinelApprovalPanel is null || _askSentinelApprovalButton is null) return;
+
+            _askSentinelNetworkRollbackTarget = remoteEndpoint.Trim();
+            _askSentinelApprovalButton.Content = "Review & Unblock";
+            ToolTipService.SetToolTip(
+                _askSentinelApprovalButton,
+                $"Review removal of the exact Sentinel-created firewall block for {_askSentinelNetworkRollbackTarget}. Sentinel will verify the rule identity before deleting it and verify that it is gone afterward.");
             _askSentinelApprovalPanel.Visibility = Visibility.Visible;
         }
 
@@ -473,10 +512,83 @@ namespace Sentinel.App
         {
             if (_askSentinelBusy) return;
 
+            if (!string.IsNullOrWhiteSpace(_askSentinelNetworkRollbackTarget))
+            {
+                await ReviewAndApproveNetworkRollbackAsync(_askSentinelNetworkRollbackTarget);
+                return;
+            }
+
             await ReviewApprovedRemediationAsync();
             await _engine.RefreshAsync();
             AskSentinelStatusText.Text = "Sentinel completed the approval workflow and refreshed the verified system state.";
             HideAskSentinelApprovalAction();
+        }
+
+        private async Task ReviewAndApproveNetworkRollbackAsync(string remoteEndpoint)
+        {
+            ContentDialog approval = new()
+            {
+                Title = "Remove this Sentinel network block?",
+                Content =
+                    $"Target: {remoteEndpoint}\n\n" +
+                    "Sentinel will only remove the deterministic Sentinel-created outbound Block rule for this exact endpoint. " +
+                    "If the matching rule is absent, conflicting, or cannot be verified as Sentinel's exact block, Sentinel will fail closed and leave Windows Firewall unchanged. " +
+                    "After removal, Sentinel will verify that the rule is actually gone.",
+                PrimaryButtonText = "Unblock",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = ((FrameworkElement)Content).XamlRoot
+            };
+
+            if (await approval.ShowAsync() != ContentDialogResult.Primary)
+            {
+                AskSentinelStatusText.Text = "Network unblock canceled. No firewall change was made.";
+                return;
+            }
+
+            _askSentinelBusy = true;
+            if (_askSentinelApprovalButton is not null)
+                _askSentinelApprovalButton.IsEnabled = false;
+            AskSentinelProgressText.Text = "Verifying the exact Sentinel firewall rule and removing it…";
+            AskSentinelProgressPanel.Visibility = Visibility.Visible;
+            AskSentinelProgressRing.IsActive = true;
+
+            try
+            {
+                FirewallContainmentService.FirewallContainmentResult result =
+                    await _askSentinelFirewallRollbackCoordinator.RemoveBlockAsync(remoteEndpoint);
+
+                ContentDialog outcome = new()
+                {
+                    Title = result.Title,
+                    Content = result.Summary,
+                    CloseButtonText = "OK",
+                    XamlRoot = ((FrameworkElement)Content).XamlRoot
+                };
+                await outcome.ShowAsync();
+
+                if (result.Succeeded)
+                {
+                    _lastVerifiedNetworkContainmentTarget = string.Empty;
+                    AskSentinelStatusText.Text = "Sentinel verified that the exact network block is no longer present.";
+                }
+                else
+                {
+                    AskSentinelStatusText.Text = "Sentinel did not remove an unverified or conflicting firewall rule.";
+                }
+
+                await _engine.RefreshAsync();
+            }
+            finally
+            {
+                AskSentinelProgressRing.IsActive = false;
+                AskSentinelProgressPanel.Visibility = Visibility.Collapsed;
+                _askSentinelBusy = false;
+                _askSentinelNetworkRollbackTarget = string.Empty;
+                if (_askSentinelApprovalButton is not null)
+                    _askSentinelApprovalButton.IsEnabled = true;
+                HideAskSentinelApprovalAction();
+            }
         }
 
         private void HideAskSentinelApprovalAction()
