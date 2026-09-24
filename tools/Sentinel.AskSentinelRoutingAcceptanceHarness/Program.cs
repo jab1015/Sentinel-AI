@@ -241,7 +241,7 @@ Console.WriteLine("Typed conversational follow-ups -> bounded prior context: PAS
 Console.WriteLine("Unrelated/local/stale prompts -> no inherited conversation: PASS");
 Console.WriteLine("Basic-first / Advanced-after-research tiering: PASS");
 string orchestratorSource = File.ReadAllText(Path.Combine(
-    "..", "..", "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "AskSentinelResponseOrchestrator.cs"));
+    "src", "SentinelAI", "Sentinel.App", "Sentinel.App", "Services", "AskSentinelResponseOrchestrator.cs"));
 Require(orchestratorSource.Contains("AskSentinelRoutingPolicy.RequiresFreshExternalResearch", StringComparison.Ordinal),
     "Response orchestrator is not using the shared external-research routing authority.");
 Require(!orchestratorSource.Contains("private static bool RequiresExternalKnowledge(", StringComparison.Ordinal),
