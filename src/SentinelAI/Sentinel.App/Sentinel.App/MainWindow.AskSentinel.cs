@@ -265,6 +265,28 @@ namespace Sentinel.App
                     UpdateMaintenanceReport();
                 }
 
+                if (IsNetworkRollbackRequest(question) &&
+                    !string.IsNullOrWhiteSpace(_lastVerifiedNetworkContainmentTarget))
+                {
+                    response = response with
+                    {
+                        Answer =
+                            "Network containment rollback\n\n" +
+                            $"Sentinel previously verified its exact outbound firewall block for {_lastVerifiedNetworkContainmentTarget}. " +
+                            "Use Review & Unblock below to remove that exact Sentinel-created rule. Before deletion, Sentinel will verify that the deterministic rule exists and matches the expected enabled outbound Block scope. " +
+                            "It will refuse to delete a missing, conflicting, or non-Sentinel rule, and after removal it will verify that the exact rule is actually gone.",
+                        IsInsufficientEvidence = false,
+                        UsedInvestigationHistory = false,
+                        UsedRecommendationGuard = false,
+                        PassedFinalSafetyValidation = false,
+                        GroundingSummary = "Sentinel is offering rollback only for the last endpoint whose deterministic containment rule it previously verified."
+                    };
+                    responseProvenance = AskSentinelProvenanceLabel.Observed;
+                    displayCitations = Array.Empty<CloudAiCitation>();
+                    displaySources = Array.Empty<CloudAiSource>();
+                    driverIssue = false;
+                }
+
                 AskSentinelResponseSafetyValidator.ValidationResult finalValidation =
                     _askSentinelResponseSafetyValidator.ValidateForDisplay(response, snapshot, responseProvenance);
                 if (!finalValidation.IsSafe)
