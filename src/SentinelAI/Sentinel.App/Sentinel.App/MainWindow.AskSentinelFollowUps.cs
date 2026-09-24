@@ -386,6 +386,8 @@ namespace Sentinel.App
             EnsureAskSentinelApprovalPanel();
             if (_askSentinelApprovalPanel is null || _askSentinelApprovalButton is null) return;
 
+            _askSentinelNetworkRollbackTarget = string.Empty;
+
             // Network containment must use the same short-lived, single-use approval
             // request as every other supported remediation. Never create a parallel
             // "manual flagged endpoint" execution path that bypasses remediation policy.
@@ -461,6 +463,7 @@ namespace Sentinel.App
             EnsureAskSentinelApprovalPanel();
             if (_askSentinelApprovalPanel is null || _askSentinelApprovalButton is null) return;
 
+            _askSentinelNetworkRollbackTarget = string.Empty;
             _askSentinelApprovalButton.Content = "Review & Approve";
             ToolTipService.SetToolTip(
                 _askSentinelApprovalButton,
@@ -595,6 +598,7 @@ namespace Sentinel.App
 
         private void HideAskSentinelApprovalAction()
         {
+            _askSentinelNetworkRollbackTarget = string.Empty;
             if (_askSentinelApprovalPanel is not null)
                 _askSentinelApprovalPanel.Visibility = Visibility.Collapsed;
         }
