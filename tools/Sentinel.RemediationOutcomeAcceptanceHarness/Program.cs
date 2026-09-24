@@ -86,5 +86,24 @@ identitySnapshot.PrimaryFlaggedProcessStartUtc =
 var identityValidation = approval.Validate(identityRequest, identitySnapshot, true);
 Check("Replacement process invalidates approval", !identityValidation.IsApproved);
 
+Console.WriteLine();
+Console.WriteLine("--- Approved remediation routing ---");
+Check("Service action routes to service coordinator",
+    ApprovedRemediationRoutingPolicy.Resolve("restart-service") == ApprovedRemediationRoute.ServiceRestart);
+Check("Network action routes to firewall coordinator",
+    ApprovedRemediationRoutingPolicy.Resolve("block-outbound-endpoint") == ApprovedRemediationRoute.FirewallContainment);
+Check("Process action routes to process coordinator",
+    ApprovedRemediationRoutingPolicy.Resolve("contain-process") == ApprovedRemediationRoute.ProcessContainment);
+Check("File quarantine routes to quarantine coordinator",
+    ApprovedRemediationRoutingPolicy.Resolve("quarantine-file") == ApprovedRemediationRoute.Quarantine);
+Check("File restore routes to quarantine coordinator",
+    ApprovedRemediationRoutingPolicy.Resolve("restore-quarantined-file") == ApprovedRemediationRoute.Quarantine);
+Check("File delete routes to quarantine coordinator",
+    ApprovedRemediationRoutingPolicy.Resolve("delete-quarantined-file") == ApprovedRemediationRoute.Quarantine);
+Check("Unknown approved action fails closed",
+    ApprovedRemediationRoutingPolicy.Resolve("do-something-unknown") == ApprovedRemediationRoute.Unsupported);
+Check("Empty approved action fails closed",
+    ApprovedRemediationRoutingPolicy.Resolve(" ") == ApprovedRemediationRoute.Unsupported);
+
 Console.WriteLine(failures == 0 ? "RESULT: PASS" : $"RESULT: FAIL ({failures})");
 Environment.ExitCode = failures == 0 ? 0 : 1;
