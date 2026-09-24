@@ -376,7 +376,7 @@ namespace Sentinel.App
             }
         }
 
-        private void ShowAskSentinelManualNetworkContainmentAction(string remoteEndpoint)
+        private void ShowAskSentinelNetworkContainmentApprovalAction(string remoteEndpoint)
         {
             EnsureAskSentinelApprovalPanel();
             if (_askSentinelApprovalPanel is null || _askSentinelApprovalButton is null) return;
