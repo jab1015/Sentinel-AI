@@ -58,6 +58,7 @@ namespace Sentinel.App
             AskSentinelAnswerBorder.Visibility = Visibility.Collapsed;
             ClearAskSentinelResearchSources();
             HideAskSentinelRepairActions();
+            HideAskSentinelApprovalAction();
             AskSentinelStatusText.Text = "Checking this computer…";
             AskSentinelProgressText.Text = "Checking local evidence…";
             AskSentinelProgressPanel.Visibility = Visibility.Visible;
@@ -316,14 +317,21 @@ namespace Sentinel.App
 
                 RenderAskSentinelAnswer(response.Answer, displayCitations, displaySources);
                 CaptureAskSentinelPrimaryAnswer(question, verifiedLocalAnswer, response.Answer);
-                if (IsNetworkRollbackRequest(question) &&
-                    !string.IsNullOrWhiteSpace(_lastVerifiedNetworkContainmentTarget))
+                if (finalValidation.IsSafe)
                 {
-                    ShowAskSentinelNetworkRollbackAction(_lastVerifiedNetworkContainmentTarget);
+                    if (IsNetworkRollbackRequest(question) &&
+                        !string.IsNullOrWhiteSpace(_lastVerifiedNetworkContainmentTarget))
+                    {
+                        ShowAskSentinelNetworkRollbackAction(_lastVerifiedNetworkContainmentTarget);
+                    }
+                    else if (IsApprovedNetworkContainmentRequest(question, snapshot))
+                    {
+                        ShowAskSentinelNetworkContainmentApprovalAction(snapshot.PrimaryFlaggedConnectionRemoteEndpoint);
+                    }
                 }
-                else if (IsApprovedNetworkContainmentRequest(question, snapshot))
+                else
                 {
-                    ShowAskSentinelNetworkContainmentApprovalAction(snapshot.PrimaryFlaggedConnectionRemoteEndpoint);
+                    HideAskSentinelApprovalAction();
                 }
                 AskSentinelAnswerText.FontSize = 17;
                 AskSentinelAnswerText.LineHeight = 25;
