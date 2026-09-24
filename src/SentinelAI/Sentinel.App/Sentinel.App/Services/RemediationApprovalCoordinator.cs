@@ -142,9 +142,20 @@ namespace Sentinel.App.Services
                 _ => "Approve Sentinel action?"
             };
 
-        private static string BuildSummary(SystemSnapshot snapshot) =>
-            $"Sentinel investigated the condition and recommends '{snapshot.AutonomousProtectionAction}' for '{snapshot.AutonomousProtectionTarget}'. " +
-            "The action will apply only to this exact target, this approval can be used once, and Sentinel will verify the result afterward.";
+        private static string BuildSummary(SystemSnapshot snapshot)
+        {
+            if (snapshot.AutonomousProtectionAction.Equals("block-outbound-endpoint", StringComparison.OrdinalIgnoreCase))
+            {
+                return
+                    $"Sentinel investigated the flagged connection '{snapshot.AutonomousProtectionTarget}' and recommends network containment. " +
+                    "The current containment rule blocks all outbound traffic to the remote IP address represented by that connection, across applications, services, protocols, profiles, and ports; it is not limited to only the flagged port. " +
+                    "This approval can be used once, Sentinel will revalidate the same investigation before acting, and the resulting rule will be verified afterward.";
+            }
+
+            return
+                $"Sentinel investigated the condition and recommends '{snapshot.AutonomousProtectionAction}' for '{snapshot.AutonomousProtectionTarget}'. " +
+                "The action will apply only to this exact target, this approval can be used once, and Sentinel will verify the result afterward.";
+        }
 
         public sealed record RemediationApprovalRequest(
             Guid RequestId,
