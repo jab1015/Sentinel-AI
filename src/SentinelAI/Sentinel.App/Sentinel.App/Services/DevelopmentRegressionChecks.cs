@@ -20,6 +20,7 @@ namespace Sentinel.App.Services
             VerifyUnsupportedSuccessfulActionIsBlocked();
             VerifyUnsupportedPerformedActionIsBlocked();
             VerifyUnsupportedThreatClaimIsBlocked();
+            VerifyRemediationIntentDoesNotCollapseToStatusSummary();
         }
 
         private static void VerifyGroundedHealthyAnswerPasses()
@@ -56,6 +57,48 @@ namespace Sentinel.App.Services
             var result = new AskSentinelResponseSafetyValidator().Validate(response, snapshot);
 
             Require(!result.IsSafe, "An unsupported threat claim was not blocked.");
+        }
+
+        private static void VerifyRemediationIntentDoesNotCollapseToStatusSummary()
+        {
+            SystemSnapshot snapshot = HealthySnapshot();
+            snapshot.NetworkConnectionMonitoringAvailable = true;
+            snapshot.NetworkConnectionMonitoringStatus = "Active";
+            snapshot.EstablishedConnectionCount = 8;
+            snapshot.ExternalConnectionCount = 8;
+            snapshot.FlaggedConnectionCount = 1;
+            snapshot.PrimaryFlaggedConnectionRemoteEndpoint = "203.0.113.10:443";
+            snapshot.PrimaryFlaggedConnectionProcessName = "sample.exe";
+            snapshot.PrimaryFlaggedConnectionReason = "Connection requires review.";
+
+            AskSentinelLocalResponder responder = new();
+            string network = responder.Answer(
+                "If you quarantine the connection and it messes something up, can we restore it?",
+                snapshot);
+
+            Require(network.Contains("Network containment and rollback", StringComparison.OrdinalIgnoreCase),
+                "Network quarantine/rollback intent collapsed to a generic network-status answer.");
+            Require(network.Contains("automatically removes", StringComparison.OrdinalIgnoreCase) &&
+                    network.Contains("remove the exact Sentinel-created firewall block", StringComparison.OrdinalIgnoreCase),
+                "Network rollback answer did not preserve the supported automatic/manual reversal semantics.");
+
+            string file = responder.Answer(
+                "If you quarantine a file can I restore it later?",
+                snapshot);
+            Require(file.Contains("File quarantine and restore", StringComparison.OrdinalIgnoreCase),
+                "File quarantine/restore intent did not use the reversible quarantine explanation.");
+
+            string process = responder.Answer(
+                "If you contain a process can you restore it?",
+                snapshot);
+            Require(process.Contains("not a reversible quarantine", StringComparison.OrdinalIgnoreCase),
+                "Process containment answer incorrectly implied reversible restore semantics.");
+
+            string service = responder.Answer(
+                "If Sentinel restarts a service can it roll that back?",
+                snapshot);
+            Require(service.Contains("not a quarantine", StringComparison.OrdinalIgnoreCase),
+                "Service remediation answer did not distinguish restart from reversible quarantine.");
         }
 
         private static SystemSnapshot HealthySnapshot() => new()
