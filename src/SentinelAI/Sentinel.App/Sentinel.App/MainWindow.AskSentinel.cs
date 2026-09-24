@@ -294,8 +294,15 @@ namespace Sentinel.App
 
                 RenderAskSentinelAnswer(response.Answer, displayCitations, displaySources);
                 CaptureAskSentinelPrimaryAnswer(question, verifiedLocalAnswer, response.Answer);
-                if (IsApprovedNetworkContainmentRequest(question, snapshot))
+                if (IsNetworkRollbackRequest(question) &&
+                    !string.IsNullOrWhiteSpace(_lastVerifiedNetworkContainmentTarget))
+                {
+                    ShowAskSentinelNetworkRollbackAction(_lastVerifiedNetworkContainmentTarget);
+                }
+                else if (IsApprovedNetworkContainmentRequest(question, snapshot))
+                {
                     ShowAskSentinelNetworkContainmentApprovalAction(snapshot.PrimaryFlaggedConnectionRemoteEndpoint);
+                }
                 AskSentinelAnswerText.FontSize = 17;
                 AskSentinelAnswerText.LineHeight = 25;
                 AskSentinelAnswerBorder.Padding = new Thickness(20);
