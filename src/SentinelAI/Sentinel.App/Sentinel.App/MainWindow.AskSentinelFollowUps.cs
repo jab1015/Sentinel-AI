@@ -430,7 +430,7 @@ namespace Sentinel.App
             _askSentinelApprovalButton.Content = "Review & Unblock";
             ToolTipService.SetToolTip(
                 _askSentinelApprovalButton,
-                $"Review removal of the exact Sentinel-created firewall block for {_askSentinelNetworkRollbackTarget}. Sentinel will verify the rule identity before deleting it and verify that it is gone afterward.");
+                $"Review removal of the Sentinel-created IP-wide firewall block associated with flagged connection {_askSentinelNetworkRollbackTarget}. Sentinel will verify the exact rule identity before deleting it and verify that it is gone afterward.");
             _askSentinelApprovalPanel.Visibility = Visibility.Visible;
         }
 
@@ -534,9 +534,9 @@ namespace Sentinel.App
             {
                 Title = "Remove this Sentinel network block?",
                 Content =
-                    $"Target: {remoteEndpoint}\n\n" +
-                    "Sentinel will only remove the deterministic Sentinel-created outbound Block rule for this exact endpoint. " +
-                    "If the matching rule is absent, conflicting, or cannot be verified as Sentinel's exact block, Sentinel will fail closed and leave Windows Firewall unchanged. " +
+                    $"Flagged connection: {remoteEndpoint}\n\n" +
+                    "Sentinel will only remove the deterministic Sentinel-created outbound Block rule for the remote IP represented by this connection. That rule is IP-wide across outbound applications, services, profiles, protocols, and ports. " +
+                    "If the matching rule is absent, conflicting, or cannot be verified as Sentinel's exact rule, Sentinel will fail closed and leave Windows Firewall unchanged. " +
                     "After removal, Sentinel will verify that the rule is actually gone.",
                 PrimaryButtonText = "Unblock",
                 CloseButtonText = "Cancel",
