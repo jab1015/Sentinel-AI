@@ -118,6 +118,10 @@ namespace Sentinel.App.Services
                 ContainsAny(value, "what virus", "which virus", "worst virus", "most dangerous virus"))
                 return true;
 
+            if (!IsClearlyLocalStateQuestion(value) &&
+                value.Contains(" or ", StringComparison.OrdinalIgnoreCase))
+                return true;
+
             if (ContainsAny(value,
                 "need help understanding", "help me understand") &&
                 !IsClearlyLocalStateQuestion(value))
