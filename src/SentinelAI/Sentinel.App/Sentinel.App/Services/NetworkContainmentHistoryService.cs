@@ -9,9 +9,10 @@ using Windows.Storage;
 namespace Sentinel.App.Services
 {
     /// <summary>
-    /// Persists only the last exact endpoint for which Sentinel verified its
-    /// deterministic outbound firewall block. The firewall service remains the
-    /// authority for whether the rule actually exists and matches before removal.
+    /// Persists only the last flagged connection identity whose remote IP Sentinel
+    /// successfully contained with its deterministic IP-wide outbound firewall rule.
+    /// The firewall service remains the authority for whether the rule actually exists
+    /// and matches before removal.
     /// </summary>
     public sealed class NetworkContainmentHistoryService
     {
