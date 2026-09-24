@@ -11,6 +11,7 @@ on:
       - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedRemediationExecutor.cs'
       - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedRemediationRoutingPolicy.cs'
       - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedRemediationDispatcher.cs'
+      - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedServiceRestartCoordinator.cs'
       - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedFirewallContainmentCoordinator.cs'
       - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedProcessContainmentCoordinator.cs'
       - 'src/SentinelAI/Sentinel.App/Sentinel.App/Services/ApprovedQuarantineCoordinator.cs'
