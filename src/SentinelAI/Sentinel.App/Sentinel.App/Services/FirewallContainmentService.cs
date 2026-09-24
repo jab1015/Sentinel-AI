@@ -55,7 +55,7 @@ namespace Sentinel.App.Services
                     return existing.IsExactBlock
                         ? new FirewallContainmentResult(false, true, ruleName, remoteIp,
                             "Network destination already contained",
-                            $"Sentinel verified an enabled outbound Windows Firewall Block rule for {remoteIp} with the exact expected address/program/port scope.",
+                            $"Sentinel verified its enabled outbound Windows Firewall Block rule for remote IP {remoteIp}. The verified rule applies to all applications/services, profiles, protocols, and ports for that IP.",
                             false, before.IsHealthy, FirewallContainmentOutcome.Successful)
                         : new FirewallContainmentResult(false, false, ruleName, remoteIp,
                             "Existing firewall rule conflicts with containment",
@@ -101,7 +101,7 @@ namespace Sentinel.App.Services
 
                 return new FirewallContainmentResult(true, true, ruleName, remoteIp,
                     "Suspicious network destination blocked",
-                    $"Sentinel created and verified an enabled outbound Windows Firewall Block rule for {remoteIp}. Exact address, program/service, profile, protocol and port scope were re-read from the active firewall policy store.",
+                    $"Sentinel created and verified an enabled outbound Windows Firewall Block rule for remote IP {remoteIp}. The active-policy verification confirmed the intended IP-wide outbound scope: all applications/services, profiles, protocols, and ports.",
                     false, after.IsHealthy || !before.IsHealthy, FirewallContainmentOutcome.Successful);
             }
             catch (Exception ex)
