@@ -190,7 +190,7 @@ try {
     if (-not (Test-Path -LiteralPath $certutil)) { $certutil = 'certutil.exe' }
 
     Write-Host 'Installing ephemeral public test certificate into bounded CurrentUser trust stores...'
-    foreach ($storeName in @('TrustedPeople', 'Root')) {
+    foreach ($storeName in @('TrustedPeople')) {
         Invoke-BoundedProcess -FilePath $certutil -Arguments @('-user','-f','-addstore',$storeName,$publicCertPath) -TimeoutMilliseconds 30000 -LogPath 'windows-vm-test-signing.log' -Description "certutil add $storeName"
     }
     $certStoresInstalled = $true
@@ -288,7 +288,7 @@ finally {
         if ($certStoresInstalled) {
             $certutilCleanup = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'certutil.exe'
             if (-not (Test-Path -LiteralPath $certutilCleanup)) { $certutilCleanup = 'certutil.exe' }
-            foreach ($storeName in @('TrustedPeople', 'Root')) {
+            foreach ($storeName in @('TrustedPeople')) {
                 try {
                     Invoke-BoundedProcess -FilePath $certutilCleanup -Arguments @('-user','-delstore',$storeName,$certObject.Thumbprint) -TimeoutMilliseconds 20000 -LogPath 'windows-vm-test-signing.log' -Description "certutil remove $storeName"
                 }
