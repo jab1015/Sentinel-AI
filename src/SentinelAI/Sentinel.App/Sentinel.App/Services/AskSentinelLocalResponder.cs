@@ -63,9 +63,44 @@ namespace Sentinel.App.Services
                     : "Sentinel does not currently have verified disk-capacity evidence.";
 
             if (Has(q, "network", "internet", "connection", "download", "upload"))
-                return snapshot.NetworkConnectionMonitoringAvailable
-                    ? $"Network monitoring is active. Sentinel sees {snapshot.EstablishedConnectionCount} established TCP connections, {snapshot.ExternalConnectionCount} external connections, and {snapshot.FlaggedConnectionCount} flagged conditions. Throughput is {snapshot.DownloadMbps:0.00} Mbps down and {snapshot.UploadMbps:0.00} Mbps up."
-                    : $"Network connection monitoring is {snapshot.NetworkConnectionMonitoringStatus}; active network health cannot currently be verified.";
+            {
+                if (!snapshot.NetworkConnectionMonitoringAvailable)
+                    return $"Network connection monitoring is {snapshot.NetworkConnectionMonitoringStatus}; active network health cannot currently be verified.";
+
+                bool asksForFindingDetail = Has(q,
+                    "which", "what connection", "what network", "flagged", "why", "reason",
+                    "details", "show me", "which connection", "which network");
+
+                if (asksForFindingDetail && snapshot.FlaggedConnectionCount > 0)
+                {
+                    string process = string.IsNullOrWhiteSpace(snapshot.PrimaryFlaggedConnectionProcessName) ||
+                                     snapshot.PrimaryFlaggedConnectionProcessName.Equals("None", StringComparison.OrdinalIgnoreCase)
+                        ? "Unknown process"
+                        : snapshot.PrimaryFlaggedConnectionProcessName;
+                    string endpoint = string.IsNullOrWhiteSpace(snapshot.PrimaryFlaggedConnectionRemoteEndpoint) ||
+                                      snapshot.PrimaryFlaggedConnectionRemoteEndpoint.Equals("None", StringComparison.OrdinalIgnoreCase)
+                        ? "remote endpoint unavailable"
+                        : snapshot.PrimaryFlaggedConnectionRemoteEndpoint;
+                    string reason = string.IsNullOrWhiteSpace(snapshot.PrimaryFlaggedConnectionReason)
+                        ? "Sentinel recorded a network review condition but did not capture a specific reason."
+                        : snapshot.PrimaryFlaggedConnectionReason;
+
+                    string correlation = !string.IsNullOrWhiteSpace(snapshot.ConnectionIntelligenceSummary) &&
+                                         !snapshot.ConnectionIntelligenceSummary.Equals("Sentinel is correlating current network activity with local system evidence.", StringComparison.OrdinalIgnoreCase)
+                        ? $"\n\nCorrelation: {snapshot.ConnectionIntelligenceSummary}"
+                        : string.Empty;
+
+                    return
+                        $"Sentinel has {snapshot.FlaggedConnectionCount} flagged network condition{(snapshot.FlaggedConnectionCount == 1 ? string.Empty : "s")}. " +
+                        $"The primary flagged connection is {process} -> {endpoint}.\n\n" +
+                        $"Why it was flagged: {reason}{correlation}\n\n" +
+                        $"Current network context: {snapshot.EstablishedConnectionCount} established TCP connections, " +
+                        $"{snapshot.ExternalConnectionCount} external connections ({snapshot.OutboundExternalConnectionCount} outbound, " +
+                        $"{snapshot.InboundExternalConnectionCount} inbound), with {snapshot.FlaggedConnectionCount} flagged.";
+                }
+
+                return $"Network monitoring is active. Sentinel sees {snapshot.EstablishedConnectionCount} established TCP connections, {snapshot.ExternalConnectionCount} external connections, and {snapshot.FlaggedConnectionCount} flagged conditions. Throughput is {snapshot.DownloadMbps:0.00} Mbps down and {snapshot.UploadMbps:0.00} Mbps up.";
+            }
 
             if (Has(q, "startup app", "startup apps", "starts with windows", "startup program", "startup entry"))
                 return !snapshot.StartupPersistenceMonitoringAvailable
@@ -114,9 +149,15 @@ namespace Sentinel.App.Services
             }
 
             if (Has(q, "process", "app", "application", "program"))
+            {
+                bool asksForFindingDetail = Has(q, "which", "what", "flagged", "why", "reason", "details", "show me");
+                if (snapshot.FlaggedProcessCount > 0 && asksForFindingDetail)
+                    return $"Sentinel flagged {snapshot.FlaggedProcessCount} process condition{(snapshot.FlaggedProcessCount == 1 ? string.Empty : "s")}. Primary flagged process: {snapshot.PrimaryFlaggedProcessName} (PID {snapshot.PrimaryFlaggedProcessId}). Why it was flagged: {snapshot.PrimaryFlaggedProcessReason}";
+
                 return snapshot.FlaggedProcessCount > 0
                     ? $"Sentinel flagged {snapshot.FlaggedProcessCount} process conditions. Primary finding: {snapshot.PrimaryFlaggedProcessName}: {snapshot.PrimaryFlaggedProcessReason}"
                     : $"Sentinel sees {snapshot.ProcessCount} running processes. Highest memory: {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB.";
+            }
 
             if (Has(q, "what happened", "why", "cause", "caused", "investigation"))
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.InvestigationSummary, snapshot.GuidanceWhatHappened) : "Sentinel has no active verified investigation finding requiring attention.";
