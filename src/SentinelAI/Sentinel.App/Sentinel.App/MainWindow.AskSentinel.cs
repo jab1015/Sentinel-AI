@@ -84,6 +84,7 @@ namespace Sentinel.App
                 AskSentinelResponseOrchestrator.AskSentinelResponse response = await Task.Run(() =>
                     _askSentinelResponseOrchestrator.CreateResponse(question, snapshot, history));
                 string verifiedLocalAnswer = response.Answer;
+                bool verifiedLocalAnswerSufficient = !response.IsInsufficientEvidence;
                 AskSentinelProvenanceLabel responseProvenance = response.UsedInvestigationHistory
                     ? AskSentinelProvenanceLabel.VerifiedFact
                     : AskSentinelProvenanceLabel.Observed;
@@ -226,6 +227,23 @@ namespace Sentinel.App
                                     : "Sentinel checked authoritative sources but did not find enough verified information to make a stronger claim."
                         };
                         responseProvenance = AskSentinelProvenanceLabel.Advisory;
+                    }
+
+                    if (verifiedLocalAnswerSufficient &&
+                        AskSentinelRoutingPolicy.IsClearlyLocalStateQuestion(question) &&
+                        !string.IsNullOrWhiteSpace(verifiedLocalAnswer) &&
+                        !response.Answer.Contains(verifiedLocalAnswer, StringComparison.Ordinal))
+                    {
+                        response = response with
+                        {
+                            Answer =
+                                "What I verified locally:\n\n" + verifiedLocalAnswer +
+                                "\n\nCurrent authoritative-source research:\n\n" + response.Answer,
+                            PassedFinalSafetyValidation = false,
+                            GroundingSummary =
+                                "Sentinel preserved the sufficient verified local answer and added external research as supplemental context. " +
+                                response.GroundingSummary
+                        };
                     }
 
                     string sourceNames = external.Sources.Count == 0
