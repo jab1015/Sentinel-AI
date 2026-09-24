@@ -21,8 +21,7 @@ $expectedName = 'ModernMethods.SentinelAI'
 $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
 $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
 $certObject = $null
-$trustedPeopleStore = $null
-$rootStore = $null
+$certStoresInstalled = $false
 
 function Invoke-BoundedProcess {
     param(
@@ -186,24 +185,41 @@ try {
     Remove-Item -LiteralPath $pfxPath -Force
     Write-Host 'MSIX signing completed; runner-temp private PFX deleted.'
 
-    $trustedPeopleStore = [Security.Cryptography.X509Certificates.X509Store]::new('TrustedPeople', [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-    $trustedPeopleStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-    $trustedPeopleStore.Add($certObject)
-    $trustedPeopleStore.Close(); $trustedPeopleStore = $null
+    $publicCertPath = Join-Path $OutputDir $CertName
+    $certutil = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'certutil.exe'
+    if (-not (Test-Path -LiteralPath $certutil)) { $certutil = 'certutil.exe' }
 
-    $rootStore = [Security.Cryptography.X509Certificates.X509Store]::new('Root', [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-    $rootStore.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-    $rootStore.Add($certObject)
-    $rootStore.Close(); $rootStore = $null
+    Write-Host 'Installing ephemeral public test certificate into bounded CurrentUser trust stores...'
+    foreach ($storeName in @('TrustedPeople', 'Root')) {
+        Invoke-BoundedProcess -FilePath $certutil -Arguments @('-user','-f','-addstore',$storeName,$publicCertPath) -TimeoutMilliseconds 30000 -LogPath 'windows-vm-test-signing.log' -Description "certutil add $storeName"
+    }
+    $certStoresInstalled = $true
+    Write-Host 'Ephemeral public test certificate trust installation completed.'
 
+    Write-Host 'Running bounded SignTool verification...'
     Invoke-BoundedProcess -FilePath $SignTool -Arguments @('verify','/pa','/v',$signedPackage) -TimeoutMilliseconds 120000 -LogPath 'windows-vm-test-signing.log' -Description 'SignTool verify'
+    Write-Host 'SignTool verification completed.'
 
-    $signature = Get-AuthenticodeSignature -LiteralPath $signedPackage
-    if ($signature.Status -ne 'Valid') { throw "Authenticode validation failed: $($signature.Status) - $($signature.StatusMessage)" }
-    if ($null -eq $signature.SignerCertificate) { throw 'Authenticode verification did not return a signer certificate.' }
-    if ($signature.SignerCertificate.Thumbprint -ne $certObject.Thumbprint) { throw 'Signed package signer does not match the generated VM test certificate.' }
-    if ($signature.SignerCertificate.Subject -ne $expectedPublisher) { throw "Signed package subject '$($signature.SignerCertificate.Subject)' does not match Publisher '$expectedPublisher'." }
-    Write-Host "Package signature is valid and bound to $($signature.SignerCertificate.Subject)."
+    # Keep the independent PowerShell Authenticode check, but run it in a bounded child
+    # process so certificate-chain/provider stalls cannot consume the entire CI job.
+    $pwsh = (Get-Command 'pwsh.exe' -ErrorAction Stop).Source
+    $safePackage = $signedPackage.Replace("'", "''", [StringComparison]::Ordinal)
+    $safeThumbprint = $certObject.Thumbprint.Replace("'", "''", [StringComparison]::Ordinal)
+    $safePublisher = $expectedPublisher.Replace("'", "''", [StringComparison]::Ordinal)
+    $authenticodeScript = @"
+`$signature = Get-AuthenticodeSignature -LiteralPath '$safePackage'
+if (`$signature.Status -ne 'Valid') { Write-Error "Authenticode validation failed: `$($signature.Status) - `$($signature.StatusMessage)"; exit 41 }
+if (`$null -eq `$signature.SignerCertificate) { Write-Error 'Authenticode verification did not return a signer certificate.'; exit 42 }
+if (`$signature.SignerCertificate.Thumbprint -ne '$safeThumbprint') { Write-Error 'Signed package signer does not match the generated VM test certificate.'; exit 43 }
+if (`$signature.SignerCertificate.Subject -ne '$safePublisher') { Write-Error "Signed package subject does not match the package Publisher."; exit 44 }
+Write-Output "AUTHENTICODE_STATUS=Valid"
+Write-Output "AUTHENTICODE_THUMBPRINT=`$($signature.SignerCertificate.Thumbprint)"
+Write-Output "AUTHENTICODE_SUBJECT=`$($signature.SignerCertificate.Subject)"
+"@
+    $encodedAuthenticode = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($authenticodeScript))
+    Write-Host 'Running bounded independent Authenticode verification...'
+    Invoke-BoundedProcess -FilePath $pwsh -Arguments @('-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',$encodedAuthenticode) -TimeoutMilliseconds 60000 -LogPath 'windows-vm-test-signing.log' -Description 'PowerShell Authenticode verification'
+    Write-Host "Package signature is valid and bound to $expectedPublisher."
 
     $unpackRoot = Join-Path $env:RUNNER_TEMP 'sentinel-windows-vm-test-unpacked'
     if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
@@ -268,17 +284,18 @@ try {
     Write-Host 'WINDOWS VM LOCALDEV TEST PACKAGE QUALIFICATION: PASS'
 }
 finally {
-    if ($trustedPeopleStore) { try { $trustedPeopleStore.Close() } catch {} }
-    if ($rootStore) { try { $rootStore.Close() } catch {} }
     if ($certObject) {
-        foreach ($storeName in @('TrustedPeople', 'Root')) {
-            try {
-                $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-                $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-                $store.Remove($certObject)
-                $store.Close()
+        if ($certStoresInstalled) {
+            $certutilCleanup = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'certutil.exe'
+            if (-not (Test-Path -LiteralPath $certutilCleanup)) { $certutilCleanup = 'certutil.exe' }
+            foreach ($storeName in @('TrustedPeople', 'Root')) {
+                try {
+                    Invoke-BoundedProcess -FilePath $certutilCleanup -Arguments @('-user','-delstore',$storeName,$certObject.Thumbprint) -TimeoutMilliseconds 20000 -LogPath 'windows-vm-test-signing.log' -Description "certutil remove $storeName"
+                }
+                catch {
+                    Write-Warning "Could not verify cleanup of the ephemeral $storeName test certificate: $($_.Exception.Message)"
+                }
             }
-            catch {}
         }
         $certObject.Dispose()
     }
