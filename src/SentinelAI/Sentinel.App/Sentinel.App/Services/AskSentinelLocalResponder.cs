@@ -47,6 +47,9 @@ namespace Sentinel.App.Services
             if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
             if (IsBroadComputerOverviewQuestion(q)) return BuildComputerOverviewAnswer(snapshot);
 
+            string? detailedFinding = BuildDetailedFindingAnswer(q, snapshot);
+            if (!string.IsNullOrWhiteSpace(detailedFinding)) return detailedFinding;
+
             if (Has(q, "healthy", "health", "overall status", "anything wrong", "problem", "attention"))
                 return snapshot.InvestigationRequiresAttention
                     ? $"Sentinel currently has a verified condition that requires attention. {Safe(snapshot.InvestigationSummary, snapshot.GuidanceWhatHappened)}"
@@ -166,6 +169,135 @@ namespace Sentinel.App.Services
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.GuidanceRecommendedAction, snapshot.Recommendation) : "No action is required based on current verified evidence. Sentinel will continue monitoring.";
 
             return InsufficientEvidence;
+        }
+
+        private static string? BuildDetailedFindingAnswer(string question, SystemSnapshot snapshot)
+        {
+            bool asksForDetail = Has(question,
+                "which", "what ", "what's", "whats", "flagged", "why", "reason",
+                "details", "detail", "show me", "identify", "name the");
+            if (!asksForDetail) return null;
+
+            if (Has(question, "network", "connection", "internet", "traffic"))
+            {
+                if (!snapshot.NetworkConnectionMonitoringAvailable) return null;
+                if (snapshot.FlaggedConnectionCount <= 0)
+                    return "Sentinel does not currently have a flagged network connection to identify.";
+
+                string process = Friendly(snapshot.PrimaryFlaggedConnectionProcessName, "Unknown process");
+                string endpoint = Friendly(snapshot.PrimaryFlaggedConnectionRemoteEndpoint, "remote endpoint unavailable");
+                string reason = Friendly(snapshot.PrimaryFlaggedConnectionReason, "No specific network flag reason was recorded.");
+                string correlation = Friendly(snapshot.ConnectionIntelligenceSummary, string.Empty);
+
+                return
+                    $"Flagged network finding\n\n" +
+                    $"Process: {process}\n" +
+                    $"Remote endpoint: {endpoint}\n" +
+                    $"Reason: {reason}" +
+                    (string.IsNullOrWhiteSpace(correlation) ? string.Empty : $"\nCorrelation: {correlation}") +
+                    $"\n\nSentinel currently sees {snapshot.FlaggedConnectionCount} flagged network condition{(snapshot.FlaggedConnectionCount == 1 ? string.Empty : "s")} out of {snapshot.EstablishedConnectionCount} established TCP connections.";
+            }
+
+            if (Has(question, "process", "processes", "app", "application", "program"))
+            {
+                if (!snapshot.ProcessMonitoringAvailable) return null;
+                if (snapshot.FlaggedProcessCount <= 0)
+                    return "Sentinel does not currently have a flagged process condition to identify.";
+
+                return
+                    $"Flagged process finding\n\n" +
+                    $"Process: {Friendly(snapshot.PrimaryFlaggedProcessName, "Unknown process")}\n" +
+                    $"PID: {(snapshot.PrimaryFlaggedProcessId > 0 ? snapshot.PrimaryFlaggedProcessId.ToString() : "Unavailable")}\n" +
+                    $"Reason: {Friendly(snapshot.PrimaryFlaggedProcessReason, "No specific process flag reason was recorded.")}";
+            }
+
+            if (Has(question, "service", "services"))
+            {
+                if (!snapshot.ServiceMonitoringAvailable) return null;
+                if (snapshot.FlaggedServiceCount <= 0)
+                    return "Sentinel does not currently have a flagged Windows service condition to identify.";
+
+                return
+                    $"Flagged service finding\n\n" +
+                    $"Service: {Friendly(snapshot.PrimaryFlaggedServiceName, "Unknown service")}\n" +
+                    $"Reason: {Friendly(snapshot.PrimaryFlaggedServiceReason, "No specific service flag reason was recorded.")}";
+            }
+
+            if (Has(question, "startup", "starts with windows", "startup entry", "startup app"))
+            {
+                if (!snapshot.StartupPersistenceMonitoringAvailable) return null;
+                if (snapshot.FlaggedStartupEntryCount <= 0)
+                    return "Sentinel does not currently have a flagged startup-persistence entry to identify.";
+
+                return
+                    $"Flagged startup finding\n\n" +
+                    $"Entry: {Friendly(snapshot.PrimaryFlaggedStartupEntryName, "Unknown startup entry")}\n" +
+                    $"Reason: {Friendly(snapshot.PrimaryFlaggedStartupEntryReason, "No specific startup flag reason was recorded.")}";
+            }
+
+            if (Has(question, "scheduled task", "scheduled tasks", "task scheduler"))
+            {
+                if (!snapshot.ScheduledTaskMonitoringAvailable) return null;
+                if (snapshot.FlaggedScheduledTaskCount <= 0)
+                    return "Sentinel does not currently have a flagged scheduled task to identify.";
+
+                return
+                    $"Flagged scheduled-task finding\n\n" +
+                    $"Task: {Friendly(snapshot.PrimaryFlaggedScheduledTaskName, "Unknown scheduled task")}\n" +
+                    $"Reason: {Friendly(snapshot.PrimaryFlaggedScheduledTaskReason, "No specific scheduled-task flag reason was recorded.")}";
+            }
+
+            if (Has(question, "command line", "command-line", "powershell", "script"))
+            {
+                if (!snapshot.CommandLineMonitoringAvailable) return null;
+                if (snapshot.FlaggedCommandLineCount <= 0)
+                    return "Sentinel does not currently have a flagged command-line condition to identify.";
+
+                return
+                    $"Flagged command-line finding\n\n" +
+                    $"Process: {Friendly(snapshot.PrimaryCommandLineProcessName, "Unknown process")}\n" +
+                    $"Command summary: {Friendly(snapshot.PrimaryCommandLineSummary, "Unavailable")}\n" +
+                    $"Reason: {Friendly(snapshot.PrimaryCommandLineReason, "No specific command-line flag reason was recorded.")}";
+            }
+
+            if (Has(question, "parent process", "child process", "process lineage", "lineage"))
+            {
+                if (!snapshot.ProcessLineageMonitoringAvailable) return null;
+                if (snapshot.FlaggedProcessRelationshipCount <= 0)
+                    return "Sentinel does not currently have a flagged parent-child process relationship to identify.";
+
+                return
+                    $"Flagged process-lineage finding\n\n" +
+                    $"Parent: {Friendly(snapshot.PrimaryLineageParentProcessName, "Unknown parent")}\n" +
+                    $"Child: {Friendly(snapshot.PrimaryLineageChildProcessName, "Unknown child")}\n" +
+                    $"Reason: {Friendly(snapshot.PrimaryLineageReason, "No specific process-lineage flag reason was recorded.")}";
+            }
+
+            if (Has(question, "authentication", "logon", "login", "sign-in", "signin", "failed logon"))
+            {
+                if (!snapshot.AuthenticationMonitoringAvailable) return null;
+                if (!snapshot.AuthenticationAnomalyDetected)
+                    return "Sentinel does not currently have a verified authentication anomaly to identify.";
+
+                return
+                    $"Authentication finding\n\n" +
+                    $"Primary source: {Friendly(snapshot.PrimaryAuthenticationSource, "Unavailable")}\n" +
+                    $"Recent failed logons: {snapshot.RecentFailedLogonCount}\n" +
+                    $"Reason: {Friendly(snapshot.AuthenticationAnomalySummary, "Sentinel recorded an authentication anomaly but no additional summary is available.")}\n" +
+                    $"Confidence: {snapshot.AuthenticationAnomalyConfidenceScore}%.";
+            }
+
+            return null;
+        }
+
+        private static string Friendly(string? value, string fallback)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return fallback;
+            string trimmed = value.Trim();
+            return trimmed.Equals("None", StringComparison.OrdinalIgnoreCase) ||
+                   trimmed.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+                ? fallback
+                : trimmed;
         }
 
         private static string BuildComputerOverviewAnswer(SystemSnapshot snapshot)
