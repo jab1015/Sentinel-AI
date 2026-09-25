@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Dispatching;
 using Sentinel.App.Models;
 using Sentinel.App.Services;
 using System;
@@ -16,6 +17,7 @@ namespace Sentinel.App
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
         private readonly ProtectionStatusSummaryService _protectionStatusSummaryService = new();
+        private readonly DispatcherTimer _protectionRefreshTimer = new() { Interval = TimeSpan.FromSeconds(5) };
         private readonly Func<SystemSnapshot>? _snapshotProvider;
         private readonly TextBlock _protectionHeadlineText = new();
         private readonly TextBlock _protectionFlaggedText = new();
@@ -37,6 +39,9 @@ namespace Sentinel.App
             Title = "Sentinel AI — Protection Center";
             Content = BuildContent();
             Activated += QuarantineManagerWindow_Activated;
+            _protectionRefreshTimer.Tick += (_, _) => RefreshProtectionSummary();
+            _protectionRefreshTimer.Start();
+            Closed += (_, _) => _protectionRefreshTimer.Stop();
         }
 
         private UIElement BuildContent()
