@@ -138,11 +138,29 @@ namespace Sentinel.App.Services
                         ? $"Sentinel sees {snapshot.ProcessCount} running processes. The highest-memory process is {snapshot.HighestMemoryProcessName} at {snapshot.HighestMemoryProcessGB:0.00} GB."
                         : $"Sentinel sees {snapshot.ProcessCount} running processes but does not yet have a verified top-memory result.";
 
-            if (Has(q, "defender", "antivirus", "virus protection")) return $"Microsoft Defender status is {snapshot.DefenderStatus}.";
+            if (Has(q, "defender", "antivirus", "virus protection"))
+            {
+                if (snapshot.DefenderThreatEvidenceAvailable && snapshot.DefenderActiveThreatCount > 0)
+                {
+                    string fileDetail = snapshot.DefenderFileQuarantineCandidateAvailable
+                        ? $" Sentinel also verified an exact existing unresolved file resource at {snapshot.DefenderPrimaryThreatFilePath}; file quarantine is approval-gated."
+                        : " Sentinel does not currently have an exact existing unresolved file resource that it can safely move into its own quarantine.";
+                    return $"Microsoft Defender status is {snapshot.DefenderStatus}, and Defender reports {snapshot.DefenderActiveThreatCount} active threat(s). Primary active threat: {snapshot.DefenderPrimaryThreatName}.{fileDetail}";
+                }
+
+                return snapshot.DefenderThreatEvidenceAvailable
+                    ? $"Microsoft Defender status is {snapshot.DefenderStatus}. Defender currently reports no active threat."
+                    : $"Microsoft Defender status is {snapshot.DefenderStatus}. Sentinel could not verify Defender's active-threat list during this check.";
+            }
             if (Has(q, "firewall")) return $"Windows Firewall status is {snapshot.FirewallStatus}.";
 
             if (Has(q, "security", "secure", "threat", "malware", "virus"))
             {
+                if (snapshot.DefenderThreatEvidenceAvailable && snapshot.DefenderActiveThreatCount > 0)
+                    return snapshot.DefenderFileQuarantineCandidateAvailable
+                        ? $"Microsoft Defender reports {snapshot.DefenderActiveThreatCount} active threat(s). Primary threat: {snapshot.DefenderPrimaryThreatName}. Sentinel verified the exact affected file still exists at {snapshot.DefenderPrimaryThreatFilePath}; a quarantine action requires your approval and fresh pre-action revalidation."
+                        : $"Microsoft Defender reports {snapshot.DefenderActiveThreatCount} active threat(s). Primary threat: {snapshot.DefenderPrimaryThreatName}. Sentinel does not currently have an exact existing unresolved file resource that it can safely quarantine, so review Windows Security while monitoring continues.";
+
                 if (snapshot.SpywareCorrelationState.Equals("HighConcern", StringComparison.OrdinalIgnoreCase) ||
                     snapshot.SpywareCorrelationState.Equals("Review", StringComparison.OrdinalIgnoreCase))
                     return snapshot.SpywareCorrelationSummary;
@@ -222,7 +240,7 @@ namespace Sentinel.App.Services
                 return
                     "File quarantine, restore, and the Protection Center\n\n" +
                     "Sentinel does not silently quarantine arbitrary files and the Protection Center is not a file picker for manually isolating anything you choose. " +
-                    "A file can be quarantined only when Sentinel has an exact verified file target and its remediation engine prepares a supported quarantine-file action. That security-changing action requires your approval before the file is moved into Sentinel's protected quarantine store.\n\n" +
+                    "For live Defender detections, Sentinel prepares file quarantine only when Microsoft Defender still reports the threat as active and Sentinel verifies an exact unresolved file resource still exists. Other exact-file evidence must meet the same verified-target rule. The resulting quarantine-file action requires your approval before the file is moved into Sentinel's protected quarantine store.\n\n" +
                     "After a file is actually quarantined, Protection Center → File Quarantine lists the verified record. Restore and Delete Permanently are manual user actions there. Restore re-verifies the protected quarantine record, restores the exact file to its original location, verifies its hash, and verifies that the quarantine record was removed. Permanent delete is separate and cannot be undone.\n\n" +
                     "A flagged network connection or process does not appear as a quarantined file. Network findings use firewall containment, and process findings use process containment.";
             }
