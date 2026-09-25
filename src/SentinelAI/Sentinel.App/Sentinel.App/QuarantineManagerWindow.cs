@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Sentinel.App.Models;
 using Sentinel.App.Services;
 using System;
 using System.Collections.Generic;
@@ -14,6 +15,13 @@ namespace Sentinel.App
         private readonly QuarantineService _quarantineService = new();
         private readonly MaintenanceOutcomeRecorder _outcomeRecorder = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
+        private readonly ProtectionStatusSummaryService _protectionStatusSummaryService = new();
+        private readonly Func<SystemSnapshot>? _snapshotProvider;
+        private readonly TextBlock _protectionHeadlineText = new();
+        private readonly TextBlock _protectionFlaggedText = new();
+        private readonly TextBlock _protectionResponseText = new();
+        private readonly TextBlock _protectionCriteriaText = new();
+        private readonly TextBlock _protectionActionStateText = new();
         private readonly ListView _itemsList = new();
         private readonly TextBlock _emptyText = new();
         private readonly TextBlock _summaryText = new();
@@ -23,9 +31,10 @@ namespace Sentinel.App
         private readonly TextBlock _statusText = new();
         private IReadOnlyList<QuarantineCatalogService.QuarantineCatalogEntry> _entries = Array.Empty<QuarantineCatalogService.QuarantineCatalogEntry>();
 
-        public QuarantineManagerWindow()
+        public QuarantineManagerWindow(Func<SystemSnapshot>? snapshotProvider = null)
         {
-            Title = "Sentinel AI — Quarantine";
+            _snapshotProvider = snapshotProvider;
+            Title = "Sentinel AI — Protection Center";
             Content = BuildContent();
             Activated += QuarantineManagerWindow_Activated;
         }
@@ -36,14 +45,17 @@ namespace Sentinel.App
             ScrollViewer scroll = new() { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             StackPanel page = new() { Margin = new Thickness(32), Spacing = 18, MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Center };
 
-            TextBlock title = new() { Text = "Quarantine", FontSize = 30, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) };
-            TextBlock intro = new() { Text = "Files Sentinel isolated for your protection appear here. You can restore a verified item or permanently delete it after approval.", FontSize = 15, TextWrapping = TextWrapping.Wrap, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 209, 213, 219)) };
+            TextBlock title = new() { Text = "Protection Center", FontSize = 30, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) };
+            TextBlock intro = new() { Text = "See what Sentinel is currently watching, why it has or has not taken action, and manage files that are actually isolated in Sentinel's protected file quarantine.", FontSize = 15, TextWrapping = TextWrapping.Wrap, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 209, 213, 219)) };
+
+            Border protectionCard = BuildProtectionCard();
 
             Border listCard = new() { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 31, 41, 55)), CornerRadius = new CornerRadius(14), Padding = new Thickness(22) };
             StackPanel listPanel = new() { Spacing = 12 };
-            listPanel.Children.Add(new TextBlock { Text = "Quarantined items", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) });
+            listPanel.Children.Add(new TextBlock { Text = "File Quarantine", FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255)) });
+            listPanel.Children.Add(new TextBlock { Text = "This list contains only files Sentinel actually moved into its protected quarantine store after a verified file-quarantine action and approval. Network conditions use firewall containment and do not appear as files here.", FontSize = 14, TextWrapping = TextWrapping.Wrap, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 156, 163, 175)) });
 
-            _emptyText.Text = "No quarantined items. Sentinel has nothing isolated right now.";
+            _emptyText.Text = "No quarantined files. Sentinel has not isolated a file into its protected quarantine store.";
             _emptyText.FontSize = 15;
             _emptyText.TextWrapping = TextWrapping.Wrap;
             _emptyText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 156, 163, 175));
@@ -91,6 +103,7 @@ namespace Sentinel.App
 
             page.Children.Add(title);
             page.Children.Add(intro);
+            page.Children.Add(protectionCard);
             page.Children.Add(listCard);
             page.Children.Add(detailCard);
             scroll.Content = page;
@@ -100,13 +113,13 @@ namespace Sentinel.App
 
         private async void QuarantineManagerWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
-            Activated -= QuarantineManagerWindow_Activated;
             await RefreshAsync();
         }
 
         private async Task RefreshAsync()
         {
-            SetBusy(true, "Refreshing verified quarantine records…");
+            RefreshProtectionSummary();
+            SetBusy(true, "Refreshing verified file-quarantine records…");
             try
             {
                 _entries = await _catalogService.ReconcileAsync();
@@ -119,7 +132,9 @@ namespace Sentinel.App
                 bool hasItems = _itemsList.Items.Count > 0;
                 _emptyText.Visibility = hasItems ? Visibility.Collapsed : Visibility.Visible;
                 _itemsList.Visibility = hasItems ? Visibility.Visible : Visibility.Collapsed;
-                _summaryText.Text = hasItems ? "Select a quarantined item to review what Sentinel verified." : "No action is required. Sentinel has no quarantined files at this time.";
+                _summaryText.Text = hasItems
+                    ? "Select a quarantined file to review what Sentinel verified."
+                    : "There are no quarantined files to restore or delete. Flagged network/process/service conditions are shown above and remain separate unless Sentinel has an exact file target that is actually quarantined.";
                 _restoreButton.IsEnabled = false;
                 _deleteButton.IsEnabled = false;
                 _statusText.Text = "Sentinel will verify each action before reporting success.";
@@ -128,6 +143,73 @@ namespace Sentinel.App
             {
                 SetBusy(false, _statusText.Text);
             }
+        }
+
+        private Border BuildProtectionCard()
+        {
+            Border card = new()
+            {
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 31, 41, 55)),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(22)
+            };
+            StackPanel panel = new() { Spacing = 10 };
+            panel.Children.Add(new TextBlock
+            {
+                Text = "Current protection activity",
+                FontSize = 22,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255))
+            });
+
+            ConfigureProtectionText(_protectionHeadlineText, 16, true);
+            ConfigureProtectionText(_protectionFlaggedText, 14, false);
+            ConfigureProtectionText(_protectionResponseText, 14, false);
+            ConfigureProtectionText(_protectionCriteriaText, 14, false);
+            ConfigureProtectionText(_protectionActionStateText, 14, true);
+
+            panel.Children.Add(_protectionHeadlineText);
+            panel.Children.Add(new TextBlock { Text = "FLAGGED CONDITIONS", FontSize = 11, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 111, 136, 168)) });
+            panel.Children.Add(_protectionFlaggedText);
+            panel.Children.Add(new TextBlock { Text = "WHAT SENTINEL IS DOING", FontSize = 11, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 111, 136, 168)) });
+            panel.Children.Add(_protectionResponseText);
+            panel.Children.Add(new TextBlock { Text = "WHEN SENTINEL WILL ACT", FontSize = 11, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 111, 136, 168)) });
+            panel.Children.Add(_protectionCriteriaText);
+            panel.Children.Add(_protectionActionStateText);
+            card.Child = panel;
+            return card;
+        }
+
+        private static void ConfigureProtectionText(TextBlock text, double size, bool emphasized)
+        {
+            text.FontSize = size;
+            text.TextWrapping = TextWrapping.Wrap;
+            text.FontWeight = emphasized ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
+            text.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                emphasized
+                    ? Windows.UI.Color.FromArgb(255, 203, 231, 255)
+                    : Windows.UI.Color.FromArgb(255, 209, 213, 219));
+        }
+
+        private void RefreshProtectionSummary()
+        {
+            SystemSnapshot? snapshot = _snapshotProvider?.Invoke();
+            if (snapshot is null)
+            {
+                _protectionHeadlineText.Text = "Protection status is available on the main dashboard.";
+                _protectionFlaggedText.Text = "No live snapshot was provided to this window.";
+                _protectionResponseText.Text = "Sentinel continues monitoring in the main application.";
+                _protectionCriteriaText.Text = "Security-changing actions require verified evidence and a supported remediation path.";
+                _protectionActionStateText.Text = "No action state is available in this window.";
+                return;
+            }
+
+            ProtectionStatusSummaryService.ProtectionStatusSummary status = _protectionStatusSummaryService.Create(snapshot);
+            _protectionHeadlineText.Text = status.Headline;
+            _protectionFlaggedText.Text = status.FlaggedConditions;
+            _protectionResponseText.Text = status.CurrentResponse;
+            _protectionCriteriaText.Text = status.ActionCriteria;
+            _protectionActionStateText.Text = status.ActionState;
         }
 
         private void ItemsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
