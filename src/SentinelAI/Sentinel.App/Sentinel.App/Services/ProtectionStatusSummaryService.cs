@@ -31,6 +31,36 @@ namespace Sentinel.App.Services
                     "Waiting for your approval. If approved, Sentinel blocks all outbound traffic to the remote IP represented by the flagged connection, verifies the rule, checks connectivity, and rolls the rule back if immediate general connectivity is lost.");
             }
 
+            if (IsAction(snapshot, "quarantine-file"))
+            {
+                return new(
+                    "File quarantine is ready for review",
+                    flagged,
+                    $"Sentinel has an exact verified file target ready for quarantine: {snapshot.AutonomousProtectionTarget}. The file has not been moved yet.",
+                    "File quarantine requires an exact verified file target, a supported quarantine recommendation, your approval, and a fresh pre-action validation. Sentinel does not silently quarantine arbitrary files.",
+                    "Waiting for your approval. If approved, Sentinel moves the exact file into its protected quarantine store and verifies the protected record and original-file removal before reporting success.");
+            }
+
+            if (IsAction(snapshot, "contain-process"))
+            {
+                return new(
+                    "Process containment is ready for review",
+                    flagged,
+                    $"Sentinel has correlated enough evidence to prepare containment for {snapshot.AutonomousProtectionTarget}. The process has not been terminated.",
+                    "Process containment is offered only for a verified exact process finding backed by supported correlated evidence. It requires your approval and process identity is revalidated immediately before execution.",
+                    "Waiting for your approval. Sentinel will report success only if the exact approved process instance is contained and the result is independently verified.");
+            }
+
+            if (IsAction(snapshot, "restart-service"))
+            {
+                return new(
+                    "Service repair is ready for review",
+                    flagged,
+                    $"Sentinel has a verified service action ready for {snapshot.AutonomousProtectionTarget}. The service has not been restarted.",
+                    "Service restart requires a supported exact service target, current verified service evidence, your approval, and fresh validation before execution.",
+                    "Waiting for your approval. Sentinel verifies the service state again after the restart before reporting success.");
+            }
+
             if (snapshot.FlaggedConnectionCount > 0)
             {
                 string endpoint = Value(snapshot.PrimaryFlaggedConnectionRemoteEndpoint, "the flagged remote destination");
@@ -61,16 +91,6 @@ namespace Sentinel.App.Services
                     "No network containment is authorized yet. Sentinel continues monitoring and will expose Review & Approve only if the verified evidence crosses the containment threshold.");
             }
 
-            if (IsAction(snapshot, "contain-process"))
-            {
-                return new(
-                    "Process containment is ready for review",
-                    flagged,
-                    $"Sentinel has correlated enough evidence to prepare containment for {snapshot.AutonomousProtectionTarget}. The process has not been terminated.",
-                    "Process containment is offered only for a verified exact process finding backed by supported correlated evidence. It requires your approval and process identity is revalidated immediately before execution.",
-                    "Waiting for your approval. Sentinel will report success only if the exact approved process instance is contained and the result is independently verified.");
-            }
-
             if (snapshot.FlaggedProcessCount > 0)
             {
                 return new(
@@ -88,9 +108,7 @@ namespace Sentinel.App.Services
                     flagged,
                     $"Sentinel is reviewing the current service evidence for {Value(snapshot.PrimaryFlaggedServiceName, "the flagged service")} and comparing it with Windows event/state evidence.",
                     "A service change is not made from a flag alone. Sentinel needs an exact supported remediation path; restart actions require verification and your approval.",
-                    IsAction(snapshot, "restart-service")
-                        ? "A verified service restart is ready for your approval."
-                        : "No service-changing action is authorized yet. Sentinel continues monitoring.");
+                    "No service-changing action is authorized yet. Sentinel continues monitoring.");
             }
 
             if (snapshot.FlaggedStartupEntryCount > 0 || snapshot.FlaggedScheduledTaskCount > 0 || snapshot.AuthenticationAnomalyDetected)
