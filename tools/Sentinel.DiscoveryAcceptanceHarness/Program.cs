@@ -6,6 +6,7 @@ Console.WriteLine();
 
 var investigationEngine = new InvestigationEngine();
 var remediationEngine = new RemediationRecommendationEngine();
+var protectionStatusService = new ProtectionStatusSummaryService();
 int failures = 0;
 
 void Check(string name, bool passed)
@@ -108,6 +109,12 @@ Console.WriteLine("--- Scenario 3b: high-confidence corroborated network finding
     Check("Corroborated network approval required", remediation.Disposition == RemediationRecommendationEngine.RemediationDisposition.ApprovalRequired);
     Check("Exact network block action prepared", remediation.Action == "block-outbound-endpoint");
     Check("Exact endpoint preserved", remediation.Target == "20.44.17.102:8883");
+    snapshot.AutonomousProtectionRequiresUserApproval = true;
+    snapshot.AutonomousProtectionAction = remediation.Action;
+    snapshot.AutonomousProtectionTarget = remediation.Target;
+    var status = protectionStatusService.Create(snapshot);
+    Check("Protection status says network containment is ready", status.Headline.Contains("ready for review", StringComparison.OrdinalIgnoreCase));
+    Check("Protection status preserves approval requirement", status.ActionState.Contains("approval", StringComparison.OrdinalIgnoreCase));
 }
 Console.WriteLine();
 
@@ -129,6 +136,10 @@ Console.WriteLine("--- Scenario 3c: flagged network evidence without corroborati
     Check("Uncorroborated network remains under review", result.ReasonCode == "network-evidence-under-review");
     Check("No containment action exposed", remediation.Action != "block-outbound-endpoint");
     Check("No approval-gated network mutation", remediation.Disposition != RemediationRecommendationEngine.RemediationDisposition.ApprovalRequired);
+    var status = protectionStatusService.Create(snapshot);
+    Check("Protection status explains missing corroboration", status.CurrentResponse.Contains("corroborating evidence has not been established", StringComparison.OrdinalIgnoreCase));
+    Check("Protection status exposes the 80 percent network threshold", status.ActionCriteria.Contains("80%", StringComparison.OrdinalIgnoreCase));
+    Check("Protection status says no containment is authorized", status.ActionState.Contains("No network containment is authorized", StringComparison.OrdinalIgnoreCase));
 }
 Console.WriteLine();
 
