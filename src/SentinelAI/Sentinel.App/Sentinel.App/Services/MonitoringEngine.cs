@@ -19,6 +19,7 @@ namespace Sentinel.App.Services
         private static readonly TimeSpan CommandLineRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ServiceRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan SecurityRefreshInterval = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan DefenderThreatRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan EventLogRefreshInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan StartupRefreshInterval = TimeSpan.FromMinutes(2);
         private static readonly TimeSpan ScheduledTaskRefreshInterval = TimeSpan.FromMinutes(2);
@@ -37,6 +38,7 @@ namespace Sentinel.App.Services
         private readonly CommandLineMonitor _commandLineMonitor = new();
         private readonly ServiceMonitor _serviceMonitor = new();
         private readonly SecurityMonitor _securityMonitor = new();
+        private readonly DefenderThreatEvidenceProvider _defenderThreatEvidenceProvider = new();
         private readonly EventLogMonitor _eventLogMonitor = new();
         private readonly AuthenticationAnomalyMonitor _authenticationAnomalyMonitor = new();
         private readonly WindowsCrashEvidenceMonitor _windowsCrashEvidenceMonitor = new();
@@ -64,6 +66,8 @@ namespace Sentinel.App.Services
         private CommandLineMonitor.CommandLineSnapshot _commandLineSnapshot = new(0, 0, "None", "Command-line analysis is loading.", "None");
         private ServiceMonitor.ServiceIntelligenceSnapshot _serviceSnapshot = new(0, 0, 0, "None", "Service analysis is loading.");
         private SecurityMonitor.SecurityStatusSnapshot _securitySnapshot = new("Loading...", "Loading...");
+        private DefenderThreatEvidenceParser.DefenderThreatEvidenceSnapshot _defenderThreatSnapshot =
+            DefenderThreatEvidenceParser.DefenderThreatEvidenceSnapshot.Unavailable("Microsoft Defender active-threat evidence is loading.");
         private EventLogMonitor.EventLogStatusSnapshot _eventLogSnapshot = new(0, 0, null, "None", "Event Log analysis is loading.");
         private AuthenticationAnomalyMonitor.AuthenticationAnomalySnapshot _authenticationSnapshot = new(false, 0, 0, "None", false, 0, "Starting", "Authentication analysis is loading.");
         private WindowsCrashEvidenceMonitor.WindowsCrashEvidenceSnapshot _crashSnapshot = new(false, false, false, null, 0, "Starting", "Not available", false, "Crash analysis is loading.");
@@ -79,6 +83,7 @@ namespace Sentinel.App.Services
         private DateTime _lastCommandLineRefresh = DateTime.MinValue;
         private DateTime _lastServiceRefresh = DateTime.MinValue;
         private DateTime _lastSecurityRefresh = DateTime.MinValue;
+        private DateTime _lastDefenderThreatRefresh = DateTime.MinValue;
         private DateTime _lastEventLogRefresh = DateTime.MinValue;
         private DateTime _lastAuthenticationRefresh = DateTime.MinValue;
         private DateTime _lastCrashRefresh = DateTime.MinValue;
@@ -130,6 +135,7 @@ namespace Sentinel.App.Services
                 advancedSecurityEntitled ? RefreshCommandLineDataIfDueAsync(now) : Task.CompletedTask,
                 RefreshServiceDataIfDueAsync(now),
                 RefreshSecurityDataIfDueAsync(now),
+                RefreshDefenderThreatDataIfDueAsync(now),
                 RefreshEventLogDataIfDueAsync(now),
                 advancedSecurityEntitled ? RefreshAuthenticationDataIfDueAsync(now) : Task.CompletedTask,
                 RefreshCrashDataIfDueAsync(now),
@@ -156,6 +162,7 @@ namespace Sentinel.App.Services
                 PrimaryFlaggedConnectionProcessName = _activeConnectionSnapshot.PrimaryProcessName, PrimaryFlaggedConnectionRemoteEndpoint = _activeConnectionSnapshot.PrimaryRemoteEndpoint, PrimaryFlaggedConnectionReason = _activeConnectionSnapshot.PrimaryReason,
                 ListeningTcpEndpointCount = _activeConnectionSnapshot.ListeningTcpEndpointCount, UdpEndpointCount = _activeConnectionSnapshot.UdpEndpointCount, AttributedExternalConnectionCount = _activeConnectionSnapshot.AttributedExternalConnectionCount, AttributedUdpEndpointCount = _activeConnectionSnapshot.AttributedUdpEndpointCount, RecentUniqueExternalConnectionCount = _activeConnectionSnapshot.RecentUniqueExternalConnectionCount, RepeatingExternalConnectionCount = _activeConnectionSnapshot.RepeatingExternalConnectionCount, NetworkConnectionMonitoringAvailable = _activeConnectionSnapshot.CollectionAvailable, NetworkConnectionMonitoringStatus = !advancedSecurityEntitled ? "Subscription required" : _activeConnectionSnapshot.CollectionAvailable ? "Active" : "Unavailable",
                 DefenderEnabled = _securitySnapshot.DefenderStatus == "Enabled", FirewallEnabled = _securitySnapshot.FirewallStatus == "Enabled", DefenderStatus = _securitySnapshot.DefenderStatus, FirewallStatus = _securitySnapshot.FirewallStatus,
+                DefenderThreatEvidenceAvailable = _defenderThreatSnapshot.EvidenceAvailable, DefenderActiveThreatCount = _defenderThreatSnapshot.ActiveThreatCount, DefenderFileQuarantineCandidateAvailable = _defenderThreatSnapshot.FileQuarantineCandidateAvailable, DefenderPrimaryThreatId = _defenderThreatSnapshot.PrimaryThreatId, DefenderPrimaryThreatName = _defenderThreatSnapshot.PrimaryThreatName, DefenderPrimaryThreatSeverityId = _defenderThreatSnapshot.PrimaryThreatSeverityId, DefenderPrimaryThreatDidExecute = _defenderThreatSnapshot.PrimaryThreatDidExecute, DefenderPrimaryThreatFilePath = _defenderThreatSnapshot.PrimaryThreatFilePath, DefenderPrimaryThreatStatusId = _defenderThreatSnapshot.PrimaryThreatStatusId, DefenderPrimaryThreatExecutionStatusId = _defenderThreatSnapshot.PrimaryThreatExecutionStatusId, DefenderPrimaryThreatActionSuccess = _defenderThreatSnapshot.PrimaryThreatActionSuccess, DefenderPrimaryThreatDetectedAtUtc = _defenderThreatSnapshot.PrimaryThreatDetectedAtUtc, DefenderThreatSummary = _defenderThreatSnapshot.Summary,
                 EventLogMonitoringAvailable = _eventLogSnapshot.CollectionAvailable, CriticalEventCount = _eventLogSnapshot.CriticalCount, ErrorEventCount = _eventLogSnapshot.ErrorCount, LatestEventTime = _eventLogSnapshot.LatestEventTime, LatestEventSource = _eventLogSnapshot.LatestEventSource, LatestEventMessage = _eventLogSnapshot.LatestEventMessage,
                 AuthenticationMonitoringAvailable = _authenticationSnapshot.CollectionAvailable, RecentFailedLogonCount = _authenticationSnapshot.FailedLogonCount, RepeatedAuthenticationSourceCount = _authenticationSnapshot.RepeatedSourceFailureCount, PrimaryAuthenticationSource = _authenticationSnapshot.PrimarySourceAddress, AuthenticationAnomalyDetected = _authenticationSnapshot.SuspiciousPattern, AuthenticationAnomalyConfidenceScore = _authenticationSnapshot.ConfidenceScore, AuthenticationAnomalyState = _authenticationSnapshot.State, AuthenticationAnomalySummary = _authenticationSnapshot.Summary,
                 CrashEvidenceAvailable = _crashSnapshot.CollectionAvailable, RecentCrashDetected = _crashSnapshot.CrashDetected, RecentBugCheckDetected = _crashSnapshot.BugCheckDetected, RecentCrashTime = _crashSnapshot.OccurredAt, RecentCrashEventId = _crashSnapshot.PrimaryEventId, RecentCrashProvider = _crashSnapshot.Provider, RecentBugCheckCode = _crashSnapshot.BugCheckCode, CrashRootCauseVerified = _crashSnapshot.RootCauseVerified, RecentCrashSummary = _crashSnapshot.Summary
@@ -227,6 +234,7 @@ namespace Sentinel.App.Services
             snapshot.InvestigationRequiresAttention = investigation.RequiresAttention;
             snapshot.InvestigationReasonCode = investigation.ReasonCode;
 
+            ApplyProactiveDefenderThreatFinding(snapshot);
             ApplyProactiveDriverFinding(snapshot);
             ApplyProactiveWindowsHealthFinding(snapshot);
 
@@ -290,6 +298,62 @@ namespace Sentinel.App.Services
 
             CurrentSnapshot = snapshot;
             SnapshotUpdated?.Invoke(this, CurrentSnapshot);
+        }
+
+        private void ApplyProactiveDefenderThreatFinding(SystemSnapshot snapshot)
+        {
+            if (!snapshot.DefenderThreatEvidenceAvailable || snapshot.DefenderActiveThreatCount <= 0)
+                return;
+
+            string threatName = string.IsNullOrWhiteSpace(snapshot.DefenderPrimaryThreatName) ||
+                                snapshot.DefenderPrimaryThreatName.Equals("None", StringComparison.OrdinalIgnoreCase)
+                ? "an active Microsoft Defender threat"
+                : snapshot.DefenderPrimaryThreatName;
+
+            bool exactFileCandidate =
+                snapshot.DefenderFileQuarantineCandidateAvailable &&
+                !string.IsNullOrWhiteSpace(snapshot.DefenderPrimaryThreatFilePath) &&
+                !snapshot.DefenderPrimaryThreatFilePath.Equals("None", StringComparison.OrdinalIgnoreCase);
+
+            snapshot.InvestigationState = "NeedsAttention";
+            snapshot.InvestigationConclusion = "Microsoft Defender reports an active threat.";
+            snapshot.InvestigationSummary = exactFileCandidate
+                ? $"Microsoft Defender reports {threatName} as active, and Sentinel verified the exact affected file still exists at {snapshot.DefenderPrimaryThreatFilePath}."
+                : $"Microsoft Defender reports {threatName} as active. Sentinel does not currently have an exact existing unresolved file resource that it can safely move into Sentinel quarantine.";
+            snapshot.InvestigationRequiresAttention = true;
+            snapshot.InvestigationReasonCode = exactFileCandidate
+                ? "defender-active-file-threat"
+                : "defender-active-threat";
+
+            snapshot.GuidanceTitle = exactFileCandidate
+                ? "Microsoft Defender found an active file threat"
+                : "Microsoft Defender reports an active threat";
+            snapshot.GuidanceSeverity = snapshot.DefenderPrimaryThreatSeverityId >= 4 ? "Critical" : "High";
+            snapshot.GuidanceConfidencePercent = 100;
+            snapshot.GuidanceConfidenceLabel = "Verified by Microsoft Defender";
+            snapshot.GuidanceEvidence = exactFileCandidate
+                ? $"Defender active threat: {threatName}. Exact existing file resource: {snapshot.DefenderPrimaryThreatFilePath}. Threat ID: {snapshot.DefenderPrimaryThreatId}. Defender status ID: {snapshot.DefenderPrimaryThreatStatusId}. Execution status ID: {snapshot.DefenderPrimaryThreatExecutionStatusId}."
+                : $"Defender active threat: {threatName}. Threat ID: {snapshot.DefenderPrimaryThreatId}. {snapshot.DefenderThreatSummary}";
+            snapshot.GuidanceWhatHappened = snapshot.InvestigationSummary;
+            snapshot.GuidanceWhyItMatters = snapshot.DefenderPrimaryThreatDidExecute
+                ? "Microsoft Defender indicates this active threat executed. Treat it as a high-priority security condition while containment/remediation is verified."
+                : "Microsoft Defender still considers this threat active, so Sentinel will not treat the computer as clear until the active threat state is resolved.";
+            snapshot.GuidanceRecommendedAction = exactFileCandidate
+                ? "Review Sentinel's file-quarantine action. Sentinel will ask for approval, revalidate the same active Defender threat and exact file, then move it into the protected quarantine store and verify the result."
+                : "Open Windows Security and review Microsoft Defender's active threat. Sentinel will continue checking for an exact unresolved file resource and will not invent a quarantine target.";
+            snapshot.GuidanceFixAvailability = exactFileCandidate
+                ? "Quarantine available after approval"
+                : "Windows Security review required";
+            snapshot.GuidanceFixDetails = exactFileCandidate
+                ? "No file has been moved yet. The quarantine action is single-use, approval-gated, elevated, and verified after execution."
+                : "Sentinel cannot safely quarantine a threat without an exact existing file resource. Defender may also be handling a non-file resource or remediation may already have changed the file state.";
+            snapshot.GuidanceActionId = exactFileCandidate ? string.Empty : "open-windows-security";
+            snapshot.GuidanceActionLabel = exactFileCandidate ? string.Empty : "Open Windows Security";
+
+            snapshot.RiskScore = Math.Max(snapshot.RiskScore, snapshot.DefenderPrimaryThreatSeverityId >= 4 ? 95 : 85);
+            snapshot.RiskLevel = snapshot.DefenderPrimaryThreatSeverityId >= 4 ? "Critical" : "High";
+            snapshot.RiskSummary = $"Microsoft Defender reports {snapshot.DefenderActiveThreatCount} active threat(s).";
+            snapshot.Recommendation = snapshot.GuidanceRecommendedAction;
         }
 
         private void ApplyProactiveDriverFinding(SystemSnapshot snapshot)
@@ -583,6 +647,16 @@ namespace Sentinel.App.Services
             _securitySnapshot = result.Value;
             _lastSecurityRefresh = now;
         }
+        private async Task RefreshDefenderThreatDataIfDueAsync(DateTime now)
+        {
+            if (now - _lastDefenderThreatRefresh < DefenderThreatRefreshInterval) return;
+            var result = await TryCollectAsync(_defenderThreatEvidenceProvider.GetSnapshot, _defenderThreatSnapshot);
+            _defenderThreatSnapshot = result.Success
+                ? result.Value
+                : DefenderThreatEvidenceParser.DefenderThreatEvidenceSnapshot.Unavailable("Microsoft Defender active-threat evidence could not be collected.");
+            _lastDefenderThreatRefresh = now;
+        }
+
         private async Task RefreshEventLogDataIfDueAsync(DateTime now)
         {
             if (now - _lastEventLogRefresh < EventLogRefreshInterval) return;
