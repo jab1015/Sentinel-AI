@@ -179,16 +179,39 @@ namespace Sentinel.App.Services
             bool actionIntent = Has(question,
                 "quarantine", "contain", "block", "unblock", "restore", "undo", "rollback",
                 "reverse", "revert", "repair", "fix", "restart", "remove the block",
-                "mess something up", "break something", "causes a problem", "if it breaks");
+                "mess something up", "break something", "causes a problem", "if it breaks",
+                "protection center", "quarantine button", "quarantine page");
             if (!actionIntent) return null;
 
             bool asksAboutNetwork = Has(question, "network", "connection", "traffic", "endpoint", "firewall");
             bool asksAboutFile = Has(question, "file", "folder");
             bool asksAboutProcess = Has(question, "process", "program", "application", "app");
             bool asksAboutService = Has(question, "service", "windows service");
+            bool asksAboutFileQuarantineUi = Has(question,
+                "quarantine button", "quarantine page", "quarantine manager", "file quarantine",
+                "protection center", "restore quarantined", "quarantined file", "delete quarantined",
+                "manual quarantine", "manually quarantine");
+            bool asksAboutCurrentFlaggedCondition = Has(question,
+                "flagged condition", "flagged connection", "this condition", "current condition",
+                "the flagged", "that condition");
 
-            if (asksAboutNetwork || (!asksAboutFile && !asksAboutProcess && !asksAboutService &&
-                                    Has(question, "quarantine", "block", "unblock", "restore")))
+            if (asksAboutFile || asksAboutFileQuarantineUi)
+            {
+                return
+                    "File quarantine, restore, and the Protection Center\n\n" +
+                    "Sentinel does not silently quarantine arbitrary files and the Protection Center is not a file picker for manually isolating anything you choose. " +
+                    "A file can be quarantined only when Sentinel has an exact verified file target and its remediation engine prepares a supported quarantine-file action. That security-changing action requires your approval before the file is moved into Sentinel's protected quarantine store.\n\n" +
+                    "After a file is actually quarantined, Protection Center → File Quarantine lists the verified record. Restore and Delete Permanently are manual user actions there. Restore re-verifies the protected quarantine record, restores the exact file to its original location, verifies its hash, and verifies that the quarantine record was removed. Permanent delete is separate and cannot be undone.\n\n" +
+                    "A flagged network connection or process does not appear as a quarantined file. Network findings use firewall containment, and process findings use process containment.";
+            }
+
+            bool useCurrentNetworkContext =
+                snapshot.FlaggedConnectionCount > 0 &&
+                asksAboutCurrentFlaggedCondition &&
+                !asksAboutProcess &&
+                !asksAboutService;
+
+            if (asksAboutNetwork || useCurrentNetworkContext)
             {
                 string endpoint = Friendly(snapshot.PrimaryFlaggedConnectionRemoteEndpoint, "the exact remote endpoint");
                 bool hasCurrentNetworkAction =
@@ -203,31 +226,25 @@ namespace Sentinel.App.Services
 
                 return
                     "Network containment and rollback\n\n" +
-                    $"For a suspicious connection, Sentinel does not move the connection into a file-style quarantine. For the flagged connection {endpoint}, Sentinel's current containment method blocks the remote IP address in Windows Firewall. That rule applies to all outbound traffic to that IP across applications, services, profiles, protocols, and ports; it is not limited to only the flagged port. " +
+                    $"For a suspicious connection, Sentinel does not move the connection into file quarantine. For the flagged connection {endpoint}, Sentinel's containment method blocks the remote IP address in Windows Firewall. That rule applies to all outbound traffic to that IP across applications, services, profiles, protocols, and ports; it is not limited to only the flagged port. " +
                     "Sentinel verifies the rule after creation and checks connectivity before and after the change. If general connectivity is lost immediately after containment, Sentinel automatically removes the new rule and verifies that rollback.\n\n" +
                     "If the block later causes a problem for a specific application while the rest of the internet still works, automatic rollback may not trigger. In that case Sentinel can remove the exact Sentinel-created firewall block and verify that it is gone.\n\n" +
                     availability;
-            }
-
-            if (asksAboutFile)
-            {
-                return
-                    "File quarantine and restore\n\n" +
-                    "Sentinel's file quarantine is reversible. A quarantined file is moved into Sentinel's protected quarantine store with verified metadata. If you later choose Restore, Sentinel uses the protected quarantine record to restore that exact file and verifies the result. Permanent delete is a separate action and cannot be undone.";
             }
 
             if (asksAboutProcess)
             {
                 return
                     "Process containment\n\n" +
-                    "Sentinel can contain an exact verified process instance when a supported approval-gated action is available. Process containment is not a reversible quarantine: if a process is terminated, Sentinel cannot restore that same running process instance. The application may be relaunched later if it is safe to do so.";
+                    "Sentinel can contain an exact verified process instance when a supported approval-gated action is available. A process flag alone is not enough. Sentinel correlates process, command-line, lineage, persistence, and network evidence first. " +
+                    "Process containment is not a reversible file quarantine: if a process is terminated, Sentinel cannot restore that same running process instance. The application may be relaunched later if it is safe to do so.";
             }
 
             if (asksAboutService)
             {
                 return
                     "Service remediation\n\n" +
-                    "A service restart is an approval-gated repair action, not a quarantine. Sentinel verifies the exact service before acting and verifies that it is running afterward. There is no separate 'restore' object for a restart; if a configuration change were ever required, that would need its own verified remediation and rollback path.";
+                    "A service restart is an approval-gated repair action, not a quarantine. Sentinel verifies the exact service before acting and verifies that it is running afterward. There is no separate restore object for a restart; any future configuration change would need its own verified remediation and rollback path.";
             }
 
             if (snapshot.AutonomousProtectionRequiresUserApproval &&
@@ -237,6 +254,14 @@ namespace Sentinel.App.Services
                 return
                     $"Sentinel currently has an approval-gated action available: {snapshot.AutonomousProtectionAction} targeting {snapshot.AutonomousProtectionTarget}. " +
                     "Sentinel should explain the exact effect and rollback behavior for that action before asking you to approve it.";
+            }
+
+            if (Has(question, "quarantine", "restore"))
+            {
+                return
+                    "Quarantine in Sentinel\n\n" +
+                    "File quarantine and network containment are different. File Quarantine in the Protection Center contains only files Sentinel actually isolated after an exact verified file action and approval; Restore and Delete Permanently are manual actions for those records. " +
+                    "Network findings are never placed in that file list—they are contained with a verified Windows Firewall rule when the network evidence reaches the containment threshold and you approve the action.";
             }
 
             return null;
