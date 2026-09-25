@@ -107,7 +107,7 @@ namespace Sentinel.App.Services
                     PrimaryThreatDetectedAtUtc: candidate?.InitialDetectionUtc,
                     Summary: summary);
             }
-            catch (JsonException)
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException)
             {
                 return DefenderThreatEvidenceSnapshot.Unavailable("Microsoft Defender threat evidence could not be parsed safely.");
             }
