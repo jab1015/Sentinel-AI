@@ -143,6 +143,25 @@ Console.WriteLine("--- Scenario 3c: flagged network evidence without corroborati
 }
 Console.WriteLine();
 
+Console.WriteLine("--- Scenario 3d: actionable remediation outranks unrelated lower-confidence flags ---");
+{
+    var snapshot = BaseHealthy();
+    snapshot.FlaggedConnectionCount = 1;
+    snapshot.PrimaryFlaggedConnectionRemoteEndpoint = "203.0.113.77:443";
+    snapshot.PrimaryFlaggedConnectionProcessName = "unknown";
+    snapshot.ConnectionIntelligenceConfidenceScore = 20;
+    snapshot.ConnectionIntelligenceHasCorroboratingEvidence = false;
+    snapshot.FlaggedProcessCount = 1;
+    snapshot.PrimaryFlaggedProcessName = "suspicious.exe";
+    snapshot.AutonomousProtectionRequiresUserApproval = true;
+    snapshot.AutonomousProtectionAction = "contain-process";
+    snapshot.AutonomousProtectionTarget = "suspicious.exe";
+    var status = protectionStatusService.Create(snapshot);
+    Check("Actionable process decision outranks passive network flag", status.Headline.Contains("Process containment is ready", StringComparison.OrdinalIgnoreCase));
+    Check("Action state still requires approval", status.ActionState.Contains("approval", StringComparison.OrdinalIgnoreCase));
+}
+Console.WriteLine();
+
 Console.WriteLine("--- Scenario 4: uncorroborated process evidence stays observation-only ---");
 {
     var snapshot = BaseHealthy();
