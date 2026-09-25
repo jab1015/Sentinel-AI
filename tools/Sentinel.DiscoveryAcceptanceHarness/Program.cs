@@ -68,6 +68,96 @@ Console.WriteLine("--- Scenario 2: Defender disabled is proactive and actionable
 }
 Console.WriteLine();
 
+Console.WriteLine("--- Scenario 2a: active Defender exact-file threat becomes approval-gated quarantine ---");
+{
+    string json = """
+    {
+      "Available": true,
+      "Threats": [
+        {
+          "ThreatID": 2147000001,
+          "ThreatName": "Trojan:Win32/SentinelAcceptance",
+          "SeverityID": 4,
+          "DidThreatExecute": true,
+          "IsActive": true,
+          "Resources": ["file:_C:\\Temp\\bad.exe"],
+          "Detections": [
+            {
+              "ThreatStatusID": 1,
+              "CurrentThreatExecutionStatusID": 4,
+              "ActionSuccess": false,
+              "InitialDetectionTime": "2026-09-25T14:00:00Z",
+              "LastThreatStatusChangeTime": "2026-09-25T14:01:00Z",
+              "Resources": ["file:_C:\\Temp\\bad.exe"]
+            }
+          ]
+        }
+      ]
+    }
+    """;
+    var defender = DefenderThreatEvidenceParser.Parse(
+        json,
+        path => path.EndsWith("bad.exe", StringComparison.OrdinalIgnoreCase));
+
+    Check("Defender evidence available", defender.EvidenceAvailable);
+    Check("Active Defender threat counted", defender.ActiveThreatCount == 1);
+    Check("Exact active file becomes a quarantine candidate", defender.FileQuarantineCandidateAvailable);
+    Check("Exact Defender file path preserved", defender.PrimaryThreatFilePath.EndsWith("bad.exe", StringComparison.OrdinalIgnoreCase));
+
+    var snapshot = BaseHealthy();
+    snapshot.DefenderThreatEvidenceAvailable = defender.EvidenceAvailable;
+    snapshot.DefenderActiveThreatCount = defender.ActiveThreatCount;
+    snapshot.DefenderFileQuarantineCandidateAvailable = defender.FileQuarantineCandidateAvailable;
+    snapshot.DefenderPrimaryThreatId = defender.PrimaryThreatId;
+    snapshot.DefenderPrimaryThreatName = defender.PrimaryThreatName;
+    snapshot.DefenderPrimaryThreatFilePath = defender.PrimaryThreatFilePath;
+    snapshot.InvestigationRequiresAttention = true;
+    snapshot.InvestigationReasonCode = "defender-active-file-threat";
+    snapshot.GuidanceConfidencePercent = 100;
+
+    var remediation = remediationEngine.Evaluate(snapshot);
+    Check("Defender exact-file threat requires approval", remediation.RequiresUserApproval);
+    Check("Defender exact-file threat prepares quarantine", remediation.Action == "quarantine-file");
+    Check("Defender quarantine preserves exact path", remediation.Target == defender.PrimaryThreatFilePath);
+
+    snapshot.AutonomousProtectionRequiresUserApproval = true;
+    snapshot.AutonomousProtectionAction = remediation.Action;
+    snapshot.AutonomousProtectionTarget = remediation.Target;
+    var status = protectionStatusService.Create(snapshot);
+    Check("Protection status exposes file quarantine review", status.Headline.Contains("File quarantine is ready", StringComparison.OrdinalIgnoreCase));
+}
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 2b: Defender history/remediation state cannot create a stale quarantine candidate ---");
+{
+    string quarantined = """
+    {"Available":true,"Threats":[{"ThreatID":10,"ThreatName":"Test","SeverityID":3,"DidThreatExecute":false,"IsActive":true,"Detections":[{"ThreatStatusID":3,"CurrentThreatExecutionStatusID":4,"ActionSuccess":true,"Resources":["file:_C:\\Temp\\already-quarantined.exe"]}]}]}
+    """;
+    var q = DefenderThreatEvidenceParser.Parse(quarantined, _ => true);
+    Check("Already-quarantined Defender detection not re-quarantined", !q.FileQuarantineCandidateAvailable);
+
+    string executing = """
+    {"Available":true,"Threats":[{"ThreatID":11,"ThreatName":"Test","SeverityID":4,"DidThreatExecute":true,"IsActive":true,"Detections":[{"ThreatStatusID":1,"CurrentThreatExecutionStatusID":3,"ActionSuccess":false,"Resources":["file:_C:\\Temp\\defender-working.exe"]}]}]}
+    """;
+    var e = DefenderThreatEvidenceParser.Parse(executing, _ => true);
+    Check("Defender remediation in progress is not raced", !e.FileQuarantineCandidateAvailable);
+
+    string nonFile = """
+    {"Available":true,"Threats":[{"ThreatID":12,"ThreatName":"Test","SeverityID":4,"DidThreatExecute":false,"IsActive":true,"Detections":[{"ThreatStatusID":1,"CurrentThreatExecutionStatusID":4,"ActionSuccess":false,"Resources":["regkey:_HKCU\\Software\\Bad"]}]}]}
+    """;
+    var n = DefenderThreatEvidenceParser.Parse(nonFile, _ => true);
+    Check("Non-file Defender threat is not invented as a file target", !n.FileQuarantineCandidateAvailable);
+    Check("Non-file active Defender threat remains visible", n.ActiveThreatCount == 1);
+
+    string inactive = """
+    {"Available":true,"Threats":[{"ThreatID":13,"ThreatName":"Old","SeverityID":4,"DidThreatExecute":true,"IsActive":false,"Detections":[{"ThreatStatusID":1,"CurrentThreatExecutionStatusID":4,"ActionSuccess":false,"Resources":["file:_C:\\Temp\\old.exe"]}]}]}
+    """;
+    var old = DefenderThreatEvidenceParser.Parse(inactive, _ => true);
+    Check("Past inactive Defender history is not treated as active", old.ActiveThreatCount == 0);
+    Check("Past inactive Defender history cannot trigger quarantine", !old.FileQuarantineCandidateAvailable);
+}
+Console.WriteLine();
+
 Console.WriteLine("--- Scenario 3: correlated network behavior requires approval ---");
 {
     var snapshot = BaseHealthy();
