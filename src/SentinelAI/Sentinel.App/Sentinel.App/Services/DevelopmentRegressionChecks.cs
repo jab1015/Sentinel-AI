@@ -108,6 +108,15 @@ namespace Sentinel.App.Services
                     flaggedNetwork.Contains("confidence 20%", StringComparison.OrdinalIgnoreCase),
                 "Current flagged-network quarantine question did not explain why containment is being withheld.");
 
+            string protectionStatus = responder.Answer(
+                "What is Sentinel doing about the flagged conditions and when will it take action against them?",
+                snapshot);
+            Require(protectionStatus.Contains("Protection status", StringComparison.OrdinalIgnoreCase) &&
+                    protectionStatus.Contains("20%", StringComparison.OrdinalIgnoreCase) &&
+                    protectionStatus.Contains("80%", StringComparison.OrdinalIgnoreCase) &&
+                    protectionStatus.Contains("No network containment is authorized", StringComparison.OrdinalIgnoreCase),
+                "Ask Sentinel protection-status answer diverged from deterministic live protection policy.");
+
             string process = responder.Answer(
                 "If you contain a process can you restore it?",
                 snapshot);
