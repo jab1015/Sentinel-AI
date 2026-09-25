@@ -78,6 +78,8 @@ Console.WriteLine("--- Scenario 3: correlated network behavior requires approval
     snapshot.PrimaryFlaggedConnectionProcessName = "sample.exe";
     snapshot.PrimaryFlaggedConnectionRemoteEndpoint = "203.0.113.10:443";
     snapshot.PrimaryFlaggedConnectionReason = "Connection requires review.";
+    snapshot.ConnectionIntelligenceConfidenceScore = 90;
+    snapshot.ConnectionIntelligenceHasCorroboratingEvidence = true;
     var result = investigationEngine.Investigate(snapshot);
     snapshot.InvestigationRequiresAttention = result.RequiresAttention;
     snapshot.InvestigationReasonCode = result.ReasonCode;
@@ -86,6 +88,28 @@ Console.WriteLine("--- Scenario 3: correlated network behavior requires approval
     Check("Correlated network finding", result.ReasonCode == "correlated-process-network-finding");
     Check("Approval required", remediation.Disposition == RemediationRecommendationEngine.RemediationDisposition.ApprovalRequired);
     Check("Block action prepared", remediation.Action == "block-outbound-endpoint");
+}
+Console.WriteLine();
+
+Console.WriteLine("--- Scenario 3a: correlated network evidence below containment threshold stays non-mutating ---");
+{
+    var snapshot = BaseHealthy();
+    snapshot.FlaggedProcessCount = 1;
+    snapshot.PrimaryFlaggedProcessName = "sample.exe";
+    snapshot.FlaggedConnectionCount = 1;
+    snapshot.PrimaryFlaggedConnectionProcessName = "sample.exe";
+    snapshot.PrimaryFlaggedConnectionRemoteEndpoint = "203.0.113.11:443";
+    snapshot.PrimaryFlaggedConnectionReason = "Connection correlates with a reviewed process.";
+    snapshot.ConnectionIntelligenceConfidenceScore = 45;
+    snapshot.ConnectionIntelligenceHasCorroboratingEvidence = true;
+    var result = investigationEngine.Investigate(snapshot);
+    snapshot.InvestigationRequiresAttention = result.RequiresAttention;
+    snapshot.InvestigationReasonCode = result.ReasonCode;
+    snapshot.GuidanceConfidencePercent = 45;
+    var remediation = remediationEngine.Evaluate(snapshot);
+    Check("Correlation may require attention", result.RequiresAttention);
+    Check("Sub-80 correlated network evidence does not expose firewall mutation", remediation.Action != "block-outbound-endpoint");
+    Check("Sub-80 correlated network evidence is not approval-gated containment", remediation.Disposition != RemediationRecommendationEngine.RemediationDisposition.ApprovalRequired);
 }
 Console.WriteLine();
 
