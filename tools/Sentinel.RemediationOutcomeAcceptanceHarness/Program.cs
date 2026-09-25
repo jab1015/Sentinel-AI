@@ -118,6 +118,52 @@ var identityValidation = approval.Validate(identityRequest, identitySnapshot, tr
 Check("Replacement process invalidates approval", !identityValidation.IsApproved);
 
 Console.WriteLine();
+Console.WriteLine("--- Defender file-quarantine approval identity ---");
+{
+    var defenderApproval = new RemediationApprovalCoordinator();
+    var defenderSnapshot = new SystemSnapshot
+    {
+        InvestigationRequiresAttention = true,
+        InvestigationReasonCode = "defender-active-file-threat",
+        GuidanceConfidencePercent = 100,
+        AutonomousProtectionRequiresUserApproval = true,
+        AutonomousProtectionAction = "quarantine-file",
+        AutonomousProtectionTarget = @"C:\Temp\defender-threat.exe",
+        DefenderThreatEvidenceAvailable = true,
+        DefenderActiveThreatCount = 1,
+        DefenderFileQuarantineCandidateAvailable = true,
+        DefenderPrimaryThreatId = 123456789,
+        DefenderPrimaryThreatFilePath = @"C:\Temp\defender-threat.exe",
+        DefenderPrimaryThreatName = "Trojan:Win32/SentinelAcceptance"
+    };
+
+    var defenderRequest = defenderApproval.CreateRequest(defenderSnapshot)!;
+    Check("Defender quarantine approval captures exact Threat ID",
+        defenderRequest.TargetDefenderThreatId == 123456789);
+
+    defenderSnapshot.DefenderPrimaryThreatId = 987654321;
+    var changedThreatValidation = defenderApproval.Validate(defenderRequest, defenderSnapshot, true);
+    Check("Different Defender Threat ID at same path invalidates approval",
+        !changedThreatValidation.IsApproved);
+
+    var candidateApproval = new RemediationApprovalCoordinator();
+    defenderSnapshot.DefenderPrimaryThreatId = 123456789;
+    defenderSnapshot.DefenderFileQuarantineCandidateAvailable = true;
+    var candidateRequest = candidateApproval.CreateRequest(defenderSnapshot)!;
+    defenderSnapshot.DefenderFileQuarantineCandidateAvailable = false;
+    var missingCandidateValidation = candidateApproval.Validate(candidateRequest, defenderSnapshot, true);
+    Check("Disappearing Defender file candidate invalidates approval",
+        !missingCandidateValidation.IsApproved);
+
+    var stableApproval = new RemediationApprovalCoordinator();
+    defenderSnapshot.DefenderFileQuarantineCandidateAvailable = true;
+    var stableRequest = stableApproval.CreateRequest(defenderSnapshot)!;
+    var stableValidation = stableApproval.Validate(stableRequest, defenderSnapshot, true);
+    Check("Unchanged Defender Threat ID and exact target retain approval",
+        stableValidation.IsApproved);
+}
+
+Console.WriteLine();
 Console.WriteLine("--- Approved remediation routing ---");
 Check("Service action routes to service coordinator",
     ApprovedRemediationRoutingPolicy.Resolve("restart-service") == ApprovedRemediationRoute.ServiceRestart);
