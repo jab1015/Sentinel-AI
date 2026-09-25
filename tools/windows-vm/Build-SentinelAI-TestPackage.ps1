@@ -193,7 +193,7 @@ try {
                 $now.AddDays(30),
                 $serialNumber)
             try {
-                $signingCert = $issuedLeaf.CopyWithPrivateKey($leafRsa)
+                $signingCert = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey($issuedLeaf, $leafRsa)
                 try {
                     if (-not $signingCert.HasPrivateKey) { throw 'Generated test signing certificate has no private key.' }
                     if ($signingCert.Subject -ne $expectedPublisher) {
