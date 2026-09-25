@@ -91,6 +91,8 @@ namespace Sentinel.App.Services
             new(true, true, action, string.IsNullOrWhiteSpace(target) ? "Windows" : target, summary, RemediationDisposition.GuidedUserAction);
 
         private static bool IsVerifiedNetworkFinding(SystemSnapshot snapshot) =>
+            snapshot.ConnectionIntelligenceHasCorroboratingEvidence &&
+            snapshot.ConnectionIntelligenceConfidenceScore >= 80 &&
             snapshot.InvestigationReasonCode is
                 "corroborated-network-finding" or
                 "correlated-process-network-finding" or
