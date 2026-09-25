@@ -117,6 +117,19 @@ namespace Sentinel.App.Services
                     protectionStatus.Contains("No network containment is authorized", StringComparison.OrdinalIgnoreCase),
                 "Ask Sentinel protection-status answer diverged from deterministic live protection policy.");
 
+            snapshot.DefenderThreatEvidenceAvailable = true;
+            snapshot.DefenderActiveThreatCount = 1;
+            snapshot.DefenderFileQuarantineCandidateAvailable = true;
+            snapshot.DefenderPrimaryThreatName = "Trojan:Win32/SentinelRegression";
+            snapshot.DefenderPrimaryThreatFilePath = @"C:\Temp\sentinel-regression.exe";
+            string defender = responder.Answer(
+                "Does Defender see any malware or active threats?",
+                snapshot);
+            Require(defender.Contains("1 active threat", StringComparison.OrdinalIgnoreCase) &&
+                    defender.Contains("SentinelRegression", StringComparison.OrdinalIgnoreCase) &&
+                    defender.Contains("approval-gated", StringComparison.OrdinalIgnoreCase),
+                "Ask Sentinel hid verified active Defender threat/quarantine evidence behind generic status text.");
+
             string process = responder.Answer(
                 "If you contain a process can you restore it?",
                 snapshot);
