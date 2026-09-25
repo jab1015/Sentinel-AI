@@ -20,11 +20,7 @@ $configuration = 'LocalDev'
 $expectedName = 'ModernMethods.SentinelAI'
 $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
 $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
-$rootCerPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestRoot.cer'
 $certObject = $null
-$rootCertObject = $null
-$leafTrustInstalled = $false
-$rootTrustInstalled = $false
 
 function Invoke-BoundedProcess {
     param(
@@ -140,103 +136,57 @@ try {
     $signedPackage = Join-Path $OutputDir $PackageName
     Copy-Item -LiteralPath $msixes[0].FullName -Destination $signedPackage -Force
 
-    $rootRsa = [Security.Cryptography.RSA]::Create(3072)
-    $leafRsa = [Security.Cryptography.RSA]::Create(3072)
+    $rsa = [Security.Cryptography.RSA]::Create(3072)
     try {
-        $now = [DateTimeOffset]::UtcNow
-        $rootDn = [Security.Cryptography.X509Certificates.X500DistinguishedName]::new('CN=Sentinel AI Ephemeral VM Test Root')
-        $rootRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
-            $rootDn,
-            $rootRsa,
+        $dn = [Security.Cryptography.X509Certificates.X500DistinguishedName]::new($expectedPublisher)
+        $request = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
+            $dn,
+            $rsa,
             [Security.Cryptography.HashAlgorithmName]::SHA256,
             [Security.Cryptography.RSASignaturePadding]::Pkcs1)
-        $rootRequest.CertificateExtensions.Add(
-            [Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true, $false, 0, $true))
-        $rootKeyUsage =
-            [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign -bor
-            [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::CrlSign
-        $rootRequest.CertificateExtensions.Add(
-            [Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new($rootKeyUsage, $true))
-        $rootRequest.CertificateExtensions.Add(
-            [Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new($rootRequest.PublicKey, $false))
+        $request.CertificateExtensions.Add(
+            [Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
+        $request.CertificateExtensions.Add(
+            [Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
+                [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,
+                $true))
+        $ekus = [Security.Cryptography.OidCollection]::new()
+        [void]$ekus.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3', 'Code Signing'))
+        $request.CertificateExtensions.Add(
+            [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($ekus, $true))
 
-        $rootSigningCert = $rootRequest.CreateSelfSigned($now.AddMinutes(-10), $now.AddDays(31))
+        $signingCert = $request.CreateSelfSigned(
+            [DateTimeOffset]::UtcNow.AddMinutes(-5),
+            [DateTimeOffset]::UtcNow.AddDays(30))
         try {
-            if (-not $rootSigningCert.HasPrivateKey) { throw 'Generated ephemeral CI root has no private key.' }
+            if (-not $signingCert.HasPrivateKey) { throw 'Generated test certificate has no private key.' }
+            if ($signingCert.Subject -ne $expectedPublisher) {
+                throw "Certificate subject '$($signingCert.Subject)' does not match package Publisher."
+            }
+
+            $passwordPlain = [Convert]::ToBase64String(
+                [Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+            Write-Output "::add-mask::$passwordPlain"
             [IO.File]::WriteAllBytes(
-                $rootCerPath,
-                $rootSigningCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-
-            $leafDn = [Security.Cryptography.X509Certificates.X500DistinguishedName]::new($expectedPublisher)
-            $leafRequest = [Security.Cryptography.X509Certificates.CertificateRequest]::new(
-                $leafDn,
-                $leafRsa,
-                [Security.Cryptography.HashAlgorithmName]::SHA256,
-                [Security.Cryptography.RSASignaturePadding]::Pkcs1)
-            $leafRequest.CertificateExtensions.Add(
-                [Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($false, $false, 0, $true))
-            $leafRequest.CertificateExtensions.Add(
-                [Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(
-                    [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature,
-                    $true))
-            $ekus = [Security.Cryptography.OidCollection]::new()
-            [void]$ekus.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3', 'Code Signing'))
-            $leafRequest.CertificateExtensions.Add(
-                [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($ekus, $true))
-            $leafRequest.CertificateExtensions.Add(
-                [Security.Cryptography.X509Certificates.X509SubjectKeyIdentifierExtension]::new($leafRequest.PublicKey, $false))
-
-            $serialNumber = [Security.Cryptography.RandomNumberGenerator]::GetBytes(16)
-            $issuedLeaf = $leafRequest.Create(
-                $rootSigningCert,
-                $now.AddMinutes(-5),
-                $now.AddDays(30),
-                $serialNumber)
-            try {
-                $signingCert = [Security.Cryptography.X509Certificates.RSACertificateExtensions]::CopyWithPrivateKey($issuedLeaf, $leafRsa)
-                try {
-                    if (-not $signingCert.HasPrivateKey) { throw 'Generated test signing certificate has no private key.' }
-                    if ($signingCert.Subject -ne $expectedPublisher) {
-                        throw "Certificate subject '$($signingCert.Subject)' does not match package Publisher."
-                    }
-
-                    $passwordPlain = [Convert]::ToBase64String(
-                        [Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
-                    Write-Output "::add-mask::$passwordPlain"
-                    [IO.File]::WriteAllBytes(
-                        $pfxPath,
-                        $signingCert.Export(
-                            [Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
-                            $passwordPlain))
-                    $publicCertPath = Join-Path $OutputDir $CertName
-                    [IO.File]::WriteAllBytes(
-                        $publicCertPath,
-                        $signingCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-                }
-                finally {
-                    $signingCert.Dispose()
-                }
-            }
-            finally {
-                $issuedLeaf.Dispose()
-            }
+                $pfxPath,
+                $signingCert.Export(
+                    [Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
+                    $passwordPlain))
+            $publicCertPath = Join-Path $OutputDir $CertName
+            [IO.File]::WriteAllBytes(
+                $publicCertPath,
+                $signingCert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
         }
         finally {
-            $rootSigningCert.Dispose()
+            $signingCert.Dispose()
         }
     }
     finally {
-        $leafRsa.Dispose()
-        $rootRsa.Dispose()
+        $rsa.Dispose()
     }
 
     $certObject = [Security.Cryptography.X509Certificates.X509Certificate2]::new((Join-Path $OutputDir $CertName))
-    $rootCertObject = [Security.Cryptography.X509Certificates.X509Certificate2]::new($rootCerPath)
     if ($certObject.HasPrivateKey) { throw 'Exported public VM certificate unexpectedly contains a private key.' }
-    if ($rootCertObject.HasPrivateKey) { throw 'Exported ephemeral CI root unexpectedly contains a private key.' }
-    if ($certObject.Issuer -ne $rootCertObject.Subject) {
-        throw 'Generated signing certificate is not chained to the ephemeral CI root.'
-    }
     $hasCodeSigningEku = $false
     foreach ($extension in $certObject.Extensions) {
         if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
@@ -251,41 +201,12 @@ try {
     Remove-Item -LiteralPath $pfxPath -Force
     Write-Host 'MSIX signing completed; runner-temp private PFX deleted.'
 
-    $publicCertPath = Join-Path $OutputDir $CertName
-    $certutil = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'certutil.exe'
-    if (-not (Test-Path -LiteralPath $certutil)) { $certutil = 'certutil.exe' }
-
-    Write-Host 'Installing ephemeral CI root and package-signing leaf into bounded CurrentUser trust stores...'
-    Invoke-BoundedProcess -FilePath $certutil -Arguments @('-user','-f','-addstore','Root',$rootCerPath) -TimeoutMilliseconds 30000 -LogPath 'windows-vm-test-signing.log' -Description 'certutil add ephemeral Root'
-    $rootTrustInstalled = $true
-    Invoke-BoundedProcess -FilePath $certutil -Arguments @('-user','-f','-addstore','TrustedPeople',$publicCertPath) -TimeoutMilliseconds 30000 -LogPath 'windows-vm-test-signing.log' -Description 'certutil add signing leaf to TrustedPeople'
-    $leafTrustInstalled = $true
-    Write-Host 'Ephemeral CI certificate chain trust installation completed.'
-
-    Write-Host 'Running bounded SignTool verification...'
-    Invoke-BoundedProcess -FilePath $SignTool -Arguments @('verify','/pa','/v',$signedPackage) -TimeoutMilliseconds 120000 -LogPath 'windows-vm-test-signing.log' -Description 'SignTool verify'
-    Write-Host 'SignTool verification completed.'
-
-    # Keep the independent PowerShell Authenticode check, but run it in a bounded child
-    # process so certificate-chain/provider stalls cannot consume the entire CI job.
-    $pwsh = (Get-Command 'pwsh.exe' -ErrorAction Stop).Source
-    $safePackage = $signedPackage.Replace("'", "''", [StringComparison]::Ordinal)
-    $safeThumbprint = $certObject.Thumbprint.Replace("'", "''", [StringComparison]::Ordinal)
-    $safePublisher = $expectedPublisher.Replace("'", "''", [StringComparison]::Ordinal)
-    $authenticodeScript = @"
-`$signature = Get-AuthenticodeSignature -LiteralPath '$safePackage'
-if (`$signature.Status -ne 'Valid') { Write-Error "Authenticode validation failed: `$($signature.Status) - `$($signature.StatusMessage)"; exit 41 }
-if (`$null -eq `$signature.SignerCertificate) { Write-Error 'Authenticode verification did not return a signer certificate.'; exit 42 }
-if (`$signature.SignerCertificate.Thumbprint -ne '$safeThumbprint') { Write-Error 'Signed package signer does not match the generated VM test certificate.'; exit 43 }
-if (`$signature.SignerCertificate.Subject -ne '$safePublisher') { Write-Error "Signed package subject does not match the package Publisher."; exit 44 }
-Write-Output "AUTHENTICODE_STATUS=Valid"
-Write-Output "AUTHENTICODE_THUMBPRINT=`$($signature.SignerCertificate.Thumbprint)"
-Write-Output "AUTHENTICODE_SUBJECT=`$($signature.SignerCertificate.Subject)"
-"@
-    $encodedAuthenticode = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($authenticodeScript))
-    Write-Host 'Running bounded independent Authenticode verification...'
-    Invoke-BoundedProcess -FilePath $pwsh -Arguments @('-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',$encodedAuthenticode) -TimeoutMilliseconds 60000 -LogPath 'windows-vm-test-signing.log' -Description 'PowerShell Authenticode verification'
-    Write-Host "Package signature is valid and bound to $expectedPublisher."
+    # The artifact intentionally carries only the public self-signed test certificate.
+    # Final Windows signature/trust enforcement is performed by Add-AppxPackage in the
+    # workflow after the certificate is placed in LocalMachine\TrustedPeople. That is
+    # the same Windows package-deployment path used by the VM installer and fails closed
+    # on tampering, signer mismatch, or an invalid package signature.
+    Write-Host 'MSIX signed. Final signature/trust validation will be enforced by Windows package deployment.'
 
     $unpackRoot = Join-Path $env:RUNNER_TEMP 'sentinel-windows-vm-test-unpacked'
     if (Test-Path $unpackRoot) { Remove-Item $unpackRoot -Recurse -Force }
@@ -334,8 +255,8 @@ Write-Output "AUTHENTICODE_SUBJECT=`$($signature.SignerCertificate.Subject)"
         "Certificate=$CertName",
         "CertificateThumbprint=$($certObject.Thumbprint)",
         "SHA256=$hash",
-        'Signing=Ephemeral runner-only leaf PFX chained to an ephemeral CI-only CA root; public leaf CER only retained',
-        'SignatureValidation=SignTool /pa plus Get-AuthenticodeSignature against temporary runner-only chain trust',
+        'Signing=Ephemeral runner-only self-signed code-signing PFX; public CER only retained',
+        'SignatureValidation=Windows Add-AppxPackage deployment after LocalMachine TrustedPeople trust, plus launch smoke test',
         'ManifestRegistration=PASS',
         'RequiredBinaries=PASS',
         'PEArchitecture=PASS',
@@ -350,29 +271,8 @@ Write-Output "AUTHENTICODE_SUBJECT=`$($signature.SignerCertificate.Subject)"
     Write-Host 'WINDOWS VM LOCALDEV TEST PACKAGE QUALIFICATION: PASS'
 }
 finally {
-    $certutilCleanup = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'certutil.exe'
-    if (-not (Test-Path -LiteralPath $certutilCleanup)) { $certutilCleanup = 'certutil.exe' }
-
-    if ($certObject -and $leafTrustInstalled) {
-        try {
-            Invoke-BoundedProcess -FilePath $certutilCleanup -Arguments @('-user','-delstore','TrustedPeople',$certObject.Thumbprint) -TimeoutMilliseconds 20000 -LogPath 'windows-vm-test-signing.log' -Description 'certutil remove signing leaf'
-        }
-        catch {
-            Write-Warning "Could not verify cleanup of the ephemeral signing leaf: $($_.Exception.Message)"
-        }
-    }
-
-    if ($rootCertObject -and $rootTrustInstalled) {
-        try {
-            Invoke-BoundedProcess -FilePath $certutilCleanup -Arguments @('-user','-delstore','Root',$rootCertObject.Thumbprint) -TimeoutMilliseconds 20000 -LogPath 'windows-vm-test-signing.log' -Description 'certutil remove ephemeral Root'
-        }
-        catch {
-            Write-Warning "Could not verify cleanup of the ephemeral CI root: $($_.Exception.Message)"
-        }
-    }
-
     if ($certObject) { $certObject.Dispose() }
-    if ($rootCertObject) { $rootCertObject.Dispose() }
-    if (Test-Path -LiteralPath $pfxPath) { Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue }
-    if (Test-Path -LiteralPath $rootCerPath) { Remove-Item -LiteralPath $rootCerPath -Force -ErrorAction SilentlyContinue }
+    if (Test-Path -LiteralPath $pfxPath) {
+        Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+    }
 }
