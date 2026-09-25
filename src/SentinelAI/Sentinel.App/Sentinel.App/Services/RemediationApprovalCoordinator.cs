@@ -56,7 +56,12 @@ namespace Sentinel.App.Services
                     : 0,
                 TargetProcessStartUtc: snapshot.AutonomousProtectionAction.Equals("contain-process", StringComparison.OrdinalIgnoreCase)
                     ? snapshot.PrimaryFlaggedProcessStartUtc
-                    : null);
+                    : null,
+                TargetDefenderThreatId:
+                    snapshot.AutonomousProtectionAction.Equals("quarantine-file", StringComparison.OrdinalIgnoreCase) &&
+                    snapshot.InvestigationReasonCode.Equals("defender-active-file-threat", StringComparison.OrdinalIgnoreCase)
+                        ? snapshot.DefenderPrimaryThreatId
+                        : 0);
 
             lock (_sync)
             {
@@ -109,12 +114,25 @@ namespace Sentinel.App.Services
                  currentSnapshot.PrimaryFlaggedProcessStartUtc.HasValue &&
                  currentSnapshot.PrimaryFlaggedProcessStartUtc.Value == request.TargetProcessStartUtc.Value);
 
+            bool requiresDefenderThreatIdentity =
+                request.Action.Equals("quarantine-file", StringComparison.OrdinalIgnoreCase) &&
+                request.ReasonCode.Equals("defender-active-file-threat", StringComparison.OrdinalIgnoreCase);
+            bool defenderThreatIdentityMatches =
+                !requiresDefenderThreatIdentity ||
+                (request.TargetDefenderThreatId > 0 &&
+                 currentSnapshot.DefenderThreatEvidenceAvailable &&
+                 currentSnapshot.DefenderActiveThreatCount > 0 &&
+                 currentSnapshot.DefenderFileQuarantineCandidateAvailable &&
+                 currentSnapshot.DefenderPrimaryThreatId == request.TargetDefenderThreatId &&
+                 string.Equals(currentSnapshot.DefenderPrimaryThreatFilePath, request.Target, StringComparison.OrdinalIgnoreCase));
+
             bool stillMatches =
                 currentSnapshot.InvestigationRequiresAttention &&
                 currentSnapshot.AutonomousProtectionRequiresUserApproval &&
                 string.Equals(request.Action, currentSnapshot.AutonomousProtectionAction, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(request.Target, currentSnapshot.AutonomousProtectionTarget, StringComparison.OrdinalIgnoreCase) &&
                 processIdentityMatches &&
+                defenderThreatIdentityMatches &&
                 string.Equals(request.ReasonCode, currentSnapshot.InvestigationReasonCode, StringComparison.OrdinalIgnoreCase);
 
             if (!stillMatches)
@@ -152,6 +170,14 @@ namespace Sentinel.App.Services
                     "This approval can be used once, Sentinel will revalidate the same investigation before acting, and the resulting rule will be verified afterward.";
             }
 
+            if (snapshot.AutonomousProtectionAction.Equals("quarantine-file", StringComparison.OrdinalIgnoreCase) &&
+                snapshot.InvestigationReasonCode.Equals("defender-active-file-threat", StringComparison.OrdinalIgnoreCase))
+            {
+                return
+                    $"Microsoft Defender still reports '{snapshot.DefenderPrimaryThreatName}' as an active threat and Sentinel verified the exact file target. " +
+                    $"This approval is bound to Defender Threat ID {snapshot.DefenderPrimaryThreatId} and the exact path shown below. Sentinel will recollect Defender evidence immediately before acting; if the threat identity or target changes, the approval is discarded.";
+            }
+
             return
                 $"Sentinel investigated the condition and recommends '{snapshot.AutonomousProtectionAction}' for '{snapshot.AutonomousProtectionTarget}'. " +
                 "The action will apply only to this exact target, this approval can be used once, and Sentinel will verify the result afterward.";
@@ -168,7 +194,8 @@ namespace Sentinel.App.Services
             string Title,
             string Summary,
             int TargetProcessId = 0,
-            DateTimeOffset? TargetProcessStartUtc = null);
+            DateTimeOffset? TargetProcessStartUtc = null,
+            long TargetDefenderThreatId = 0);
 
         public sealed record ApprovalValidationResult(
             bool IsApproved,
