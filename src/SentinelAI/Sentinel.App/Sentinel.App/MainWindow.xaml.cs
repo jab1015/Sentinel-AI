@@ -22,6 +22,7 @@ namespace Sentinel.App
         private readonly AutomaticOptimizationCoordinator _automaticOptimizationCoordinator = new();
         private readonly IntegratedMaintenanceCoordinator _integratedMaintenanceCoordinator = new();
         private readonly StoreSubscriptionService _subscriptionService = new();
+        private readonly ProtectionStatusSummaryService _protectionStatusSummaryService = new();
         private readonly LivePersistentExceptionCoordinator _livePersistentExceptionCoordinator = new();
         private readonly AdaptiveDiscoveryCadenceService _adaptiveDiscoveryCadenceService = new();
         private readonly LiveEventDrivenDiscoveryCoordinator _liveEventDrivenDiscoveryCoordinator = new();
@@ -148,6 +149,12 @@ namespace Sentinel.App
                 SecurityText.Text = string.Equals(snapshot.NetworkConnectionMonitoringStatus, "Subscription required", StringComparison.OrdinalIgnoreCase)
                     ? $"Basic Windows security status: Defender {FormatSecurityEvidence(snapshot.DefenderStatus)} | Firewall {FormatSecurityEvidence(snapshot.FirewallStatus)} | Advanced Sentinel security requires a subscription"
                     : $"Windows Security Evidence: Defender {FormatSecurityEvidence(snapshot.DefenderStatus)} | Firewall {FormatSecurityEvidence(snapshot.FirewallStatus)} | Advanced Sentinel security active";
+                ProtectionStatusSummaryService.ProtectionStatusSummary protectionStatus = _protectionStatusSummaryService.Create(snapshot);
+                ProtectionHeadlineText.Text = protectionStatus.Headline;
+                ProtectionFlaggedConditionsText.Text = protectionStatus.FlaggedConditions;
+                ProtectionCurrentResponseText.Text = protectionStatus.CurrentResponse;
+                ProtectionActionCriteriaText.Text = protectionStatus.ActionCriteria;
+                ProtectionActionStateText.Text = protectionStatus.ActionState;
                 CriticalEventsText.Text = snapshot.CriticalEventCount.ToString(); ErrorEventsText.Text = snapshot.ErrorEventCount.ToString();
                 LatestEventSummaryText.Text = snapshot.LatestEventTime.HasValue ? $"{snapshot.LatestEventTime.Value:MMM d, yyyy h:mm:ss tt} | {snapshot.LatestEventSource}" : "No recent critical or error events.";
                 LatestEventMessageText.Text = snapshot.LatestEventMessage;
