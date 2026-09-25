@@ -22,6 +22,32 @@ namespace Sentinel.App.Services
             if (!snapshot.InvestigationRequiresAttention)
                 return RemediationRecommendation.None("The investigation does not require action.");
 
+            if (snapshot.InvestigationReasonCode.Equals("defender-active-file-threat", StringComparison.OrdinalIgnoreCase) &&
+                snapshot.DefenderThreatEvidenceAvailable &&
+                snapshot.DefenderActiveThreatCount > 0 &&
+                snapshot.DefenderFileQuarantineCandidateAvailable &&
+                HasValue(snapshot.DefenderPrimaryThreatFilePath))
+            {
+                return new RemediationRecommendation(
+                    true,
+                    true,
+                    "quarantine-file",
+                    snapshot.DefenderPrimaryThreatFilePath,
+                    $"Microsoft Defender still reports {snapshot.DefenderPrimaryThreatName} as active and Sentinel verified the exact affected file still exists. Quarantine requires approval; Sentinel will re-collect Defender evidence and revalidate this same exact file immediately before execution.",
+                    RemediationDisposition.ApprovalRequired);
+            }
+
+            if (snapshot.InvestigationReasonCode.Equals("defender-active-threat", StringComparison.OrdinalIgnoreCase))
+            {
+                return new RemediationRecommendation(
+                    false,
+                    false,
+                    "observe-only",
+                    "None",
+                    "Microsoft Defender reports an active threat, but Sentinel does not have an exact existing unresolved file resource that can be safely moved into Sentinel quarantine. Review Windows Security while Sentinel continues monitoring.",
+                    RemediationDisposition.ObserveOnly);
+            }
+
             if (!snapshot.DefenderEnabled)
                 return Automatic("refresh-security-state", "Microsoft Defender", "Sentinel can safely refresh the current Windows security state automatically before deciding whether user action is required.");
 
