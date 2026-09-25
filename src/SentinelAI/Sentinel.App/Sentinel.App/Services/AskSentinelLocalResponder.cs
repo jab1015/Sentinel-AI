@@ -18,6 +18,7 @@ namespace Sentinel.App.Services
         private readonly PersistentInvestigationMemoryService _persistentMemory = new();
         private readonly PerformanceBaselineService _performanceBaseline = new();
         private readonly StartupLogonEvidenceProvider _startupLogon = new();
+        private readonly ProtectionStatusSummaryService _protectionStatus = new();
 
         public string Answer(string question, SystemSnapshot snapshot)
         {
@@ -46,6 +47,7 @@ namespace Sentinel.App.Services
             if (IsStartupLogonPerformanceQuestion(q)) return _startupLogon.GetStartupLogonEvidence(snapshot);
             if (IsPerformanceQuestion(q)) return BuildPerformanceAnswer(snapshot);
             if (IsBroadComputerOverviewQuestion(q)) return BuildComputerOverviewAnswer(snapshot);
+            if (IsProtectionDecisionQuestion(q)) return BuildProtectionDecisionAnswer(snapshot);
 
             string? remediationIntent = BuildRemediationIntentAnswer(q, snapshot);
             if (!string.IsNullOrWhiteSpace(remediationIntent)) return remediationIntent;
@@ -172,6 +174,26 @@ namespace Sentinel.App.Services
                 return snapshot.InvestigationRequiresAttention ? Safe(snapshot.GuidanceRecommendedAction, snapshot.Recommendation) : "No action is required based on current verified evidence. Sentinel will continue monitoring.";
 
             return InsufficientEvidence;
+        }
+
+        private static bool IsProtectionDecisionQuestion(string question) =>
+            Has(question,
+                "what are you doing about", "what is sentinel doing about", "what are you doing with",
+                "when will you act", "when do you act", "when does sentinel act",
+                "when will sentinel act", "take action against", "action against",
+                "what happens to flagged", "flagged conditions", "flagged condition status",
+                "protection status");
+
+        private string BuildProtectionDecisionAnswer(SystemSnapshot snapshot)
+        {
+            ProtectionStatusSummaryService.ProtectionStatusSummary status = _protectionStatus.Create(snapshot);
+            return
+                $"Protection status\n\n" +
+                $"{status.Headline}\n\n" +
+                $"Flagged conditions\n{status.FlaggedConditions}\n\n" +
+                $"What Sentinel is doing\n{status.CurrentResponse}\n\n" +
+                $"When Sentinel will act\n{status.ActionCriteria}\n\n" +
+                $"Current action state\n{status.ActionState}";
         }
 
         private static string? BuildRemediationIntentAnswer(string question, SystemSnapshot snapshot)
