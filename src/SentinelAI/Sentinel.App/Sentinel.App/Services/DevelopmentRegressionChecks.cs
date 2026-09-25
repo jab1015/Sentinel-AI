@@ -85,8 +85,28 @@ namespace Sentinel.App.Services
             string file = responder.Answer(
                 "If you quarantine a file can I restore it later?",
                 snapshot);
-            Require(file.Contains("File quarantine and restore", StringComparison.OrdinalIgnoreCase),
-                "File quarantine/restore intent did not use the reversible quarantine explanation.");
+            Require(file.Contains("File quarantine, restore, and the Protection Center", StringComparison.OrdinalIgnoreCase) &&
+                    file.Contains("requires your approval", StringComparison.OrdinalIgnoreCase) &&
+                    file.Contains("Restore and Delete Permanently are manual", StringComparison.OrdinalIgnoreCase),
+                "File quarantine/restore intent did not preserve approval-gated quarantine and manual recovery semantics.");
+
+            string quarantineUi = responder.Answer(
+                "What is the quarantine button for if I can't manually quarantine or restore things?",
+                snapshot);
+            Require(quarantineUi.Contains("Protection Center", StringComparison.OrdinalIgnoreCase) &&
+                    quarantineUi.Contains("not a file picker", StringComparison.OrdinalIgnoreCase) &&
+                    quarantineUi.Contains("Restore and Delete Permanently are manual", StringComparison.OrdinalIgnoreCase),
+                "Quarantine UI explanation did not describe the actual management/recovery behavior.");
+
+            snapshot.ConnectionIntelligenceConfidenceScore = 20;
+            snapshot.ConnectionIntelligenceHasCorroboratingEvidence = false;
+            string flaggedNetwork = responder.Answer(
+                "Can you quarantine the flagged condition?",
+                snapshot);
+            Require(flaggedNetwork.Contains("Network containment and rollback", StringComparison.OrdinalIgnoreCase) &&
+                    flaggedNetwork.Contains("uncorroborated", StringComparison.OrdinalIgnoreCase) &&
+                    flaggedNetwork.Contains("confidence 20%", StringComparison.OrdinalIgnoreCase),
+                "Current flagged-network quarantine question did not explain why containment is being withheld.");
 
             string process = responder.Answer(
                 "If you contain a process can you restore it?",
