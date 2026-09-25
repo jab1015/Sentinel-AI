@@ -113,6 +113,27 @@ namespace Sentinel.App.Services
             }
         }
 
+        public async Task RefreshForRemediationAsync()
+        {
+            await _refreshGate.WaitAsync();
+            try
+            {
+                // Exact-target approval must not rely on cadence-cached evidence.
+                _lastDefenderThreatRefresh = DateTime.MinValue;
+                _lastProcessRefresh = DateTime.MinValue;
+                _lastProcessLineageRefresh = DateTime.MinValue;
+                _lastCommandLineRefresh = DateTime.MinValue;
+                _lastServiceRefresh = DateTime.MinValue;
+                _lastActiveConnectionRefresh = DateTime.MinValue;
+                _lastSecurityRefresh = DateTime.MinValue;
+                await RefreshCoreAsync();
+            }
+            finally
+            {
+                _refreshGate.Release();
+            }
+        }
+
         private async Task RefreshCoreAsync()
         {
             DateTime now = DateTime.Now;
