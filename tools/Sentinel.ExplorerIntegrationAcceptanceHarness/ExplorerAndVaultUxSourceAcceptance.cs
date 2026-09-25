@@ -73,6 +73,11 @@ internal static class ExplorerAndVaultUxSourceAcceptance
         Require(mainWindow.Contains("x:Name=\"OpenVaultButton\"", StringComparison.Ordinal) &&
                 mainWindow.Contains("x:Name=\"OpenQuarantineButton\"", StringComparison.Ordinal),
             "Primary security/privacy navigation actions are missing from the native rail.");
+        Require(mainWindow.Contains("Protection Center", StringComparison.Ordinal) &&
+                mainWindow.Contains("x:Name=\"ProtectionStatusBorder\"", StringComparison.Ordinal) &&
+                mainWindow.Contains("x:Name=\"ProtectionActionCriteriaText\"", StringComparison.Ordinal) &&
+                mainWindow.Contains("x:Name=\"ProtectionActionStateText\"", StringComparison.Ordinal),
+            "Protection Center/status UX no longer exposes flagged-condition handling and action criteria.");
         Require(mainWindow.Contains("<FontIcon", StringComparison.Ordinal) &&
                 !mainWindow.Contains("🔒", StringComparison.Ordinal) &&
                 !mainWindow.Contains("🛡", StringComparison.Ordinal),
