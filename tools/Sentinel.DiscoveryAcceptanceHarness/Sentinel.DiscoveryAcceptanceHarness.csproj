@@ -13,5 +13,6 @@
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\InvestigationEngine.cs" Link="InvestigationEngine.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\RemediationRecommendationEngine.cs" Link="RemediationRecommendationEngine.cs" />
     <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\ProtectionStatusSummaryService.cs" Link="ProtectionStatusSummaryService.cs" />
+    <Compile Include="..\..\src\SentinelAI\Sentinel.App\Sentinel.App\Services\DefenderThreatEvidenceParser.cs" Link="DefenderThreatEvidenceParser.cs" />
   </ItemGroup>
 </Project>
