@@ -102,14 +102,31 @@ jobs:
           if (-not (Test-Path -LiteralPath $certificatePath)) { throw "Missing VM certificate: $certificatePath" }
 
           $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($certificatePath)
-          $stores = @('TrustedPeople')
+          $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
+          if ($certificate.Subject -ne $expectedPublisher) {
+            throw "Unexpected VM signing certificate subject '$($certificate.Subject)'."
+          }
+          if ($certificate.HasPrivateKey) {
+            throw 'The public VM test certificate unexpectedly contains a private key.'
+          }
+
+          $trustedPeoplePath = "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
           try {
-            foreach ($storeName in $stores) {
-              $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-              $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-              $store.Add($certificate)
-              $store.Close()
+            if (-not (Test-Path -LiteralPath $trustedPeoplePath)) {
+              Write-Host 'Trusting the VM test signing certificate in LocalMachine\TrustedPeople...'
+              Import-Certificate -FilePath $certificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
             }
+
+            $signature = Get-AuthenticodeSignature -LiteralPath $package
+            if ($null -eq $signature.SignerCertificate) {
+              throw 'The signed MSIX did not expose a signer certificate.'
+            }
+            if ($signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+              throw 'The MSIX signer does not match SentinelAI-TestSigning.cer.'
+            }
+            Write-Host "Signer identity matches expected VM certificate: $($certificate.Thumbprint)"
+            Write-Host "Pre-deployment Authenticode status: $($signature.Status) - $($signature.StatusMessage)"
+            Write-Host 'Add-AppxPackage will now perform the authoritative Windows package signature/trust validation.'
 
             $existing = @(Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue)
             foreach ($entry in $existing) {
@@ -168,14 +185,11 @@ jobs:
             Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue | ForEach-Object {
               Remove-AppxPackage -Package $_.PackageFullName -ErrorAction SilentlyContinue
             }
-            foreach ($storeName in $stores) {
-              try {
-                $store = [Security.Cryptography.X509Certificates.X509Store]::new($storeName, [Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-                $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-                $store.Remove($certificate)
-                $store.Close()
-              } catch {}
-            }
+            try {
+              if (Test-Path -LiteralPath $trustedPeoplePath) {
+                Remove-Item -LiteralPath $trustedPeoplePath -Force -ErrorAction SilentlyContinue
+              }
+            } catch {}
             $certificate.Dispose()
           }
 
@@ -192,7 +206,7 @@ jobs:
         shell: pwsh
         run: |
           Get-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PACKAGE-METADATA.txt')
-          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, test signature, package contents, manifest registration, PE architecture, helpers, public certificate, installation, and 10-second process launch smoke test validated.'
+          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, signer identity, Windows package deployment signature/trust validation, package contents, manifest registration, PE architecture, helpers, public certificate, installation, and 10-second process launch smoke test validated.'
           Write-Host 'Release x64 app was separately compiled to prove the authoritative Store/gateway entitlement path remains buildable.'
 
       - name: Upload package build diagnostics on failure
