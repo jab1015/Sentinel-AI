@@ -94,6 +94,19 @@ namespace Sentinel.App.Models
         public bool FirewallEnabled { get; set; }
         public string DefenderStatus { get; set; } = "Loading...";
         public string FirewallStatus { get; set; } = "Loading...";
+        public bool DefenderThreatEvidenceAvailable { get; set; }
+        public int DefenderActiveThreatCount { get; set; }
+        public bool DefenderFileQuarantineCandidateAvailable { get; set; }
+        public long DefenderPrimaryThreatId { get; set; }
+        public string DefenderPrimaryThreatName { get; set; } = "None";
+        public int DefenderPrimaryThreatSeverityId { get; set; }
+        public bool DefenderPrimaryThreatDidExecute { get; set; }
+        public string DefenderPrimaryThreatFilePath { get; set; } = "None";
+        public int DefenderPrimaryThreatStatusId { get; set; }
+        public int DefenderPrimaryThreatExecutionStatusId { get; set; }
+        public bool DefenderPrimaryThreatActionSuccess { get; set; }
+        public DateTimeOffset? DefenderPrimaryThreatDetectedAtUtc { get; set; }
+        public string DefenderThreatSummary { get; set; } = "Microsoft Defender active-threat evidence has not been collected yet.";
         public bool EventLogMonitoringAvailable { get; set; }
         public int CriticalEventCount { get; set; }
         public int ErrorEventCount { get; set; }
