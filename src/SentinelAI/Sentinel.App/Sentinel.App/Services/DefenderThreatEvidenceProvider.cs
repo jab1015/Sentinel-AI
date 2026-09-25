@@ -28,12 +28,10 @@ namespace Sentinel.App.Services
             const string command = @"
 $ErrorActionPreference = 'Stop'
 $active = @(Get-MpThreat -ErrorAction Stop | Where-Object { $_.IsActive -eq $true })
-$detections = @(Get-MpThreatDetection -ErrorAction Stop)
 $items = @(
     foreach ($t in $active) {
         $matching = @(
-            $detections |
-                Where-Object { [Int64]$_.ThreatID -eq [Int64]$t.ThreatID } |
+            Get-MpThreatDetection -ThreatID ([Int64]$t.ThreatID) -ErrorAction Stop |
                 ForEach-Object {
                     [pscustomobject]@{
                         ThreatStatusID = [int]$_.ThreatStatusID
