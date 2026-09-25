@@ -150,6 +150,8 @@ namespace Sentinel.App.Services
         {
             List<string> parts = new();
 
+            if (snapshot.DefenderActiveThreatCount > 0)
+                parts.Add($"Defender: {snapshot.DefenderActiveThreatCount} active threat(s) ({Value(snapshot.DefenderPrimaryThreatName, "name unavailable")})");
             if (snapshot.FlaggedConnectionCount > 0)
                 parts.Add($"Network: {snapshot.FlaggedConnectionCount} flagged ({Value(snapshot.PrimaryFlaggedConnectionRemoteEndpoint, "target unavailable")})");
             if (snapshot.FlaggedProcessCount > 0)
@@ -164,7 +166,7 @@ namespace Sentinel.App.Services
                 parts.Add($"Authentication: anomaly detected ({snapshot.AuthenticationAnomalyConfidenceScore}% confidence)");
 
             return parts.Count == 0
-                ? "No currently flagged process, network, service, startup, scheduled-task, or authentication condition."
+                ? "No current active Defender threat or flagged process, network, service, startup, scheduled-task, or authentication condition."
                 : string.Join(" • ", parts);
         }
 
