@@ -46,10 +46,10 @@
                     </Border>
 
                     <TextBlock Text="PROTECTION" Margin="4,10,0,2" FontSize="10" CharacterSpacing="90" Foreground="#6F88A8"/>
-                    <Button x:Name="OpenQuarantineButton" Click="OpenQuarantineButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" Background="Transparent" BorderBrush="Transparent" AutomationProperties.Name="Open Quarantine Manager">
+                    <Button x:Name="OpenQuarantineButton" Click="OpenQuarantineButton_Click" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="12,10" Background="Transparent" BorderBrush="Transparent" AutomationProperties.Name="Open Protection Center">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <FontIcon Glyph="&#xEA18;" FontSize="15" Foreground="#A9C7EA"/>
-                            <TextBlock Text="Quarantine" FontSize="14" Foreground="#E7F0FB" VerticalAlignment="Center"/>
+                            <TextBlock Text="Protection Center" FontSize="14" Foreground="#E7F0FB" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
 
@@ -178,6 +178,30 @@
                             </StackPanel>
                         </Border>
                     </Grid>
+
+                    <Border x:Name="ProtectionStatusBorder" Background="#0C1524" BorderBrush="#244A76" BorderThickness="1" CornerRadius="12" Padding="18">
+                        <StackPanel Spacing="11">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Protection status" FontSize="18" FontWeight="SemiBold" Foreground="White" AutomationProperties.HeadingLevel="Level2"/>
+                                <TextBlock x:Name="ProtectionHeadlineText" Text="Sentinel is evaluating current protection evidence." FontSize="14" FontWeight="SemiBold" Foreground="#7DD3FC" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="FLAGGED CONDITIONS" FontSize="10" CharacterSpacing="80" Foreground="#8FA8C7"/>
+                                <TextBlock x:Name="ProtectionFlaggedConditionsText" Text="Collecting current flagged-condition evidence…" FontSize="12" Foreground="#D7E0EC" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="WHAT SENTINEL IS DOING" FontSize="10" CharacterSpacing="80" Foreground="#8FA8C7"/>
+                                <TextBlock x:Name="ProtectionCurrentResponseText" Text="Sentinel is collecting and correlating evidence." FontSize="12" Foreground="#D7E0EC" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="WHEN SENTINEL WILL ACT" FontSize="10" CharacterSpacing="80" Foreground="#8FA8C7"/>
+                                <TextBlock x:Name="ProtectionActionCriteriaText" Text="Sentinel requires verified evidence and a supported exact-target remediation path before changing Windows." FontSize="12" Foreground="#D7E0EC" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Border Background="#09111D" CornerRadius="8" Padding="11">
+                                <TextBlock x:Name="ProtectionActionStateText" Text="No action has been authorized yet." FontSize="12" FontWeight="SemiBold" Foreground="#CBE7FF" TextWrapping="Wrap"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
 
                     <Border x:Name="IssueSummaryBorder" Background="#171522" BorderBrush="#8B2B33" BorderThickness="1" CornerRadius="12" Padding="18" Visibility="Collapsed">
                         <StackPanel Spacing="12">
