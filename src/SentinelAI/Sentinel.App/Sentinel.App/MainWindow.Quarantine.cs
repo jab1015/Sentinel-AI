@@ -10,7 +10,7 @@ namespace Sentinel.App
         {
             if (_quarantineManagerWindow is null)
             {
-                _quarantineManagerWindow = new QuarantineManagerWindow();
+                _quarantineManagerWindow = new QuarantineManagerWindow(() => _engine.CurrentSnapshot);
                 _quarantineManagerWindow.Closed += (_, _) => _quarantineManagerWindow = null;
             }
 
