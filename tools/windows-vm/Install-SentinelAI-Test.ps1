@@ -12,7 +12,7 @@ Set-Location $PSScriptRoot
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw 'This installer must run with Administrator permission. Use Install-SentinelAI-Test.cmd.'
     }
@@ -129,7 +129,7 @@ if ($null -ne $expectedHash) {
     Write-Host 'Package hash matches SHA256SUMS.txt.'
 }
 
-$certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
+$certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
 try {
     $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
     if ($certificate.Subject -ne $expectedPublisher) {
