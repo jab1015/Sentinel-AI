@@ -8,15 +8,21 @@ if not exist "%SCRIPT%" (
   exit /b 2
 )
 
-echo Sentinel AI Windows VM test installer
-echo Requesting Administrator permission...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p = Start-Process -FilePath 'powershell.exe' -Verb RunAs -PassThru -Wait -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','"%SCRIPT%"'); exit $p.ExitCode"
+net session >nul 2>&1
+if not "%ERRORLEVEL%"=="0" (
+  echo Sentinel AI Windows VM test installer
+  echo Requesting Administrator permission...
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'cmd.exe' -Verb RunAs -ArgumentList '/c ""%~f0""'"
+  exit /b 0
+)
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%"
 set "RC=%ERRORLEVEL%"
 
 if not "%RC%"=="0" (
   echo.
   echo Sentinel AI installation or launch verification failed.
-  echo A SentinelAI-LaunchDiagnostics-*.txt file should be in the extracted package folder if launch diagnostics were available.
+  echo A SentinelAI-LaunchDiagnostics-*.txt file should be in this folder if launch diagnostics were available.
   echo Please send that diagnostics file for review.
   pause
   exit /b %RC%
