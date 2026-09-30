@@ -5,6 +5,7 @@
 
 using Microsoft.Win32;
 using System;
+using System.Threading.Tasks;
 using Windows.ApplicationModel;
 
 namespace Sentinel.App.Services
@@ -16,6 +17,33 @@ namespace Sentinel.App.Services
         private const string LegacyValueName = "Sentinel AI";
         private const string StartupPreferenceValueName = "StartWithWindows";
         private const string StartupTaskId = "SentinelStartupTask";
+
+        public async Task<StartupRegistrationResult> EnsureRegisteredAndVerifyAsync()
+        {
+            RemoveLegacyRunRegistration();
+            try
+            {
+                StartupTask task = await StartupTask.GetAsync(StartupTaskId);
+                if (!GetUserStartupPreference())
+                {
+                    if (task.State == StartupTaskState.Enabled) task.Disable();
+                    return new(false, false, "Startup is disabled by the user.");
+                }
+
+                return task.State switch
+                {
+                    StartupTaskState.Enabled => new(true, false, "Sentinel AI packaged startup task is enabled and verified."),
+                    StartupTaskState.DisabledByUser => new(false, false, "Windows reports that startup was disabled by the user. Sentinel will not override that choice."),
+                    StartupTaskState.DisabledByPolicy => new(false, false, "Windows policy currently prevents Sentinel AI from starting automatically."),
+                    StartupTaskState.Disabled => await EnablePackagedTaskAsync(task),
+                    _ => new(false, false, $"Sentinel AI startup state is {task.State}; automatic startup was not assumed to be enabled.")
+                };
+            }
+            catch (Exception ex)
+            {
+                return new(false, false, $"Packaged startup registration could not be verified ({ex.GetType().Name}).");
+            }
+        }
 
         public StartupRegistrationResult EnsureRegisteredAndVerify()
         {
@@ -109,6 +137,16 @@ namespace Sentinel.App.Services
         }
 
         public bool EnsureRegistered() => EnsureRegisteredAndVerify().Registered;
+
+        private static async Task<StartupRegistrationResult> EnablePackagedTaskAsync(StartupTask task)
+        {
+            StartupTaskState state = await task.RequestEnableAsync();
+            return state == StartupTaskState.Enabled
+                ? new(true, true, "Sentinel AI packaged startup was enabled and verified.")
+                : new(false, false, state == StartupTaskState.DisabledByUser
+                    ? "Windows did not enable startup because the user disabled it in system settings."
+                    : $"Windows did not enable Sentinel AI startup. Current state: {state}.");
+        }
 
         private static StartupRegistrationResult EnablePackagedTask(StartupTask task)
         {
