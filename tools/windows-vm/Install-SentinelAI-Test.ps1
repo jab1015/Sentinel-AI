@@ -353,7 +353,8 @@ function Invoke-FullLaunchDiagnostics {
     $latest = Get-ChildItem -LiteralPath (Get-Location) -Filter 'SentinelAI-LaunchDiagnostics-*.txt' -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
-    return $latest?.FullName
+    if ($null -eq $latest) { return $null }
+    return $latest.FullName
 }
 
 Assert-Administrator
