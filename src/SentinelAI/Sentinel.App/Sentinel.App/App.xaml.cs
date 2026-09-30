@@ -46,7 +46,7 @@ namespace Sentinel.App
             BootstrapLaunchLog.Write("App.InitializeComponent.complete");
 
             string handoffRoot = ResolveExplorerHandoffRoot();
-            BootstrapLaunchLog.Write($"App.ExplorerHandoff.root={handoffRoot}");
+            BootstrapLaunchLog.Write("App.ExplorerHandoff.root-resolved");
             _explorerHandoffService = new ExplorerHandoffService(handoffRoot);
             UnhandledException += App_UnhandledException;
             BootstrapLaunchLog.Write("App.ctor.complete");
