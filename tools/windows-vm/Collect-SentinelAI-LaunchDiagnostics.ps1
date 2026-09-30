@@ -128,6 +128,25 @@ if (Test-Path -LiteralPath $manifestPath) {
 
 $since = (Get-Date).AddMinutes(-[Math]::Abs($LookbackMinutes))
 
+Write-Section 'Sentinel processes before diagnostic activation'
+$existingProcesses = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+if ($existingProcesses.Count -eq 0) {
+    Write-Lines '(none)'
+}
+else {
+    Write-Lines ($existingProcesses | Select-Object Id, Path, MainWindowHandle, MainWindowTitle, StartTime)
+    try {
+        $ids = @($existingProcesses | ForEach-Object { $_.Id })
+        $cimProcesses = @(Get-CimInstance Win32_Process -Filter "Name='Sentinel.App.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $ids -contains [int]$_.ProcessId } |
+            Select-Object ProcessId, ExecutablePath, CommandLine)
+        Write-Lines $cimProcesses
+    }
+    catch {
+        Write-Lines "Could not read Sentinel process command lines: $($_.Exception.Message)"
+    }
+}
+
 if (-not $SkipLaunch) {
     Write-Section 'Fresh activation attempt'
     $aumid = "$($installed.PackageFamilyName)!App"
@@ -140,7 +159,14 @@ if (-not $SkipLaunch) {
         $running = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
         if ($running.Count -gt 0) {
             $runningIds = @($running | ForEach-Object { $_.Id })
-            Write-Lines "PASS: Sentinel.App remained running. PID(s): $($runningIds -join ', ')"
+            $visible = @($running | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -like 'Sentinel AI*' })
+            Write-Lines ($running | Select-Object Id, Path, MainWindowHandle, MainWindowTitle, StartTime)
+            if ($visible.Count -gt 0) {
+                Write-Lines "PASS: Sentinel AI exposed a visible main window. PID(s): $($visible.Id -join ', ')"
+            }
+            else {
+                Write-Lines "FAIL: Sentinel.App remained running but no visible Sentinel AI main window was found. PID(s): $($runningIds -join ', ')"
+            }
         } else {
             Write-Lines 'FAIL: Sentinel.App did not remain running after packaged activation.'
         }
@@ -211,6 +237,8 @@ Write-Lines ([pscustomobject]@{
     ExePresent = (Test-Path -LiteralPath $exePath -PathType Leaf)
     ProcessRunning = ($processNow.Count -gt 0)
     ProcessIds = ($processIds -join ', ')
+    VisibleWindowCount = @($processNow | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero -and $_.MainWindowTitle -like 'Sentinel AI*' }).Count
+    WindowTitles = (@($processNow | ForEach-Object { $_.MainWindowTitle }) -join ' | ')
     OutputFile = $outputPath
 })
 
