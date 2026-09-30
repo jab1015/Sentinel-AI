@@ -8,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 using Windows.Storage;
 
@@ -407,7 +406,7 @@ namespace Sentinel.App
         {
             try
             {
-                return !string.IsNullOrWhiteSpace(Package.Current.Id.FamilyName);
+                return !string.IsNullOrWhiteSpace(Windows.ApplicationModel.Package.Current.Id.FamilyName);
             }
             catch
             {
