@@ -32,9 +32,10 @@ namespace Sentinel.App.Services
 
         public IntegratedMaintenanceCoordinator()
         {
-            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Modern Methods", "Sentinel AI");
-            Directory.CreateDirectory(directory);
+            string directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Modern Methods",
+                "Sentinel AI");
             _statePath = Path.Combine(directory, "integrated-maintenance-state.json");
             _verificationPath = Path.Combine(directory, "optimization-runtime-verification.json");
         }
