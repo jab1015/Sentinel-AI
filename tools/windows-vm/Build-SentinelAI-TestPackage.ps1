@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory = $true)][string]$SignTool,
     [Parameter(Mandatory = $true)][string]$MakeAppx,
     [Parameter(Mandatory = $true)][string]$SourceSha,
+    [ValidateRange(1, 65535)][int]$TestRevision = 1,
     [string]$OutputDir = 'artifacts/windows-vm-test',
     [string]$PackageName = 'SentinelAI-WindowsVM-x64.msix',
     [string]$CertName = 'SentinelAI-TestSigning.cer'
@@ -21,6 +22,9 @@ $expectedName = 'ModernMethods.SentinelAI'
 $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
 $pfxPath = Join-Path $env:RUNNER_TEMP 'SentinelAI-Ephemeral-TestSigning.pfx'
 $certObject = $null
+$originalManifestText = $null
+$productionPackageVersion = $null
+$vmPackageVersion = $null
 
 function Invoke-BoundedProcess {
     param(
@@ -89,11 +93,23 @@ function Get-PeMachine {
 }
 
 try {
-    [xml]$sourceManifest = Get-Content -LiteralPath $manifestPath -Raw
+    $originalManifestText = Get-Content -LiteralPath $manifestPath -Raw
+    [xml]$sourceManifest = $originalManifestText
     $identity = $sourceManifest.Package.Identity
     if ($identity.Name -ne $expectedName) { throw "Unexpected package name: $($identity.Name)" }
     if ($identity.Publisher -ne $expectedPublisher) { throw "Unexpected package publisher: $($identity.Publisher)" }
-    Write-Host "Production package identity preserved: $($identity.Name), $($identity.Publisher), version $($identity.Version)."
+
+    $productionVersion = [Version]$identity.Version
+    $productionPackageVersion = $productionVersion.ToString()
+    $vmPackageVersion = "{0}.{1}.{2}.{3}" -f $productionVersion.Major, $productionVersion.Minor, $productionVersion.Build, $TestRevision
+    Write-Host "Production package identity preserved in source: $($identity.Name), $($identity.Publisher), version $productionPackageVersion."
+    Write-Host "VM-only package version for this artifact: $vmPackageVersion."
+
+    # The VM package gets a monotonically increasing revision so repeated test
+    # artifacts are real upgrades. This temporary edit is restored in finally and
+    # never changes the production Store manifest committed to the repository.
+    $identity.Version = $vmPackageVersion
+    $sourceManifest.Save((Resolve-Path -LiteralPath $manifestPath).Path)
 
     # This package is intentionally LocalDev-only. The compile symbol is not defined by
     # Release, so there is no runtime switch that can disable Store/gateway enforcement.
@@ -226,6 +242,7 @@ try {
     $packagedIdentity = $packagedManifest.Package.Identity
     if ($packagedIdentity.Name -ne $expectedName) { throw "Packaged identity name mismatch: $($packagedIdentity.Name)" }
     if ($packagedIdentity.Publisher -ne $expectedPublisher) { throw "Packaged Publisher mismatch: $($packagedIdentity.Publisher)" }
+    if ($packagedIdentity.Version -ne $vmPackageVersion) { throw "Expected VM package version '$vmPackageVersion', found '$($packagedIdentity.Version)'." }
     if ($packagedIdentity.ProcessorArchitecture -ne 'x64') { throw "Expected x64 package architecture, found '$($packagedIdentity.ProcessorArchitecture)'." }
 
     $manifestText = Get-Content -LiteralPath (Join-Path $unpackRoot 'AppxManifest.xml') -Raw
@@ -240,12 +257,16 @@ try {
     }
 
     Copy-Item -LiteralPath 'tools\windows-vm\Install-SentinelAI-Test.ps1' -Destination $OutputDir -Force
+    Copy-Item -LiteralPath 'tools\windows-vm\Install-SentinelAI-Test.cmd' -Destination $OutputDir -Force
+    Copy-Item -LiteralPath 'tools\windows-vm\Collect-SentinelAI-LaunchDiagnostics.ps1' -Destination $OutputDir -Force
     Copy-Item -LiteralPath 'tools\windows-vm\Uninstall-SentinelAI-Test.ps1' -Destination $OutputDir -Force
     $hash = (Get-FileHash -LiteralPath $signedPackage -Algorithm SHA256).Hash
     "$hash  $PackageName" | Set-Content -LiteralPath (Join-Path $OutputDir 'SHA256SUMS.txt') -Encoding ascii
     @(
         'Branch=feature/premium-privacy-foundation',
         "SourceSHA=$SourceSha",
+        "ProductionPackageVersion=$productionPackageVersion",
+        "VmPackageVersion=$vmPackageVersion",
         'Architecture=x64',
         "Configuration=$configuration",
         'SubscriptionMode=LOCALDEV_VM_TEST_BYPASS_ONLY',
@@ -274,5 +295,17 @@ finally {
     if ($certObject) { $certObject.Dispose() }
     if (Test-Path -LiteralPath $pfxPath) {
         Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($null -ne $originalManifestText) {
+        try {
+            [IO.File]::WriteAllText(
+                (Resolve-Path -LiteralPath $manifestPath).Path,
+                $originalManifestText,
+                [Text.UTF8Encoding]::new($true))
+            Write-Host "Restored production manifest version $productionPackageVersion in the CI workspace."
+        }
+        catch {
+            Write-Warning "Could not restore the temporary VM-only manifest edit: $($_.Exception.Message)"
+        }
     }
 }
