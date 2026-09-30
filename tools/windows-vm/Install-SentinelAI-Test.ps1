@@ -184,7 +184,22 @@ try {
     Write-Host 'Launching Sentinel AI so first-run setup can complete...'
     Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
     Start-Sleep -Seconds 10
-    $launched = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue).Count -gt 0
+    $runningProcesses = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+    $visibleWindows = @(
+        $runningProcesses |
+            Where-Object {
+                $_.MainWindowHandle -ne [IntPtr]::Zero -and
+                $_.MainWindowTitle -like 'Sentinel AI*'
+            }
+    )
+    $launched = $visibleWindows.Count -gt 0
+
+    if ($runningProcesses.Count -gt 0 -and -not $launched) {
+        Write-Warning "Sentinel.App is running, but no visible Sentinel AI main window was verified. PID(s): $($runningProcesses.Id -join ', ')."
+        foreach ($process in $runningProcesses) {
+            Write-Host "  PID $($process.Id) | MainWindowHandle=$($process.MainWindowHandle) | MainWindowTitle='$($process.MainWindowTitle)'"
+        }
+    }
 }
 catch {
     Write-Warning "Sentinel AI was installed but could not be launched automatically: $($_.Exception.Message)"
@@ -192,7 +207,7 @@ catch {
 
 if ($launched) {
     Write-Host ''
-    Write-Host 'SUCCESS: Sentinel AI installed and remained running for the 10-second launch check.'
+    Write-Host "SUCCESS: Sentinel AI installed and a visible main window remained available for the 10-second launch check (PID(s): $($visibleWindows.Id -join ', '))."
     Write-Warning 'Explorer right-click testing is not valid until Windows has restarted.'
     Prompt-ForReboot
     Write-Host ''
