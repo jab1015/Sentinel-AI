@@ -31,15 +31,11 @@ namespace Sentinel.App.Services
                     "Modern Methods",
                     "Sentinel AI");
 
-                Directory.CreateDirectory(directory);
                 _historyPath = Path.Combine(directory, "maintenance-history.json");
                 return;
             }
 
             _historyPath = Path.GetFullPath(historyPath);
-            string? customDirectory = Path.GetDirectoryName(_historyPath);
-            if (!string.IsNullOrWhiteSpace(customDirectory))
-                Directory.CreateDirectory(customDirectory);
         }
 
         public void Record(MaintenanceHistoryEntry entry)
@@ -132,6 +128,10 @@ namespace Sentinel.App.Services
 
             try
             {
+                string? directory = Path.GetDirectoryName(_historyPath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    Directory.CreateDirectory(directory);
+
                 string json = JsonSerializer.Serialize(entries, new JsonSerializerOptions
                 {
                     WriteIndented = true
