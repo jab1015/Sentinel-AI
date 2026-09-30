@@ -63,6 +63,29 @@ jobs:
           "signtool=$signtool" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "makeappx=$makeappx" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      - name: Validate Windows PowerShell installer scripts
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scripts = @(
+            'tools/windows-vm/Install-SentinelAI-Test.ps1',
+            'tools/windows-vm/Collect-SentinelAI-LaunchDiagnostics.ps1',
+            'tools/windows-vm/Build-SentinelAI-TestPackage-Local.ps1'
+          )
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $script).Path,
+              [ref]$tokens,
+              [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Host "$script :: $($_.Message) at $($_.Extent.StartLineNumber):$($_.Extent.StartColumnNumber)" }
+              throw "Windows PowerShell syntax validation failed for $script."
+            }
+            Write-Host "PASS: $script parses under Windows PowerShell."
+          }
+
       - name: Verify LocalDev entitlement boundary
         shell: pwsh
         run: |
@@ -178,7 +201,7 @@ jobs:
               foreach ($diagnosticRoot in $candidateRoots) {
                 if (-not (Test-Path -LiteralPath $diagnosticRoot)) { continue }
                 Get-ChildItem -LiteralPath $diagnosticRoot -Recurse -File -ErrorAction SilentlyContinue |
-                  Where-Object { $_.Name -in @('last-crash.txt', 'sentinel.log', 'sentinel.previous.log') } |
+                  Where-Object { $_.Name -in @('last-crash.txt', 'sentinel.log', 'sentinel.previous.log', 'bootstrap-launch.log') } |
                   Sort-Object LastWriteTime -Descending |
                   Select-Object -First 8 |
                   ForEach-Object {
@@ -218,7 +241,7 @@ jobs:
         shell: pwsh
         run: |
           Get-Content -LiteralPath (Join-Path $env:OUTPUT_DIR 'PACKAGE-METADATA.txt')
-          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, signer identity, Windows package deployment signature/trust validation, package contents, manifest registration, PE architecture, helpers, public certificate, installation, and 10-second process launch smoke test validated.'
+          Write-Host 'LocalDev x64 VM build, compile-time test entitlement, signer identity, Windows package deployment signature/trust validation, package contents, manifest registration, PE architecture, helpers, public certificate, installation, and visible-main-window launch smoke test validated.'
           Write-Host 'Release x64 app was separately compiled to prove the authoritative Store/gateway entitlement path remains buildable.'
 
       - name: Upload package build diagnostics on failure
