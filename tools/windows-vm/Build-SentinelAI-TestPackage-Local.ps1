@@ -7,12 +7,24 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repoRoot
 
 $branch = (& git branch --show-current).Trim()
-if ($branch -ne 'feature/premium-privacy-foundation') {
-    throw "Expected branch feature/premium-privacy-foundation, found '$branch'."
+if ([string]::IsNullOrWhiteSpace($branch)) {
+    $branch = '(detached HEAD)'
 }
 
 $sourceSha = (& git rev-parse HEAD).Trim()
 if ([string]::IsNullOrWhiteSpace($sourceSha)) { throw 'Could not resolve current Git commit SHA.' }
+
+$commitCountText = (& git rev-list --count HEAD).Trim()
+[int]$testRevision = 1
+if (-not [int]::TryParse($commitCountText, [ref]$testRevision)) {
+    throw "Could not derive a local VM package revision from git commit count '$commitCountText'."
+}
+$testRevision = [Math]::Max(1, [Math]::Min(65535, $testRevision))
+
+$workingTreeChanges = @(& git status --porcelain)
+if ($workingTreeChanges.Count -gt 0) {
+    Write-Warning 'The working tree contains uncommitted changes. The local package will include the checked-out source files, while SourceSHA identifies the current commit.'
+}
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 if (-not (Test-Path -LiteralPath $vswhere)) { throw 'vswhere.exe was not found. Install Visual Studio Build Tools / Visual Studio with MSBuild.' }
@@ -43,6 +55,7 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 Write-Host "Repository: $repoRoot"
 Write-Host "Branch: $branch"
 Write-Host "Source SHA: $sourceSha"
+Write-Host "VM test revision: $testRevision"
 Write-Host "MSBuild: $msbuild"
 Write-Host "SignTool: $signTool"
 Write-Host "MakeAppx: $makeAppx"
@@ -91,6 +104,7 @@ try {
         -SignTool $signTool `
         -MakeAppx $makeAppx `
         -SourceSha $sourceSha `
+        -TestRevision $testRevision `
         -OutputDir $outputDir
 
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
