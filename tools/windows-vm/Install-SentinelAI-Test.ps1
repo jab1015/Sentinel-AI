@@ -8,11 +8,13 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+Set-Location $PSScriptRoot
+
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'This installer must be run from PowerShell opened with Run as administrator.'
+        throw 'This installer must run with Administrator permission. Use Install-SentinelAI-Test.cmd.'
     }
 }
 
@@ -34,341 +36,68 @@ function Get-ExpectedPackageHash {
     throw "SHA256SUMS.txt does not contain an entry for $PackageFileName."
 }
 
-function Show-SentinelLaunchDiagnostics {
-    param([string]$PackageFamilyName)
+function Stop-ExistingSentinelProcesses {
+    $processes = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+    if ($processes.Count -eq 0) {
+        return
+    }
 
-    Write-Host ''
-    Write-Warning 'Sentinel AI did not remain running. Collecting launch diagnostics...'
-
-    $candidateRoots = @(
-        (Join-Path $env:LOCALAPPDATA 'Modern Methods\Sentinel AI\Logs'),
-        (Join-Path $env:LOCALAPPDATA "Packages\$PackageFamilyName")
-    )
-
-    foreach ($root in $candidateRoots) {
-        if (-not (Test-Path -LiteralPath $root)) { continue }
-        $diagnosticFiles = @(Get-ChildItem -LiteralPath $root -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -in @('last-crash.txt', 'sentinel.log', 'sentinel.previous.log', 'bootstrap-launch.log') } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 6)
-        foreach ($file in $diagnosticFiles) {
-            Write-Host ''
-            Write-Host "--- $($file.FullName) ---"
-            Get-Content -LiteralPath $file.FullName -Tail 80 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+    Write-Host "Closing $($processes.Count) existing Sentinel.App process(es) before package deployment..."
+    foreach ($process in $processes) {
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Warning "Could not stop Sentinel.App PID $($process.Id): $($_.Exception.Message)"
         }
     }
 
-    $since = (Get-Date).AddMinutes(-5)
-    Write-Host ''
-    Write-Host '--- Recent Application log crash/runtime events ---'
-    Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$since } -ErrorAction SilentlyContinue |
-        Where-Object { $_.ProviderName -in @('.NET Runtime', 'Application Error', 'Windows Error Reporting') -or $_.Message -match 'Sentinel\.App' } |
-        Sort-Object TimeCreated -Descending |
-        Select-Object -First 12 TimeCreated, ProviderName, Id, LevelDisplayName, Message |
-        Format-List | Out-String -Width 220 | Write-Host
+    $deadline = (Get-Date).AddSeconds(5)
+    do {
+        Start-Sleep -Milliseconds 250
+        $remaining = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+    } while ($remaining.Count -gt 0 -and (Get-Date) -lt $deadline)
 
-    Write-Host '--- Recent AppModel-Runtime events ---'
-    Get-WinEvent -FilterHashtable @{ LogName='Microsoft-Windows-AppModel-Runtime/Admin'; StartTime=$since } -ErrorAction SilentlyContinue |
-        Where-Object { $_.Message -match 'Sentinel|ModernMethods\.SentinelAI' } |
-        Sort-Object TimeCreated -Descending |
-        Select-Object -First 12 TimeCreated, Id, LevelDisplayName, Message |
-        Format-List | Out-String -Width 220 | Write-Host
-
-    Write-Host 'Copy the diagnostic output above if Sentinel still will not open.'
-}
-
-function Prompt-ForReboot {
-    Write-Host ''
-    Write-Warning 'REBOOT REQUIRED BEFORE EXPLORER TESTING.'
-    Write-Host 'Sentinel AI File Explorer context-menu commands may not appear until Windows has restarted.'
-    Write-Host ''
-
-    while ($true) {
-        $choice = (Read-Host 'Restart the VM now? Enter Y to reboot now or N to reboot later').Trim()
-        if ($choice -match '^(?i)y(es)?
-
-$PackagePath = [IO.Path]::GetFullPath($PackagePath)
-$CertificatePath = [IO.Path]::GetFullPath($CertificatePath)
-$HashFilePath = [IO.Path]::GetFullPath($HashFilePath)
-
-if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
-    throw "MSIX not found: $PackagePath"
-}
-if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
-    throw "Public test certificate not found: $CertificatePath"
-}
-
-Write-Host 'Sentinel AI Windows VM test installer'
-Write-Host "Package:     $PackagePath"
-Write-Host "Certificate: $CertificatePath"
-
-$actualHash = (Get-FileHash -LiteralPath $PackagePath -Algorithm SHA256).Hash.ToUpperInvariant()
-Write-Host "SHA-256:     $actualHash"
-
-$expectedHash = Get-ExpectedPackageHash -HashFile $HashFilePath -PackageFileName ([IO.Path]::GetFileName($PackagePath))
-if ($null -ne $expectedHash) {
-    if ($actualHash -ne $expectedHash) {
-        throw "Package SHA-256 mismatch. Expected $expectedHash but found $actualHash."
-    }
-    Write-Host 'Package hash matches SHA256SUMS.txt.'
-}
-
-$certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
-$expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
-if ($certificate.Subject -ne $expectedPublisher) {
-    throw "Unexpected test-certificate subject '$($certificate.Subject)'. Expected '$expectedPublisher'."
-}
-if ($certificate.HasPrivateKey) {
-    throw 'The VM handoff certificate unexpectedly contains a private key. Refusing to continue.'
-}
-
-$codeSigningOid = '1.3.6.1.5.5.7.3.3'
-$hasCodeSigningEku = $false
-foreach ($extension in $certificate.Extensions) {
-    if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
-        foreach ($oid in $extension.EnhancedKeyUsages) {
-            if ($oid.Value -eq $codeSigningOid) {
-                $hasCodeSigningEku = $true
-            }
-        }
+    if ($remaining.Count -gt 0) {
+        throw "An older Sentinel.App process is still running (PID(s): $($remaining.Id -join ', ')). Close it in Task Manager and run this installer again."
     }
 }
-if (-not $hasCodeSigningEku) {
-    throw 'The supplied certificate is not marked for Code Signing.'
-}
 
-$trustedPeoplePath = "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
-if (-not (Test-Path $trustedPeoplePath)) {
-    Write-Host 'Installing the Sentinel AI VM test certificate into Local Computer > Trusted People...'
-    Import-Certificate -FilePath $CertificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
-}
-else {
-    Write-Host 'The Sentinel AI VM test certificate is already trusted in Local Computer > Trusted People.'
-}
-
-$signature = Get-AuthenticodeSignature -LiteralPath $PackagePath
-if ($signature.Status -ne 'Valid') {
-    throw "MSIX signature validation failed after trusting the test certificate. Status: $($signature.Status). Message: $($signature.StatusMessage)"
-}
-if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
-    throw 'MSIX signer certificate does not match SentinelAI-TestSigning.cer.'
-}
-Write-Host "MSIX signature: Valid ($($signature.SignerCertificate.Thumbprint))"
-
-$existing = @(Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue)
-if ($existing.Count -gt 0) {
-    Write-Host 'An existing ModernMethods.SentinelAI package is installed for this user:'
-    $existing | ForEach-Object { Write-Host "  $($_.PackageFullName)" }
-    Write-Host 'Add-AppxPackage will perform the normal package deployment/version checks; no existing package is removed automatically.'
-}
-
-Write-Host 'Installing signed Sentinel AI VM test MSIX...'
-Add-AppxPackage -Path $PackagePath -ForceApplicationShutdown -ErrorAction Stop
-
-$installed = Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1
-if ($null -eq $installed) {
-    throw 'Add-AppxPackage returned without error, but ModernMethods.SentinelAI is not registered for the current user.'
-}
-
-Write-Host ''
-Write-Host 'SUCCESS: Sentinel AI VM test package is installed.'
-Write-Host "PackageFullName: $($installed.PackageFullName)"
-Write-Host "Version:         $($installed.Version)"
-Write-Host "Architecture:    $($installed.Architecture)"
-Write-Host 'The test certificate remains in Local Computer > Trusted People for this VM test package.'
-
-$launched = $false
-try {
-    $appUserModelId = "$($installed.PackageFamilyName)!App"
-    Write-Host ''
-    Write-Host 'Launching Sentinel AI so first-run setup can complete...'
-    Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
-    Start-Sleep -Seconds 10
-    $runningProcesses = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
-    $visibleWindows = @(
-        $runningProcesses |
+function Get-VisibleSentinelWindows {
+    $processes = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+    return @(
+        $processes |
             Where-Object {
                 $_.MainWindowHandle -ne [IntPtr]::Zero -and
                 $_.MainWindowTitle -like 'Sentinel AI*'
             }
     )
-    $launched = $visibleWindows.Count -gt 0
-
-    if ($runningProcesses.Count -gt 0 -and -not $launched) {
-        Write-Warning "Sentinel.App is running, but no visible Sentinel AI main window was verified. PID(s): $($runningProcesses.Id -join ', ')."
-        foreach ($process in $runningProcesses) {
-            Write-Host "  PID $($process.Id) | MainWindowHandle=$($process.MainWindowHandle) | MainWindowTitle='$($process.MainWindowTitle)'"
-        }
-    }
-}
-catch {
-    Write-Warning "Sentinel AI was installed but could not be launched automatically: $($_.Exception.Message)"
 }
 
-if ($launched) {
-    Write-Host ''
-    Write-Host "SUCCESS: Sentinel AI installed and a visible main window remained available for the 10-second launch check (PID(s): $($visibleWindows.Id -join ', '))."
-    Write-Warning 'Explorer right-click testing is not valid until Windows has restarted.'
-    Prompt-ForReboot
-    Write-Host ''
-    Write-Host 'Sentinel AI VM test installation is complete. This installer can now close.'
-}
-else {
-    Show-SentinelLaunchDiagnostics -PackageFamilyName $installed.PackageFamilyName
-    $diagnosticPath = Invoke-FullLaunchDiagnostics
-    if ([string]::IsNullOrWhiteSpace($diagnosticPath)) {
-        throw 'Sentinel AI installed, but Sentinel.App did not remain running. Launch diagnostics were printed above.'
-    }
-
-    throw "Sentinel AI installed, but Sentinel.App did not remain running. Full diagnostics were saved to: $diagnosticPath"
-}
-) {
-            Write-Host 'Restarting Windows now...'
-            Restart-Computer -Force
-            return
-        }
-        if ($choice -match '^(?i)n(o)?
-
-$PackagePath = [IO.Path]::GetFullPath($PackagePath)
-$CertificatePath = [IO.Path]::GetFullPath($CertificatePath)
-$HashFilePath = [IO.Path]::GetFullPath($HashFilePath)
-
-if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf)) {
-    throw "MSIX not found: $PackagePath"
-}
-if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
-    throw "Public test certificate not found: $CertificatePath"
-}
-
-Write-Host 'Sentinel AI Windows VM test installer'
-Write-Host "Package:     $PackagePath"
-Write-Host "Certificate: $CertificatePath"
-
-$actualHash = (Get-FileHash -LiteralPath $PackagePath -Algorithm SHA256).Hash.ToUpperInvariant()
-Write-Host "SHA-256:     $actualHash"
-
-$expectedHash = Get-ExpectedPackageHash -HashFile $HashFilePath -PackageFileName ([IO.Path]::GetFileName($PackagePath))
-if ($null -ne $expectedHash) {
-    if ($actualHash -ne $expectedHash) {
-        throw "Package SHA-256 mismatch. Expected $expectedHash but found $actualHash."
-    }
-    Write-Host 'Package hash matches SHA256SUMS.txt.'
-}
-
-$certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
-$expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
-if ($certificate.Subject -ne $expectedPublisher) {
-    throw "Unexpected test-certificate subject '$($certificate.Subject)'. Expected '$expectedPublisher'."
-}
-if ($certificate.HasPrivateKey) {
-    throw 'The VM handoff certificate unexpectedly contains a private key. Refusing to continue.'
-}
-
-$codeSigningOid = '1.3.6.1.5.5.7.3.3'
-$hasCodeSigningEku = $false
-foreach ($extension in $certificate.Extensions) {
-    if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
-        foreach ($oid in $extension.EnhancedKeyUsages) {
-            if ($oid.Value -eq $codeSigningOid) {
-                $hasCodeSigningEku = $true
-            }
-        }
-    }
-}
-if (-not $hasCodeSigningEku) {
-    throw 'The supplied certificate is not marked for Code Signing.'
-}
-
-$trustedPeoplePath = "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
-if (-not (Test-Path $trustedPeoplePath)) {
-    Write-Host 'Installing the Sentinel AI VM test certificate into Local Computer > Trusted People...'
-    Import-Certificate -FilePath $CertificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
-}
-else {
-    Write-Host 'The Sentinel AI VM test certificate is already trusted in Local Computer > Trusted People.'
-}
-
-$signature = Get-AuthenticodeSignature -LiteralPath $PackagePath
-if ($signature.Status -ne 'Valid') {
-    throw "MSIX signature validation failed after trusting the test certificate. Status: $($signature.Status). Message: $($signature.StatusMessage)"
-}
-if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
-    throw 'MSIX signer certificate does not match SentinelAI-TestSigning.cer.'
-}
-Write-Host "MSIX signature: Valid ($($signature.SignerCertificate.Thumbprint))"
-
-$existing = @(Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue)
-if ($existing.Count -gt 0) {
-    Write-Host 'An existing ModernMethods.SentinelAI package is installed for this user:'
-    $existing | ForEach-Object { Write-Host "  $($_.PackageFullName)" }
-    Write-Host 'Add-AppxPackage will perform the normal package deployment/version checks; no existing package is removed automatically.'
-}
-
-Write-Host 'Installing signed Sentinel AI VM test MSIX...'
-Add-AppxPackage -Path $PackagePath -ForceApplicationShutdown -ErrorAction Stop
-
-$installed = Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1
-if ($null -eq $installed) {
-    throw 'Add-AppxPackage returned without error, but ModernMethods.SentinelAI is not registered for the current user.'
-}
-
-Write-Host ''
-Write-Host 'SUCCESS: Sentinel AI VM test package is installed.'
-Write-Host "PackageFullName: $($installed.PackageFullName)"
-Write-Host "Version:         $($installed.Version)"
-Write-Host "Architecture:    $($installed.Architecture)"
-Write-Host 'The test certificate remains in Local Computer > Trusted People for this VM test package.'
-
-$launched = $false
-try {
-    $appUserModelId = "$($installed.PackageFamilyName)!App"
-    Write-Host ''
-    Write-Host 'Launching Sentinel AI so first-run setup can complete...'
-    Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
-    Start-Sleep -Seconds 5
-    $launched = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue).Count -gt 0
-}
-catch {
-    Write-Warning "Sentinel AI was installed but could not be launched automatically: $($_.Exception.Message)"
-}
-
-if ($launched) {
-    Write-Host 'Sentinel AI launched. Follow the Restart Windows prompt shown by Sentinel.'
-    Write-Warning 'Explorer right-click testing is not valid until Windows has restarted.'
-}
-else {
-    Show-SentinelLaunchDiagnostics -PackageFamilyName $installed.PackageFamilyName
-    Write-Warning 'Sentinel AI did not confirm an automatic launch. Open Sentinel AI manually after reviewing the diagnostics above.'
-}
-) {
-            Write-Host ''
-            Write-Warning 'REBOOT PENDING: Restart Windows before testing Sentinel AI Explorer context-menu commands.'
-            return
-        }
-        Write-Host 'Please enter Y or N.'
-    }
-}
-
-function Invoke-FullLaunchDiagnostics {
+function Invoke-LaunchDiagnostics {
     $collector = Join-Path $PSScriptRoot 'Collect-SentinelAI-LaunchDiagnostics.ps1'
     if (-not (Test-Path -LiteralPath $collector -PathType Leaf)) {
-        Write-Warning 'The full launch-diagnostics helper is not present in this artifact.'
+        Write-Warning 'Collect-SentinelAI-LaunchDiagnostics.ps1 is missing from this package.'
         return $null
     }
 
     Write-Host ''
-    Write-Host 'Running full Sentinel launch diagnostics...'
+    Write-Host 'Collecting Sentinel launch diagnostics...'
     try {
-        & $collector -LookbackMinutes 15 -SkipLaunch
+        & $collector -LookbackMinutes 20 -SkipLaunch
     }
     catch {
-        Write-Warning "The diagnostic collector encountered an error: $($_.Exception.Message)"
+        Write-Warning "Diagnostic collection encountered an error: $($_.Exception.Message)"
     }
 
-    $latest = Get-ChildItem -LiteralPath (Get-Location) -Filter 'SentinelAI-LaunchDiagnostics-*.txt' -File -ErrorAction SilentlyContinue |
+    $latest = Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'SentinelAI-LaunchDiagnostics-*.txt' -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
-    if ($null -eq $latest) { return $null }
+
+    if ($null -eq $latest) {
+        return $null
+    }
+
     return $latest.FullName
 }
 
@@ -400,88 +129,115 @@ if ($null -ne $expectedHash) {
     Write-Host 'Package hash matches SHA256SUMS.txt.'
 }
 
-$certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
-$expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
-if ($certificate.Subject -ne $expectedPublisher) {
-    throw "Unexpected test-certificate subject '$($certificate.Subject)'. Expected '$expectedPublisher'."
-}
-if ($certificate.HasPrivateKey) {
-    throw 'The VM handoff certificate unexpectedly contains a private key. Refusing to continue.'
-}
+$certificate = New-Object Security.Cryptography.X509Certificates.X509Certificate2($CertificatePath)
+try {
+    $expectedPublisher = 'CN=EA91DFAA-447F-4250-AC3D-047D8D7F831A'
+    if ($certificate.Subject -ne $expectedPublisher) {
+        throw "Unexpected test-certificate subject '$($certificate.Subject)'. Expected '$expectedPublisher'."
+    }
+    if ($certificate.HasPrivateKey) {
+        throw 'The public VM test certificate unexpectedly contains a private key.'
+    }
 
-$codeSigningOid = '1.3.6.1.5.5.7.3.3'
-$hasCodeSigningEku = $false
-foreach ($extension in $certificate.Extensions) {
-    if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
-        foreach ($oid in $extension.EnhancedKeyUsages) {
-            if ($oid.Value -eq $codeSigningOid) {
-                $hasCodeSigningEku = $true
+    $codeSigningOid = '1.3.6.1.5.5.7.3.3'
+    $hasCodeSigningEku = $false
+    foreach ($extension in $certificate.Extensions) {
+        if ($extension -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]) {
+            foreach ($oid in $extension.EnhancedKeyUsages) {
+                if ($oid.Value -eq $codeSigningOid) {
+                    $hasCodeSigningEku = $true
+                }
             }
         }
     }
-}
-if (-not $hasCodeSigningEku) {
-    throw 'The supplied certificate is not marked for Code Signing.'
-}
+    if (-not $hasCodeSigningEku) {
+        throw 'The supplied certificate is not marked for Code Signing.'
+    }
 
-$trustedPeoplePath = "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
-if (-not (Test-Path $trustedPeoplePath)) {
-    Write-Host 'Installing the Sentinel AI VM test certificate into Local Computer > Trusted People...'
-    Import-Certificate -FilePath $CertificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
-}
-else {
-    Write-Host 'The Sentinel AI VM test certificate is already trusted in Local Computer > Trusted People.'
-}
+    $trustedPeoplePath = "Cert:\LocalMachine\TrustedPeople\$($certificate.Thumbprint)"
+    if (-not (Test-Path -LiteralPath $trustedPeoplePath)) {
+        Write-Host 'Installing the Sentinel AI VM test certificate into Local Computer > Trusted People...'
+        Import-Certificate -FilePath $CertificatePath -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+    }
+    else {
+        Write-Host 'The Sentinel AI VM test certificate is already trusted.'
+    }
 
-$signature = Get-AuthenticodeSignature -LiteralPath $PackagePath
-if ($signature.Status -ne 'Valid') {
-    throw "MSIX signature validation failed after trusting the test certificate. Status: $($signature.Status). Message: $($signature.StatusMessage)"
-}
-if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
-    throw 'MSIX signer certificate does not match SentinelAI-TestSigning.cer.'
-}
-Write-Host "MSIX signature: Valid ($($signature.SignerCertificate.Thumbprint))"
+    $signature = Get-AuthenticodeSignature -LiteralPath $PackagePath
+    if ($signature.Status -ne 'Valid') {
+        throw "MSIX signature validation failed. Status: $($signature.Status). Message: $($signature.StatusMessage)"
+    }
+    if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+        throw 'MSIX signer certificate does not match SentinelAI-TestSigning.cer.'
+    }
 
-$existing = @(Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue)
-if ($existing.Count -gt 0) {
-    Write-Host 'An existing ModernMethods.SentinelAI package is installed for this user:'
-    $existing | ForEach-Object { Write-Host "  $($_.PackageFullName)" }
-    Write-Host 'Add-AppxPackage will perform the normal package deployment/version checks; no existing package is removed automatically.'
-}
+    Write-Host "MSIX signature: Valid ($($signature.SignerCertificate.Thumbprint))"
 
-Write-Host 'Installing signed Sentinel AI VM test MSIX...'
-Add-AppxPackage -Path $PackagePath -ForceApplicationShutdown -ErrorAction Stop
+    Stop-ExistingSentinelProcesses
 
-$installed = Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction Stop | Sort-Object Version -Descending | Select-Object -First 1
-if ($null -eq $installed) {
-    throw 'Add-AppxPackage returned without error, but ModernMethods.SentinelAI is not registered for the current user.'
-}
+    $existing = @(Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction SilentlyContinue | Sort-Object Version -Descending)
+    if ($existing.Count -gt 0) {
+        Write-Host "Existing Sentinel package: $($existing[0].PackageFullName)"
+    }
 
-Write-Host ''
-Write-Host 'SUCCESS: Sentinel AI VM test package is installed.'
-Write-Host "PackageFullName: $($installed.PackageFullName)"
-Write-Host "Version:         $($installed.Version)"
-Write-Host "Architecture:    $($installed.Architecture)"
-Write-Host 'The test certificate remains in Local Computer > Trusted People for this VM test package.'
+    Write-Host 'Installing/updating Sentinel AI...'
+    Add-AppxPackage -Path $PackagePath -ForceApplicationShutdown -ErrorAction Stop
 
-$launched = $false
-try {
+    $installed = Get-AppxPackage -Name 'ModernMethods.SentinelAI' -ErrorAction Stop |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+
+    if ($null -eq $installed) {
+        throw 'Windows completed package deployment, but Sentinel AI is not registered for the current user.'
+    }
+
+    Write-Host ''
+    Write-Host 'Package installation completed.'
+    Write-Host "PackageFullName: $($installed.PackageFullName)"
+    Write-Host "Version:         $($installed.Version)"
+    Write-Host "Architecture:    $($installed.Architecture)"
+
+    Stop-ExistingSentinelProcesses
+
     $appUserModelId = "$($installed.PackageFamilyName)!App"
     Write-Host ''
-    Write-Host 'Launching Sentinel AI so first-run setup can complete...'
+    Write-Host "Launching $appUserModelId..."
     Start-Process -FilePath 'explorer.exe' -ArgumentList "shell:AppsFolder\$appUserModelId"
-    Start-Sleep -Seconds 5
-    $launched = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue).Count -gt 0
+
+    $deadline = (Get-Date).AddSeconds(20)
+    $visibleWindows = @()
+    do {
+        Start-Sleep -Milliseconds 500
+        $visibleWindows = @(Get-VisibleSentinelWindows)
+    } while ($visibleWindows.Count -eq 0 -and (Get-Date) -lt $deadline)
+
+    if ($visibleWindows.Count -eq 0) {
+        $running = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
+        if ($running.Count -gt 0) {
+            Write-Warning "Sentinel.App is running but no visible Sentinel AI main window appeared."
+            foreach ($process in $running) {
+                Write-Host "  PID $($process.Id) | Handle=$($process.MainWindowHandle) | Title='$($process.MainWindowTitle)'"
+            }
+        }
+        else {
+            Write-Warning 'Sentinel.App did not remain running after launch.'
+        }
+
+        $diagnosticPath = Invoke-LaunchDiagnostics
+        if ($null -ne $diagnosticPath) {
+            throw "Sentinel installed but did not open a visible main window. Diagnostics: $diagnosticPath"
+        }
+
+        throw 'Sentinel installed but did not open a visible main window.'
+    }
+
+    Write-Host ''
+    Write-Host "SUCCESS: Sentinel AI opened a visible main window (PID(s): $($visibleWindows.Id -join ', '))."
+    Write-Host 'Restart Windows before testing the File Explorer context-menu integration.'
+    Write-Host 'Installation is complete. This window will close automatically.'
 }
-catch {
-    Write-Warning "Sentinel AI was installed but could not be launched automatically: $($_.Exception.Message)"
+finally {
+    $certificate.Dispose()
 }
 
-if ($launched) {
-    Write-Host 'Sentinel AI launched. Follow the Restart Windows prompt shown by Sentinel.'
-    Write-Warning 'Explorer right-click testing is not valid until Windows has restarted.'
-}
-else {
-    Show-SentinelLaunchDiagnostics -PackageFamilyName $installed.PackageFamilyName
-    Write-Warning 'Sentinel AI did not confirm an automatic launch. Open Sentinel AI manually after reviewing the diagnostics above.'
-}
+exit 0
