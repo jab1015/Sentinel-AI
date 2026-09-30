@@ -123,6 +123,7 @@ namespace Sentinel.App
 
                 TryInitializeSystemTray();
 
+#if !SENTINEL_LOCAL_DEV
                 if (!explorerInspectionActivation && !launchedByWindowsStartup)
                 {
                     try
@@ -135,6 +136,14 @@ namespace Sentinel.App
                             $"The Explorer restart prompt could not be shown ({ex.GetType().Name}). Sentinel will continue running.");
                     }
                 }
+#else
+                // The LocalDev VM installer owns the reboot prompt. Avoid a second
+                // unowned native dialog during first launch, which can sit behind the
+                // installer and make the activated app appear hung.
+                _ = _diagnosticLog.InformationAsync(
+                    "ExplorerRestartPrompt",
+                    "LocalDev VM build: reboot prompting is handled by the VM installer after launch verification.");
+#endif
 
                 try
                 {
