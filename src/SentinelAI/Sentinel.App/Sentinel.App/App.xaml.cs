@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 using Windows.Storage;
 
@@ -15,7 +16,7 @@ namespace Sentinel.App
 {
     public partial class App : Application
     {
-        private const string MainInstanceKey = "SentinelAI.Main";
+        private const string ProductionMainInstanceKey = "SentinelAI.Main";
         private static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new(-4);
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -35,14 +36,20 @@ namespace Sentinel.App
 
         public App()
         {
+            BootstrapLaunchLog.Write("App.ctor.enter");
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
 
             EnsurePerMonitorDpiAwareness();
+            BootstrapLaunchLog.Write("App.InitializeComponent.start");
             InitializeComponent();
-            string handoffRoot = Path.Combine(ApplicationData.Current.LocalFolder.Path, "ExplorerHandoff");
+            BootstrapLaunchLog.Write("App.InitializeComponent.complete");
+
+            string handoffRoot = ResolveExplorerHandoffRoot();
+            BootstrapLaunchLog.Write($"App.ExplorerHandoff.root={handoffRoot}");
             _explorerHandoffService = new ExplorerHandoffService(handoffRoot);
             UnhandledException += App_UnhandledException;
+            BootstrapLaunchLog.Write("App.ctor.complete");
         }
 
         private static void EnsurePerMonitorDpiAwareness()
@@ -53,6 +60,7 @@ namespace Sentinel.App
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            BootstrapLaunchLog.Write("App.OnLaunched.enter");
             Stopwatch startupTimer = Stopwatch.StartNew();
             AppActivationArguments? activation = GetCurrentActivationArguments();
             bool launchedByWindowsStartup = activation?.Kind == ExtendedActivationKind.StartupTask;
@@ -62,7 +70,13 @@ namespace Sentinel.App
 
             try
             {
-                if (!EnsurePrimaryInstance(activation)) return;
+                BootstrapLaunchLog.Write("App.SingleInstance.start");
+                if (!EnsurePrimaryInstance(activation))
+                {
+                    BootstrapLaunchLog.Write("App.SingleInstance.redirected-exit");
+                    return;
+                }
+                BootstrapLaunchLog.Write("App.SingleInstance.complete");
 
                 bool explorerInspectionActivation = false;
                 try
@@ -75,11 +89,12 @@ namespace Sentinel.App
                         $"Explorer activation parsing failed ({ex.GetType().Name}). Sentinel will continue normal startup.");
                 }
 
-                TryInitializeWindowsStartupRegistration();
-
+                BootstrapLaunchLog.Write("App.MainWindow.construct.start");
                 MainWindow mainWindow = new();
+                BootstrapLaunchLog.Write("App.MainWindow.construct.complete");
                 _window = mainWindow;
                 _window.AppWindow.Closing += MainAppWindow_Closing;
+                BootstrapLaunchLog.Write("App.MainWindow.assigned");
 
                 // Make an interactive launch visible before initializing optional services.
                 // A tray-icon, Store, startup-registration, or monitoring setup failure must
@@ -96,8 +111,13 @@ namespace Sentinel.App
                 else
                 {
                     _pendingInteractiveActivation = false;
+                    BootstrapLaunchLog.Write("App.MainWindow.show.start");
+                    _window.AppWindow.Show();
                     _window.Activate();
+                    BootstrapLaunchLog.Write("App.MainWindow.show.complete");
                 }
+
+                _ = InitializeWindowsStartupRegistrationAfterWindowAsync();
 
                 try
                 {
@@ -162,6 +182,7 @@ namespace Sentinel.App
                 }
 
                 startupTimer.Stop();
+                BootstrapLaunchLog.Write($"App.OnLaunched.complete elapsedMs={startupTimer.ElapsedMilliseconds}");
                 _ = _diagnosticLog.InformationAsync("StartupPerformance",
                     explorerInspectionActivation
                         ? $"Explorer dialog activation completed in {startupTimer.ElapsedMilliseconds} ms without opening the dashboard."
@@ -177,6 +198,7 @@ namespace Sentinel.App
             catch (Exception ex)
             {
                 startupTimer.Stop();
+                BootstrapLaunchLog.Write($"App.OnLaunched.failure elapsedMs={startupTimer.ElapsedMilliseconds}", ex);
                 _systemTrayService?.Dispose();
                 _systemTrayService = null;
                 _diagnosticLog.WriteCrashBreadcrumb("ApplicationLaunchFailure", ex);
@@ -199,6 +221,28 @@ namespace Sentinel.App
                 }
 
                 throw;
+            }
+        }
+
+        private async Task InitializeWindowsStartupRegistrationAfterWindowAsync()
+        {
+            try
+            {
+                // Never block first paint on StartupTask/WinRT work.
+                await Task.Yield();
+                BootstrapLaunchLog.Write("App.WindowsStartupRegistration.start");
+                WindowsStartupRegistrationService.StartupRegistrationResult startup =
+                    await _startupRegistrationService.EnsureRegisteredAndVerifyAsync();
+                BootstrapLaunchLog.Write("App.WindowsStartupRegistration.complete");
+                _ = startup.Registered
+                    ? _diagnosticLog.InformationAsync("WindowsStartup", startup.Summary)
+                    : _diagnosticLog.WarningAsync("WindowsStartup", startup.Summary);
+            }
+            catch (Exception ex)
+            {
+                BootstrapLaunchLog.Write("App.WindowsStartupRegistration.failure", ex);
+                _ = _diagnosticLog.WarningAsync("WindowsStartup",
+                    $"Startup registration could not be initialized ({ex.GetType().Name}). Sentinel will continue running.");
             }
         }
 
@@ -237,13 +281,31 @@ namespace Sentinel.App
         {
             try
             {
+                string instanceKey = GetMainInstanceKey();
+                BootstrapLaunchLog.Write($"App.SingleInstance.key={instanceKey}");
                 AppInstance current = AppInstance.GetCurrent();
-                AppInstance primary = AppInstance.FindOrRegisterForKey(MainInstanceKey);
+                AppInstance primary = AppInstance.FindOrRegisterForKey(instanceKey);
                 if (!primary.IsCurrent)
                 {
                     AppActivationArguments? redirect = activation ?? GetCurrentActivationArguments();
                     if (redirect is not null)
+                    {
+#if SENTINEL_LOCAL_DEV
+                        Task redirectTask = primary.RedirectActivationToAsync(redirect).AsTask();
+                        if (!redirectTask.Wait(TimeSpan.FromSeconds(3)))
+                        {
+                            BootstrapLaunchLog.Write("App.SingleInstance.redirect-timeout; continuing LocalDev recovery instance");
+                            _ = _diagnosticLog.WarningAsync(
+                                "SingleInstance",
+                                "The existing LocalDev Sentinel instance did not accept activation within 3 seconds. A recovery window will open instead of silently exiting.");
+                            _primaryInstance = null;
+                            return true;
+                        }
+                        redirectTask.GetAwaiter().GetResult();
+#else
                         primary.RedirectActivationToAsync(redirect).AsTask().GetAwaiter().GetResult();
+#endif
+                    }
                     _ = _diagnosticLog.InformationAsync("SingleInstance", "A duplicate Sentinel AI launch was redirected to the existing instance.");
                     Exit();
                     return false;
@@ -328,6 +390,46 @@ namespace Sentinel.App
             if (request is null) return;
             _pendingExplorerInspection = null;
             mainWindow.HandleExplorerInspectionRequest(request);
+        }
+
+        private static string GetMainInstanceKey()
+        {
+#if SENTINEL_LOCAL_DEV
+            return HasPackageIdentity()
+                ? "SentinelAI.Main.LocalDev.Packaged"
+                : "SentinelAI.Main.LocalDev.Unpackaged";
+#else
+            return ProductionMainInstanceKey;
+#endif
+        }
+
+        private static bool HasPackageIdentity()
+        {
+            try
+            {
+                return !string.IsNullOrWhiteSpace(Package.Current.Id.FamilyName);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string ResolveExplorerHandoffRoot()
+        {
+            try
+            {
+                string packageLocal = ApplicationData.Current.LocalFolder.Path;
+                if (!string.IsNullOrWhiteSpace(packageLocal))
+                    return Path.Combine(packageLocal, "ExplorerHandoff");
+            }
+            catch (Exception ex)
+            {
+                BootstrapLaunchLog.Write("App.ApplicationData.LocalFolder.unavailable; using LocalAppData fallback", ex);
+            }
+
+            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(local, "Modern Methods", "Sentinel AI", "ExplorerHandoff");
         }
 
         private static AppActivationArguments? GetCurrentActivationArguments()
