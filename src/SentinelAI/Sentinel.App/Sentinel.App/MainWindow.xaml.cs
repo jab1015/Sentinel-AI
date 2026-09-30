@@ -38,15 +38,20 @@ namespace Sentinel.App
 
         public MainWindow()
         {
+            BootstrapLaunchLog.Write("MainWindow.ctor.enter");
+            BootstrapLaunchLog.Write("MainWindow.InitializeComponent.start");
             InitializeComponent();
+            BootstrapLaunchLog.Write("MainWindow.InitializeComponent.complete");
             _lastVerifiedNetworkContainmentTarget = _networkContainmentHistory.GetLastContainedEndpoint();
             _timer.Interval = TimeSpan.FromSeconds(5);
             _timer.Tick += Timer_Tick;
             Activated += MainWindow_Activated;
+            BootstrapLaunchLog.Write("MainWindow.ctor.complete");
         }
 
         private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
         {
+            BootstrapLaunchLog.Write($"MainWindow.Activated state={args.WindowActivationState}");
             if (!_profileInitialized)
             {
                 _profileInitialized = true;
@@ -54,6 +59,7 @@ namespace Sentinel.App
             }
 
             StartMonitoringIfNeeded();
+            BootstrapLaunchLog.Write("MainWindow.Activated.complete");
         }
 
         public void StartBackgroundMonitoring() => StartMonitoringIfNeeded();
