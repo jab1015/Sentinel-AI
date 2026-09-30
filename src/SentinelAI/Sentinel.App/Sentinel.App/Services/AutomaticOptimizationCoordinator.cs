@@ -27,9 +27,12 @@ namespace Sentinel.App.Services
 
         public AutomaticOptimizationCoordinator()
         {
-            string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Modern Methods", "Sentinel AI");
-            Directory.CreateDirectory(directory);
-            _stateStore = new OptimizationRuntimeStateStore(Path.Combine(directory, "optimization-runtime-state.json"));
+            string directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Modern Methods",
+                "Sentinel AI");
+            _stateStore = new OptimizationRuntimeStateStore(
+                Path.Combine(directory, "optimization-runtime-state.json"));
         }
 
         public async Task<AutomaticOptimizationResult> EvaluateOnlyAsync(SystemSnapshot snapshot, CancellationToken cancellationToken = default)
