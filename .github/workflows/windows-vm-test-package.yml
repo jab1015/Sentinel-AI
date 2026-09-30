@@ -144,8 +144,19 @@ jobs:
             Start-Sleep -Seconds 10
 
             $processes = @(Get-Process -Name 'Sentinel.App' -ErrorAction SilentlyContinue)
-            if ($processes.Count -eq 0) {
-              Write-Host 'Sentinel.App did not remain running. Recent Application events:'
+            $visibleWindows = @(
+              $processes |
+                Where-Object {
+                  $_.MainWindowHandle -ne [IntPtr]::Zero -and
+                  $_.MainWindowTitle -like 'Sentinel AI*'
+                }
+            )
+            if ($visibleWindows.Count -eq 0) {
+              Write-Host "Sentinel.App did not expose a visible Sentinel AI main window. Running process count: $($processes.Count)."
+              foreach ($process in $processes) {
+                Write-Host "PID $($process.Id) | MainWindowHandle=$($process.MainWindowHandle) | MainWindowTitle='$($process.MainWindowTitle)'"
+              }
+              Write-Host 'Recent Application events:'
               $since = (Get-Date).AddMinutes(-3)
               Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=$since } -ErrorAction SilentlyContinue |
                 Where-Object { $_.ProviderName -in @('.NET Runtime', 'Application Error', 'Windows Error Reporting') -or $_.Message -match 'Sentinel\.App' } |
@@ -176,10 +187,10 @@ jobs:
                   }
               }
 
-              throw 'Signed LocalDev package installed but Sentinel.App did not remain running for the 10-second smoke window.'
+              throw 'Signed LocalDev package installed, but a visible Sentinel AI main window was not verified during the 10-second smoke window.'
             }
 
-            Write-Host "PASS: Sentinel.App remained running for the 10-second launch smoke window (PID(s): $($processes.Id -join ', '))."
+            Write-Host "PASS: Sentinel AI exposed a visible main window for the 10-second launch smoke window (PID(s): $($visibleWindows.Id -join ', '))."
             $processes | Stop-Process -Force -ErrorAction SilentlyContinue
           }
           finally {
