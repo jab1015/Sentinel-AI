@@ -51,7 +51,7 @@ jobs:
           $project = Get-Content 'src/SentinelAI/Sentinel.App/Sentinel.App/Sentinel.App.csproj' -Raw
           $manifest = Get-Content 'src/SentinelAI/Sentinel.App/Sentinel.App (Package)/Package.appxmanifest' -Raw
           if ($manifest -notmatch 'Name="ModernMethods\.SentinelAI"') { throw 'Unexpected Store package identity.' }
-          if ($manifest -notmatch 'Version="1\.0\.29\.0"') { throw 'Expected Store version 1.0.29.0.' }
+          if ($manifest -notmatch 'Version="1\.0\.30\.0"') { throw 'Expected Store version 1.0.30.0.' }
           if ($project -notmatch 'SENTINEL_LOCAL_DEV') { throw 'LocalDev boundary declaration was not found.' }
           Write-Host 'Store identity and Release/LocalDev boundary verified.'
 
@@ -109,15 +109,15 @@ jobs:
             $identity = $installedManifest.SelectSingleNode('/f:Package/f:Identity', $ns)
             if ($null -eq $identity) { throw 'Generated package manifest identity is missing.' }
             if ($identity.Name -ne 'ModernMethods.SentinelAI') { throw "Unexpected generated package name: $($identity.Name)" }
-            if ($identity.Version -ne '1.0.29.0') { throw "Unexpected generated package version: $($identity.Version)" }
+            if ($identity.Version -ne '1.0.30.0') { throw "Unexpected generated package version: $($identity.Version)" }
             $app = Get-ChildItem $unpack -Recurse -File -Filter 'Sentinel.App.exe' | Select-Object -First 1
             if ($null -eq $app) { throw 'Sentinel.App.exe is missing from the generated Store package.' }
-            Write-Host 'Validated Store bundle identity ModernMethods.SentinelAI version 1.0.29.0.'
+            Write-Host 'Validated Store bundle identity ModernMethods.SentinelAI version 1.0.30.0.'
           }
           $inventory = Join-Path $env:GITHUB_WORKSPACE 'store-package-inventory.txt'
           @(
             'SOURCE_SHA=${{ github.sha }}',
-            'VERSION=1.0.29.0',
+            'VERSION=1.0.30.0',
             'CONFIGURATION=Release',
             'PLATFORM=x64'
           ) | Set-Content $inventory -Encoding utf8
@@ -129,7 +129,7 @@ jobs:
       - name: Upload Microsoft Store package
         uses: actions/upload-artifact@v4
         with:
-          name: SentinelAI-MicrosoftStore-1.0.29.0
+          name: SentinelAI-MicrosoftStore-1.0.30.0
           path: |
             src/SentinelAI/Sentinel.App/Sentinel.App (Package)/AppPackages/**/*.msixupload
             src/SentinelAI/Sentinel.App/Sentinel.App (Package)/AppPackages/**/*.msixbundle
