@@ -245,6 +245,17 @@ try {
     if ($packagedIdentity.Version -ne $vmPackageVersion) { throw "Expected VM package version '$vmPackageVersion', found '$($packagedIdentity.Version)'." }
     if ($packagedIdentity.ProcessorArchitecture -ne 'x64') { throw "Expected x64 package architecture, found '$($packagedIdentity.ProcessorArchitecture)'." }
 
+    $appInstallerUxPath = Join-Path $unpackRoot 'Msix.AppInstaller.Data\MSIXAppInstallerData.xml'
+    if (-not (Test-Path -LiteralPath $appInstallerUxPath -PathType Leaf)) {
+        throw 'LocalDev package is missing Msix.AppInstaller.Data\MSIXAppInstallerData.xml.'
+    }
+    $appInstallerUxText = Get-Content -LiteralPath $appInstallerUxPath -Raw
+    if ($appInstallerUxText -notmatch 'AllowUserInteraction="true"' -or
+        $appInstallerUxText -notmatch '<LaunchWhenReady\b') {
+        throw 'LocalDev App Installer UX does not explicitly expose Launch when ready.'
+    }
+    Write-Host 'Validated LocalDev App Installer UX with Launch when ready.'
+
     $manifestText = Get-Content -LiteralPath (Join-Path $unpackRoot 'AppxManifest.xml') -Raw
     foreach ($fragment in @(
         'Category="windows.comServer"',
@@ -263,7 +274,7 @@ try {
     $hash = (Get-FileHash -LiteralPath $signedPackage -Algorithm SHA256).Hash
     "$hash  $PackageName" | Set-Content -LiteralPath (Join-Path $OutputDir 'SHA256SUMS.txt') -Encoding ascii
     @(
-        'Branch=feature/premium-privacy-foundation',
+        'Branch=main',
         "SourceSHA=$SourceSha",
         "ProductionPackageVersion=$productionPackageVersion",
         "VmPackageVersion=$vmPackageVersion",
@@ -281,6 +292,7 @@ try {
         'ManifestRegistration=PASS',
         'RequiredBinaries=PASS',
         'PEArchitecture=PASS',
+        'AppInstallerLaunchWhenReady=PASS',
         'ProductionStoreReady=NO',
         'MergeToMain=NO'
     ) | Set-Content -LiteralPath (Join-Path $OutputDir 'PACKAGE-METADATA.txt') -Encoding utf8
