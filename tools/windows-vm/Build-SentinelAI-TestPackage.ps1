@@ -37,6 +37,7 @@ function Invoke-BoundedProcess {
 
     $psi = [Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $FilePath
+    $psi.WorkingDirectory = (Get-Location).Path
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
