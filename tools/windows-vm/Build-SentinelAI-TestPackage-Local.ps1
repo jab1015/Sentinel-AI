@@ -1,4 +1,6 @@
-param()
+param(
+    [switch]$Install
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -120,3 +122,20 @@ Write-Host ''
 Write-Host 'LOCAL VM PACKAGE BUILD COMPLETE.'
 Write-Host "Artifacts: $outputDir"
 Get-ChildItem -LiteralPath $outputDir -File | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+
+if ($Install) {
+    $installer = Join-Path $outputDir 'Install-SentinelAI-Test.ps1'
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+        throw "Local package build completed, but the installer helper was not found: $installer"
+    }
+
+    Write-Host ''
+    Write-Host 'Starting elevated install + visible-window launch verification...'
+    $argumentString = "-NoProfile -ExecutionPolicy Bypass -File `"$installer`""
+    $installProcess = Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList $argumentString -PassThru -Wait
+    if ($installProcess.ExitCode -ne 0) {
+        throw "Sentinel install/launch verification failed with exit code $($installProcess.ExitCode)."
+    }
+
+    Write-Host 'Sentinel install/launch verification succeeded.'
+}
