@@ -358,8 +358,12 @@ namespace Sentinel.App
                             ? "Answered with available Sentinel AI and authoritative/cited evidence sources."
                             : "Answered from current verified evidence on this computer.";
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _ = _monitoringDiagnosticLog.ErrorAsync(
+                    "AskSentinelFailure",
+                    "Ask Sentinel could not complete the requested reasoning flow. The question text was not logged.",
+                    ex);
                 RenderAskSentinelAnswer("I couldn't finish checking the evidence, so I won't guess. You can retry the question or use one of the follow-up options.");
                 AskSentinelAnswerBorder.Visibility = Visibility.Visible;
                 HideAskSentinelRepairActions();

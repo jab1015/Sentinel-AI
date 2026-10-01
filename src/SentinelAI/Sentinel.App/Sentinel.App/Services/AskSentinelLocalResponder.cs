@@ -233,7 +233,8 @@ namespace Sentinel.App.Services
                 "manual quarantine", "manually quarantine");
             bool asksAboutCurrentFlaggedCondition = Has(question,
                 "flagged condition", "flagged connection", "this condition", "current condition",
-                "the flagged", "that condition");
+                "the flagged", "that condition", "flagged item", "flagged items",
+                "quarantine flags", "quarantine the flags", "contain the flags");
 
             if (asksAboutFile || asksAboutFileQuarantineUi)
             {

@@ -19,11 +19,16 @@ namespace Sentinel.App
         private readonly ProtectionStatusSummaryService _protectionStatusSummaryService = new();
         private readonly DispatcherTimer _protectionRefreshTimer = new() { Interval = TimeSpan.FromSeconds(5) };
         private readonly Func<SystemSnapshot>? _snapshotProvider;
+        private readonly Func<string>? _lastContainedEndpointProvider;
+        private readonly Func<string, Task>? _askSentinel;
         private readonly TextBlock _protectionHeadlineText = new();
         private readonly TextBlock _protectionFlaggedText = new();
         private readonly TextBlock _protectionResponseText = new();
         private readonly TextBlock _protectionCriteriaText = new();
         private readonly TextBlock _protectionActionStateText = new();
+        private readonly Button _reviewNetworkContainmentButton = new();
+        private readonly Button _reviewNetworkRollbackButton = new();
+        private readonly Button _askAboutFlagsButton = new();
         private readonly ListView _itemsList = new();
         private readonly TextBlock _emptyText = new();
         private readonly TextBlock _summaryText = new();
@@ -33,9 +38,14 @@ namespace Sentinel.App
         private readonly TextBlock _statusText = new();
         private IReadOnlyList<QuarantineCatalogService.QuarantineCatalogEntry> _entries = Array.Empty<QuarantineCatalogService.QuarantineCatalogEntry>();
 
-        public QuarantineManagerWindow(Func<SystemSnapshot>? snapshotProvider = null)
+        public QuarantineManagerWindow(
+            Func<SystemSnapshot>? snapshotProvider = null,
+            Func<string>? lastContainedEndpointProvider = null,
+            Func<string, Task>? askSentinel = null)
         {
             _snapshotProvider = snapshotProvider;
+            _lastContainedEndpointProvider = lastContainedEndpointProvider;
+            _askSentinel = askSentinel;
             Title = "Sentinel AI — Protection Center";
             Content = BuildContent();
             Activated += QuarantineManagerWindow_Activated;
@@ -181,6 +191,23 @@ namespace Sentinel.App
             panel.Children.Add(new TextBlock { Text = "WHEN SENTINEL WILL ACT", FontSize = 11, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 111, 136, 168)) });
             panel.Children.Add(_protectionCriteriaText);
             panel.Children.Add(_protectionActionStateText);
+
+            StackPanel actions = new() { Orientation = Orientation.Horizontal, Spacing = 10 };
+            _reviewNetworkContainmentButton.Content = "Review network containment";
+            _reviewNetworkContainmentButton.IsEnabled = false;
+            _reviewNetworkContainmentButton.Click += async (_, _) =>
+                await AskSentinelAsync("Review and let me approve containment for the current flagged connection.");
+            _reviewNetworkRollbackButton.Content = "Review & unblock";
+            _reviewNetworkRollbackButton.IsEnabled = false;
+            _reviewNetworkRollbackButton.Click += async (_, _) =>
+                await AskSentinelAsync("Review and remove the Sentinel network containment block.");
+            _askAboutFlagsButton.Content = "Ask about flagged items";
+            _askAboutFlagsButton.Click += async (_, _) =>
+                await AskSentinelAsync("Explain every current flagged condition and which manual actions are available.");
+            actions.Children.Add(_reviewNetworkContainmentButton);
+            actions.Children.Add(_reviewNetworkRollbackButton);
+            actions.Children.Add(_askAboutFlagsButton);
+            panel.Children.Add(actions);
             card.Child = panel;
             return card;
         }
@@ -206,6 +233,8 @@ namespace Sentinel.App
                 _protectionResponseText.Text = "Sentinel continues monitoring in the main application.";
                 _protectionCriteriaText.Text = "Security-changing actions require verified evidence and a supported remediation path.";
                 _protectionActionStateText.Text = "No action state is available in this window.";
+                _reviewNetworkContainmentButton.IsEnabled = false;
+                _reviewNetworkRollbackButton.IsEnabled = false;
                 return;
             }
 
@@ -215,6 +244,28 @@ namespace Sentinel.App
             _protectionResponseText.Text = status.CurrentResponse;
             _protectionCriteriaText.Text = status.ActionCriteria;
             _protectionActionStateText.Text = status.ActionState;
+
+            bool canReviewNetworkContainment =
+                snapshot.AutonomousProtectionRequiresUserApproval &&
+                snapshot.AutonomousProtectionAction.Equals("block-outbound-endpoint", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(snapshot.AutonomousProtectionTarget) &&
+                !snapshot.AutonomousProtectionTarget.Equals("None", StringComparison.OrdinalIgnoreCase);
+            _reviewNetworkContainmentButton.IsEnabled = canReviewNetworkContainment && _askSentinel is not null;
+            _reviewNetworkContainmentButton.Content = canReviewNetworkContainment
+                ? $"Review containment for {snapshot.AutonomousProtectionTarget}"
+                : "Network containment not currently eligible";
+
+            string lastContainedEndpoint = _lastContainedEndpointProvider?.Invoke() ?? string.Empty;
+            _reviewNetworkRollbackButton.IsEnabled = !string.IsNullOrWhiteSpace(lastContainedEndpoint) && _askSentinel is not null;
+            _reviewNetworkRollbackButton.Content = string.IsNullOrWhiteSpace(lastContainedEndpoint)
+                ? "No Sentinel network block to remove"
+                : $"Review & unblock {lastContainedEndpoint}";
+        }
+
+        private async Task AskSentinelAsync(string question)
+        {
+            if (_askSentinel is null) return;
+            await _askSentinel(question);
         }
 
         private void ItemsList_SelectionChanged(object sender, SelectionChangedEventArgs e)

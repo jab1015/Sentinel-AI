@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using System.Threading.Tasks;
 
 namespace Sentinel.App
 {
@@ -10,11 +11,23 @@ namespace Sentinel.App
         {
             if (_quarantineManagerWindow is null)
             {
-                _quarantineManagerWindow = new QuarantineManagerWindow(() => _engine.CurrentSnapshot);
+                _quarantineManagerWindow = new QuarantineManagerWindow(
+                    () => _engine.CurrentSnapshot,
+                    () => _lastVerifiedNetworkContainmentTarget,
+                    OpenAskSentinelFromProtectionCenterAsync);
                 _quarantineManagerWindow.Closed += (_, _) => _quarantineManagerWindow = null;
             }
 
             _quarantineManagerWindow.Activate();
+        }
+
+        private async Task OpenAskSentinelFromProtectionCenterAsync(string question)
+        {
+            _quarantineManagerWindow?.AppWindow.Hide();
+            AppWindow.Show();
+            Activate();
+            AskSentinelQuestionBox.Text = question;
+            await SubmitAskSentinelQuestionAsync();
         }
     }
 }

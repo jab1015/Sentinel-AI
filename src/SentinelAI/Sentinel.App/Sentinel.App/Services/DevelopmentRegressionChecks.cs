@@ -108,6 +108,10 @@ namespace Sentinel.App.Services
                     flaggedNetwork.Contains("confidence 20%", StringComparison.OrdinalIgnoreCase),
                 "Current flagged-network quarantine question did not explain why containment is being withheld.");
 
+            string terseFlagRequest = responder.Answer("Can you quarantine the flags?", snapshot);
+            Require(terseFlagRequest.Contains("Network containment and rollback", StringComparison.OrdinalIgnoreCase),
+                "Terse flagged-network quarantine wording did not resolve against the current network finding.");
+
             string protectionStatus = responder.Answer(
                 "What is Sentinel doing about the flagged conditions and when will it take action against them?",
                 snapshot);
