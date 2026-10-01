@@ -83,10 +83,10 @@ $newAppPackages = '$appPackages = Join-Path $env:RUNNER_TEMP ''SentinelAI-AppPac
 if (-not $scriptText.Contains($oldAppPackages)) { throw 'Expected AppPackages assignment was not found in package script.' }
 $scriptText = $scriptText.Replace($oldAppPackages, $newAppPackages)
 
-$oldMsBuild = '& $MsBuild $packageProject /restore /m /p:Configuration=$configuration /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"'
-$newMsBuild = '& $MsBuild $packageProject /restore /m /p:Configuration=$configuration /p:Platform=x64 /p:AppxBundle=Never /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxPackageSigningEnabled=false "/p:AppxPackageDir=$appPackages\" /fl "/flp:logfile=windows-vm-test-package.log;verbosity=diagnostic"'
-if (-not $scriptText.Contains($oldMsBuild)) { throw 'Expected MSBuild package command was not found in package script.' }
-$scriptText = $scriptText.Replace($oldMsBuild, $newMsBuild)
+$oldSigningArgument = "        '/p:AppxPackageSigningEnabled=false',"
+$newSigningArguments = "        '/p:AppxPackageSigningEnabled=false',`r`n        (`"/p:AppxPackageDir={0}`" -f `$appPackages),"
+if (-not $scriptText.Contains($oldSigningArgument)) { throw 'Expected MSBuild signing argument was not found in package script.' }
+$scriptText = $scriptText.Replace($oldSigningArgument, $newSigningArguments)
 
 $oldRng = '[Security.Cryptography.RandomNumberGenerator]::GetBytes(48)'
 $newRng = '$( $bytes = New-Object byte[] 48; $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }; $bytes )'
